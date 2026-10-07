@@ -70,6 +70,7 @@ class Model:
     id: str = "claude-sonnet-5-5"
     provider: str = "anthropic"
     max_tokens: int = 8192
+    context_window: int = 200000
 
 
 def transform_messages(messages: list) -> list:
