@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import AsyncIterator, Literal
 
@@ -71,6 +72,49 @@ class Model:
     max_tokens: int = 8192
 
 
+def transform_messages(messages: list) -> list:
+    """One pass before sending: drop error/aborted assistant turns, add a result for every orphan tool call."""
+    out, pending = list(), dict()  # tool_call_id -> name, waiting for a result
+
+    def flush():
+        out.extend(ToolResultMessage(i, n, "No result provided", is_error=True) for i, n in pending.items())
+        pending.clear()
+
+    for m in messages:
+        if isinstance(m, ToolResultMessage):
+            pending.pop(m.tool_call_id, None)
+            out.append(m)
+            continue
+        flush()
+        if isinstance(m, AssistantMessage):
+            if m.stop_reason in ("error", "aborted"):
+                continue
+            pending = {c.id: c.name for c in m.tool_calls()}
+        out.append(m)
+    flush()
+    return out
+
+
+_RETRYABLE = re.compile(
+    r"\b(429|5\d\d)\b|overloaded|rate.?limit|too many requests|service unavailable|internal server error"
+    r"|connection|network|timed? ?out|econnreset|stream ended",
+    re.I,
+)
+_OVERFLOW = re.compile(
+    r"prompt (is )?too long|request_too_large|exceeds the context window|maximum context length"
+    r"|context[_ ]length[_ ]exceeded|too many tokens|token limit exceeded",
+    re.I,
+)
+
+
+def is_context_overflow(error: str) -> bool:
+    return bool(_OVERFLOW.search(error or ""))
+
+
+def is_retryable(error: str) -> bool:
+    return not is_context_overflow(error) and bool(_RETRYABLE.search(error or ""))
+
+
 # --- Anthropic provider -------------------------------------------------------
 
 _STOP = {"end_turn": "stop", "stop_sequence": "stop", "tool_use": "tool_use", "max_tokens": "length"}
@@ -93,12 +137,14 @@ def _to_anthropic(messages: list) -> list[dict]:
                 out.append({"role": "assistant", "content": blocks})
         elif isinstance(m, ToolResultMessage):
             block = {"type": "tool_result", "tool_use_id": m.tool_call_id, "content": m.content, "is_error": m.is_error}
-            # consecutive tool results must share one user message
-            if out and out[-1]["role"] == "user" and out[-1]["content"][0]["type"] == "tool_result":
-                out[-1]["content"].append(block)
-            else:
-                out.append({"role": "user", "content": [block]})
-    return out
+            out.append({"role": "user", "content": [block]})
+    merged = list()  # consecutive same-role turns become one (Anthropic needs user/assistant alternation)
+    for t in out:
+        if merged and merged[-1]["role"] == t["role"]:
+            merged[-1]["content"].extend(t["content"])
+        else:
+            merged.append(t)
+    return merged
 
 
 async def stream(model: Model, context: Context) -> AsyncIterator[dict]:
@@ -119,6 +165,9 @@ async def stream(model: Model, context: Context) -> AsyncIterator[dict]:
         ) as s:
             async for ev in s:
                 if ev.type == "text":
+                    if not msg.content:
+                        msg.content.append(TextContent(""))
+                    msg.content[-1].text += ev.text  # partial text, kept if aborted
                     yield {"type": "text_delta", "delta": ev.text}
                 elif ev.type == "content_block_start" and ev.content_block.type == "tool_use":
                     yield {"type": "toolcall_start", "name": ev.content_block.name}
@@ -127,6 +176,7 @@ async def stream(model: Model, context: Context) -> AsyncIterator[dict]:
                 elif ev.type == "content_block_stop" and ev.content_block.type == "tool_use":
                     yield {"type": "toolcall_end"}
             final = await s.get_final_message()
+        msg.content = list()
         for b in final.content:
             if b.type == "text":
                 msg.content.append(TextContent(b.text))
