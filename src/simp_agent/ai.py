@@ -82,6 +82,8 @@ def transform_messages(messages: list) -> list:
         pending.clear()
 
     for m in messages:
+        if m.role == "compaction":  # history marker, never sent
+            continue
         if isinstance(m, ToolResultMessage):
             pending.pop(m.tool_call_id, None)
             out.append(m)

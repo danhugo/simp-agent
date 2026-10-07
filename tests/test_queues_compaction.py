@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from simp_agent.agent import Agent, AgentTool
 from simp_agent.ai import AssistantMessage, Model, TextContent, ToolCall, ToolResultMessage, UserMessage
-from simp_agent.compaction import find_cut
+from simp_agent.compaction import CompactionEntry, find_cut
 
 DONE = AssistantMessage([TextContent("ok")])
 OVERFLOW = AssistantMessage(stop_reason="error", error="prompt is too long: 210000 tokens > 200000 maximum")
@@ -82,7 +82,10 @@ def compact_agent(stream):
     return a
 
 
-async def test_compaction_replaces_history():
+SUM_HEAD = "The conversation history before this point was compacted into the following summary:\n\n<summary>\n"
+
+
+async def test_compaction_appends_marker_and_view():
     stream, seen = fake(AssistantMessage([TextContent("SUM")]), DONE)
     a = compact_agent(stream)
     a.messages = history()
@@ -92,16 +95,31 @@ async def test_compaction_replaces_history():
     assert "compaction_start" in events and "compaction_end" in events
     summary_call = seen[0]
     assert summary_call[0].content.startswith("old") and isinstance(summary_call[2], ToolResultMessage)
-    assert a.messages[0].content == "<summary>SUM</summary>"
-    assert a.messages[1].content.startswith("new")  # cut on a user message: tool pair stayed together
-    assert seen[1][0].content == "<summary>SUM</summary>"
+    assert a.messages[0].content.startswith("old")  # full history still has the old messages
+    entry = next(m for m in a.messages if isinstance(m, CompactionEntry))
+    assert entry.summary == "SUM" and a.messages[entry.first_kept_index].content.startswith("new")
+    assert seen[1][0].content == SUM_HEAD + "SUM\n</summary>" and seen[1][1].content.startswith("new")
 
 
-def test_cut_never_splits_tool_pair():
+def test_cut_never_on_tool_result():
     msgs = history()
     for keep in range(0, 20000, 500):
-        cut = find_cut(msgs, keep)
-        assert cut is None or isinstance(msgs[cut], UserMessage)
+        cut = find_cut(msgs, 0, keep)
+        assert cut is None or not isinstance(msgs[cut], ToolResultMessage)
+
+
+async def test_steer_during_compaction_same_turn():
+    a = None
+
+    def summary(ctx):
+        a.steer("late")  # typed while the slow summary call runs
+        return AssistantMessage([TextContent("SUM")])
+
+    stream, seen = fake(summary, DONE)
+    a = compact_agent(stream)
+    a.messages = history()
+    await a.prompt("next")
+    assert len(seen) == 2 and texts(seen[1])[-1] == "late"
 
 
 async def test_below_threshold_no_compaction():
@@ -109,7 +127,7 @@ async def test_below_threshold_no_compaction():
     a = Agent("s", Model(), [], stream)
     a.messages = history()
     await a.prompt("next")
-    assert len(seen) == 1 and a.messages[0].content.startswith("old")
+    assert len(seen) == 1 and not any(isinstance(m, CompactionEntry) for m in a.messages)
 
 
 async def test_summary_error_keeps_history():
@@ -119,7 +137,7 @@ async def test_summary_error_keeps_history():
     ends = []
     a.subscribe(lambda e: e["type"] == "compaction_end" and ends.append(e))
     await a.prompt("next")
-    assert ends[0]["error"] and a.messages[0].content.startswith("old")
+    assert ends[0]["error"] and not any(isinstance(m, CompactionEntry) for m in a.messages)
     assert a.messages[-1] is DONE
 
 
@@ -130,7 +148,7 @@ async def test_overflow_compacts_and_retries_once():
     a.messages = history()
     await a.prompt("next")
     assert len(seen) == 3 and a.messages[-1] is DONE
-    assert a.messages[0].content == "<summary>SUM</summary>" and OVERFLOW not in a.messages
+    assert seen[2][0].content.startswith(SUM_HEAD) and OVERFLOW not in seen[2]
 
 
 async def test_second_overflow_stops():
@@ -143,10 +161,12 @@ async def test_second_overflow_stops():
 
 
 async def test_existing_summary_is_updated():
-    stream, seen = fake(AssistantMessage([TextContent("SUM2")]), DONE)
+    stream, seen = fake(AssistantMessage([TextContent("SUM1")]), DONE, AssistantMessage([TextContent("SUM2")]), DONE)
     a = compact_agent(stream)
-    a.messages = [UserMessage("<summary>SUM1</summary>")] + history()
+    a.messages = history()
     await a.prompt("next")
-    assert "<previous-summary>\nSUM1\n" in seen[0][-1].content
-    assert not any(m.content.startswith("<summary>") for m in seen[0][:-1] if isinstance(m, UserMessage))
-    assert a.messages[0].content == "<summary>SUM2</summary>"
+    a.messages += history()[1:]  # grow again past the threshold
+    await a.prompt("more")
+    assert "<previous-summary>\nSUM1\n" in seen[2][-1].content
+    assert "SUM1" not in seen[2][0].content
+    assert seen[3][0].content == SUM_HEAD + "SUM2\n</summary>"

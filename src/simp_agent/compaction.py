@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from . import ai
-from .ai import AssistantMessage, Context, ToolResultMessage, UserMessage
-
-SUMMARY_TAG = "<summary>"
+from .ai import AssistantMessage, Context, UserMessage
 
 SUMMARIZATION_PROMPT = """The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
 
@@ -54,6 +53,9 @@ Use the same format: ## Goal, ## Constraints & Preferences, ## Progress (### Don
 ## Key Decisions, ## Next Steps, ## Critical Context. Keep each section concise."""
 
 
+SUMMARY_PREFIX = "The conversation history before this point was compacted into the following summary:\n\n<summary>\n"
+
+
 @dataclass
 class CompactionSettings:
     enabled: bool = True
@@ -61,16 +63,41 @@ class CompactionSettings:
     keep_recent_tokens: int = 20000
 
 
+@dataclass
+class CompactionEntry:
+    """Marker appended to history. History stays append-only; build_view() turns it into the LLM view."""
+
+    summary: str
+    first_kept_index: int
+    role: Literal["compaction"] = "compaction"
+
+
+def _last_entry(messages: list) -> int | None:
+    return next((i for i in range(len(messages) - 1, -1, -1) if isinstance(messages[i], CompactionEntry)), None)
+
+
+def build_view(messages: list) -> list:
+    """[summary user message] + messages from first_kept_index on (markers dropped). No marker -> history as is."""
+    k = _last_entry(messages)
+    if k is None:
+        return messages
+    e = messages[k]
+    kept = [m for m in messages[e.first_kept_index :] if not isinstance(m, CompactionEntry)]
+    return [UserMessage(f"{SUMMARY_PREFIX}{e.summary}\n</summary>")] + kept
+
+
 def estimate(m) -> int:
     if isinstance(m, AssistantMessage):
         n = sum(len(c.text) if isinstance(c, ai.TextContent) else len(c.name) + len(str(c.arguments)) for c in m.content)
+    elif isinstance(m, CompactionEntry):
+        n = len(m.summary)
     else:
         n = len(m.content)
     return n // 4
 
 
-def count_tokens(messages: list) -> int:
-    """Last good assistant usage + chars/4 for messages after it; chars/4 for all if no usage."""
+def estimate_tokens(messages: list) -> int:
+    """Last valid assistant usage + chars/4 after it. Error, aborted and all-zero usage are ignored."""
     for i in range(len(messages) - 1, -1, -1):
         m = messages[i]
         if isinstance(m, AssistantMessage) and m.stop_reason not in ("error", "aborted") and any(m.usage.values()):
@@ -78,22 +105,20 @@ def count_tokens(messages: list) -> int:
     return sum(estimate(x) for x in messages)
 
 
-def is_summary(m) -> bool:
-    return isinstance(m, UserMessage) and m.content.startswith(SUMMARY_TAG)
+def should_compact(tokens: int, model, settings: CompactionSettings) -> bool:
+    return settings.enabled and tokens > model.context_window - settings.reserve_tokens
 
 
-def find_cut(messages: list, keep_tokens: int) -> int | None:
-    """Index of the first kept message. Always a real user message, so a tool_use/tool_result pair is never split."""
-    start = 1 if messages and is_summary(messages[0]) else 0
+def find_cut(messages: list, start: int, keep_tokens: int) -> int | None:
+    """First kept index in (start, len). Only a user or assistant message: never a tool_result, so pairs stay together.
+    ponytail: no split-turn cut (pi isSplitTurn); one huge turn cannot be compacted."""
     total, i = 0, len(messages)
     while i > start and total < keep_tokens:
         i -= 1
         total += estimate(messages[i])
-    users = [j for j in range(start + 1, len(messages)) if isinstance(messages[j], UserMessage)]
-    before = [j for j in users if j <= i]
-    if before:
-        return before[-1]
-    return users[0] if users else None  # ponytail: no user message to cut at -> nothing to compact
+    ok = [j for j in range(start + 1, len(messages)) if isinstance(messages[j], (UserMessage, AssistantMessage))]
+    before = [j for j in ok if j <= i]
+    return before[-1] if before else (ok[0] if ok else None)
 
 
 async def summarize(stream_fn, model, old: list, previous: str | None) -> str:
@@ -107,27 +132,16 @@ async def summarize(stream_fn, model, old: list, previous: str | None) -> str:
         if ev["type"] in ("done", "error"):
             msg = ev["message"]
     if msg is None or msg.stop_reason in ("error", "length", "aborted"):
-        raise RuntimeError(f"summary failed: {msg.error if msg else 'no response'} ({msg and msg.stop_reason})")
+        raise RuntimeError(f"summary failed: {msg.error if msg else 'no response'}")
     return msg.text()
 
 
-async def compact(messages: list, model, stream_fn, settings: CompactionSettings, emit, force: bool = False) -> list | None:
-    """Return the new history ([summary] + kept), or None when nothing was done."""
-    before = count_tokens(messages)
-    if not settings.enabled or (not force and before <= model.context_window - settings.reserve_tokens):
-        return None
-    cut = find_cut(messages, settings.keep_recent_tokens)
+async def compact(messages: list, model, stream_fn, settings: CompactionSettings) -> tuple[str, int]:
+    """Pure: summarize full history up to a cut. Returns (summary, first_kept_index). Raises if nothing to do or on failure."""
+    k = _last_entry(messages)
+    start, previous = (messages[k].first_kept_index, messages[k].summary) if k is not None else (0, None)
+    cut = find_cut(messages, start, settings.keep_recent_tokens)
     if cut is None:
-        return None
-    await emit({"type": "compaction_start", "tokens_before": before})
-    previous = messages[0].content[len(SUMMARY_TAG) : -len("</summary>")] if is_summary(messages[0]) else None
-    old = messages[1 if previous is not None else 0 : cut]
-    try:
-        text = await summarize(stream_fn, model, old, previous)
-    except Exception as e:
-        await emit({"type": "compaction_end", "error": str(e), "tokens_before": before, "tokens_after": before})
-        return None
-    new = [UserMessage(f"{SUMMARY_TAG}{text}</summary>")] + messages[cut:]
-    after = sum(estimate(m) for m in new)
-    await emit({"type": "compaction_end", "error": None, "tokens_before": before, "tokens_after": after})
-    return new
+        raise RuntimeError("nothing to compact")
+    old = [m for m in messages[start:cut] if not isinstance(m, CompactionEntry)]
+    return await summarize(stream_fn, model, old, previous), cut
