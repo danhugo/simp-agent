@@ -97,12 +97,14 @@ def estimate(m) -> int:
 
 
 def estimate_tokens(messages: list) -> int:
-    """Last valid assistant usage + chars/4 after it. Error, aborted and all-zero usage are ignored."""
-    for i in range(len(messages) - 1, -1, -1):
+    """Tokens of the LLM view of full history: last valid assistant usage after the last CompactionEntry + chars/4 after it.
+    No such usage -> chars/4 of the view. Error, aborted and all-zero usage are ignored."""
+    k = _last_entry(messages)
+    for i in range(len(messages) - 1, -1 if k is None else k, -1):
         m = messages[i]
         if isinstance(m, AssistantMessage) and m.stop_reason not in ("error", "aborted") and any(m.usage.values()):
             return m.usage["input"] + m.usage["output"] + sum(estimate(x) for x in messages[i + 1 :])
-    return sum(estimate(x) for x in messages)
+    return sum(estimate(x) for x in build_view(messages))
 
 
 def should_compact(tokens: int, model, settings: CompactionSettings) -> bool:

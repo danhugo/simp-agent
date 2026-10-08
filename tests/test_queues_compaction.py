@@ -170,3 +170,21 @@ async def test_existing_summary_is_updated():
     assert "<previous-summary>\nSUM1\n" in seen[2][-1].content
     assert "SUM1" not in seen[2][0].content
     assert seen[3][0].content == SUM_HEAD + "SUM2\n</summary>"
+
+
+async def test_stale_usage_does_not_compact_twice():
+    # after compaction the only usage is from before the marker; next turn (tool call, no usage) must not compact again
+    async def t(args, cancel):
+        return "r"
+
+    SUM = lambda: AssistantMessage([TextContent("SUM")])  # noqa: E731
+    stream, seen = fake(SUM(), call(1), SUM(), DONE, DONE)
+    a = compact_agent(stream)
+    a.tools = [AgentTool("t", "", {"type": "object"}, t)]
+    a.messages = history()
+    ends = []
+    a.subscribe(lambda e: e["type"] == "compaction_end" and ends.append(e))
+    await a.prompt("next")
+    assert sum("summary" in str(c[-1].content) for c in seen) == 1
+    assert len([m for m in a.messages if isinstance(m, CompactionEntry)]) == 1
+    assert ends[0]["tokens_after"] < ends[0]["tokens_before"]

@@ -10,7 +10,7 @@ from typing import Any, Awaitable, Callable
 import jsonschema
 
 from . import ai
-from .compaction import CompactionEntry, CompactionSettings, build_view, compact, estimate, estimate_tokens, should_compact
+from .compaction import CompactionEntry, CompactionSettings, build_view, compact, estimate_tokens, should_compact
 from .ai import AssistantMessage, Context, Model, ToolResultMessage, UserMessage
 
 
@@ -211,7 +211,7 @@ class Agent:
     async def _compact(self) -> bool:
         """Summarize old history and append a CompactionEntry marker. Failure keeps history as is."""
         emit = lambda e: _emit_all(self._subs, e)  # noqa: E731
-        before = estimate_tokens(build_view(self.messages))
+        before = estimate_tokens(self.messages)
         await emit({"type": "compaction_start", "tokens_before": before})
         try:
             summary, first_kept = await compact(self.messages, self.model, self.stream_fn, self.compaction)
@@ -219,12 +219,12 @@ class Agent:
             await emit({"type": "compaction_end", "error": str(e), "tokens_before": before, "tokens_after": before})
             return False
         self.messages.append(CompactionEntry(summary, first_kept))
-        after = sum(estimate(m) for m in build_view(self.messages))
+        after = estimate_tokens(self.messages)
         await emit({"type": "compaction_end", "error": None, "tokens_before": before, "tokens_after": after})
         return True
 
     async def _prepare(self, messages: list) -> list:
-        if self.auto_compact and should_compact(estimate_tokens(build_view(messages)), self.model, self.compaction):
+        if self.auto_compact and should_compact(estimate_tokens(messages), self.model, self.compaction):
             await self._compact()
         return build_view(messages)
 
