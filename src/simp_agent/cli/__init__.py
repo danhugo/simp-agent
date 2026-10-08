@@ -71,9 +71,9 @@ def resolve_config(settings: dict, args: argparse.Namespace) -> dict:
 
 
 def build_model(cfg: dict) -> Model:
-    if cfg["api"] == "openai-completions":
+    if cfg["api"] in ("openai-completions", "openai-responses"):
         if not cfg.get("model") or not cfg.get("context_window"):
-            raise ValueError("model and context_window are required for openai-completions")
+            raise ValueError(f"model and context_window are required for {cfg['api']}")
         return Model(id=cfg["model"], provider="openai", api=cfg["api"], max_tokens=cfg["max_tokens"],
                      base_url=cfg.get("base_url") or os.environ.get("OPENAI_BASE_URL"), context_window=cfg["context_window"],
                      api_key_env=cfg.get("api_key_env"), compat={"include_usage": True, **cfg["compat"]})
@@ -117,10 +117,14 @@ def describe_call(call) -> str:
 
 # ---- print mode -----------------------------------------------------------------------------------------------------
 
-def _print_event(e: dict) -> None:
+def _print_event(e: dict, thinking: bool = True) -> None:
     t = e["type"]
     if t == "message_update" and e["event"]["type"] == "text_delta":
         print(e["event"]["delta"], end="", flush=True)
+    elif t == "message_update" and thinking and e["event"]["type"] == "thinking_delta":
+        print(f"\033[2m{e['event']['delta']}\033[0m", end="", flush=True)
+    elif t == "message_update" and thinking and e["event"]["type"] == "thinking_end":
+        print(flush=True)
     elif t == "message_end" and e["message"].role == "assistant" and e["message"].text():
         print(flush=True)
     elif t == "tool_execution_start":
@@ -150,7 +154,7 @@ async def run(task: str, model: Model, args: argparse.Namespace) -> int:
 
     session = AgentSession(model, make_tools(args.bash_max_timeout_s), JsonlStore(session_dir(cwd) / f"{sid}.jsonl"),
                            approve=None if args.yes else ask)
-    session.subscribe(_print_event)
+    session.subscribe(lambda e: _print_event(e, args.thinking))
     loop.add_signal_handler(signal.SIGINT, session.abort)
     print(f"[session {sid}]", file=sys.stderr)
     try:
@@ -168,7 +172,7 @@ async def run(task: str, model: Model, args: argparse.Namespace) -> int:
 def main() -> None:
     p = argparse.ArgumentParser(prog="simp-agent")
     p.add_argument("--profile", help="profile name in ~/.simp-agent/settings.json")
-    p.add_argument("--api", choices=["anthropic-messages", "openai-completions"])
+    p.add_argument("--api", choices=["anthropic-messages", "openai-completions", "openai-responses"])
     p.add_argument("--model", help="model id (required for openai-completions)")
     p.add_argument("--base-url")
     p.add_argument("--context-window", type=int)
@@ -176,6 +180,7 @@ def main() -> None:
     p.add_argument("--max-tokens-field", choices=["max_tokens", "max_completion_tokens"])
     p.add_argument("--reasoning-effort", help="e.g. none (some servers need it with tools)")
     p.add_argument("--no-include-usage", action="store_true")
+    p.add_argument("--thinking", action=argparse.BooleanOptionalAction, default=True, help="show model thinking (dim)")
     p.add_argument("-c", "--continue", dest="cont", action="store_true", help="latest session for this cwd")
     p.add_argument("--resume", metavar="ID", help="resume session ID (for this cwd)")
     p.add_argument("-y", "--yes", action="store_true", help="never ask before running tools")

@@ -7,8 +7,7 @@ Not yet (present in pi, skipped here):
 - parallel tool execution
 - proxy transport
 - compaction split-turn cut (pi isSplitTurn): we only cut at user/assistant messages, so one huge turn cannot be compacted
-- more providers (only anthropic-messages + openai-completions built in), TUI
-- OpenAI `reasoning_content`/`reasoning` deltas are ignored: a reasoning model may return empty content
+- more providers (anthropic-messages, openai-completions, openai-responses built in), TUI
 - retry loop with backoff: core only classifies (`ai.is_retryable`, `ai.is_context_overflow`); the app decides
 
 Hardening (done):
@@ -32,3 +31,14 @@ Pluggability (done; "everything is a plugin"):
 
 Recommended command for the human's gpt-6-luna server (key only via env OPENAI_API_KEY):
 `uv run simp-agent --api openai-completions --base-url <url>/v1 --model openai/gpt-6-luna --context-window 922000 --max-tokens 32000 --max-tokens-field max_completion_tokens --reasoning-effort none "task"`
+
+Reasoning / thinking (done, follows pi):
+- `ThinkingContent(thinking, signature, redacted)`; `AssistantMessage` records api/provider/model; usage has `reasoning` (already inside `output`).
+- `transform_messages(msgs, model)`: signed or redacted thinking replays only to the same provider+api+model (kept even if empty); other models get non-empty thinking as text, empty dropped.
+- openai-responses: store=false, no previous_response_id; reasoning items replay from the encrypted item JSON in the signature. Tool call id = "call_id|item_id".
+- anthropic: compat `reasoning_effort` -> adaptive thinking + effort; compat `thinking_budget` -> budget + interleaved beta.
+- openai-completions: reasoning_content/reasoning/reasoning_text -> thinking (not replayed).
+- Compaction summary skips thinking. CLI shows thinking dim; `--no-thinking` hides it.
+
+gpt-6-luna with reasoning text (chat/completions gives no reasoning text, Responses does). settings.json profile:
+`"luna": {"api": "openai-responses", "model": "openai/gpt-6-luna", "base_url": "<url>/v1", "context_window": 922000, "max_tokens": 32000, "compat": {"reasoning_effort": "low"}}`

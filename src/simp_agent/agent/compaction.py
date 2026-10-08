@@ -87,7 +87,8 @@ def build_view(messages: list) -> list:
 
 def estimate(m) -> int:
     if isinstance(m, AssistantMessage):
-        n = sum(len(c.text) if isinstance(c, ai.TextContent) else len(c.name) + len(str(c.arguments)) for c in m.content)
+        n = sum(len(c.text) if isinstance(c, ai.TextContent) else len(c.thinking) if isinstance(c, ai.ThinkingContent)
+                else len(c.name) + len(str(c.arguments)) for c in m.content)
     elif isinstance(m, CompactionEntry):
         n = len(m.summary)
     else:
@@ -136,7 +137,7 @@ def serialize_conversation(messages: list) -> str:
     for m in ai.transform_messages(messages):
         if isinstance(m, UserMessage) and m.content:
             parts.append(f"[User]: {m.content}")
-        elif isinstance(m, AssistantMessage):
+        elif isinstance(m, AssistantMessage):  # thinking skipped: big, the text + tool calls carry the result
             if text := m.text():
                 parts.append(f"[Assistant]: {text}")
             calls = [f"{c.name}({', '.join(f'{k}={_cut(json.dumps(v), ARG_MAX)}' for k, v in c.arguments.items())})"

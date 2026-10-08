@@ -40,7 +40,7 @@ async def test_tool_call_split_and_usage_chunk():
     ])
     m = evs[-1]["message"]
     assert m.tool_calls() == [ToolCall("c1", "read", {"path": "a"})] and m.stop_reason == "tool_use"
-    assert m.usage == {"input": 7, "output": 3}
+    assert m.usage == {"input": 7, "output": 3, "reasoning": 0}
 
 
 async def test_parallel_by_index_and_by_id():

@@ -12,7 +12,16 @@ from typing import AsyncIterator, Literal
 @dataclass
 class TextContent:
     text: str
+    signature: str | None = None  # openai-responses: JSON {id, phase} of the output message
     type: Literal["text"] = "text"
+
+
+@dataclass
+class ThinkingContent:
+    thinking: str
+    signature: str | None = None  # anthropic signature | openai-responses reasoning item (JSON) | redacted data
+    redacted: bool = False
+    type: Literal["thinking"] = "thinking"
 
 
 @dataclass
@@ -31,10 +40,13 @@ class UserMessage:
 
 @dataclass
 class AssistantMessage:
-    content: list = field(default_factory=list)  # TextContent | ToolCall
+    content: list = field(default_factory=list)  # TextContent | ThinkingContent | ToolCall
     stop_reason: str = "stop"  # stop | tool_use | length | error | aborted
-    usage: dict = field(default_factory=lambda: {"input": 0, "output": 0})
+    usage: dict = field(default_factory=lambda: {"input": 0, "output": 0})  # output includes "reasoning" (info only)
     error: str | None = None
+    api: str = ""  # set by stream(): who produced it, decides what can be replayed
+    provider: str = ""
+    model: str = ""
     role: Literal["assistant"] = "assistant"
 
     def text(self) -> str:
@@ -84,14 +96,33 @@ class Model:
     provider: str = "anthropic"
     max_tokens: int = 8192
     context_window: int = 200000
-    api: str = "anthropic-messages"  # anthropic-messages | openai-completions
+    api: str = "anthropic-messages"  # anthropic-messages | openai-completions | openai-responses
     base_url: str | None = None
     api_key_env: str | None = None  # env var holding the key
-    compat: dict = field(default_factory=dict)  # openai: include_usage, max_tokens_field, supports_finish_reason, reasoning_effort
+    compat: dict = field(default_factory=dict)  # openai: include_usage, max_tokens_field, supports_finish_reason; all: reasoning_effort; anthropic: thinking_budget
 
 
-def transform_messages(messages: list) -> list:
-    """One pass before sending: drop error/aborted assistant turns, add a result for every orphan tool call."""
+def _thinking(m: AssistantMessage, model: Model) -> list:
+    """pi transform-messages: signed/redacted thinking only replays to the same model; else non-empty -> text."""
+    same = (m.provider, m.api, m.model) == (model.provider, model.api, model.id)
+    out = list()
+    for c in m.content:
+        if isinstance(c, ThinkingContent):
+            if c.redacted or (same and c.signature):
+                if same:
+                    out.append(c)
+            elif c.thinking.strip():
+                out.append(c if same else TextContent(c.thinking))
+        elif isinstance(c, TextContent) and c.signature and not same:
+            out.append(TextContent(c.text))
+        else:
+            out.append(c)
+    return out
+
+
+def transform_messages(messages: list, model: Model | None = None) -> list:
+    """One pass before sending: drop error/aborted assistant turns, add a result for every orphan tool call,
+    and (with a model) fix thinking blocks for that model."""
     out, pending = list(), dict()  # tool_call_id -> name, waiting for a result
 
     def flush():
@@ -110,6 +141,8 @@ def transform_messages(messages: list) -> list:
             if m.stop_reason in ("error", "aborted"):
                 continue
             pending = {c.id: c.name for c in m.tool_calls()}
+            if model is not None:
+                m = dataclasses.replace(m, content=_thinking(m, model))
         out.append(m)
     flush()
     return out
@@ -144,7 +177,8 @@ def from_dict(d: dict):
     d = dict(d)
     cls = {"user": UserMessage, "assistant": AssistantMessage, "tool_result": ToolResultMessage, "compaction": CompactionEntry}[d["role"]]
     if cls is AssistantMessage:
-        d["content"] = [TextContent(**c) if c["type"] == "text" else ToolCall(**c) for c in d["content"]]
+        types = {"text": TextContent, "thinking": ThinkingContent, "tool_call": ToolCall}
+        d["content"] = [types[c["type"]](**c) for c in d["content"]]
     return cls(**d)
 
 
@@ -156,7 +190,8 @@ def _builtin(module: str):
     return fn
 
 
-_PROVIDERS = {"anthropic-messages": _builtin("anthropic"), "openai-completions": _builtin("openai_completions")}
+_PROVIDERS = {"anthropic-messages": _builtin("anthropic"), "openai-completions": _builtin("openai_completions"),
+              "openai-responses": _builtin("openai_responses")}
 
 
 def register_provider(api: str, stream_fn) -> None:
@@ -170,6 +205,8 @@ async def stream(model: Model, context: Context, **opts) -> AsyncIterator[dict]:
     if fn is None:
         yield {"type": "error", "message": AssistantMessage(stop_reason="error", error=f"Unknown api: {model.api}")}
         return
-    ctx = Context(context.system_prompt, transform_messages(context.messages), context.tools)
+    ctx = Context(context.system_prompt, transform_messages(context.messages, model), context.tools)
     async for ev in fn(model, ctx, **opts):
+        if m := ev.get("message") or ev.get("partial"):
+            m.api, m.provider, m.model = model.api, model.provider, model.id
         yield ev

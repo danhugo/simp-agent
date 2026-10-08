@@ -7,7 +7,7 @@ import os
 import uuid
 from typing import AsyncIterator
 
-from .. import AssistantMessage, Context, Model, TextContent, ToolCall, ToolResultMessage, UserMessage
+from .. import AssistantMessage, Context, Model, TextContent, ThinkingContent, ToolCall, ToolResultMessage, UserMessage
 
 _STOP = {"stop": "stop", "end": "stop", "length": "length", "tool_calls": "tool_use", "function_call": "tool_use"}
 
@@ -31,6 +31,12 @@ def to_openai(system_prompt: str, messages: list) -> list[dict]:
     return out
 
 
+def _usage(u) -> dict:
+    details = getattr(u, "completion_tokens_details", None)  # completion_tokens already include reasoning
+    return {"input": u.prompt_tokens or 0, "output": u.completion_tokens or 0,
+            "reasoning": getattr(details, "reasoning_tokens", None) or 0}
+
+
 async def parse(chunks, compat: dict) -> AsyncIterator[dict]:
     """Turn ChatCompletionChunk objects into events. Last event is 'done' or 'error'."""
     msg, calls, finish = AssistantMessage(), list(), None  # calls: [{index, id, name, args}]
@@ -39,22 +45,30 @@ async def parse(chunks, compat: dict) -> AsyncIterator[dict]:
         usage = getattr(chunk, "usage", None)
         if not chunk.choices:
             if usage:
-                msg.usage = {"input": usage.prompt_tokens or 0, "output": usage.completion_tokens or 0}
+                msg.usage = _usage(usage)
             continue
         choice = chunk.choices[0]
         usage = usage or getattr(choice, "usage", None)
         if usage:
-            msg.usage = {"input": usage.prompt_tokens or 0, "output": usage.completion_tokens or 0}
+            msg.usage = _usage(usage)
         finish = choice.finish_reason or finish
         d = choice.delta
         if d is None:
             continue
+        r = next((v for k in ("reasoning_content", "reasoning", "reasoning_text") if isinstance(v := getattr(d, k, None), str) and v), None)
+        if r:
+            if not (msg.content and isinstance(msg.content[-1], ThinkingContent)):
+                msg.content.append(ThinkingContent(""))
+                yield {"type": "thinking_start"}
+            msg.content[-1].thinking += r
+            yield {"type": "thinking_delta", "delta": r}
         if d.content:
-            if not msg.content:
+            if not (msg.content and isinstance(msg.content[-1], TextContent)):
+                if msg.content:
+                    yield {"type": "thinking_end"}
                 msg.content.append(TextContent(""))
-            msg.content[0].text += d.content
+            msg.content[-1].text += d.content
             yield {"type": "text_delta", "delta": d.content}
-        # ponytail: reasoning_content/reasoning ignored, see NOTES.md
         for tc in d.tool_calls or []:
             idx, tid = getattr(tc, "index", None), tc.id
             cur = next((c for c in calls if idx is not None and c["index"] == idx), None)

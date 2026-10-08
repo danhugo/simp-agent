@@ -78,6 +78,10 @@ class Repl:
             out.print(f"[yellow]retry {e['attempt']}/{e['max_attempts']} in {e['delay']}s: {escape(e['error'][:150])}[/]")
         elif t == "message_update" and e["event"]["type"] == "text_delta":
             out.print(e["event"]["delta"], end="", markup=False)
+        elif t == "message_update" and self.args.thinking and e["event"]["type"] == "thinking_delta":
+            out.print(e["event"]["delta"], end="", style="dim", markup=False)
+        elif t == "message_update" and self.args.thinking and e["event"]["type"] == "thinking_end":
+            out.print()
         elif t == "message_end" and e["message"].role == "assistant":
             m = e["message"]
             if m.text():
