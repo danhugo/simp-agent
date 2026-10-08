@@ -76,7 +76,7 @@ class Model:
     api: str = "anthropic-messages"  # anthropic-messages | openai-completions
     base_url: str | None = None
     api_key_env: str | None = None  # env var holding the key
-    compat: dict = field(default_factory=dict)  # openai: include_usage, max_tokens_field, supports_finish_reason
+    compat: dict = field(default_factory=dict)  # openai: include_usage, max_tokens_field, supports_finish_reason, reasoning_effort
 
 
 def transform_messages(messages: list) -> list:

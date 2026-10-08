@@ -117,3 +117,24 @@ async def test_http_error_is_event(monkeypatch):
     assert evs[-1]["type"] == "error" and ai.is_retryable(evs[-1]["message"].error)
     assert ai.is_context_overflow("This model's maximum context length is 8192 tokens")
     assert ai.is_retryable("Rate limit reached") and ai.is_retryable("Error code: 502")
+
+
+async def test_compat_params(monkeypatch):
+    seen = []
+
+    class Fake:
+        def __init__(self, **kw):
+            self.chat = NS(completions=NS(create=self.create))
+
+        async def create(self, **kw):
+            seen.append(kw)
+            raise openai.APIConnectionError(request=None)
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", Fake)
+    for compat in [{}, {"max_tokens_field": "max_completion_tokens", "reasoning_effort": "none", "include_usage": False}]:
+        m = Model(id="m", api="openai-completions", compat=compat)
+        [e async for e in ai.stream(m, Context("s", [UserMessage("u")]))]
+    a, b = seen
+    assert "max_tokens" in a and "stream_options" in a and "reasoning_effort" not in a
+    assert b["max_completion_tokens"] == m.max_tokens and "max_tokens" not in b
+    assert b["reasoning_effort"] == "none" and "stream_options" not in b

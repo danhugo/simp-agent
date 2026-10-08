@@ -106,6 +106,8 @@ async def stream(model: Model, context: Context, api_key: str | None = None) -> 
         }
         if compat.get("include_usage", True):
             kw["stream_options"] = {"include_usage": True}
+        if compat.get("reasoning_effort"):
+            kw["reasoning_effort"] = compat["reasoning_effort"]
         if context.tools:
             kw["tools"] = [
                 {"type": "function", "function": {"name": t.name, "description": t.description, "parameters": t.parameters}}

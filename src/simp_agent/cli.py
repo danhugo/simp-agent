@@ -80,6 +80,9 @@ def main() -> None:
     p.add_argument("--model", help="model id (required for openai-completions)")
     p.add_argument("--base-url", default=os.environ.get("OPENAI_BASE_URL"))
     p.add_argument("--context-window", type=int)
+    p.add_argument("--max-tokens-field", choices=["max_tokens", "max_completion_tokens"])
+    p.add_argument("--reasoning-effort", help="e.g. none (some servers need it with tools)")
+    p.add_argument("--no-include-usage", action="store_true")
     p.add_argument("--resume", metavar="ID", help="load ~/.simp-agent/sessions/<ID>.jsonl; no task = continue")
     p.add_argument("task", nargs="*")
     a = p.parse_args()
@@ -88,7 +91,12 @@ def main() -> None:
     if a.api == "openai-completions":
         if not a.model or not a.context_window:
             p.error("--model and --context-window are required for openai-completions")
-        model = Model(id=a.model, provider="openai", api=a.api, base_url=a.base_url, context_window=a.context_window)
+        compat = {"include_usage": not a.no_include_usage}
+        if a.max_tokens_field:
+            compat["max_tokens_field"] = a.max_tokens_field
+        if a.reasoning_effort:
+            compat["reasoning_effort"] = a.reasoning_effort
+        model = Model(id=a.model, provider="openai", api=a.api, base_url=a.base_url, context_window=a.context_window, compat=compat)
     else:
         model = Model(**{k: v for k, v in [("id", a.model), ("context_window", a.context_window)] if v})
     sys.exit(asyncio.run(run(" ".join(a.task), model, a.resume)))
