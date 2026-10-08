@@ -47,3 +47,7 @@ Abort: cancel the run, settle a pending approval as `aborted`, clear queued foll
 ## Fake server
 `uv run simp-server fake [--port 8765] [--delay 0.05]` - same API, replays a recorded run
 (thinking, text, bash tool call, approval request, tool output, final text). No LLM, no Docker.
+
+## Web UI (`apps/web`)
+`uv run simp-server fake` then `cd apps/web && pnpm dev` (proxy `/api` -> `SIMP_SERVER`, default 127.0.0.1:8765). `pnpm test` = reducer tests.
+The web also uses `GET /api/profiles -> [str]` (new-session picker) and `POST /api/sessions {profile}`; the fake server has both.
