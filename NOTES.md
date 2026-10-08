@@ -29,3 +29,6 @@ Pluggability (done; "everything is a plugin"):
 - `Agent(messages=...)` restores history; `Agent.continue_()` runs with no new message (last must be user/tool_result, else ValueError).
 - `ai.register_provider(api, stream_fn)`; `ai.to_dict` / `ai.from_dict` for all messages + CompactionEntry. A CompactionEntry also fires `message_end`, so stores see it.
 - Example plugin in cli.py: JSONL session store (`~/.simp-agent/sessions/<id>.jsonl`), `--resume <id> [task]` (no task = continue).
+
+Recommended command for the human's gpt-6-luna server (key only via env OPENAI_API_KEY):
+`uv run simp-agent --api openai-completions --base-url <url>/v1 --model openai/gpt-6-luna --context-window 922000 --max-tokens 32000 --max-tokens-field max_completion_tokens --reasoning-effort none "task"`

@@ -138,3 +138,25 @@ async def test_compat_params(monkeypatch):
     assert "max_tokens" in a and "stream_options" in a and "reasoning_effort" not in a
     assert b["max_completion_tokens"] == m.max_tokens and "max_tokens" not in b
     assert b["reasoning_effort"] == "none" and "stream_options" not in b
+
+
+def test_cli_max_tokens(monkeypatch):
+    import sys
+
+    import pytest
+
+    from simp_agent import cli
+
+    seen = []
+
+    async def fake_run(task, model, resume):
+        seen.append(model)
+        return 0
+
+    monkeypatch.setattr(cli, "run", fake_run)
+    for argv in (["x", "--max-tokens", "32000", "--api", "openai-completions", "--model", "m", "--context-window", "1000", "t"],
+                 ["x", "--max-tokens", "32000", "t"], ["x", "t"]):
+        monkeypatch.setattr(sys, "argv", argv)
+        with pytest.raises(SystemExit):
+            cli.main()
+    assert [m.max_tokens for m in seen] == [32000, 32000, 8192]
