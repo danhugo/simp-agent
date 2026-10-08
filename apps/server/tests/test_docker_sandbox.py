@@ -21,7 +21,7 @@ pytestmark = pytest.mark.skipif(not _docker_ok(), reason="docker not available")
 
 @pytest.fixture
 async def sandbox(tmp_path):
-    sb = DockerSandbox(str(tmp_path / "ws"))
+    sb = DockerSandbox({"data_dir": str(tmp_path), "sandbox": {"workspaces_dir": str(tmp_path / "ws")}})
     yield sb
     await sb.close_all()
 

@@ -11,3 +11,32 @@ One package, layered. Each layer imports only the layers to its left (checked by
 - `coding/` — read/write/edit/bash tools, system prompt, AGENTS.md / CLAUDE.md loader.
 - `session/` — `AgentSession`: owns an Agent; auto-compaction, overflow recovery, auto-retry with backoff, `SessionStore` persistence. No terminal or file assumptions.
 - `cli/` — argparse, settings profiles (`~/.simp-agent/settings.json`), `JsonlStore` (`~/.simp-agent/sessions/<cwd-slug>/<id>.jsonl`), print mode, and `repl.py` (prompt_toolkit + rich, extra `cli`: `uv sync --extra cli`). Uses only `AgentSession`. Tool approval: `AgentSession(approve=...)`; `--yes` skips it.
+
+## Server (`apps/server`)
+
+Home: `$SIMP_SERVER_HOME` or `~/.simp-server` (holds `settings.toml`, `.env` with model keys, `simp.db`).
+`uv run simp-server seed --name hung` prints a token once; `uv run simp-server run [--port 8766]` serves on 127.0.0.1
+(`Authorization: Bearer <token>`). `uv run simp-server fake` is the replay server without an LLM.
+
+```toml
+default_profile = "luna"
+
+[plugins]  # optional; defaults: LocalSandbox, SqliteStore, StaticTokenAuth
+sandbox = "simp_server.sandboxes.docker:DockerSandbox"  # needs `uv run simp-server build-sandbox` once
+
+[sandbox]  # DockerSandbox options (these are the defaults)
+# workspaces_dir = "<data_dir>/workspaces"
+image = "simp-sandbox:latest"
+network = "none"
+memory = "1g"
+cpus = "1"
+pids_limit = 256
+
+[profiles.luna]
+api = "openai-responses"
+model = "openai/gpt-6-luna"
+base_url = "https://mlapi.run/.../v1"
+context_window = 922000
+max_tokens = 32000
+api_key_env = "OPENAI_API_KEY"  # the key itself goes in .env or the server's env, never here
+```

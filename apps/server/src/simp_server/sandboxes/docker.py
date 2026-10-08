@@ -69,12 +69,13 @@ class DockerEnv(LocalEnv):
 
 class DockerSandbox:
     """Server Sandbox slot: open(session_id) -> DockerEnv, close(session_id), close_all() on shutdown.
-    Workspaces live at workspaces_dir/<session_id>."""
+    Built from the server settings dict; options in its [sandbox] table. Workspaces: workspaces_dir/<session_id>."""
 
-    def __init__(self, workspaces_dir: str, image: str = IMAGE, network: str = "none",
-                 memory: str = "1g", cpus: str = "1", pids_limit: int = 256):
-        self.workspaces_dir = Path(workspaces_dir)
-        self.image, self.network, self.memory, self.cpus, self.pids_limit = image, network, memory, cpus, pids_limit
+    def __init__(self, settings: dict):
+        s = settings.get("sandbox", dict())
+        self.workspaces_dir = Path(s.get("workspaces_dir", Path(settings["data_dir"]) / "workspaces")).expanduser()
+        self.image, self.network = s.get("image", IMAGE), s.get("network", "none")
+        self.memory, self.cpus, self.pids_limit = s.get("memory", "1g"), str(s.get("cpus", "1")), s.get("pids_limit", 256)
         self.envs: dict[str, DockerEnv] = dict()
 
     async def open(self, session_id: str) -> DockerEnv:

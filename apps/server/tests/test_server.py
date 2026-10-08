@@ -183,3 +183,30 @@ async def test_http_auth_host_and_files(env):
         assert (await c.put(base + "/raw?path=/etc/x", headers=auth, content=b"x")).status_code == 403
         assert (await c.get(base + "/raw?path=missing", headers=auth)).status_code == 404
         assert (await c.get("/api/sessions/nope/files", headers=auth)).status_code == 404
+
+
+async def test_run_through_docker_sandbox_and_close_on_shutdown(tmp_path):
+    import shutil
+    import subprocess
+
+    from simp_server.sandboxes.docker import IMAGE
+
+    ok = shutil.which("docker") and not subprocess.run(["docker", "image", "inspect", IMAGE], capture_output=True).returncode
+    if not ok:  # needs `simp-server build-sandbox`
+        pytest.skip("docker not available")
+    (tmp_path / "settings.toml").write_text('[plugins]\nsandbox = "simp_server.sandboxes.docker:DockerSandbox"\n'
+                                            '[profiles.test]\napi = "fake"\nmodel = "m"\n')
+    app = create_app(load_settings(tmp_path), FakeProvider(bash("c1", "echo hi > out.txt; whoami"), reply()))
+    mgr = app.state.mgr
+    async with app.router.lifespan_context(app):
+        user = await mgr.store.user_by_token(await mgr.store.add_user("d"))
+        run = await mgr.get(user, (await mgr.store.add_session(user["id"], "test"))["id"])
+        await run.command(p.Prompt(text="go"))
+        await wait_for(lambda: run.pending is not None, timeout=30)
+        await run.command(p.Approve(call_id="c1", decision="allow"))
+        await wait_for(lambda: run.state == "idle", timeout=30)
+        result = next(e for e in run.log if e["type"] == "tool_result")
+        assert not result["is_error"] and result["content"].strip() != "root"
+        assert await run.env.read_bytes("out.txt") == b"hi\n"
+        container = run.env.container
+    assert subprocess.run(["docker", "inspect", container], capture_output=True).returncode != 0  # closed on shutdown
