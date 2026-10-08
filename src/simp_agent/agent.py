@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import inspect
+import os
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
@@ -11,12 +13,25 @@ import jsonschema
 
 from . import ai
 from .compaction import CompactionEntry, CompactionSettings, build_view, compact, estimate_tokens, should_compact
+from .env import ExecutionEnv, LocalEnv
 from .ai import AssistantMessage, Context, Model, ToolResultMessage, UserMessage
 
 
 @dataclass
 class AgentTool(ai.Tool):
-    execute: Callable[[dict, asyncio.Event], Awaitable[str]] | None = None  # (args, cancel) -> text
+    execute: Callable[[dict, "ToolContext"], Awaitable[str]] | None = None  # (args, ctx) -> text
+
+
+@dataclass
+class ToolContext:
+    cancel: asyncio.Event
+    env: ExecutionEnv
+    cwd: str
+    on_update: Callable[[str], Awaitable[None]]  # emits tool_execution_update (progress for the UI)
+
+
+async def _maybe_await(r):
+    return await r if inspect.isawaitable(r) else r
 
 
 async def _no_prepare(messages):
@@ -34,9 +49,18 @@ class LoopConfig:
     get_follow_up: Callable[[], list] = lambda: []  # read only when the loop would otherwise stop
     # history -> LLM view (or None = use history). Called before every LLM call; must not mutate history.
     prepare_next_turn: Callable[[list], Awaitable[list | None]] = _no_prepare
+    # provider -> key (sync or async), called before EVERY LLM call so OAuth tokens can refresh. None = provider env vars.
+    get_api_key: Callable[[str], Any] | None = None
+    env: ExecutionEnv = field(default_factory=LocalEnv)
+    cwd: str = field(default_factory=os.getcwd)
 
 
-async def run_tool(tools: list, call: ai.ToolCall, cancel: asyncio.Event) -> ToolResultMessage:
+async def api_key_opts(get_api_key, model) -> dict:
+    key = await _maybe_await(get_api_key(model.provider)) if get_api_key else None
+    return {"api_key": key} if key else {}
+
+
+async def run_tool(tools: list, call: ai.ToolCall, ctx: ToolContext) -> ToolResultMessage:
     def err(text):
         return ToolResultMessage(call.id, call.name, text, is_error=True)
 
@@ -48,7 +72,7 @@ async def run_tool(tools: list, call: ai.ToolCall, cancel: asyncio.Event) -> Too
     except jsonschema.ValidationError as e:
         return err(f"Invalid arguments for {call.name}: {e.message}")
     try:
-        return ToolResultMessage(call.id, call.name, await tool.execute(call.arguments, cancel))
+        return ToolResultMessage(call.id, call.name, await tool.execute(call.arguments, ctx))
     except Exception as e:
         return err(f"{type(e).__name__}: {e}")
 
@@ -64,9 +88,9 @@ async def _emit_all(subs: list, e: dict) -> None:
             await r
 
 
-async def _stream(stream_fn, model, ctx, cancel: asyncio.Event):
+async def _stream(stream_fn, model, ctx, cancel: asyncio.Event, opts: dict):
     """Yield provider events; on cancel, close the provider stream (ends the HTTP request) and stop."""
-    it = stream_fn(model, ctx).__aiter__()
+    it = stream_fn(model, ctx, **opts).__aiter__()
     stop = asyncio.ensure_future(cancel.wait())
     try:
         while True:
@@ -128,7 +152,8 @@ async def agent_loop(
                     result = ToolResultMessage(call.id, call.name, "Tool call was truncated (max tokens); not executed", True)
                 else:
                     await send({"type": "tool_execution_start", "call": call})
-                    result = await run_tool(config.tools, call, cancel)
+                    on_update = functools.partial(lambda c, text: send({"type": "tool_execution_update", "call": c, "text": text}), call)
+                    result = await run_tool(config.tools, call, ToolContext(cancel, config.env, config.cwd, on_update))
                     await send({"type": "tool_execution_end", "call": call, "result": result})
                 await add(result)
             if cancel.is_set():
@@ -159,7 +184,8 @@ async def _llm_turn(system_prompt, messages, config, cancel, send, add) -> Assis
         view.append(p)
     llm_msgs = ai.transform_messages(config.convert_to_llm(config.transform_context(view)))
     msg = partial = None
-    async for ev in _stream(config.stream_fn, config.model, Context(system_prompt, llm_msgs, config.tools), cancel):
+    opts = await api_key_opts(config.get_api_key, config.model)
+    async for ev in _stream(config.stream_fn, config.model, Context(system_prompt, llm_msgs, config.tools), cancel, opts):
         await send({"type": "message_update", "event": ev})
         partial = ev.get("partial", partial)
         if ev["type"] in ("done", "error"):
@@ -174,12 +200,15 @@ class Agent:
     """prompt() raises while a run is active: a UI should call steer() or follow_up() then.
     Queued messages survive abort(); they wait for the next prompt() or clear_queues()."""
 
-    def __init__(self, system_prompt: str, model: Model, tools: list, stream_fn: Callable = ai.stream, auto_compact: bool = True):
+    def __init__(self, system_prompt: str, model: Model, tools: list, stream_fn: Callable = ai.stream, auto_compact: bool = True,
+                 get_api_key: Callable[[str], Any] | None = None, env: ExecutionEnv | None = None, cwd: str | None = None,
+                 messages: list | None = None):
         self.system_prompt, self.model, self.tools, self.stream_fn = system_prompt, model, tools, stream_fn
+        self.get_api_key, self.env, self.cwd = get_api_key, env or LocalEnv(), cwd or os.getcwd()
         self.auto_compact, self.compaction = auto_compact, CompactionSettings()
         self.steering, self.follow_ups = list(), list()
         self.steering_mode = self.follow_up_mode = "one-at-a-time"  # or "all"
-        self.messages = list()
+        self.messages = list(messages or [])  # saved history (CompactionEntry markers included)
         self.is_streaming = False
         self._subs = list()
         self._cancel = asyncio.Event()
@@ -214,11 +243,14 @@ class Agent:
         before = estimate_tokens(self.messages)
         await emit({"type": "compaction_start", "tokens_before": before})
         try:
-            summary, first_kept = await compact(self.messages, self.model, self.stream_fn, self.compaction)
+            stream_fn = functools.partial(self.stream_fn, **await api_key_opts(self.get_api_key, self.model))
+            summary, first_kept = await compact(self.messages, self.model, stream_fn, self.compaction)
         except Exception as e:
             await emit({"type": "compaction_end", "error": str(e), "tokens_before": before, "tokens_after": before})
             return False
-        self.messages.append(CompactionEntry(summary, first_kept))
+        entry = CompactionEntry(summary, first_kept)
+        self.messages.append(entry)
+        await emit({"type": "message_end", "message": entry})  # so stores see it
         after = estimate_tokens(self.messages)
         await emit({"type": "compaction_end", "error": None, "tokens_before": before, "tokens_after": after})
         return True
@@ -232,6 +264,16 @@ class Agent:
         self._cancel.set()
 
     async def prompt(self, text: str) -> list:
+        return await self._run([UserMessage(text)])
+
+    async def continue_(self) -> list:
+        """Run from the existing history with no new message (pi agentLoopContinue)."""
+        last = next((m for m in reversed(self.messages) if not isinstance(m, CompactionEntry)), None)
+        if last is None or last.role not in ("user", "tool_result"):
+            raise ValueError(f"Cannot continue: last message must be user or tool_result, got {last and last.role}")
+        return await self._run([])
+
+    async def _run(self, prompts: list) -> list:
         if self.is_streaming:
             raise RuntimeError("Agent is already processing a prompt; wait for it or call abort() first")
         self._cancel = asyncio.Event()
@@ -245,9 +287,12 @@ class Agent:
                 get_steering=lambda: self._take(self.steering, self.steering_mode),
                 get_follow_up=lambda: self._take(self.follow_ups, self.follow_up_mode),
                 prepare_next_turn=self._prepare,
+                get_api_key=self.get_api_key,
+                env=self.env,
+                cwd=self.cwd,
             )
             emit = lambda e: _emit_all(self._subs, e)  # noqa: E731
-            new = await agent_loop(self.system_prompt, self.messages, [UserMessage(text)], cfg, emit, self._cancel)
+            new = await agent_loop(self.system_prompt, self.messages, prompts, cfg, emit, self._cancel)
             last = self.messages[-1]
             if self.auto_compact and last.role == "assistant" and last.stop_reason == "error" and ai.is_context_overflow(last.error):
                 # overflow: compact once and continue (error stays in history; the LLM view drops it)

@@ -36,14 +36,14 @@ def _to_anthropic(messages: list) -> list[dict]:
     return merged
 
 
-async def stream(model: Model, context: Context) -> AsyncIterator[dict]:
+async def stream(model: Model, context: Context, api_key: str | None = None) -> AsyncIterator[dict]:
     """Yield events. Never raises: errors become an 'error' event with a final message."""
     import anthropic
 
     msg = AssistantMessage()
     yield {"type": "start", "partial": msg}
     try:
-        client = anthropic.AsyncAnthropic()
+        client = anthropic.AsyncAnthropic(api_key=api_key, base_url=model.base_url)  # None -> SDK reads env
         tools = [{"name": t.name, "description": t.description, "input_schema": t.parameters} for t in context.tools]
         async with client.messages.stream(
             model=model.id,

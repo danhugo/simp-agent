@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from dataclasses import dataclass, field
+from importlib import import_module
 from typing import AsyncIterator, Literal
 
 
@@ -122,14 +124,43 @@ def is_retryable(error: str) -> bool:
     return not is_context_overflow(error) and bool(_RETRYABLE.search(error or ""))
 
 
-async def stream(model: Model, context: Context) -> AsyncIterator[dict]:
-    """Yield events. Never raises: errors become an 'error' event with a final message."""
-    from .providers import anthropic, openai_completions
+def to_dict(m) -> dict:
+    """Any message or CompactionEntry -> JSON-safe dict."""
+    return dataclasses.asdict(m)
 
-    fn = {"anthropic-messages": anthropic.stream, "openai-completions": openai_completions.stream}.get(model.api)
+
+def from_dict(d: dict):
+    from .compaction import CompactionEntry
+
+    d = dict(d)
+    cls = {"user": UserMessage, "assistant": AssistantMessage, "tool_result": ToolResultMessage, "compaction": CompactionEntry}[d["role"]]
+    if cls is AssistantMessage:
+        d["content"] = [TextContent(**c) if c["type"] == "text" else ToolCall(**c) for c in d["content"]]
+    return cls(**d)
+
+
+def _builtin(module: str):
+    async def fn(model, context, **opts):  # lazy import: providers import this module
+        async for ev in import_module(f".providers.{module}", __package__).stream(model, context, **opts):
+            yield ev
+
+    return fn
+
+
+_PROVIDERS = {"anthropic-messages": _builtin("anthropic"), "openai-completions": _builtin("openai_completions")}
+
+
+def register_provider(api: str, stream_fn) -> None:
+    """stream_fn(model, context, api_key=None) -> async iterator of events. Must not raise."""
+    _PROVIDERS[api] = stream_fn
+
+
+async def stream(model: Model, context: Context, **opts) -> AsyncIterator[dict]:
+    """Yield events. Never raises: errors become an 'error' event with a final message. opts: api_key."""
+    fn = _PROVIDERS.get(model.api)
     if fn is None:
         yield {"type": "error", "message": AssistantMessage(stop_reason="error", error=f"Unknown api: {model.api}")}
         return
     ctx = Context(context.system_prompt, transform_messages(context.messages), context.tools)
-    async for ev in fn(model, ctx):
+    async for ev in fn(model, ctx, **opts):
         yield ev

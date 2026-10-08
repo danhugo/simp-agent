@@ -1,10 +1,8 @@
-"""Coding layer: read / write / edit / bash tools. Paths are relative to cwd."""
+"""Coding layer: read / write / edit / bash tools. Paths are relative to ctx.cwd; all IO goes through ctx.env."""
 
 from __future__ import annotations
 
-import asyncio
 import os
-from pathlib import Path
 
 from .agent import AgentTool
 
@@ -22,8 +20,12 @@ def _obj(props: dict, required: list) -> dict:
     return {"type": "object", "properties": props, "required": required, "additionalProperties": False}
 
 
-async def read(args: dict, cancel: asyncio.Event) -> str:
-    lines = Path(args["path"]).read_text().splitlines()
+def _path(ctx, path: str) -> str:
+    return os.path.join(ctx.cwd, path)  # absolute paths stay as is
+
+
+async def read(args: dict, ctx) -> str:
+    lines = (await ctx.env.read_file(_path(ctx, args["path"]))).splitlines()
     start = max(args.get("offset", 1), 1) - 1
     end = start + args.get("limit", MAX_LINES)
     out = "\n".join(f"{i + 1}\t{line}" for i, line in enumerate(lines[start:end], start))
@@ -32,37 +34,24 @@ async def read(args: dict, cancel: asyncio.Event) -> str:
     return _truncate(out)
 
 
-async def write(args: dict, cancel: asyncio.Event) -> str:
-    p = Path(args["path"])
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(args["content"])
-    return f"Wrote {len(args['content'])} chars to {p}"
+async def write(args: dict, ctx) -> str:
+    await ctx.env.write_file(_path(ctx, args["path"]), args["content"])
+    return f"Wrote {len(args['content'])} chars to {args['path']}"
 
 
-async def edit(args: dict, cancel: asyncio.Event) -> str:
-    p = Path(args["path"])
-    text = p.read_text()
+async def edit(args: dict, ctx) -> str:
+    p = _path(ctx, args["path"])
+    text = await ctx.env.read_file(p)
     n = text.count(args["old_text"])
     if n != 1:
-        raise ValueError(f"old_text must match exactly once in {p}, found {n} matches")
-    p.write_text(text.replace(args["old_text"], args["new_text"]))
-    return f"Edited {p}"
+        raise ValueError(f"old_text must match exactly once in {args['path']}, found {n} matches")
+    await ctx.env.write_file(p, text.replace(args["old_text"], args["new_text"]))
+    return f"Edited {args['path']}"
 
 
-async def bash(args: dict, cancel: asyncio.Event) -> str:
-    proc = await asyncio.create_subprocess_shell(
-        args["command"], stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, start_new_session=True
-    )
-    run = asyncio.ensure_future(proc.communicate())
-    stop = asyncio.ensure_future(cancel.wait())
-    done, _ = await asyncio.wait({run, stop}, timeout=args.get("timeout", 120), return_when=asyncio.FIRST_COMPLETED)
-    stop.cancel()
-    if run not in done:
-        os.killpg(proc.pid, 9)
-        await run
-        raise RuntimeError("command aborted" if cancel.is_set() else f"command timed out after {args.get('timeout', 120)}s")
-    out = run.result()[0].decode(errors="replace")
-    return _truncate(f"{out}\n[exit code: {proc.returncode}]")
+async def bash(args: dict, ctx) -> str:
+    code, out = await ctx.env.exec(args["command"], ctx.cwd, args.get("timeout", 120), ctx.cancel, ctx.on_update)
+    return _truncate(f"{out}\n[exit code: {code}]")
 
 
 TOOLS = [

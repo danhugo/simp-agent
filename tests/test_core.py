@@ -4,6 +4,8 @@ import pytest
 
 from simp_agent.agent import AgentTool, LoopConfig, agent_loop
 from simp_agent.ai import AssistantMessage, Model, TextContent, ToolCall, UserMessage
+from simp_agent.agent import ToolContext
+from simp_agent.env import LocalEnv
 from simp_agent.tools import TOOLS, edit
 
 
@@ -79,11 +81,11 @@ async def test_edit_matches(tmp_path, text, n):
     f.write_text(text)
     args = {"path": str(f), "old_text": "x", "new_text": "y"}
     if n == 1:
-        await edit(args, None)
+        await edit(args, ToolContext(None, LocalEnv(), str(tmp_path), None))
         assert f.read_text() == "y a b"
     else:
         with pytest.raises(ValueError, match=f"found {n} matches"):
-            await edit(args, None)
+            await edit(args, ToolContext(None, LocalEnv(), str(tmp_path), None))
 
 
 async def test_real_tools_roundtrip(tmp_path, monkeypatch):
