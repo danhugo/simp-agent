@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "simp-agent",
     "fastapi",
+    "aiosqlite>=0.22.1",
     "uvicorn>=0.54.0",
     "httpx>=0.28.1",
 ]

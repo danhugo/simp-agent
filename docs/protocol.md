@@ -17,10 +17,10 @@ DURABLE events have `seq` (monotonic per session, = SSE `id`). LIVE events have 
 | core (AgentSession) event | protocol event | notes |
 |---|---|---|
 | `message_end` (UserMessage) | `user_message` | durable |
-| `message_start` (assistant) | - | server sets `in_flight.msg_id` |
+| `message_update` / `start` | - | server sets a new `in_flight.msg_id` |
 | `message_update` / `text_delta` | `text_delta {msg_id, offset, delta}` | live; server keeps offset per msg_id |
 | `message_update` / `thinking_delta` | `thinking_delta {msg_id, offset, delta}` | live |
-| `message_update` / `thinking_start/end`, `toolcall_*`, `start` | - | tool calls arrive in the final `assistant_message` |
+| `message_update` / `thinking_start/end`, `toolcall_*` | - | tool calls arrive in the final `assistant_message` |
 | `message_end` (AssistantMessage) | `assistant_message {thinking, text, tool_calls, usage, stop_reason, error}` | durable; clears in_flight text |
 | approve(call) callback (session `_before_tool_call`) | `approval_request {call_id, tool, args}` + `run_state waiting_approval` | durable |
 | approval answered / abort | `approval_resolved {decision: allow,deny,always,aborted}` + `run_state running` | durable |
