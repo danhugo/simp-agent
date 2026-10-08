@@ -98,8 +98,15 @@ def _limited(code, out: str, limit: int, empty: str) -> str:
     return head(text)
 
 
-async def grep(args: dict, ctx) -> str:
+def _search_path(args: dict) -> str:
     path = args.get("path", ".")
+    if path.startswith("-"):  # would be read as an option (rg --pre=, find -delete)
+        raise ValueError(f"path must not start with '-': {path} (use ./{path})")
+    return path
+
+
+async def grep(args: dict, ctx) -> str:
+    path = _search_path(args)
     rg = ["rg", "--line-number", "--with-filename", "--no-heading", "--color=never"]
     gr = ["grep", "-rn"]
     if args.get("ignore_case"):
@@ -112,13 +119,13 @@ async def grep(args: dict, ctx) -> str:
         rg.append(f"-C{int(args['context'])}"); gr.append(f"-C{int(args['context'])}")
     if args.get("glob"):
         rg += ["--glob", args["glob"]]; gr.append(f"--include={args['glob']}")
-    code, out = await _run(ctx, [*rg, "-e", args["pattern"], path], [*gr, "-e", args["pattern"], path])
+    code, out = await _run(ctx, [*rg, "-e", args["pattern"], "--", path], [*gr, "-e", args["pattern"], "--", path])
     return _limited(code, out, args.get("limit", 100), "No matches found")
 
 
 async def find(args: dict, ctx) -> str:
-    path = args.get("path", ".")
-    code, out = await _run(ctx, ["fd", "--glob", "--color=never", "--hidden", args["pattern"], path],
+    path = _search_path(args)
+    code, out = await _run(ctx, ["fd", "--glob", "--color=never", "--hidden", "--", args["pattern"], path],
                            ["find", path, "-name", args["pattern"]])
     return _limited(code, out, args.get("limit", 1000), "No files found")
 

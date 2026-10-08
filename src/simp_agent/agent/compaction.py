@@ -183,7 +183,7 @@ async def summarize(stream_fn, model, old: list, previous: str | None, reserve_t
     return msg.text()
 
 
-async def compact(messages: list, model, stream_fn, settings: CompactionSettings) -> CompactionEntry:
+async def compact(messages: list, model, stream_fn, settings: CompactionSettings, redact=None) -> CompactionEntry:
     """Pure: summarize full history up to a cut into a new CompactionEntry. Raises if nothing to do or on failure."""
     k = _last_entry(messages)
     prev = messages[k] if k is not None else None
@@ -193,5 +193,7 @@ async def compact(messages: list, model, stream_fn, settings: CompactionSettings
         raise RuntimeError("nothing to compact")
     old = [m for m in messages[start:cut] if not isinstance(m, (CompactionEntry, CustomEntry))]
     read, mod = file_lists(old, prev)
+    if redact:  # e.g. the plugin context chain: secrets must not reach the summary model
+        old = await redact(old)
     summary = await summarize(stream_fn, model, old, previous, settings.reserve_tokens)
     return CompactionEntry(summary + format_files(read, mod), cut, read, mod)

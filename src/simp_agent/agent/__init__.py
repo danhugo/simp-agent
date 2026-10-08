@@ -84,6 +84,8 @@ async def run_tool(tools: list, call: ai.ToolCall, ctx: ToolContext) -> ToolResu
         jsonschema.validate(call.arguments, tool.parameters)
     except jsonschema.ValidationError as e:
         return err(f"Invalid arguments for {call.name}: {e.message}")
+    except Exception as e:
+        return err(f"prepare_arguments failed: {type(e).__name__}: {e}")
     try:
         return ToolResultMessage(call.id, call.name, await tool.execute(call.arguments, ctx))
     except Exception as e:

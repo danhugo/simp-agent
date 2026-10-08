@@ -177,6 +177,10 @@ class AgentSession:
         return lambda: self._subs.remove(fn)
 
     async def _emit(self, e: dict) -> None:
+        if e["type"] == "tool_execution_update":
+            for p in self.plugins:  # e.g. mask secrets before the UI and logs see them
+                if (r := await self._hook(p, "tool_update", e["call"], e["text"])) is not None:
+                    e = {**e, "text": r}
         await _emit_all(self._subs, e)
         for p in self.plugins:
             await self._hook(p, "on_event", e)
@@ -198,7 +202,14 @@ class AgentSession:
                 call.arguments = r["args"]
         if self.approve is None or call.name not in self.needs_approval or call.name in self.always_allowed:
             return None
-        answer = await _maybe_await(self.approve(call))
+        ask = asyncio.ensure_future(_maybe_await(self.approve(call)))
+        stop = asyncio.ensure_future(ctx.cancel.wait())
+        await asyncio.wait([ask, stop], return_when=asyncio.FIRST_COMPLETED)
+        stop.cancel()
+        if not ask.done():  # aborted: a browser approval may never answer
+            ask.cancel()
+            return "aborted"
+        answer = ask.result()
         if answer == "always":
             self.always_allowed.add(call.name)
         elif answer != "allow" or ctx.cancel.is_set():
@@ -245,7 +256,7 @@ class AgentSession:
         await self._emit({"type": "compaction_start", "tokens_before": before})
         try:
             stream_fn = functools.partial(a.stream_fn, **await api_key_opts(a.get_api_key, a.model))
-            entry = await compact(a.messages, a.model, stream_fn, self.compaction)
+            entry = await compact(a.messages, a.model, stream_fn, self.compaction, self._context)
         except Exception as e:
             await self._emit({"type": "compaction_end", "error": str(e), "tokens_before": before, "tokens_after": before})
             return False
@@ -259,7 +270,9 @@ class AgentSession:
     async def _prepare(self, messages: list) -> list:
         if self.auto_compact and should_compact(estimate_tokens(messages), self.agent.model, self.compaction):
             await self.compact()
-        view = build_view(messages)
+        return await self._context(build_view(messages))
+
+    async def _context(self, view: list) -> list:
         for p in self.plugins:  # chained: each gets the previous output
             view = await self._hook(p, "context", list(view)) or view
         return view

@@ -36,6 +36,8 @@ def truncate_tail(text: str, max_lines: int = MAX_LINES, max_bytes: int = MAX_BY
 
 def head(text: str) -> str:
     out, info = truncate_head(text)
+    if info["truncated"] and not info["kept_lines"]:
+        return f"[First line exceeds {MAX_BYTES // 1024}KB limit; use bash with head -c to read part of it]"
     if info["truncated"]:
         out += f"\n[Output truncated: showing first {info['kept_lines']} of {info['total_lines']} lines]"
     return out

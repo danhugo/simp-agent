@@ -112,9 +112,9 @@ def test_pty_streaming_screen(tmp_path):
     scr = pyte.Screen(70, 20)
     st = pyte.ByteStream(scr)
 
-    def pump(t):
+    def pump(t, until=None):  # read until the screen satisfies `until`, or t seconds pass
         end = time.time() + t
-        while time.time() < end:
+        while time.time() < end and not (until and until("\n".join(scr.display))):
             if select.select([fd], [], [], 0.05)[0]:
                 try:
                     d = os.read(fd, 65536)
@@ -127,11 +127,11 @@ def test_pty_streaming_screen(tmp_path):
     try:
         pump(1.5)
         os.write(fd, b"hi\r")
-        pump(0.5)  # ~25 of 46 chars streamed
+        pump(10, lambda d: "line one alpha" in d)  # streaming has started, not finished
         mid = "\n".join(scr.display)
         print(mid)
         assert "line one alpha" in mid and "line three gamma" not in mid
-        pump(2.5)
+        pump(10, lambda d: all(ln in d for ln in ANSWER.splitlines()))
         end = "\n".join(scr.display)
         print(end)
         for ln in ANSWER.splitlines():
