@@ -149,7 +149,7 @@ def test_cli_max_tokens(monkeypatch):
 
     seen = []
 
-    async def fake_run(task, model, resume):
+    async def fake_run(task, model, args):
         seen.append(model)
         return 0
 

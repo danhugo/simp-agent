@@ -9,7 +9,7 @@ import os
 from typing import Any, Callable, Protocol
 
 from .. import ai
-from ..agent import Agent, _emit_all, api_key_opts
+from ..agent import Agent, _emit_all, _maybe_await, api_key_opts
 from ..agent.compaction import CompactionEntry, CompactionSettings, build_view, compact, estimate_tokens, should_compact
 from ..agent.env import ExecutionEnv, LocalEnv
 from ..ai import Model
@@ -26,13 +26,15 @@ class AgentSession:
     def __init__(self, model: Model, tools: list | None = None, store: SessionStore | None = None,
                  env: ExecutionEnv | None = None, cwd: str | None = None, get_api_key: Callable[[str], Any] | None = None,
                  system_prompt: str | None = None, stream_fn: Callable = ai.stream, auto_compact: bool = True,
-                 max_retries: int = 3, retry_base_delay: float = 2.0):
+                 max_retries: int = 3, retry_base_delay: float = 2.0, approve: Callable[[ai.ToolCall], Any] | None = None):
         self.store, self.auto_compact, self.compaction = store, auto_compact, CompactionSettings()
         self.max_retries, self.retry_base_delay = max_retries, retry_base_delay
         self._system_prompt = system_prompt  # None = built from tools + context file on first run
         self.agent = Agent("", model, TOOLS if tools is None else tools, stream_fn, get_api_key=get_api_key,
                            env=env or LocalEnv(), cwd=cwd or os.getcwd(), messages=store.load() if store else [],
-                           prepare_next_turn=self._prepare)
+                           prepare_next_turn=self._prepare, before_tool_call=self._before_tool_call)
+        # approval policy: approve(call) -> "allow" | "deny" | "always" (sync or async). None = allow everything.
+        self.approve, self.needs_approval, self.always_allowed = approve, {"bash", "write", "edit"}, set()
         self.agent.subscribe(self._on_agent_event)
         self._subs = list()
         self._abort = asyncio.Event()
@@ -52,6 +54,16 @@ class AgentSession:
         if e["type"] == "message_end" and self.store:
             self.store.append(e["message"])
         await self._emit(e)
+
+    async def _before_tool_call(self, call, ctx) -> str | None:
+        if self.approve is None or call.name not in self.needs_approval or call.name in self.always_allowed:
+            return None
+        answer = await _maybe_await(self.approve(call))
+        if answer == "always":
+            self.always_allowed.add(call.name)
+        elif answer != "allow" or ctx.cancel.is_set():
+            return "aborted" if ctx.cancel.is_set() else "denied"
+        return None
 
     def steer(self, text: str) -> None:
         self.agent.steer(text)

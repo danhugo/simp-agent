@@ -10,4 +10,4 @@ One package, layered. Each layer imports only the layers to its left (checked by
 - `agent/` — generic loop, `Agent` (queues, prepare hook), tools, `ExecutionEnv` + `LocalEnv`, compaction helpers.
 - `coding/` — read/write/edit/bash tools, system prompt, AGENTS.md / CLAUDE.md loader.
 - `session/` — `AgentSession`: owns an Agent; auto-compaction, overflow recovery, auto-retry with backoff, `SessionStore` persistence. No terminal or file assumptions.
-- `cli/` — argparse, printer, `JsonlStore`, print mode. Uses only `AgentSession`.
+- `cli/` — argparse, settings profiles (`~/.simp-agent/settings.json`), `JsonlStore` (`~/.simp-agent/sessions/<cwd-slug>/<id>.jsonl`), print mode, and `repl.py` (prompt_toolkit + rich, extra `cli`: `uv sync --extra cli`). Uses only `AgentSession`. Tool approval: `AgentSession(approve=...)`; `--yes` skips it.

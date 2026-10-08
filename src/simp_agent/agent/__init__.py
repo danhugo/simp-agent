@@ -57,6 +57,8 @@ class LoopConfig:
     get_api_key: Callable[[str], Any] | None = None
     env: ExecutionEnv = field(default_factory=LocalEnv)
     cwd: str = field(default_factory=os.getcwd)
+    # (call, ctx) -> None to run the tool, or a deny reason string (pi beforeToolCall). Sync or async.
+    before_tool_call: Callable[[ai.ToolCall, "ToolContext"], Any] | None = None
 
 
 async def api_key_opts(get_api_key, model) -> dict:
@@ -157,7 +159,12 @@ async def agent_loop(
                 else:
                     await send({"type": "tool_execution_start", "call": call})
                     on_update = functools.partial(lambda c, text: send({"type": "tool_execution_update", "call": c, "text": text}), call)
-                    result = await run_tool(config.tools, call, ToolContext(cancel, config.env, config.cwd, on_update))
+                    ctx = ToolContext(cancel, config.env, config.cwd, on_update)
+                    deny = await _maybe_await(config.before_tool_call(call, ctx)) if config.before_tool_call else None
+                    if deny is not None:
+                        result = ToolResultMessage(call.id, call.name, f"User denied: {deny}", is_error=True)
+                    else:
+                        result = await run_tool(config.tools, call, ctx)
                     await send({"type": "tool_execution_end", "call": call, "result": result})
                 await add(result)
             if cancel.is_set():
@@ -206,10 +213,11 @@ class Agent:
 
     def __init__(self, system_prompt: str, model: Model, tools: list, stream_fn: Callable = ai.stream,
                  get_api_key: Callable[[str], Any] | None = None, env: ExecutionEnv | None = None, cwd: str | None = None,
-                 messages: list | None = None, prepare_next_turn: Callable[[list], Awaitable[list | None]] = _view):
+                 messages: list | None = None, prepare_next_turn: Callable[[list], Awaitable[list | None]] = _view,
+                 before_tool_call: Callable | None = None):
         self.system_prompt, self.model, self.tools, self.stream_fn = system_prompt, model, tools, stream_fn
         self.get_api_key, self.env, self.cwd = get_api_key, env or LocalEnv(), cwd or os.getcwd()
-        self.prepare_next_turn = prepare_next_turn
+        self.prepare_next_turn, self.before_tool_call = prepare_next_turn, before_tool_call
         self.steering, self.follow_ups = list(), list()
         self.steering_mode = self.follow_up_mode = "one-at-a-time"  # or "all"
         self.messages = list(messages or [])  # saved history (CompactionEntry markers included)
@@ -273,6 +281,7 @@ class Agent:
                 get_api_key=self.get_api_key,
                 env=self.env,
                 cwd=self.cwd,
+                before_tool_call=self.before_tool_call,
             )
             emit = lambda e: _emit_all(self._subs, e)  # noqa: E731
             return await agent_loop(self.system_prompt, self.messages, prompts, cfg, emit, self._cancel)
