@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 
 from ..ai import Model, from_dict, to_dict
+from ..coding import make_tools
 from ..session import AgentSession
 
 HOME = Path.home() / ".simp-agent"
@@ -147,7 +148,8 @@ async def run(task: str, model: Model, args: argparse.Namespace) -> int:
         finally:
             loop.add_signal_handler(signal.SIGINT, session.abort)
 
-    session = AgentSession(model, store=JsonlStore(session_dir(cwd) / f"{sid}.jsonl"), approve=None if args.yes else ask)
+    session = AgentSession(model, make_tools(args.bash_max_timeout_s), JsonlStore(session_dir(cwd) / f"{sid}.jsonl"),
+                           approve=None if args.yes else ask)
     session.subscribe(_print_event)
     loop.add_signal_handler(signal.SIGINT, session.abort)
     print(f"[session {sid}]", file=sys.stderr)
@@ -183,6 +185,7 @@ def main() -> None:
     try:
         settings = json.loads(SETTINGS.read_text()) if SETTINGS.exists() else {}
         model = build_model(resolve_config(settings, a))
+        a.bash_max_timeout_s = settings.get("bash_max_timeout_s")  # optional cap; None = no limit (like pi)
     except ValueError as e:
         p.error(str(e))
     task = a.print_task or " ".join(a.task)

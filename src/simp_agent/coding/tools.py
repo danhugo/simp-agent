@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 import os
+import time
 
 from ..agent import AgentTool
 
@@ -49,19 +51,61 @@ async def edit(args: dict, ctx) -> str:
     return f"Edited {args['path']}"
 
 
-async def bash(args: dict, ctx) -> str:
-    code, out = await ctx.env.exec(args["command"], ctx.cwd, args.get("timeout", 120), ctx.cancel, ctx.on_update)
-    return _truncate(f"{out}\n[exit code: {code}]")
+def _tail(text: str) -> str:  # bash: the end of the output matters most
+    if len(text) <= MAX_BYTES:
+        return text
+    return f"[truncated: first {len(text) - MAX_BYTES} chars dropped]\n" + text[-MAX_BYTES:]
 
 
-TOOLS = [
-    AgentTool("read", "Read a text file. Output has line numbers. Use offset/limit for big files.",
-              _obj({"path": {"type": "string"}, "offset": {"type": "integer"}, "limit": {"type": "integer"}}, ["path"]), read),
-    AgentTool("write", "Create or overwrite a file. Makes parent dirs.",
-              _obj({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]), write),
-    AgentTool("edit", "Replace old_text with new_text in a file. old_text must match exactly once.",
-              _obj({"path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}},
-                   ["path", "old_text", "new_text"]), edit),
-    AgentTool("bash", "Run a shell command in cwd. Returns stdout+stderr and exit code.",
-              _obj({"command": {"type": "string"}, "timeout": {"type": "number"}}, ["command"]), bash),
-]
+def _elapsed(s: float) -> str:
+    m, sec = divmod(int(s), 60)
+    return f"{m}m{sec:02d}s" if m else f"{sec}s"
+
+
+def make_bash(max_timeout_s: float | None = None):
+    """No default timeout (pi bash.ts). max_timeout_s: the host's cap; a bigger or missing timeout is clamped to it."""
+
+    async def bash(args: dict, ctx) -> str:
+        timeout = args.get("timeout")
+        if timeout is not None and not (math.isfinite(timeout) and timeout > 0):
+            raise ValueError(f"timeout must be a positive number of seconds, got {timeout}")
+        if max_timeout_s is not None:
+            timeout = min(timeout or max_timeout_s, max_timeout_s)
+        start = time.monotonic()
+        code, out = await ctx.env.exec(args["command"], ctx.cwd, timeout, ctx.cancel, ctx.on_update)
+        if code is not None:
+            return _tail(f"{out}\n[exit code: {code}]")
+        if ctx.cancel.is_set():
+            return _tail(f"{out}\n[Command interrupted by the user after {_elapsed(time.monotonic() - start)}]")
+        return _tail(f"{out}\n[Command timed out after {timeout:g} seconds]")
+
+    return bash
+
+
+def _p(type_: str, description: str) -> dict:
+    return {"type": type_, "description": description}
+
+
+def make_tools(bash_max_timeout_s: float | None = None) -> list:
+    return [
+        AgentTool("read", "Read a text file. Output has line numbers. Use offset/limit for big files.",
+                  _obj({"path": _p("string", "File path, relative to cwd or absolute"),
+                        "offset": _p("integer", "First line to read, 1-based (default 1)"),
+                        "limit": _p("integer", f"Max lines to read (default {MAX_LINES})")}, ["path"]), read),
+        AgentTool("write", "Create or overwrite a file. Makes parent dirs.",
+                  _obj({"path": _p("string", "File path, relative to cwd or absolute"),
+                        "content": _p("string", "Full new file content")}, ["path", "content"]), write),
+        AgentTool("edit", "Replace old_text with new_text in a file. old_text must match exactly once.",
+                  _obj({"path": _p("string", "File path, relative to cwd or absolute"),
+                        "old_text": _p("string", "Exact text to replace; must match exactly once"),
+                        "new_text": _p("string", "Replacement text")}, ["path", "old_text", "new_text"]), edit),
+        AgentTool("bash", "Run a shell command in cwd. Returns stdout+stderr (the tail if long) and exit code. "
+                          "Optional timeout in seconds; no timeout by default.",
+                  _obj({"command": _p("string", "Shell command to run"),
+                        "timeout": _p("number", "Timeout in seconds (optional, no default timeout)")}, ["command"]),
+                  make_bash(bash_max_timeout_s)),
+    ]
+
+
+TOOLS = make_tools()
+

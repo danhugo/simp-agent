@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime
 import os
 
-from .tools import TOOLS
+from .tools import TOOLS, make_tools
 
 CONTEXT_FILES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]  # pi resource-loader.ts
 
@@ -35,4 +35,4 @@ def system_prompt(tools: list, cwd: str, context: tuple[str, str] | None = None)
     return out + f"Current date: {datetime.date.today()}\nCurrent working directory: {cwd}"
 
 
-__all__ = ["TOOLS", "CONTEXT_FILES", "load_context_file", "system_prompt"]
+__all__ = ["TOOLS", "make_tools", "CONTEXT_FILES", "load_context_file", "system_prompt"]

@@ -80,7 +80,7 @@ async def run_tool(tools: list, call: ai.ToolCall, ctx: ToolContext) -> ToolResu
     try:
         return ToolResultMessage(call.id, call.name, await tool.execute(call.arguments, ctx))
     except Exception as e:
-        return err(f"{type(e).__name__}: {e}")
+        return err("Interrupted by the user" if ctx.cancel.is_set() else f"{type(e).__name__}: {e}")
 
 
 def _aborted() -> AssistantMessage:

@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from ..agent.compaction import estimate_tokens
+from ..coding import make_tools
 from ..session import AgentSession
 from . import JsonlStore, approval_answer, describe_call, interrupt_action, latest_session, route, session_dir
 
@@ -28,12 +29,14 @@ class Repl:
         self.console = Console(highlight=False)
         self.state, self.task, self.pending = "idle", None, None  # pending = approval future
         self.shown = {}  # tool call id -> lines shown
+        self.tool = None  # (name, start time) of the running tool, for the toolbar
         sid = args.resume or (latest_session(self.cwd) if args.cont else None)
         self.new_session(sid)
 
     def new_session(self, sid: str | None = None) -> None:
         self.sid = sid or uuid.uuid4().hex[:8]
-        self.session = AgentSession(self.model, store=JsonlStore(session_dir(self.cwd) / f"{self.sid}.jsonl"),
+        store = JsonlStore(session_dir(self.cwd) / f"{self.sid}.jsonl")
+        self.session = AgentSession(self.model, make_tools(self.args.bash_max_timeout_s), store,
                                     approve=None if self.args.yes else self.approve)
         self.session.subscribe(self.on_event)
 
@@ -42,7 +45,8 @@ class Repl:
         return self.task is not None and not self.task.done()
 
     def toolbar(self) -> str:
-        return f" {self.model.id} | session {self.sid} | ~{estimate_tokens(self.session.messages)} tokens | {self.state}"
+        state = f"{self.state} ({self.tool[0]} {time.monotonic() - self.tool[1]:.0f}s)" if self.tool else self.state
+        return f" {self.model.id} | session {self.sid} | ~{estimate_tokens(self.session.messages)} tokens | {state}"
 
     def message(self) -> str:
         return "Allow? [y/N/a] " if self.pending else ("… " if self.running else "> ")
@@ -81,11 +85,12 @@ class Repl:
             if m.stop_reason in ("error", "aborted"):
                 out.print(f"[red]{escape(m.error or m.stop_reason)}[/]")
         elif t == "tool_execution_start":
+            self.tool = (e["call"].name, time.monotonic())
             out.print(f"[cyan]> {escape(describe_call(e['call'])[:300])}[/]")
         elif t == "tool_execution_update":
             self.show_output(e["call"].id, e["text"])
         elif t == "tool_execution_end":
-            r = e["result"]
+            r, self.tool = e["result"], None
             if r.is_error:
                 out.print(f"[red]  ! {escape(r.content[:300])}[/]")
             elif e["call"].id not in self.shown:

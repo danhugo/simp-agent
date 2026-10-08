@@ -154,6 +154,7 @@ def test_cli_max_tokens(monkeypatch):
         return 0
 
     monkeypatch.setattr(cli, "run", fake_run)
+    monkeypatch.setattr(cli, "SETTINGS", cli.HOME / "no-such-settings.json")
     for argv in (["x", "--max-tokens", "32000", "--api", "openai-completions", "--model", "m", "--context-window", "1000", "t"],
                  ["x", "--max-tokens", "32000", "t"], ["x", "t"]):
         monkeypatch.setattr(sys, "argv", argv)
