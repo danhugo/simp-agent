@@ -47,6 +47,17 @@ def latest_session(cwd: str) -> str | None:
     return files[-1].stem if files else None
 
 
+def list_sessions(cwd: str) -> list[dict]:
+    """Sessions for this cwd, newest first: id, mtime, first user line, message count."""
+    out = list()
+    for f in session_dir(cwd).glob("*.jsonl"):
+        msgs = JsonlStore(f).load()
+        first = next((m.content for m in msgs if m.role == "user"), "")
+        out.append({"id": f.stem, "mtime": f.stat().st_mtime, "first": first.strip().split("\n")[0][:60],
+                    "count": sum(m.role != "compaction" for m in msgs)})
+    return sorted(out, key=lambda s: s["mtime"], reverse=True)
+
+
 # ---- settings -------------------------------------------------------------------------------------------------------
 
 def resolve_config(settings: dict, args: argparse.Namespace) -> dict:
@@ -117,20 +128,42 @@ def describe_call(call) -> str:
 
 # ---- print mode -----------------------------------------------------------------------------------------------------
 
-def _print_event(e: dict, thinking: bool = True) -> None:
-    t = e["type"]
-    if t == "message_update" and e["event"]["type"] == "text_delta":
-        print(e["event"]["delta"], end="", flush=True)
-    elif t == "message_update" and thinking and e["event"]["type"] == "thinking_delta":
-        print(f"\033[2m{e['event']['delta']}\033[0m", end="", flush=True)
-    elif t == "message_update" and thinking and e["event"]["type"] == "thinking_end":
-        print(flush=True)
-    elif t == "message_end" and e["message"].role == "assistant" and e["message"].text():
-        print(flush=True)
-    elif t == "tool_execution_start":
-        print(f"> {describe_call(e['call'])[:200]}", flush=True)
-    elif t == "tool_execution_end" and e["result"].is_error:
-        print(f"  ! {e['result'].content[:200]}", flush=True)
+class LinePrinter:
+    """Print mode: buffer deltas, print full lines only (no per-token output, no ANSI unless a tty)."""
+
+    def __init__(self, thinking: bool = True, out=None):
+        self.thinking, self.out, self.buf, self.dim = thinking, out or sys.stdout, "", False
+
+    def _line(self, line: str) -> None:
+        dim = self.dim and self.out.isatty()
+        print(f"\033[2m{line}\033[0m" if dim and line else line, file=self.out, flush=True)
+
+    def _add(self, text: str, dim: bool) -> None:
+        if dim != self.dim:
+            self.flush()
+        self.dim, self.buf = dim, self.buf + text
+        *lines, self.buf = self.buf.split("\n")
+        for line in lines:
+            self._line(line)
+
+    def flush(self) -> None:
+        if self.buf:
+            self._line(self.buf)
+        self.buf = ""
+
+    def __call__(self, e: dict) -> None:
+        t = e["type"]
+        if t == "message_update" and e["event"]["type"] == "text_delta":
+            self._add(e["event"]["delta"], False)
+        elif t == "message_update" and self.thinking and e["event"]["type"] == "thinking_delta":
+            self._add(e["event"]["delta"], True)
+        elif t == "message_end" and e["message"].role == "assistant":
+            self.flush()
+        elif t == "tool_execution_start":
+            self.flush()
+            print(f"> {describe_call(e['call'])[:200]}", file=self.out, flush=True)
+        elif t == "tool_execution_end" and e["result"].is_error:
+            print(f"  ! {e['result'].content[:200]}", file=self.out, flush=True)
 
 
 async def run(task: str, model: Model, args: argparse.Namespace) -> int:
@@ -154,7 +187,7 @@ async def run(task: str, model: Model, args: argparse.Namespace) -> int:
 
     session = AgentSession(model, make_tools(args.bash_max_timeout_s), JsonlStore(session_dir(cwd) / f"{sid}.jsonl"),
                            approve=None if args.yes else ask)
-    session.subscribe(lambda e: _print_event(e, args.thinking))
+    session.subscribe(LinePrinter(args.thinking))
     loop.add_signal_handler(signal.SIGINT, session.abort)
     print(f"[session {sid}]", file=sys.stderr)
     try:
@@ -183,6 +216,7 @@ def main() -> None:
     p.add_argument("--thinking", action=argparse.BooleanOptionalAction, default=True, help="show model thinking (dim)")
     p.add_argument("-c", "--continue", dest="cont", action="store_true", help="latest session for this cwd")
     p.add_argument("--resume", metavar="ID", help="resume session ID (for this cwd)")
+    p.add_argument("-r", dest="pick", action="store_true", help="pick a session for this cwd")
     p.add_argument("-y", "--yes", action="store_true", help="never ask before running tools")
     p.add_argument("-p", "--print", dest="print_task", metavar="TASK", help="one-shot print mode")
     p.add_argument("task", nargs="*")
