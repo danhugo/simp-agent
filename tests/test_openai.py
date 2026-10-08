@@ -5,7 +5,7 @@ import openai
 from simp_agent import ai
 from simp_agent.agent import AgentTool, run_tool
 from simp_agent.ai import AssistantMessage, Context, Model, TextContent, ToolCall, ToolResultMessage, UserMessage
-from simp_agent.providers import openai_completions as oc
+from simp_agent.ai.providers import openai_completions as oc
 
 
 def tc(index=None, id=None, name=None, args=None):

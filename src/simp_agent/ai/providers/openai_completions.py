@@ -7,7 +7,7 @@ import os
 import uuid
 from typing import AsyncIterator
 
-from ..ai import AssistantMessage, Context, Model, TextContent, ToolCall, ToolResultMessage, UserMessage
+from .. import AssistantMessage, Context, Model, TextContent, ToolCall, ToolResultMessage, UserMessage
 
 _STOP = {"stop": "stop", "end": "stop", "length": "length", "tool_calls": "tool_use", "function_call": "tool_use"}
 

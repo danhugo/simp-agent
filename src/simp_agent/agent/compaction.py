@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
-from . import ai
-from .ai import AssistantMessage, Context, UserMessage
+from .. import ai
+from ..ai import AssistantMessage, CompactionEntry, Context, UserMessage
 
 SUMMARIZATION_PROMPT = """The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
 
@@ -61,15 +60,6 @@ class CompactionSettings:
     enabled: bool = True
     reserve_tokens: int = 16384
     keep_recent_tokens: int = 20000
-
-
-@dataclass
-class CompactionEntry:
-    """Marker appended to history. History stays append-only; build_view() turns it into the LLM view."""
-
-    summary: str
-    first_kept_index: int
-    role: Literal["compaction"] = "compaction"
 
 
 def _last_entry(messages: list) -> int | None:

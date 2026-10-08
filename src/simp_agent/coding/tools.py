@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from .agent import AgentTool
+from ..agent import AgentTool
 
 MAX_LINES = 2000
 MAX_BYTES = 50_000

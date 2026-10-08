@@ -54,6 +54,15 @@ class ToolResultMessage:
 
 
 @dataclass
+class CompactionEntry:
+    """Marker appended to history. History stays append-only; build_view() turns it into the LLM view."""
+
+    summary: str
+    first_kept_index: int
+    role: Literal["compaction"] = "compaction"
+
+
+@dataclass
 class Tool:
     name: str
     description: str
@@ -130,8 +139,6 @@ def to_dict(m) -> dict:
 
 
 def from_dict(d: dict):
-    from .compaction import CompactionEntry
-
     d = dict(d)
     cls = {"user": UserMessage, "assistant": AssistantMessage, "tool_result": ToolResultMessage, "compaction": CompactionEntry}[d["role"]]
     if cls is AssistantMessage:

@@ -5,8 +5,8 @@ import pytest
 from simp_agent.agent import AgentTool, LoopConfig, agent_loop
 from simp_agent.ai import AssistantMessage, Model, TextContent, ToolCall, UserMessage
 from simp_agent.agent import ToolContext
-from simp_agent.env import LocalEnv
-from simp_agent.tools import TOOLS, edit
+from simp_agent.agent.env import LocalEnv
+from simp_agent.coding.tools import TOOLS, edit
 
 
 def fake_stream(*replies: AssistantMessage):

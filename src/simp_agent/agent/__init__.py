@@ -11,10 +11,10 @@ from typing import Any, Awaitable, Callable
 
 import jsonschema
 
-from . import ai
-from .compaction import CompactionEntry, CompactionSettings, build_view, compact, estimate_tokens, should_compact
+from .. import ai
+from ..ai import AssistantMessage, CompactionEntry, Context, Model, ToolResultMessage, UserMessage
+from .compaction import build_view
 from .env import ExecutionEnv, LocalEnv
-from .ai import AssistantMessage, Context, Model, ToolResultMessage, UserMessage
 
 
 @dataclass
@@ -36,6 +36,10 @@ async def _maybe_await(r):
 
 async def _no_prepare(messages):
     return None
+
+
+async def _view(messages):  # Agent default: honor CompactionEntry markers in history, never compact
+    return build_view(messages)
 
 
 @dataclass
@@ -200,12 +204,12 @@ class Agent:
     """prompt() raises while a run is active: a UI should call steer() or follow_up() then.
     Queued messages survive abort(); they wait for the next prompt() or clear_queues()."""
 
-    def __init__(self, system_prompt: str, model: Model, tools: list, stream_fn: Callable = ai.stream, auto_compact: bool = True,
+    def __init__(self, system_prompt: str, model: Model, tools: list, stream_fn: Callable = ai.stream,
                  get_api_key: Callable[[str], Any] | None = None, env: ExecutionEnv | None = None, cwd: str | None = None,
-                 messages: list | None = None):
+                 messages: list | None = None, prepare_next_turn: Callable[[list], Awaitable[list | None]] = _view):
         self.system_prompt, self.model, self.tools, self.stream_fn = system_prompt, model, tools, stream_fn
         self.get_api_key, self.env, self.cwd = get_api_key, env or LocalEnv(), cwd or os.getcwd()
-        self.auto_compact, self.compaction = auto_compact, CompactionSettings()
+        self.prepare_next_turn = prepare_next_turn
         self.steering, self.follow_ups = list(), list()
         self.steering_mode = self.follow_up_mode = "one-at-a-time"  # or "all"
         self.messages = list(messages or [])  # saved history (CompactionEntry markers included)
@@ -237,29 +241,6 @@ class Agent:
         del queue[:n]
         return out
 
-    async def _compact(self) -> bool:
-        """Summarize old history and append a CompactionEntry marker. Failure keeps history as is."""
-        emit = lambda e: _emit_all(self._subs, e)  # noqa: E731
-        before = estimate_tokens(self.messages)
-        await emit({"type": "compaction_start", "tokens_before": before})
-        try:
-            stream_fn = functools.partial(self.stream_fn, **await api_key_opts(self.get_api_key, self.model))
-            summary, first_kept = await compact(self.messages, self.model, stream_fn, self.compaction)
-        except Exception as e:
-            await emit({"type": "compaction_end", "error": str(e), "tokens_before": before, "tokens_after": before})
-            return False
-        entry = CompactionEntry(summary, first_kept)
-        self.messages.append(entry)
-        await emit({"type": "message_end", "message": entry})  # so stores see it
-        after = estimate_tokens(self.messages)
-        await emit({"type": "compaction_end", "error": None, "tokens_before": before, "tokens_after": after})
-        return True
-
-    async def _prepare(self, messages: list) -> list:
-        if self.auto_compact and should_compact(estimate_tokens(messages), self.model, self.compaction):
-            await self._compact()
-        return build_view(messages)
-
     def abort(self) -> None:
         self._cancel.set()
 
@@ -267,8 +248,10 @@ class Agent:
         return await self._run([UserMessage(text)])
 
     async def continue_(self) -> list:
-        """Run from the existing history with no new message (pi agentLoopContinue)."""
-        last = next((m for m in reversed(self.messages) if not isinstance(m, CompactionEntry)), None)
+        """Run from the existing history with no new message (pi agentLoopContinue). A trailing error turn is
+        skipped (the LLM view drops it), so a host can retry after an error."""
+        skip = lambda m: isinstance(m, CompactionEntry) or (m.role == "assistant" and m.stop_reason == "error")  # noqa: E731
+        last = next((m for m in reversed(self.messages) if not skip(m)), None)
         if last is None or last.role not in ("user", "tool_result"):
             raise ValueError(f"Cannot continue: last message must be user or tool_result, got {last and last.role}")
         return await self._run([])
@@ -286,19 +269,13 @@ class Agent:
                 stream_fn=self.stream_fn,
                 get_steering=lambda: self._take(self.steering, self.steering_mode),
                 get_follow_up=lambda: self._take(self.follow_ups, self.follow_up_mode),
-                prepare_next_turn=self._prepare,
+                prepare_next_turn=self.prepare_next_turn,
                 get_api_key=self.get_api_key,
                 env=self.env,
                 cwd=self.cwd,
             )
             emit = lambda e: _emit_all(self._subs, e)  # noqa: E731
-            new = await agent_loop(self.system_prompt, self.messages, prompts, cfg, emit, self._cancel)
-            last = self.messages[-1]
-            if self.auto_compact and last.role == "assistant" and last.stop_reason == "error" and ai.is_context_overflow(last.error):
-                # overflow: compact once and continue (error stays in history; the LLM view drops it)
-                if await self._compact():
-                    new += await agent_loop(self.system_prompt, self.messages, [], cfg, emit, self._cancel)
-            return new
+            return await agent_loop(self.system_prompt, self.messages, prompts, cfg, emit, self._cancel)
         except Exception as e:  # e.g. a subscriber raised: end the run cleanly with an error message
             self.messages.append(AssistantMessage(stop_reason="error", error=f"{type(e).__name__}: {e}"))
             return self.messages[start:]

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from ..ai import AssistantMessage, Context, Model, TextContent, ToolCall, ToolResultMessage, UserMessage
+from .. import AssistantMessage, Context, Model, TextContent, ToolCall, ToolResultMessage, UserMessage
 
 _STOP = {"end_turn": "stop", "stop_sequence": "stop", "tool_use": "tool_use", "max_tokens": "length"}
 

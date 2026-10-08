@@ -1,30 +1,17 @@
-"""System prompt + print-mode CLI: `simp-agent "task"`."""
+"""Print-mode CLI: `simp-agent "task"`."""
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import datetime
 import json
 import os
 import sys
 import uuid
 from pathlib import Path
 
-from .agent import Agent
-from .ai import Model, from_dict, to_dict
-from .tools import TOOLS
-
-
-def system_prompt(tools: list, cwd: str) -> str:
-    tool_list = "\n".join(f"- {t.name}: {t.description}" for t in tools)
-    return (
-        "You are an expert coding assistant. You help the user by reading files, running commands, "
-        "editing code, and writing new files.\n\n"
-        f"Available tools:\n{tool_list}\n\n"
-        "Be concise. Use read before edit. Paths are relative to the working directory.\n\n"
-        f"Current date: {datetime.date.today()}\nCurrent working directory: {cwd}"
-    )
+from ..ai import Model, from_dict, to_dict
+from ..session import AgentSession
 
 
 def _print_event(e: dict) -> None:
@@ -39,35 +26,34 @@ def _print_event(e: dict) -> None:
 SESSIONS = Path.home() / ".simp-agent" / "sessions"
 
 
-def jsonl_store(path: Path):
-    """Plugin, not core: a subscriber that appends every finished message to a JSONL file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+class JsonlStore:
+    """SessionStore on a JSONL file: one finished message (or CompactionEntry) per line."""
 
-    def on_event(e: dict) -> None:
-        if e["type"] == "message_end":
-            with path.open("a") as f:
-                f.write(json.dumps(to_dict(e["message"])) + "\n")
+    def __init__(self, path: Path):
+        self.path = path
 
-    return on_event
+    def append(self, entry) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a") as f:
+            f.write(json.dumps(to_dict(entry)) + "\n")
 
-
-def load_session(path: Path) -> list:
-    return [from_dict(json.loads(line)) for line in path.read_text().splitlines() if line.strip()]
+    def load(self) -> list:
+        if not self.path.exists():
+            return []
+        return [from_dict(json.loads(line)) for line in self.path.read_text().splitlines() if line.strip()]
 
 
 async def run(task: str, model: Model, session_id: str | None = None) -> int:
     path = SESSIONS / f"{session_id or uuid.uuid4().hex[:8]}.jsonl"
-    history = load_session(path) if session_id else []
-    agent = Agent(system_prompt(TOOLS, os.getcwd()), model, TOOLS, messages=history)
-    agent.subscribe(_print_event)
-    agent.subscribe(jsonl_store(path))
+    session = AgentSession(model, store=JsonlStore(path))
+    session.subscribe(_print_event)
     print(f"[session {path.stem}]", file=sys.stderr)
     try:
-        new = await (agent.prompt(task) if task else agent.continue_())
+        new = await (session.prompt(task) if task else session.continue_())
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
-    last = (new or agent.messages)[-1]
+    last = (new or session.messages)[-1]
     if last.stop_reason in ("error", "aborted"):
         print(f"Error: {last.error}", file=sys.stderr)
         return 1

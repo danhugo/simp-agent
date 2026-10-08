@@ -6,9 +6,10 @@ import pytest
 from simp_agent import ai
 from simp_agent.agent import Agent, AgentTool
 from simp_agent.ai import AssistantMessage, Context, Model, TextContent, ToolCall, ToolResultMessage, UserMessage, from_dict, to_dict
-from simp_agent.cli import jsonl_store, load_session
-from simp_agent.compaction import CompactionEntry, build_view
-from simp_agent.tools import TOOLS
+from simp_agent.agent.compaction import CompactionEntry, build_view
+from simp_agent.cli import JsonlStore
+from simp_agent.coding.tools import TOOLS
+from simp_agent.session import AgentSession
 
 DONE = AssistantMessage([TextContent("ok")])
 
@@ -40,8 +41,8 @@ async def test_get_api_key_per_call_and_per_agent():
         return "other"
 
     tool = AgentTool("t", "", {"type": "object"}, lambda a, c: asyncio.sleep(0, "r"))
-    a = Agent("s", Model(), [tool], fake(call("t"), DONE, seen=seen_a), get_api_key=get_key, auto_compact=False)
-    b = Agent("s", Model(), [], fake(DONE, seen=seen_b), get_api_key=get_b, auto_compact=False)
+    a = Agent("s", Model(), [tool], fake(call("t"), DONE, seen=seen_a), get_api_key=get_key)
+    b = Agent("s", Model(), [], fake(DONE, seen=seen_b), get_api_key=get_b)
     await a.prompt("x")
     await b.prompt("x")
     assert calls == ["anthropic", "anthropic"]
@@ -67,7 +68,7 @@ class MemEnv:
 async def test_fake_env_and_on_update(tmp_path):
     env, events = MemEnv(), []
     agent = Agent("s", Model(), TOOLS, fake(call("write", path="a.txt", content="hi"), call("read", path="a.txt"),
-                                            call("bash", command="ls"), DONE), env=env, cwd="/virt", auto_compact=False)
+                                            call("bash", command="ls"), DONE), env=env, cwd="/virt")
     agent.subscribe(events.append)
     new = await agent.prompt("x")
     assert env.files == {"/virt/a.txt": "hi"} and env.cmds == [("ls", "/virt")]
@@ -85,7 +86,7 @@ async def test_restore_roundtrip_then_prompt():
     msgs = [from_dict(json.loads(json.dumps(to_dict(m)))) for m in _saved()]
     assert msgs == _saved()
     seen = []
-    agent = Agent("s", Model(), [], fake(DONE, seen=seen), messages=msgs, auto_compact=False)
+    agent = Agent("s", Model(), [], fake(DONE, seen=seen), messages=msgs)
     await agent.prompt("new")
     sent = seen[0][1]
     assert "SUM" in sent[0].content and [m.role for m in sent[1:]] == ["tool_result", "user"]
@@ -94,7 +95,7 @@ async def test_restore_roundtrip_then_prompt():
 
 async def test_continue():
     seen = []
-    agent = Agent("s", Model(), [], fake(DONE, seen=seen), messages=_saved()[:3], auto_compact=False)
+    agent = Agent("s", Model(), [], fake(DONE, seen=seen), messages=_saved()[:3])
     new = await agent.continue_()
     assert len(seen) == 1 and new == [DONE]
     with pytest.raises(ValueError, match="last message"):
@@ -112,7 +113,6 @@ async def test_register_provider():
 
 async def test_jsonl_store_roundtrip(tmp_path):
     path = tmp_path / "s.jsonl"
-    agent = Agent("s", Model(), TOOLS, fake(call("bash", command="echo hi"), DONE), auto_compact=False, cwd=str(tmp_path))
-    agent.subscribe(jsonl_store(path))
-    await agent.prompt("x")
-    assert load_session(path) == agent.messages
+    session = AgentSession(Model(), TOOLS, JsonlStore(path), cwd=str(tmp_path), stream_fn=fake(call("bash", command="echo hi"), DONE))
+    await session.prompt("x")
+    assert JsonlStore(path).load() == session.messages
