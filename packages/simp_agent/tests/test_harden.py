@@ -4,24 +4,12 @@ import asyncio
 
 import pytest
 
+from simp_agent.testing import FakeProvider
 from simp_agent import ai
 from simp_agent.agent import Agent, AgentTool, LoopConfig, agent_loop
 from simp_agent.ai import AssistantMessage, Model, TextContent, ToolCall, ToolResultMessage, UserMessage
 
 DONE = AssistantMessage([TextContent("ok")])
-
-
-def recording_stream(*replies):
-    """Fake provider that records the messages it was sent."""
-    it, seen = iter(replies), []
-
-    async def stream(model, ctx):
-        seen.append(list(ctx.messages))
-        msg = next(it)
-        yield {"type": "start", "partial": msg}
-        yield {"type": "error" if msg.stop_reason == "error" else "done", "message": msg}
-
-    return stream, seen
 
 
 def check_pairs(msgs):
@@ -40,7 +28,8 @@ async def test_abort_mid_batch_repairs_history():
 
     tool = AgentTool("t", "", {"type": "object"}, slow)
     batch = AssistantMessage([ToolCall(f"c{i}", "t", {"n": i}) for i in (1, 2, 3)], stop_reason="tool_use")
-    stream, seen = recording_stream(batch, DONE)
+    stream = FakeProvider(batch, DONE)
+    seen = stream.messages
     msgs = []
     cfg = LoopConfig(Model(), [tool], stream_fn=stream)
     await agent_loop("s", msgs, [UserMessage("a")], cfg, cancel=cancel)
@@ -54,7 +43,8 @@ async def test_abort_mid_batch_repairs_history():
 
 async def test_stream_error_message_excluded():
     bad = AssistantMessage([ToolCall("x", "t", {})], stop_reason="error", error="boom")
-    stream, seen = recording_stream(bad, DONE)
+    stream = FakeProvider(bad, DONE)
+    seen = stream.messages
     msgs = []
     cfg = LoopConfig(Model(), [], stream_fn=stream)
     await agent_loop("s", msgs, [UserMessage("a")], cfg)
@@ -71,7 +61,7 @@ async def test_length_tool_calls_not_run():
         return "r"
 
     cut = AssistantMessage([ToolCall("c1", "t", {})], stop_reason="length")
-    stream, _ = recording_stream(cut, DONE)
+    stream = FakeProvider(cut, DONE)
     new = await agent_loop("s", [], [UserMessage("a")], LoopConfig(Model(), [AgentTool("t", "", {"type": "object"}, t)], stream_fn=stream))
     assert not ran
     assert new[2].is_error and new[2].tool_call_id == "c1"
@@ -102,7 +92,7 @@ async def test_async_subscriber_awaited():
         await asyncio.sleep(0)
         got.append(e["type"])
 
-    stream, _ = recording_stream(DONE)
+    stream = FakeProvider(DONE)
     a = Agent("s", Model(), [], stream)
     a.subscribe(sub)
     await a.prompt("hi")
@@ -114,7 +104,7 @@ async def test_raising_subscriber_ends_with_error():
         if e["type"] == "message_end":
             raise ValueError("sub broke")
 
-    stream, _ = recording_stream(DONE)
+    stream = FakeProvider(DONE)
     a = Agent("s", Model(), [], stream)
     a.subscribe(sub)
     await a.prompt("hi")

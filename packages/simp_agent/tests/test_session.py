@@ -1,5 +1,6 @@
 import asyncio
 
+from simp_agent.testing import FakeProvider
 from simp_agent.agent.compaction import CompactionEntry
 from simp_agent.ai import AssistantMessage, Model, TextContent, ToolCall, UserMessage
 from simp_agent.session import AgentSession
@@ -9,17 +10,6 @@ DONE = AssistantMessage([TextContent("ok")])
 
 def err429():
     return AssistantMessage(stop_reason="error", error="Error code: 429 rate_limit_error")
-
-
-def fake(*replies):
-    it, seen = iter(replies), []
-
-    async def stream(model, ctx, api_key=None):
-        seen.append(list(ctx.messages))
-        msg = next(it)
-        yield {"type": "error" if msg.stop_reason == "error" else "done", "message": msg}
-
-    return stream, seen
 
 
 class ListStore:
@@ -38,7 +28,8 @@ def session(stream, **kw):
 
 
 async def test_retry_429_twice_then_ok():
-    stream, seen = fake(err429(), err429(), DONE)
+    stream = FakeProvider(err429(), err429(), DONE)
+    seen = stream.messages
     s = session(stream, retry_base_delay=0.001)
     events = []
     s.subscribe(lambda e: e["type"].startswith("auto_retry") and events.append(e))
@@ -50,7 +41,8 @@ async def test_retry_429_twice_then_ok():
 
 
 async def test_abort_during_backoff_stops():
-    stream, seen = fake(err429(), DONE)
+    stream = FakeProvider(err429(), DONE)
+    seen = stream.messages
     s = session(stream, retry_base_delay=60)
     s.subscribe(lambda e: e["type"] == "auto_retry_start" and asyncio.get_running_loop().call_soon(s.abort))
     await asyncio.wait_for(s.prompt("hi"), 5)
@@ -58,7 +50,7 @@ async def test_abort_during_backoff_stops():
 
 
 async def test_store_gets_every_message_in_order():
-    stream, _ = fake(AssistantMessage([ToolCall("c1", "nope", {})], stop_reason="tool_use"), DONE)
+    stream = FakeProvider(AssistantMessage([ToolCall("c1", "nope", {})], stop_reason="tool_use"), DONE)
     store = ListStore()
     s = session(stream, store=store)
     await s.prompt("hi")
@@ -67,7 +59,8 @@ async def test_store_gets_every_message_in_order():
 
 
 async def test_session_triggers_compaction_and_stores_entry():
-    stream, seen = fake(AssistantMessage([TextContent("SUM")]), DONE)
+    stream = FakeProvider(AssistantMessage([TextContent("SUM")]), DONE)
+    seen = stream.messages
     old = [UserMessage("a" * 40000), AssistantMessage([TextContent("b" * 40000)]), UserMessage("c" * 40000),
            AssistantMessage([TextContent("d")], usage={"input": 9500, "output": 10})]
     store = ListStore(old)

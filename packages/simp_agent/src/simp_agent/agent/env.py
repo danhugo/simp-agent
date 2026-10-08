@@ -13,6 +13,12 @@ class ExecutionEnv(Protocol):
 
     async def write_file(self, path: str, text: str) -> None: ...
 
+    async def list(self, path: str) -> list[dict]: ...  # [{name, is_dir, size}]
+
+    async def read_bytes(self, path: str) -> bytes: ...
+
+    async def write_bytes(self, path: str, data: bytes) -> None: ...
+
     async def exec(
         self, command: str, cwd: str, timeout: float | None, cancel: asyncio.Event,
         on_output: Callable[[str], Awaitable[None]] | None = None,
@@ -20,17 +26,50 @@ class ExecutionEnv(Protocol):
 
 
 class LocalEnv:
-    """This machine. File IO runs in a thread so the loop never blocks."""
+    """This machine. File IO runs in a thread so the loop never blocks.
+    With a root, file paths are relative to it and may not escape it (via .. or symlinks)."""
+
+    root: str | None = None
+
+    def __init__(self, root: str | None = None):
+        self.root = root
+
+    def _path(self, path: str) -> Path:
+        if self.root is None:
+            return Path(path)
+        root = Path(self.root).resolve()
+        p = (root / path).resolve()
+        if not p.is_relative_to(root):
+            raise PermissionError(f"path escapes root: {path}")
+        return p
 
     async def read_file(self, path: str) -> str:
-        return await asyncio.to_thread(Path(path).read_text)
+        return await asyncio.to_thread(self._path(path).read_text)
 
     async def write_file(self, path: str, text: str) -> None:
+        await self.write_bytes(path, text.encode())
+
+    async def read_bytes(self, path: str) -> bytes:
+        return await asyncio.to_thread(self._path(path).read_bytes)
+
+    async def write_bytes(self, path: str, data: bytes) -> None:
+        p = self._path(path)
+
         def w():
-            Path(path).parent.mkdir(parents=True, exist_ok=True)
-            Path(path).write_text(text)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(data)
 
         await asyncio.to_thread(w)
+
+    async def list(self, path: str) -> list[dict]:
+        def ls():
+            out = []
+            for e in sorted(os.scandir(self._path(path)), key=lambda e: e.name):
+                is_dir = e.is_dir()
+                out.append({"name": e.name, "is_dir": is_dir, "size": 0 if is_dir else e.stat().st_size})
+            return out
+
+        return await asyncio.to_thread(ls)
 
     async def exec(self, command, cwd, timeout, cancel, on_output=None) -> tuple[int | None, str]:
         proc = await asyncio.create_subprocess_shell(

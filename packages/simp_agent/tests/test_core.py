@@ -2,23 +2,12 @@ from __future__ import annotations
 
 import pytest
 
+from simp_agent.testing import FakeProvider
 from simp_agent.agent import AgentTool, LoopConfig, agent_loop
 from simp_agent.ai import AssistantMessage, Model, TextContent, ToolCall, UserMessage
 from simp_agent.agent import ToolContext
 from simp_agent.agent.env import LocalEnv
 from simp_agent.coding.tools import TOOLS, edit
-
-
-def fake_stream(*replies: AssistantMessage):
-    """Fake provider: returns scripted assistant messages in order."""
-    it = iter(replies)
-
-    async def stream(model, ctx):
-        msg = next(it)
-        yield {"type": "start", "partial": msg}
-        yield {"type": "error" if msg.stop_reason == "error" else "done", "message": msg}
-
-    return stream
 
 
 def call(name, **args):
@@ -40,7 +29,7 @@ DONE = AssistantMessage([TextContent("ok")])
 
 async def run(*replies, tools=(ECHO, BOOM)):
     events = []
-    cfg = LoopConfig(Model(), list(tools), stream_fn=fake_stream(*replies))
+    cfg = LoopConfig(Model(), list(tools), stream_fn=FakeProvider(*replies))
     new = await agent_loop("sys", [], [UserMessage("hi")], cfg, events.append)
     return new, [e["type"] for e in events]
 

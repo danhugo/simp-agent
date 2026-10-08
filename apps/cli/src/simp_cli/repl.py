@@ -19,10 +19,10 @@ from prompt_toolkit.layout import BufferControl, ConditionalContainer, Formatted
 from prompt_toolkit.layout.processors import BeforeInput
 from prompt_toolkit.filters import Condition
 
-from .. import ai
-from ..agent.compaction import estimate_tokens
-from ..coding import make_tools
-from ..session import AgentSession
+from simp_agent import ai
+from simp_agent.agent.compaction import estimate_tokens
+from simp_agent.coding import make_tools
+from simp_agent.session import AgentSession
 from . import JsonlStore, approval_answer, describe_call, env_api_key, interrupt_action, latest_session, list_sessions, route, session_dir
 from .components import Chat, Notice
 

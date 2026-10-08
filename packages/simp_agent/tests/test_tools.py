@@ -2,27 +2,12 @@ from __future__ import annotations
 
 import asyncio
 
+from simp_agent.testing import FakeEnv
 from simp_agent.agent import ToolContext, run_tool
 from simp_agent.agent.env import LocalEnv
 from simp_agent.ai import ToolCall
 from simp_agent.coding import make_tools
 from simp_agent.coding.truncate import truncate_head, truncate_tail
-
-
-class FakeEnv(LocalEnv):
-    """LocalEnv that records commands; programs in `missing` exit 127, `canned` returns fixed output."""
-
-    def __init__(self, missing=(), canned=None):
-        self.cmds, self.missing, self.canned = [], missing, canned or {}
-
-    async def exec(self, command, cwd, timeout, cancel, on_output=None):
-        self.cmds.append(command)
-        prog = command.split()[0]
-        if prog in self.missing:
-            return 127, f"sh: {prog}: command not found"
-        if prog in self.canned:
-            return 0, self.canned[prog]
-        return await super().exec(command, cwd, timeout, cancel, on_output)
 
 
 async def call(tmp_path, name, env=None, **args):

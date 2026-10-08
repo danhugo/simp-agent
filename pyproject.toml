@@ -1,36 +1,22 @@
-[project]
-name = "simp-agent"
-version = "0.1.0"
-description = "Add your description here"
-authors = [
-    { name = "Hung Duy DAO", email = "hung.dao@elicer.com" }
-]
-requires-python = ">=3.13"
-dependencies = [
-    "anthropic>=1.11.0",
-    "jsonschema>=4.26.0",
-    "openai>=3.26.0",
-]
+[tool.uv.workspace]
+members = ["packages/simp_agent", "apps/cli", "apps/server"]
 
-[build-system]
-requires = ["uv_build>=0.9.5,<0.10.0"]
-build-backend = "uv_build"
+[tool.uv.sources]
+simp-agent = { workspace = true }
+simp-cli = { workspace = true }
+simp-server = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "simp-agent",
+    "simp-cli",
+    "simp-server",
     "pyte>=0.8.2",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
 ]
 
-[project.scripts]
-simp-agent = "simp_agent.cli:main"
-
-[project.optional-dependencies]
-cli = [
-    "prompt-toolkit>=3.0.53",
-    "rich>=15.0.0",
-]
-
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+addopts = "--import-mode=importlib"
+testpaths = ["packages/simp_agent/tests", "apps/cli/tests", "apps/server"]

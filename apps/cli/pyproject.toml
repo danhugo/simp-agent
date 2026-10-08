@@ -1,0 +1,20 @@
+[project]
+name = "simp-cli"
+version = "0.1.0"
+description = "Terminal app for simp-agent"
+requires-python = ">=3.13"
+dependencies = [
+    "simp-agent",
+    "prompt-toolkit>=3.0.53",
+    "rich>=15.0.0",
+]
+
+[project.scripts]
+simp-agent = "simp_cli:main"
+
+[tool.uv.sources]
+simp-agent = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10.0"]
+build-backend = "uv_build"

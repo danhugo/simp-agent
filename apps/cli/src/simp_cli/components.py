@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.text import Text
 
-from ..ai import AssistantMessage, CompactionEntry, ToolCall as Call, ToolResultMessage, UserMessage
+from simp_agent.ai import AssistantMessage, CompactionEntry, ToolCall as Call, ToolResultMessage, UserMessage
 from . import describe_call
 
 TOOL_LINES = 12  # tool output lines shown per call

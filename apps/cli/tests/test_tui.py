@@ -14,9 +14,9 @@ import time
 
 import pyte
 
-from simp_agent import cli
+import simp_cli as cli
 from simp_agent.ai import AssistantMessage, CompactionEntry, TextContent, ThinkingContent, ToolCall, ToolResultMessage, UserMessage
-from simp_agent.cli.components import COMPACTED, AssistantMsg, Chat, ToolCall as ToolComp
+from simp_cli.components import COMPACTED, AssistantMsg, Chat, ToolCall as ToolComp
 
 ANSWER = "line one alpha\nline two beta\nline three gamma"
 
@@ -86,9 +86,9 @@ def test_print_mode_full_lines_no_ansi():
 
 CHILD = """
 import argparse, asyncio, sys
-from simp_agent import cli
+import simp_cli as cli
 from simp_agent.ai import AssistantMessage, Model, TextContent
-from simp_agent.cli.repl import Repl
+from simp_cli.repl import Repl
 cli.SESSIONS = cli.Path(sys.argv[1])
 ANSWER = %r
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from simp_agent.testing import FakeProvider
 from simp_agent.agent import Agent, AgentTool
 from simp_agent.ai import AssistantMessage, Model, TextContent, ToolCall, ToolResultMessage, UserMessage
 from simp_agent.agent.compaction import CompactionEntry, find_cut
@@ -7,20 +8,6 @@ from simp_agent.session import AgentSession
 
 DONE = AssistantMessage([TextContent("ok")])
 OVERFLOW = AssistantMessage(stop_reason="error", error="prompt is too long: 210000 tokens > 200000 maximum")
-
-
-def fake(*replies):
-    """Fake provider: records every call's messages. A reply can be a callable (ctx) -> message."""
-    it, seen = iter(replies), []
-
-    async def stream(model, ctx):
-        seen.append(list(ctx.messages))
-        msg = next(it)
-        msg = msg(ctx) if callable(msg) else msg
-        yield {"type": "start", "partial": msg}
-        yield {"type": "error" if msg.stop_reason == "error" else "done", "message": msg}
-
-    return stream, seen
 
 
 def call(i):
@@ -38,7 +25,8 @@ async def test_steer_delivered_after_tool_batch():
         agent.steer("change plan")  # typed while the tool runs
         return "r"
 
-    stream, seen = fake(call(1), DONE)
+    stream = FakeProvider(call(1), DONE)
+    seen = stream.messages
     agent = Agent("s", Model(), [AgentTool("t", "", {"type": "object"}, t)], stream)
     await agent.prompt("go")
     assert "change plan" not in texts(seen[0])
@@ -48,7 +36,8 @@ async def test_steer_delivered_after_tool_batch():
 
 async def test_follow_up_one_at_a_time_and_all():
     for mode, calls in (("one-at-a-time", 3), ("all", 2)):
-        stream, seen = fake(DONE, DONE, DONE)
+        stream = FakeProvider(DONE, DONE, DONE)
+        seen = stream.messages
         a = Agent("s", Model(), [], stream)
         a.follow_up_mode = mode
         a.follow_up("f1")
@@ -87,7 +76,8 @@ SUM_HEAD = "The conversation history before this point was compacted into the fo
 
 
 async def test_compaction_appends_marker_and_view():
-    stream, seen = fake(AssistantMessage([TextContent("SUM")]), DONE)
+    stream = FakeProvider(AssistantMessage([TextContent("SUM")]), DONE)
+    seen = stream.messages
     a = compact_agent(stream)
     a.agent.messages = history()
     events = []
@@ -117,7 +107,8 @@ async def test_steer_during_compaction_same_turn():
         a.steer("late")  # typed while the slow summary call runs
         return AssistantMessage([TextContent("SUM")])
 
-    stream, seen = fake(summary, DONE)
+    stream = FakeProvider(summary, DONE)
+    seen = stream.messages
     a = compact_agent(stream)
     a.agent.messages = history()
     await a.prompt("next")
@@ -125,7 +116,8 @@ async def test_steer_during_compaction_same_turn():
 
 
 async def test_below_threshold_no_compaction():
-    stream, seen = fake(DONE)
+    stream = FakeProvider(DONE)
+    seen = stream.messages
     a = AgentSession(Model(), [], stream_fn=stream, system_prompt="s")
     a.agent.messages = history()
     await a.prompt("next")
@@ -133,7 +125,8 @@ async def test_below_threshold_no_compaction():
 
 
 async def test_summary_error_keeps_history():
-    stream, seen = fake(AssistantMessage(stop_reason="error", error="boom"), DONE)
+    stream = FakeProvider(AssistantMessage(stop_reason="error", error="boom"), DONE)
+    seen = stream.messages
     a = compact_agent(stream)
     a.agent.messages = history()
     ends = []
@@ -144,7 +137,8 @@ async def test_summary_error_keeps_history():
 
 
 async def test_overflow_compacts_and_retries_once():
-    stream, seen = fake(OVERFLOW, AssistantMessage([TextContent("SUM")]), DONE)
+    stream = FakeProvider(OVERFLOW, AssistantMessage([TextContent("SUM")]), DONE)
+    seen = stream.messages
     a = AgentSession(Model(), [], stream_fn=stream, system_prompt="s")  # big window: only the overflow forces compaction
     a.compaction.keep_recent_tokens = 5000
     a.agent.messages = history()
@@ -154,7 +148,8 @@ async def test_overflow_compacts_and_retries_once():
 
 
 async def test_second_overflow_stops():
-    stream, seen = fake(OVERFLOW, AssistantMessage([TextContent("SUM")]), OVERFLOW)
+    stream = FakeProvider(OVERFLOW, AssistantMessage([TextContent("SUM")]), OVERFLOW)
+    seen = stream.messages
     a = AgentSession(Model(), [], stream_fn=stream, system_prompt="s")
     a.compaction.keep_recent_tokens = 5000
     a.agent.messages = history()
@@ -163,7 +158,8 @@ async def test_second_overflow_stops():
 
 
 async def test_existing_summary_is_updated():
-    stream, seen = fake(AssistantMessage([TextContent("SUM1")]), DONE, AssistantMessage([TextContent("SUM2")]), DONE)
+    stream = FakeProvider(AssistantMessage([TextContent("SUM1")]), DONE, AssistantMessage([TextContent("SUM2")]), DONE)
+    seen = stream.messages
     a = compact_agent(stream)
     a.agent.messages = history()
     await a.prompt("next")
@@ -180,7 +176,8 @@ async def test_stale_usage_does_not_compact_twice():
         return "r"
 
     SUM = lambda: AssistantMessage([TextContent("SUM")])  # noqa: E731
-    stream, seen = fake(SUM(), call(1), SUM(), DONE, DONE)
+    stream = FakeProvider(SUM(), call(1), SUM(), DONE, DONE)
+    seen = stream.messages
     a = compact_agent(stream)
     a.agent.tools = [AgentTool("t", "", {"type": "object"}, t)]
     a.agent.messages = history()

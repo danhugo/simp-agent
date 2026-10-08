@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import shlex
 
+from simp_agent.testing import FakeProvider
 from simp_agent.agent import AgentTool, ToolContext, run_tool
 from simp_agent.agent.env import LocalEnv
 from simp_agent.ai import AssistantMessage, Model, TextContent, ThinkingContent, ToolCall, UserMessage
@@ -71,24 +72,14 @@ def test_redact_context_all_fields():
     assert KEY not in str(out) and KEY in str(msgs) and out[0].content[0].signature == "sig"
 
 
-def fake(*replies, seen):
-    it = iter(replies)
-
-    async def stream(model, ctx, api_key=None):
-        seen.append(ctx)
-        yield {"type": "done", "message": next(it)}
-
-    return stream
-
-
 async def test_compaction_input_goes_through_context_hook():
-    seen = []
-    s = AgentSession(Model(), [], stream_fn=fake(DONE, seen=seen), system_prompt="s", plugins=[redactor()],
+    stream = FakeProvider(DONE)
+    s = AgentSession(Model(), [], stream_fn=stream, system_prompt="s", plugins=[redactor()],
                      messages=[UserMessage(f"key {KEY} " + "x" * 4000), DONE, UserMessage("y" * 4000), DONE])
     s.compaction.keep_recent_tokens = 10
     await s.start()
     assert await s.compact()
-    assert seen and KEY not in str(seen[0].messages)
+    assert stream.ctxs and KEY not in str(stream.ctxs[0].messages)
 
 
 async def test_tool_update_is_masked():
@@ -96,9 +87,9 @@ async def test_tool_update_is_masked():
         await ctx.on_update(f"progress {KEY}")
         return "done"
 
-    texts, seen = [], []
+    texts = []
     call = AssistantMessage([ToolCall("c", "t", {})], stop_reason="tool_use")
-    s = AgentSession(Model(), [AgentTool("t", "", {"type": "object"}, run)], stream_fn=fake(call, DONE, seen=seen),
+    s = AgentSession(Model(), [AgentTool("t", "", {"type": "object"}, run)], stream_fn=FakeProvider(call, DONE),
                      system_prompt="s", plugins=[redactor()])
     s.subscribe(lambda e: e["type"] == "tool_execution_update" and texts.append(e["text"]))
     await s.prompt("go")
@@ -110,7 +101,7 @@ async def test_abort_while_waiting_for_approval():
         await asyncio.Event().wait()
 
     s = AgentSession(Model(), [AgentTool("bash", "", {"type": "object"}, lambda a, c: "r")], approve=never,
-                     stream_fn=fake(AssistantMessage([ToolCall("c", "bash", {})], stop_reason="tool_use"), DONE, seen=[]),
+                     stream_fn=FakeProvider(AssistantMessage([ToolCall("c", "bash", {})], stop_reason="tool_use"), DONE),
                      system_prompt="s")
     task = asyncio.create_task(s.prompt("go"))
     await asyncio.sleep(0.05)

@@ -6,21 +6,13 @@ import time
 
 import pytest
 
-from simp_agent import cli
+import simp_cli as cli
+from simp_agent.testing import FakeProvider
 from simp_agent.agent import AgentTool, LoopConfig, agent_loop
 from simp_agent.ai import AssistantMessage, Model, TextContent, ToolCall, UserMessage
 from simp_agent.session import AgentSession
 
 DONE = AssistantMessage([TextContent("ok")])
-
-
-def fake(*replies):
-    it = iter(replies)
-
-    async def stream(model, ctx, api_key=None):
-        yield {"type": "done", "message": next(it)}
-
-    return stream
 
 
 def bash_call(i="c1"):
@@ -44,7 +36,7 @@ async def test_before_tool_call_hook_in_loop():
         return "nope"
 
     msgs = []
-    cfg = LoopConfig(Model(), tools(ran), stream_fn=fake(bash_call(), DONE), before_tool_call=hook)
+    cfg = LoopConfig(Model(), tools(ran), stream_fn=FakeProvider(bash_call(), DONE), before_tool_call=hook)
     await agent_loop("s", msgs, [UserMessage("hi")], cfg)
     res = msgs[2]
     assert seen == ["bash"] and ran == [] and res.is_error and res.content == "User denied: nope"
@@ -52,7 +44,7 @@ async def test_before_tool_call_hook_in_loop():
 
 
 def session(replies, approve, ran):
-    return AgentSession(Model(), tools(ran), stream_fn=fake(*replies), system_prompt="s", approve=approve)
+    return AgentSession(Model(), tools(ran), stream_fn=FakeProvider(*replies), system_prompt="s", approve=approve)
 
 
 async def test_deny_skips_tool():
@@ -138,3 +130,25 @@ def test_continue_is_cwd_scoped(tmp_path, monkeypatch):
         os.utime(d / f"{name}.jsonl", (1000 + i, 1000 + i))
     assert cli.latest_session("/proj/a") == "new" and cli.latest_session("/proj/b") == "other"
     assert cli.latest_session("/proj/c") is None
+
+
+def test_cli_max_tokens(monkeypatch):
+    import sys
+
+    import pytest
+
+
+    seen = []
+
+    async def fake_run(task, model, args):
+        seen.append(model)
+        return 0
+
+    monkeypatch.setattr(cli, "run", fake_run)
+    monkeypatch.setattr(cli, "SETTINGS", cli.HOME / "no-such-settings.json")
+    for argv in (["x", "--max-tokens", "32000", "--api", "openai-completions", "--model", "m", "--context-window", "1000", "t"],
+                 ["x", "--max-tokens", "32000", "t"], ["x", "t"]):
+        monkeypatch.setattr(sys, "argv", argv)
+        with pytest.raises(SystemExit):
+            cli.main()
+    assert [m.max_tokens for m in seen] == [32000, 32000, 8192]

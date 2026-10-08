@@ -1,0 +1,17 @@
+[project]
+name = "simp-agent"
+version = "0.1.0"
+description = "Core agent: ai, agent loop, coding tools, session, plugins"
+authors = [
+    { name = "Hung Duy DAO", email = "hung.dao@elicer.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "anthropic>=1.11.0",
+    "jsonschema>=4.26.0",
+    "openai>=3.26.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10.0"]
+build-backend = "uv_build"

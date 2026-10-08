@@ -8,7 +8,7 @@ from pathlib import Path
 
 from simp_agent import ai
 from simp_agent.agent.compaction import CompactionSettings, file_lists, format_files, summarize
-from simp_agent.cli import SETTINGS, build_model, resolve_config
+from simp_cli import SETTINGS, build_model, resolve_config
 
 
 async def main():

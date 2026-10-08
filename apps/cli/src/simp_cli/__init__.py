@@ -11,9 +11,9 @@ import sys
 import uuid
 from pathlib import Path
 
-from ..ai import Model, from_dict, to_dict
-from ..coding import make_tools
-from ..session import AgentSession
+from simp_agent.ai import Model, from_dict, to_dict
+from simp_agent.coding import make_tools
+from simp_agent.session import AgentSession
 
 HOME = Path.home() / ".simp-agent"
 SESSIONS = HOME / "sessions"

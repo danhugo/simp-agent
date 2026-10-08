@@ -3,25 +3,15 @@
 import asyncio
 import json
 
+from simp_agent.testing import FakeProvider
 from simp_agent import ai
 from simp_agent.agent import Agent, AgentTool
 from simp_agent.ai import AssistantMessage, Context, CustomEntry, Model, TextContent, ToolCall, UserMessage, from_dict, to_dict
-from simp_agent.cli import JsonlStore
+from simp_cli import JsonlStore
 from simp_agent.plugins import PlanMode, RedactSecrets
 from simp_agent.session import AgentSession
 
 DONE = AssistantMessage([TextContent("ok")])
-
-
-def fake(*replies, seen=None):
-    it = iter(replies)
-
-    async def stream(model, ctx, api_key=None):
-        if seen is not None:
-            seen.append(ctx)
-        yield {"type": "done", "message": next(it)}
-
-    return stream
 
 
 def call(name, id="c1", **args):
@@ -36,7 +26,10 @@ def tool(name, out="r", **kw):
 
 
 def session(*replies, seen=None, **kw):
-    return AgentSession(Model(), kw.pop("tools", []), stream_fn=fake(*replies, seen=seen), system_prompt="s", **kw)
+    stream = FakeProvider(*replies)
+    if seen is not None:
+        stream.ctxs = seen
+    return AgentSession(Model(), kw.pop("tools", []), stream_fn=stream, system_prompt="s", **kw)
 
 
 # ---- A. fixes ----
@@ -120,7 +113,7 @@ async def test_after_tool_call_and_prepare_arguments():
 
     t = AgentTool("t", "", {"type": "object", "required": ["n"]}, run, prepare_arguments=lambda a: {"n": a.get("num")})
     after = lambda c, r, ctx: ai.ToolResultMessage(r.tool_call_id, r.tool_name, r.content + "!")  # noqa: E731
-    a = Agent("s", Model(), [t], fake(call("t", num=1), DONE), after_tool_call=after)
+    a = Agent("s", Model(), [t], FakeProvider(call("t", num=1), DONE), after_tool_call=after)
     new = await a.prompt("x")
     assert got == [{"n": 1}] and new[2].content == "raw!"
 
