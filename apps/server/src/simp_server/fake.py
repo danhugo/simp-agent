@@ -5,6 +5,8 @@ POST /api/sessions                      -> SessionInfo
 POST /api/hello {protocol_version}      -> Hello | 400 HelloError
 GET  /api/sessions/{id}/events          SSE; resume with Last-Event-ID header or ?after=<seq>
 POST /api/sessions/{id}/commands        Command body
+GET  /api/profiles                      -> [str] (web new-session picker)
+GET/PUT /api/sessions/{id}/files[/raw]  in-memory workspace (flat, no dirs)
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ import itertools
 import json
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import ValidationError
 
 from . import protocol as p
@@ -43,6 +45,7 @@ class Hub:
         self.answer: asyncio.Future | None = None
         self.queued = []
         self.msg_ids = itertools.count(1)
+        self.files = {"README.md": b"# demo workspace\n"}
 
     @property
     def state(self) -> str:
@@ -193,6 +196,25 @@ def create_app(delay: float = 0.05) -> FastAPI:
         sid = f"s{next(ids)}"
         hubs[sid] = Hub(sid, delay)
         return hubs[sid].info
+
+    @app.get("/api/profiles")
+    def profiles() -> list[str]:
+        return ["default", "luna"]
+
+    @app.get("/api/sessions/{sid}/files")
+    def list_files(sid: str, path: str = ".") -> list[dict]:
+        return [{"name": n, "is_dir": False, "size": len(b)} for n, b in sorted(hub(sid).files.items())]
+
+    @app.get("/api/sessions/{sid}/files/raw")
+    def read_file(sid: str, path: str):
+        if path not in hub(sid).files:
+            raise HTTPException(404, "no such file")
+        return Response(hub(sid).files[path], media_type="application/octet-stream")
+
+    @app.put("/api/sessions/{sid}/files/raw")
+    async def write_file(sid: str, path: str, request: Request):
+        hub(sid).files[path] = await request.body()
+        return {"ok": True}
 
     @app.post("/api/sessions/{sid}/commands")
     async def post_command(sid: str, request: Request):
