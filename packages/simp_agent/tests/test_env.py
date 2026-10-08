@@ -3,6 +3,7 @@ import os
 import pytest
 
 from simp_agent.agent.env import LocalEnv
+from simp_agent.testing.env_conformance import EnvConformance
 
 
 async def test_local_env_files(tmp_path):
@@ -27,3 +28,9 @@ async def test_local_env_containment(tmp_path):
         await env.write_bytes("../x", b"")
     with pytest.raises(PermissionError):
         await env.list("..")
+
+
+class TestLocalEnvConformance(EnvConformance):
+    @pytest.fixture
+    def make_env(self):
+        return lambda root: LocalEnv(str(root))
