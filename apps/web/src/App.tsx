@@ -25,6 +25,7 @@ function Login({ onLogin }: { onLogin: (t: string) => void }) {
     setToken(value.trim());
     try {
       await api.hello();
+      await api.profiles(); // /api/hello needs no token; this checks it
       onLogin(value.trim());
     } catch (err) {
       setToken("");

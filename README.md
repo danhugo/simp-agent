@@ -40,3 +40,9 @@ context_window = 922000
 max_tokens = 32000
 api_key_env = "OPENAI_API_KEY"  # the key itself goes in .env or the server's env, never here
 ```
+
+```sh
+uv run simp-server seed --name me   # prints your token once; paste it in the web login
+make dev                            # server on :8766 (DockerSandbox if docker runs, else LocalSandbox) + web on :5173
+```
+`make dev ARGS=--fake-llm` uses a scripted model (no key). E2e (real server + fake model): `make e2e`.

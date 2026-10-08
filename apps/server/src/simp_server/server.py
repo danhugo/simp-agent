@@ -86,7 +86,8 @@ def load_settings(home: Path = HOME) -> dict:
     s = tomllib.loads(f.read_text()) if f.exists() else dict()
     s.setdefault("data_dir", str(home))
     s["data_dir"] = str(Path(s["data_dir"]).expanduser())
-    s["plugins"] = {**DEFAULT_PLUGINS, **s.get("plugins", dict())}
+    docker = {"sandbox": "simp_server.sandboxes.docker:DockerSandbox"} if os.environ.get("SIMP_SANDBOX") == "docker" else {}
+    s["plugins"] = {**DEFAULT_PLUGINS, **docker, **s.get("plugins", dict())}
     s.setdefault("profiles", dict())
     s.setdefault("default_profile", next(iter(s["profiles"]), None))
     return s
@@ -340,6 +341,10 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         r = p.check_hello(h)
         return JSONResponse(r.model_dump(), status_code=400 if isinstance(r, p.HelloError) else 200)
 
+    @app.get("/api/profiles")
+    async def profiles(u=Depends(user)) -> list[str]:
+        return list(settings["profiles"])
+
     @app.get("/api/sessions")
     async def list_sessions(u=Depends(user)) -> list[p.SessionInfo]:
         return [mgr.info(r) for r in await store.list_sessions(u["id"])]
@@ -412,7 +417,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(prog="simp-server")
     sub = ap.add_subparsers(dest="mode", required=True)
     sub.add_parser("seed", help="create a user, print its token once").add_argument("--name", required=True)
-    sub.add_parser("run", help="real server on 127.0.0.1").add_argument("--port", type=int, default=8766)
+    r = sub.add_parser("run", help="real server on 127.0.0.1")
+    r.add_argument("--port", type=int, default=8766)
+    r.add_argument("--fake-llm", action="store_true", help="deterministic scripted model (e2e)")
     a = ap.parse_args()
     if a.mode == "seed":
         async def seed():
@@ -423,4 +430,6 @@ def main() -> None:
             await store.close()
         asyncio.run(seed())
     else:
-        uvicorn.run(create_app(load_settings()), host="127.0.0.1", port=a.port)
+        if a.fake_llm:
+            from .fakellm import stream
+        uvicorn.run(create_app(load_settings(), stream if a.fake_llm else ai.stream), host="127.0.0.1", port=a.port)
