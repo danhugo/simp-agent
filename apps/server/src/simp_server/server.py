@@ -28,6 +28,7 @@ from simp_agent.session import AgentSession
 from . import protocol as p
 from .fake import sse
 
+SHUTDOWN_GRACE = 2  # seconds
 HOME = Path(os.environ.get("SIMP_SERVER_HOME", Path.home() / ".simp-server"))
 DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_server.store:SqliteStore",
                    "auth": "simp_server.server:StaticTokenAuth"}
@@ -432,4 +433,6 @@ def main() -> None:
     else:
         if a.fake_llm:
             from .fakellm import stream
-        uvicorn.run(create_app(load_settings(), stream if a.fake_llm else ai.stream), host="127.0.0.1", port=a.port)
+        # open SSE streams never end on their own; without the timeout uvicorn waits forever and lifespan never closes sandboxes
+        uvicorn.run(create_app(load_settings(), stream if a.fake_llm else ai.stream), host="127.0.0.1", port=a.port,
+                    timeout_graceful_shutdown=SHUTDOWN_GRACE)

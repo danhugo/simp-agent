@@ -210,3 +210,42 @@ async def test_run_through_docker_sandbox_and_close_on_shutdown(tmp_path):
         assert await run.env.read_bytes("out.txt") == b"hi\n"
         container = run.env.container
     assert subprocess.run(["docker", "inspect", container], capture_output=True).returncode != 0  # closed on shutdown
+
+
+async def test_profile_compat_reaches_responses_request(tmp_path):
+    from simp_agent.ai import Context
+    from simp_agent.ai.providers import openai_responses
+    from simp_server.server import build_model
+    (tmp_path / "settings.toml").write_text('[profiles.luna]\napi = "openai-responses"\nmodel = "gpt-6-luna"\n'
+                                            'max_tokens = 32000\n[profiles.luna.compat]\nreasoning_effort = "low"\n')
+    m = build_model(load_settings(tmp_path)["profiles"]["luna"])
+    kw = openai_responses.request(m, Context("sys", []))
+    assert kw["reasoning"] == {"effort": "low", "summary": "auto"} and kw["max_output_tokens"] == 32000
+
+
+async def test_shutdown_with_open_sse_closes_sandboxes(env):
+    import socket
+
+    import uvicorn
+    from simp_server.server import SHUTDOWN_GRACE
+    app, mgr, _, token, run = await env(FakeProvider(reply()))
+    closed = list()
+
+    async def close(sid):
+        closed.append(sid)
+    mgr.sandbox.close = close
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, timeout_graceful_shutdown=SHUTDOWN_GRACE,
+                                        log_level="warning"))
+    task = asyncio.create_task(srv.serve())
+    await wait_for(lambda: srv.started)
+    async with httpx.AsyncClient() as c:
+        async with c.stream("GET", f"http://127.0.0.1:{port}/api/sessions/{run.sid}/events",
+                            headers={"Authorization": f"Bearer {token}"}) as r:
+            assert r.status_code == 200
+            await wait_for(lambda: run.subs)  # client is connected
+            srv.should_exit = True
+            await asyncio.wait_for(task, SHUTDOWN_GRACE + 5)
+    assert closed == [run.sid]
