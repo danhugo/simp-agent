@@ -88,11 +88,10 @@ class AgentSession:
         await self._emit({"type": "compaction_start", "tokens_before": before})
         try:
             stream_fn = functools.partial(a.stream_fn, **await api_key_opts(a.get_api_key, a.model))
-            summary, first_kept = await compact(a.messages, a.model, stream_fn, self.compaction)
+            entry = await compact(a.messages, a.model, stream_fn, self.compaction)
         except Exception as e:
             await self._emit({"type": "compaction_end", "error": str(e), "tokens_before": before, "tokens_after": before})
             return False
-        entry = CompactionEntry(summary, first_kept)
         a.messages.append(entry)
         if self.store:
             self.store.append(entry)

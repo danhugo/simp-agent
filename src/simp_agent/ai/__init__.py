@@ -59,6 +59,8 @@ class CompactionEntry:
 
     summary: str
     first_kept_index: int
+    read_files: list = field(default_factory=list)
+    modified_files: list = field(default_factory=list)
     role: Literal["compaction"] = "compaction"
 
 

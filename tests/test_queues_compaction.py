@@ -95,7 +95,8 @@ async def test_compaction_appends_marker_and_view():
     await a.prompt("next")
     assert "compaction_start" in events and "compaction_end" in events
     summary_call = seen[0]
-    assert summary_call[0].content.startswith("old") and isinstance(summary_call[2], ToolResultMessage)
+    assert len(summary_call) == 1 and summary_call[0].content.startswith("<conversation>\n[User]: old")
+    assert "[Tool result]: yyy" in summary_call[0].content
     assert a.messages[0].content.startswith("old")  # full history still has the old messages
     entry = next(m for m in a.messages if isinstance(m, CompactionEntry))
     assert entry.summary == "SUM" and a.messages[entry.first_kept_index].content.startswith("new")
@@ -169,7 +170,7 @@ async def test_existing_summary_is_updated():
     a.agent.messages += history()[1:]  # grow again past the threshold
     await a.prompt("more")
     assert "<previous-summary>\nSUM1\n" in seen[2][-1].content
-    assert "SUM1" not in seen[2][0].content
+    assert "[User]: old" not in seen[2][0].content  # already summarized part is not resent
     assert seen[3][0].content == SUM_HEAD + "SUM2\n</summary>"
 
 
