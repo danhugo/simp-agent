@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import datetime
 import json
@@ -33,8 +34,8 @@ def _print_event(e: dict) -> None:
         print(f"  ! {e['result'].content[:200]}", flush=True)
 
 
-async def run(task: str) -> int:
-    agent = Agent(system_prompt(TOOLS, os.getcwd()), Model(), TOOLS)
+async def run(task: str, model: Model) -> int:
+    agent = Agent(system_prompt(TOOLS, os.getcwd()), model, TOOLS)
     agent.subscribe(_print_event)
     last = (await agent.prompt(task))[-1]
     if last.stop_reason in ("error", "aborted"):
@@ -44,6 +45,17 @@ async def run(task: str) -> int:
 
 
 def main() -> None:
-    if len(sys.argv) < 2:
-        sys.exit('usage: simp-agent "task"')
-    sys.exit(asyncio.run(run(" ".join(sys.argv[1:]))))
+    p = argparse.ArgumentParser(prog="simp-agent")
+    p.add_argument("--api", choices=["anthropic-messages", "openai-completions"], default="anthropic-messages")
+    p.add_argument("--model", help="model id (required for openai-completions)")
+    p.add_argument("--base-url", default=os.environ.get("OPENAI_BASE_URL"))
+    p.add_argument("--context-window", type=int)
+    p.add_argument("task", nargs="+")
+    a = p.parse_args()
+    if a.api == "openai-completions":
+        if not a.model or not a.context_window:
+            p.error("--model and --context-window are required for openai-completions")
+        model = Model(id=a.model, provider="openai", api=a.api, base_url=a.base_url, context_window=a.context_window)
+    else:
+        model = Model(**{k: v for k, v in [("id", a.model), ("context_window", a.context_window)] if v})
+    sys.exit(asyncio.run(run(" ".join(a.task), model)))

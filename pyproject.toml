@@ -9,6 +9,7 @@ requires-python = ">=3.13"
 dependencies = [
     "anthropic>=1.11.0",
     "jsonschema>=4.26.0",
+    "openai>=3.26.0",
 ]
 
 [build-system]

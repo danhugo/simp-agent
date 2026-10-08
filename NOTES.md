@@ -1,13 +1,14 @@
 # simp-agent notes
 
-Layers: `ai.py` (messages, Anthropic `stream`) → `agent.py` (loop, `Agent`) → `tools.py` + `cli.py` (coding layer).
+Layers: `ai.py` (messages, `stream` dispatch by `model.api`) → `providers/` (anthropic, openai_completions) → `agent.py` (loop, `Agent`) → `tools.py` + `cli.py` (coding layer).
 
 Not yet (present in pi, skipped here):
 - before/after tool-call hooks
 - parallel tool execution
 - proxy transport
 - compaction split-turn cut (pi isSplitTurn): we only cut at user/assistant messages, so one huge turn cannot be compacted
-- more providers, TUI, sessions
+- more providers (only anthropic-messages + openai-completions), TUI, sessions
+- OpenAI `reasoning_content`/`reasoning` deltas are ignored: a reasoning model may return empty content
 - retry loop with backoff: core only classifies (`ai.is_retryable`, `ai.is_context_overflow`); the app decides
 
 Hardening (done):
