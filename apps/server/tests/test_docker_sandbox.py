@@ -1,6 +1,7 @@
 import asyncio
 import shutil
 import subprocess
+import uuid
 
 import pytest
 
@@ -30,13 +31,13 @@ class TestDockerEnvConformance(EnvConformance):
     @pytest.fixture
     def make_env(self, sandbox, tmp_path):
         async def make(root):
-            sandbox.workspaces_dir = tmp_path  # suite root is tmp_path/"root"
-            return await sandbox.open("root")
+            sandbox.workspaces_dir = root.parent
+            return await sandbox.open(root.name)
         return make
 
 
 async def test_hardening(sandbox, tmp_path):
-    env = await sandbox.open("s1")
+    env = await sandbox.open(f"s1-{uuid.uuid4().hex[:8]}")
     run = lambda cmd: env.exec(cmd, ".", 30, asyncio.Event())
     assert (await run("id -u"))[1].strip() == "1000"
     code, out = await run("python -c 'import socket; socket.create_connection((\"1.1.1.1\", 53), timeout=3)'")
@@ -49,9 +50,10 @@ async def test_hardening(sandbox, tmp_path):
 
 
 async def test_open_close(sandbox):
-    env = await sandbox.open("s2")
-    assert await sandbox.open("s2") is env
+    sid = f"s2-{uuid.uuid4().hex[:8]}"
+    env = await sandbox.open(sid)
+    assert await sandbox.open(sid) is env
     with pytest.raises(ValueError):
         await sandbox.open("../x")
-    await sandbox.close("s2")
+    await sandbox.close(sid)
     assert subprocess.run(["docker", "inspect", env.container], capture_output=True).returncode != 0

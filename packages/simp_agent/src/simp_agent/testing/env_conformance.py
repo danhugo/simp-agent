@@ -10,6 +10,7 @@ import asyncio
 import inspect
 import os
 import time
+import uuid
 
 import pytest
 
@@ -17,7 +18,7 @@ import pytest
 class EnvConformance:
     @pytest.fixture
     async def env(self, make_env, tmp_path):
-        self.root = tmp_path / "root"
+        self.root = tmp_path / f"root-{uuid.uuid4().hex[:8]}"  # unique: Docker names containers after it
         self.root.mkdir()
         env = make_env(self.root)
         return await env if inspect.isawaitable(env) else env
@@ -75,11 +76,12 @@ class EnvConformance:
 
     async def test_exec_timeout_kills_tree(self, env):
         t = time.monotonic()
-        code, text = await self.run(env, "echo start; (sleep 3; echo late > late.txt) & sleep 30", timeout=1)
+        code, text = await self.run(env, "echo start; (sleep 4; echo late > late.txt) & sleep 30", timeout=2)
         assert code is None and "start" in text
         assert time.monotonic() - t < 10
-        await asyncio.sleep(3.5)
-        assert not (self.root / "late.txt").exists()  # background child was killed too
+        while time.monotonic() < t + 6:  # past the moment the child would have written
+            assert not (self.root / "late.txt").exists()  # background child was killed too
+            await asyncio.sleep(0.1)
 
     async def test_exec_cancel(self, env):
         cancel = asyncio.Event()
