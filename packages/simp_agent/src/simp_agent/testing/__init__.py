@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .agent.env import LocalEnv
+from ..agent.env import LocalEnv
 
 
 class FakeProvider:
