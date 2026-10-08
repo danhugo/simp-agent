@@ -234,6 +234,7 @@ async def test_shutdown_with_open_sse_closes_sandboxes(env):
     async def close(sid):
         closed.append(sid)
     mgr.sandbox.close = close
+    await mgr.store.close()  # the lifespan opens its own connection; a leaked one keeps pytest from exiting
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
@@ -241,7 +242,7 @@ async def test_shutdown_with_open_sse_closes_sandboxes(env):
                                         log_level="warning"))
     task = asyncio.create_task(srv.serve())
     await wait_for(lambda: srv.started)
-    async with httpx.AsyncClient() as c:
+    async with asyncio.timeout(10), httpx.AsyncClient() as c:
         async with c.stream("GET", f"http://127.0.0.1:{port}/api/sessions/{run.sid}/events",
                             headers={"Authorization": f"Bearer {token}"}) as r:
             assert r.status_code == 200
