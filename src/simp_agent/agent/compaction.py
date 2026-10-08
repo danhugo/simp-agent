@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 
 from .. import ai
-from ..ai import AssistantMessage, CompactionEntry, Context, ToolResultMessage, UserMessage
+from ..ai import AssistantMessage, CompactionEntry, Context, CustomEntry, ToolResultMessage, UserMessage
 
 SYSTEM_PROMPT = """You are a context summarization assistant. Your task is to read a conversation between a user and an AI assistant, then produce a structured summary following the exact format specified.
 
@@ -76,12 +76,12 @@ def _last_entry(messages: list) -> int | None:
 
 
 def build_view(messages: list) -> list:
-    """[summary user message] + messages from first_kept_index on (markers dropped). No marker -> history as is."""
+    """[summary user message] + messages from first_kept_index on (markers and custom entries dropped)."""
     k = _last_entry(messages)
     if k is None:
-        return messages
+        return [m for m in messages if not isinstance(m, CustomEntry)]
     e = messages[k]
-    kept = [m for m in messages[e.first_kept_index :] if not isinstance(m, CompactionEntry)]
+    kept = [m for m in messages[e.first_kept_index :] if not isinstance(m, (CompactionEntry, CustomEntry))]
     return [UserMessage(f"{SUMMARY_PREFIX}{e.summary}\n</summary>")] + kept
 
 
@@ -91,6 +91,8 @@ def estimate(m) -> int:
                 else len(c.name) + len(str(c.arguments)) for c in m.content)
     elif isinstance(m, CompactionEntry):
         n = len(m.summary)
+    elif isinstance(m, CustomEntry):
+        n = 0
     else:
         n = len(m.content)
     return n // 4
@@ -189,7 +191,7 @@ async def compact(messages: list, model, stream_fn, settings: CompactionSettings
     cut = find_cut(messages, start, settings.keep_recent_tokens)
     if cut is None:
         raise RuntimeError("nothing to compact")
-    old = [m for m in messages[start:cut] if not isinstance(m, CompactionEntry)]
+    old = [m for m in messages[start:cut] if not isinstance(m, (CompactionEntry, CustomEntry))]
     read, mod = file_lists(old, prev)
     summary = await summarize(stream_fn, model, old, previous, settings.reserve_tokens)
     return CompactionEntry(summary + format_files(read, mod), cut, read, mod)

@@ -44,6 +44,7 @@ class AssistantMessage:
     stop_reason: str = "stop"  # stop | tool_use | length | error | aborted
     usage: dict = field(default_factory=lambda: {"input": 0, "output": 0})  # output includes "reasoning" (info only)
     error: str | None = None
+    error_kind: str | None = None  # "fatal" | "budget" | "policy" = never retried (see is_retryable)
     api: str = ""  # set by stream(): who produced it, decides what can be replayed
     provider: str = ""
     model: str = ""
@@ -74,6 +75,15 @@ class CompactionEntry:
     read_files: list = field(default_factory=list)
     modified_files: list = field(default_factory=list)
     role: Literal["compaction"] = "compaction"
+
+
+@dataclass
+class CustomEntry:
+    """App/plugin data kept in history (persisted, replayed on resume). Never sent to the LLM."""
+
+    type: str
+    data: dict = field(default_factory=dict)
+    role: Literal["custom"] = "custom"
 
 
 @dataclass
@@ -130,7 +140,7 @@ def transform_messages(messages: list, model: Model | None = None) -> list:
         pending.clear()
 
     for m in messages:
-        if m.role == "compaction":  # history marker, never sent
+        if m.role in ("compaction", "custom"):  # history markers, never sent
             continue
         if isinstance(m, ToolResultMessage):
             pending.pop(m.tool_call_id, None)
@@ -164,7 +174,12 @@ def is_context_overflow(error: str) -> bool:
     return bool(_OVERFLOW.search(error or ""))
 
 
-def is_retryable(error: str) -> bool:
+NON_RETRYABLE = {"fatal", "budget", "policy"}
+
+
+def is_retryable(error: str, kind: str | None = None) -> bool:
+    if kind in NON_RETRYABLE:
+        return False
     return not is_context_overflow(error) and bool(_RETRYABLE.search(error or ""))
 
 
@@ -175,7 +190,8 @@ def to_dict(m) -> dict:
 
 def from_dict(d: dict):
     d = dict(d)
-    cls = {"user": UserMessage, "assistant": AssistantMessage, "tool_result": ToolResultMessage, "compaction": CompactionEntry}[d["role"]]
+    cls = {"user": UserMessage, "assistant": AssistantMessage, "tool_result": ToolResultMessage, "compaction": CompactionEntry,
+           "custom": CustomEntry}[d["role"]]
     if cls is AssistantMessage:
         types = {"text": TextContent, "thinking": ThinkingContent, "tool_call": ToolCall}
         d["content"] = [types[c["type"]](**c) for c in d["content"]]
@@ -184,6 +200,10 @@ def from_dict(d: dict):
 
 def _builtin(module: str):
     async def fn(model, context, **opts):  # lazy import: providers import this module
+        if not opts.get("api_key"):  # strict: providers never read env; the app passes get_api_key
+            msg = AssistantMessage(stop_reason="error", error=f"no API key for provider {model.provider}", error_kind="fatal")
+            yield {"type": "error", "message": msg}
+            return
         async for ev in import_module(f".providers.{module}", __package__).stream(model, context, **opts):
             yield ev
 

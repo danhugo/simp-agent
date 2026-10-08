@@ -1,10 +1,10 @@
-"""Layer rule: ai <- agent <- coding <- session <- cli. A lower layer never imports a higher one; only cli imports cli."""
+"""Layer rule: ai <- agent <- coding <- session <- plugins <- cli. A lower layer never imports a higher one; only cli imports cli."""
 
 import ast
 from pathlib import Path
 
 PKG = Path(__file__).parent.parent / "src" / "simp_agent"
-LAYERS = ["ai", "agent", "coding", "session", "cli"]
+LAYERS = ["ai", "agent", "coding", "session", "plugins", "cli"]
 
 
 def layer_of(parts: list) -> str | None:

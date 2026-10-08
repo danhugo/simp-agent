@@ -93,13 +93,13 @@ def test_message_conversion():
 async def test_dispatch_by_api(monkeypatch):
     seen = []
 
-    async def fake(model, ctx):
+    async def fake(model, ctx, api_key=None):
         seen.append((model.api, ctx.messages))
         yield {"type": "done", "message": AssistantMessage()}
 
     monkeypatch.setattr(oc, "stream", fake)
     calls = AssistantMessage([ToolCall("a", "x", {})], "tool_use")
-    [e async for e in ai.stream(Model(id="m", api="openai-completions"), Context("s", [UserMessage("u"), calls]))]
+    [e async for e in ai.stream(Model(id="m", api="openai-completions"), Context("s", [UserMessage("u"), calls]), api_key="k")]
     assert seen[0][0] == "openai-completions"
     assert seen[0][1][-1].content == "No result provided"  # transform_messages ran before the provider
 
@@ -113,7 +113,7 @@ async def test_http_error_is_event(monkeypatch):
             raise openai.APIConnectionError(request=None)
 
     monkeypatch.setattr(openai, "AsyncOpenAI", Boom)
-    evs = [e async for e in ai.stream(Model(id="m", api="openai-completions"), Context("s", [UserMessage("u")]))]
+    evs = [e async for e in ai.stream(Model(id="m", api="openai-completions"), Context("s", [UserMessage("u")]), api_key="k")]
     assert evs[-1]["type"] == "error" and ai.is_retryable(evs[-1]["message"].error)
     assert ai.is_context_overflow("This model's maximum context length is 8192 tokens")
     assert ai.is_retryable("Rate limit reached") and ai.is_retryable("Error code: 502")
@@ -133,7 +133,7 @@ async def test_compat_params(monkeypatch):
     monkeypatch.setattr(openai, "AsyncOpenAI", Fake)
     for compat in [{}, {"max_tokens_field": "max_completion_tokens", "reasoning_effort": "none", "include_usage": False}]:
         m = Model(id="m", api="openai-completions", compat=compat)
-        [e async for e in ai.stream(m, Context("s", [UserMessage("u")]))]
+        [e async for e in ai.stream(m, Context("s", [UserMessage("u")]), api_key="k")]
     a, b = seen
     assert "max_tokens" in a and "stream_options" in a and "reasoning_effort" not in a
     assert b["max_completion_tokens"] == m.max_tokens and "max_tokens" not in b

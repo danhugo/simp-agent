@@ -63,7 +63,7 @@ async def test_store_gets_every_message_in_order():
     s = session(stream, store=store)
     await s.prompt("hi")
     assert store.items == s.messages and [m.role for m in store.items] == ["user", "assistant", "tool_result", "assistant"]
-    assert AgentSession(Model(), [], store=store).messages == store.items  # restored from store
+    assert AgentSession(Model(), [], store=store, messages=store.load()).messages == store.items  # app restores
 
 
 async def test_session_triggers_compaction_and_stores_entry():
@@ -71,7 +71,7 @@ async def test_session_triggers_compaction_and_stores_entry():
     old = [UserMessage("a" * 40000), AssistantMessage([TextContent("b" * 40000)]), UserMessage("c" * 40000),
            AssistantMessage([TextContent("d")], usage={"input": 9500, "output": 10})]
     store = ListStore(old)
-    s = AgentSession(Model(context_window=10000), [], store=store, stream_fn=stream, system_prompt="s")
+    s = AgentSession(Model(context_window=10000), [], store=store, messages=store.load(), stream_fn=stream, system_prompt="s")
     s.compaction.reserve_tokens, s.compaction.keep_recent_tokens = 1000, 5000
     await s.prompt("next")
     assert len(seen) == 2 and any(isinstance(m, CompactionEntry) for m in store.items)

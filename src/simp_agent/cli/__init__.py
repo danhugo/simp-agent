@@ -54,7 +54,7 @@ def list_sessions(cwd: str) -> list[dict]:
         msgs = JsonlStore(f).load()
         first = next((m.content for m in msgs if m.role == "user"), "")
         out.append({"id": f.stem, "mtime": f.stat().st_mtime, "first": first.strip().split("\n")[0][:60],
-                    "count": sum(m.role != "compaction" for m in msgs)})
+                    "count": sum(m.role not in ("compaction", "custom") for m in msgs)})
     return sorted(out, key=lambda s: s["mtime"], reverse=True)
 
 
@@ -91,6 +91,19 @@ def build_model(cfg: dict) -> Model:
     kw = {"id": cfg.get("model"), "context_window": cfg.get("context_window"), "max_tokens": cfg["max_tokens"],
           "base_url": cfg.get("base_url"), "api_key_env": cfg.get("api_key_env")}
     return Model(**{k: v for k, v in kw.items() if v})
+
+
+def env_api_key(model: Model):
+    """The CLI's get_api_key: keys come from env (providers never read env). openai keeps "dummy" for keyless servers."""
+
+    def get(provider: str) -> str | None:
+        if model.api_key_env and os.environ.get(model.api_key_env):
+            return os.environ[model.api_key_env]
+        if model.api.startswith("openai"):
+            return os.environ.get("OPENAI_API_KEY") or "dummy"
+        return os.environ.get("ANTHROPIC_API_KEY")
+
+    return get
 
 
 # ---- pure input logic (unit tested; the REPL only wires it to the terminal) ----------------------------------------
@@ -185,8 +198,9 @@ async def run(task: str, model: Model, args: argparse.Namespace) -> int:
         finally:
             loop.add_signal_handler(signal.SIGINT, session.abort)
 
-    session = AgentSession(model, make_tools(args.bash_max_timeout_s), JsonlStore(session_dir(cwd) / f"{sid}.jsonl"),
-                           approve=None if args.yes else ask)
+    store = JsonlStore(session_dir(cwd) / f"{sid}.jsonl")
+    session = AgentSession(model, make_tools(args.bash_max_timeout_s), store, messages=store.load(),
+                           get_api_key=env_api_key(model), approve=None if args.yes else ask)
     session.subscribe(LinePrinter(args.thinking))
     loop.add_signal_handler(signal.SIGINT, session.abort)
     print(f"[session {sid}]", file=sys.stderr)

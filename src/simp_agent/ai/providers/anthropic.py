@@ -101,7 +101,7 @@ async def stream(model: Model, context: Context, api_key: str | None = None) -> 
     msg = AssistantMessage()
     yield {"type": "start", "partial": msg}
     try:
-        client = anthropic.AsyncAnthropic(api_key=api_key, base_url=model.base_url)  # None -> SDK reads env
+        client = anthropic.AsyncAnthropic(api_key=api_key, base_url=model.base_url)
         tools = [{"name": t.name, "description": t.description, "input_schema": t.parameters} for t in context.tools]
         async with client.messages.stream(
             model=model.id,

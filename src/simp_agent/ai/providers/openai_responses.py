@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 from typing import AsyncIterator
 
@@ -158,8 +157,7 @@ async def stream(model: Model, context: Context, api_key: str | None = None) -> 
     import openai
 
     try:
-        key = api_key or os.environ.get("OPENAI_API_KEY") or (model.api_key_env and os.environ.get(model.api_key_env)) or "dummy"
-        client = openai.AsyncOpenAI(base_url=model.base_url or os.environ.get("OPENAI_BASE_URL"), api_key=key)
+        client = openai.AsyncOpenAI(base_url=model.base_url, api_key=api_key)
         events = await client.responses.create(**request(model, context))
         async for ev in parse(events):
             yield ev

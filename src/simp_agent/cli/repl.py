@@ -23,7 +23,7 @@ from .. import ai
 from ..agent.compaction import estimate_tokens
 from ..coding import make_tools
 from ..session import AgentSession
-from . import JsonlStore, approval_answer, describe_call, interrupt_action, latest_session, list_sessions, route, session_dir
+from . import JsonlStore, approval_answer, describe_call, env_api_key, interrupt_action, latest_session, list_sessions, route, session_dir
 from .components import Chat, Notice
 
 HELP = """Enter = send (while running: steer). ">> text" while running = follow-up.
@@ -44,7 +44,8 @@ class Repl:
     def new_session(self, sid: str | None = None) -> None:
         self.sid = sid or uuid.uuid4().hex[:8]
         store = JsonlStore(session_dir(self.cwd) / f"{self.sid}.jsonl")
-        self.session = AgentSession(self.model, make_tools(self.args.bash_max_timeout_s), store, stream_fn=self.stream_fn,
+        self.session = AgentSession(self.model, make_tools(self.args.bash_max_timeout_s), store, messages=store.load(),
+                                    get_api_key=env_api_key(self.model), stream_fn=self.stream_fn,
                                     approve=None if self.args.yes else self.approve)
         self.session.subscribe(self.on_event)
         self.chat = Chat(self.commit, self.args.thinking)
