@@ -7,6 +7,7 @@ GET /api/sessions/{id}/files?path=, GET|PUT /api/sessions/{id}/files/raw?path=  
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import tomllib
 import uuid
@@ -27,6 +28,8 @@ from simp_agent.session import AgentSession
 
 from . import protocol as p
 from .fake import sse
+
+log = logging.getLogger("simp_server")
 
 SHUTDOWN_GRACE = 2  # seconds
 HEARTBEAT = 15  # seconds between SSE ": ping" comments
@@ -132,6 +135,8 @@ class Run:
         self.mgr, self.sid, self.user_id, self.env, self.ref = mgr, row["id"], row["user_id"], env, row["sandbox_ref"]
         self.info = p.SessionInfo(id=row["id"], title=row["title"] or "")
         self.log = [e["data"] for e in entries if e["type"] != "msg"]  # ponytail: whole log in memory
+        states = [e["state"] for e in self.log if e["type"] == "run_state"]
+        self.info.run_state = states[-1] if states else "idle"
         self.seq = entries[-1]["seq"] if entries else 0
         self.inflight, self.pending, self.answer = p.InFlight(), None, None
         self.subs, self.task = set(), None
@@ -169,6 +174,19 @@ class Run:
         self.log.append(ev)
         self._send(ev)
         await self.mgr.store.add_entry(self.user_id, self.sid, ev["seq"], ev["type"], ev)
+
+    async def recover(self) -> None:
+        """A run that was busy when the process died: close it in the log so clients see a settled session."""
+        if not self.busy:
+            return
+        log.warning("recovered interrupted run", extra={"session": self.sid})
+        resolved = {e["call_id"] for e in self.log if e["type"] == "approval_resolved"}
+        for e in self.log:
+            if e["type"] == "approval_request" and e["call_id"] not in resolved:
+                await self.durable(p.ApprovalResolved, call_id=e["call_id"], decision="aborted")
+        self.info.run_state = "error"  # any busy state -> error, bypassing check_transition on purpose
+        await self.durable(p.RunState, state="error")
+        await self.durable(p.Notice, level="warning", text="interrupted: the server restarted during this run")
 
     async def set_state(self, s: str) -> None:
         p.check_transition(self.state, s)
@@ -318,6 +336,7 @@ class SessionManager:
             if sid not in self.runs:
                 env = await self.sandbox.open(row["sandbox_ref"])
                 self.runs[sid] = Run(self, row, env, await self.store.entries(user["id"], sid))
+                await self.runs[sid].recover()
         return self.runs[sid]
 
     def info(self, row: dict) -> p.SessionInfo:
