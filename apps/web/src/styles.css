@@ -54,6 +54,7 @@ pre { background: var(--code); border-radius: 8px; padding: 10px 12px; overflow-
 .badge.error { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
 .conn { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 .conn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+.spend { font-size: 12px; color: var(--muted); }
 .conn.live::before { background: var(--ok); }
 
 .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
