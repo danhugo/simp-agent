@@ -70,10 +70,13 @@ class LocalSandbox:
     """A per-session dir under the data dir; LocalEnv rooted there. Not isolation: DockerSandbox replaces it."""
 
     def __init__(self, settings: dict):
-        self.root = Path(settings["data_dir"]) / "sandboxes"
+        self.root = Path(settings["data_dir"]) / "workspaces"
 
     async def open(self, session_id: str) -> LocalEnv:
-        d = self.root / session_id
+        d, old = self.root / session_id, self.root.parent / "sandboxes" / session_id
+        if old.exists() and not d.exists():  # Stage 2 layout: keep old sessions' files
+            self.root.mkdir(parents=True, exist_ok=True)
+            shutil.move(old, d)
         d.mkdir(parents=True, exist_ok=True)
         return LocalEnv(str(d.resolve()))
 
@@ -293,8 +296,9 @@ class Run:
             await self.set_state("running")
         return decision
 
-    async def start(self, text: str) -> None:
-        self.run_start = time.time()
+    async def start(self, text: str, fresh: bool = True) -> None:
+        if fresh:  # a queued follow-up stays inside the same run budget
+            self.run_start = time.time()
         await self.set_state("running")
         self.run_id = uuid.uuid4().hex[:8]
         log.info("run start", extra=self._ctx())
@@ -320,7 +324,8 @@ class Run:
     async def _run(self, text: str) -> None:
         try:
             await self._turn(text)
-        finally:  # never leave the session stuck busy, whatever failed (even a store write or a cancel)
+        finally:
+            self.mgr.last_used[self.sid] = time.monotonic()  # never leave the session stuck busy, whatever failed (even a store write or a cancel)
             if self.busy and self.task is asyncio.current_task():
                 log.error("run stopped unexpectedly", extra=self._ctx(), exc_info=True)
                 self.pending, self.inflight, self.info.run_state = None, p.InFlight(), "error"
@@ -347,7 +352,7 @@ class Run:
         await self.set_state("error" if last and last.role == "assistant" and last.stop_reason == "error" else "idle")
         log.info("run end", extra={**self._ctx(), "state": self.state})
         if agent.follow_ups:  # came in after the loop decided to stop
-            await self.start(agent.follow_ups.pop(0).content)
+            await self.start(agent.follow_ups.pop(0).content, fresh=False)
 
     async def command(self, c) -> None:
         if isinstance(c, (p.Prompt, p.FollowUp, p.Steer)):
@@ -375,6 +380,9 @@ class SessionManager:
         self.keys = take_keys(settings)
         self.limits = budget.limits(settings)
         self.runs: dict[str, Run] = dict()
+        self.last_used: dict[str, float] = dict()
+        self.idle_s = settings.get("idle_minutes", 15) * 60
+        self.cap = settings.get("max_open_sessions", 8)
         self.lock = asyncio.Lock()  # ponytail: one lock for loading runs; per-session locks if it ever matters
 
     def paused(self) -> bool:
@@ -390,14 +398,45 @@ class SessionManager:
             raise HTTPException(404, "no such session")
         async with self.lock:
             if sid not in self.runs:
+                if len(self.runs) >= self.cap:
+                    lru = min((s for s, r in self.runs.items() if self.evictable(r)), key=self.last_used.get, default=None)
+                    if lru is None:
+                        raise HTTPException(503, "too many active sessions, try again later")
+                    await self.evict(lru)
                 env = await self.sandbox.open(row["sandbox_ref"])
                 self.runs[sid] = Run(self, row, env, await self.store.entries(user["id"], sid))
                 await self.runs[sid].recover()
+            self.last_used[sid] = time.monotonic()
         return self.runs[sid]
+
+    def evictable(self, run: Run) -> bool:
+        return not run.busy and not run.subs and (run.task is None or run.task.done())
+
+    async def evict(self, sid: str) -> None:
+        """Free RAM and the container; files and log stay, the next get reloads from the store."""
+        run = self.runs.pop(sid)
+        self.last_used.pop(sid, None)
+        await self.sandbox.close(run.ref)
+
+    async def evict_idle(self) -> None:
+        async with self.lock:
+            now = time.monotonic()
+            for sid, run in list(self.runs.items()):
+                if self.evictable(run) and now - self.last_used.get(sid, 0) >= self.idle_s:
+                    await self.evict(sid)
+
+    async def evict_loop(self, every: float) -> None:
+        while True:
+            await asyncio.sleep(every)
+            try:
+                await self.evict_idle()
+            except Exception:
+                log.exception("idle eviction failed")
 
     async def drop(self, sid: str, ref: str) -> None:
         """Stop the run (if loaded), close its sandbox, and delete its workspace files."""
         run = self.runs.pop(sid, None)
+        self.last_used.pop(sid, None)
         if run and run.task and not run.task.done():
             run.session.abort()
             run.task.cancel()
@@ -429,7 +468,9 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         for name, pr in settings["profiles"].items():
             if "price_in" not in pr or "price_out" not in pr:
                 log.warning("profile %s has no prices: its calls cost $0 and never hit a budget", name)
+        evictor = asyncio.create_task(mgr.evict_loop(settings.get("evict_every", 60)))
         yield
+        evictor.cancel()
         for run in list(mgr.runs.values()):
             await sandbox.close(run.ref)
         if hasattr(sandbox, "close_all"):

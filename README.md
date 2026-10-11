@@ -89,7 +89,17 @@ servers too; `uv run simp-server resume` lifts it. The web header shows today's 
 
 Limits are soft: the check runs before each LLM call and cost is recorded when the call ends, so a user can go over
 by the calls already in flight (one per session running at that moment). `pause` and `revoke` likewise let an
-in-flight call finish.
+in-flight call finish. A run's budget covers its queued follow-ups too.
+
+Idle sessions are unloaded to free RAM and containers (files and history stay; the next request reloads them):
+
+```toml
+idle_minutes = 15       # top level; unload sessions idle this long (not running, no open tab)
+max_open_sessions = 8   # loaded at once; the least recently used idle one is unloaded first, else 503
+```
+
+Every session's files live in `<data_dir>/workspaces/<session_id>` for both sandboxes (older `sandboxes/<id>` dirs
+move there on first open).
 
 ### Running as a service (macOS launchd)
 
