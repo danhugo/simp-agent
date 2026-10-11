@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialState, reduce, type ServerEvent } from "./state";
+import { canContinue, initialState, reduce, type ServerEvent } from "./state";
 
 const run = (evs: ServerEvent[], s = initialState()) => evs.reduce(reduce, s);
 const td = (offset: number, delta: string, msg_id = "m1"): ServerEvent => ({ type: "text_delta", msg_id, offset, delta });
@@ -59,5 +59,27 @@ describe("snapshot apply", () => {
     const done = reduce(s, { type: "approval_resolved", seq: 6, call_id: "call_1", decision: "allow" });
     expect(done.pending).toBeNull();
     expect(done.decisions.call_1).toBe("allow");
+  });
+});
+
+describe("title, plan mode, continue", () => {
+  const snap = (title: string, plan_mode: boolean): ServerEvent => ({ type: "snapshot", last_seq: 0, run_state: "idle",
+    pending_approval: null, title, plan_mode, in_flight: { msg_id: null, thinking: "", text: "", tool_outputs: {} } });
+
+  it("takes title and plan mode from the snapshot, then live events", () => {
+    let s = run([snap("Old", true)]);
+    expect(s).toMatchObject({ title: "Old", planMode: true });
+    s = run([{ type: "session_title", seq: 1, title: "New" }, { type: "notice", seq: 2, level: "info", text: "plan mode off" }], s);
+    expect(s).toMatchObject({ title: "New", planMode: false });
+    expect(run([{ type: "notice", seq: 3, level: "info", text: "plan mode on" }], s).planMode).toBe(true);
+  });
+
+  it("offers Continue after an interrupted notice or an error, not after a later event", () => {
+    const n: ServerEvent = { type: "notice", seq: 1, level: "warning", text: "interrupted: the server restarted during this run" };
+    const s = run([n]);
+    expect(canContinue(s)).toBe(true);
+    expect(canContinue(run([{ type: "user_message", seq: 2, text: "hi" }], s))).toBe(false);
+    expect(canContinue(run([{ type: "run_state", seq: 1, state: "error" }]))).toBe(true);
+    expect(canContinue(initialState())).toBe(false);
   });
 });

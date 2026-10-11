@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import { api, type ConnStatus } from "./api";
 import { Badge } from "./App";
 import type { PendingApproval, ToolCall } from "./protocol.gen";
-import type { ChatState } from "./state";
+import { canContinue, type ChatState } from "./state";
 
 interface Props {
   sid: string;
@@ -12,9 +12,11 @@ interface Props {
   conn: ConnStatus;
   onError: (e: unknown) => void;
   onToggleFiles: () => void;
+  notify: boolean;
+  onToggleNotify: () => void;
 }
 
-export function Chat({ sid, state, conn, onError, onToggleFiles }: Props) {
+export function Chat({ sid, state, conn, onError, onToggleFiles, notify, onToggleNotify }: Props) {
   const busy = state.runState !== "idle" && state.runState !== "error";
   const send = (c: Parameters<typeof api.command>[1]) => api.command(sid, c).catch(onError);
   const end = useRef<HTMLDivElement>(null);
@@ -32,11 +34,18 @@ export function Chat({ sid, state, conn, onError, onToggleFiles }: Props) {
   return (
     <main className="chat">
       <header>
-        <strong>{sid}</strong>
+        <strong>{state.title || sid}</strong>
         <Badge state={state.runState} />
         <span className={`conn ${conn}`} title="Connection">{conn}</span>
         {spend && <span className="spend" title="Spent today">${spend.today_usd.toFixed(2)} / ${spend.day_limit_usd}{spend.paused && " · paused"}</span>}
         <span className="spacer" />
+        <button className={`ghost ${state.planMode ? "on" : ""}`} aria-pressed={state.planMode}
+          title="Plan mode: read-only, the agent plans but does not edit or run commands"
+          onClick={() => send({ type: "set_plan_mode", enabled: !state.planMode })}>Plan</button>
+        <button className="ghost" disabled={busy} title="Summarize older messages to free context"
+          onClick={() => send({ type: "compact" })}>Compact</button>
+        <button className={`ghost ${notify ? "on" : ""}`} aria-pressed={notify} title="Notify me when this tab is hidden"
+          onClick={onToggleNotify}>Notify</button>
         <button className="ghost" onClick={onToggleFiles}>Files</button>
       </header>
       <div className="messages">
@@ -58,6 +67,9 @@ export function Chat({ sid, state, conn, onError, onToggleFiles }: Props) {
           </div>
         )}
         {state.pending && !pendingShown && <Approval p={state.pending} send={send} />}
+        {canContinue(state) && (
+          <div className="row"><button className="primary" onClick={() => send({ type: "continue" })}>Continue</button></div>
+        )}
         <div ref={end} />
       </div>
       <Composer busy={busy} send={send} />

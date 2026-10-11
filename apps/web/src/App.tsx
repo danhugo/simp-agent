@@ -75,6 +75,17 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   const [showFiles, setShowFiles] = useState(false);
   const [confirm, setConfirm] = useState("");  // session id whose delete button was clicked once
   const ref = useRef(state);
+  const [notify, setNotify] = useState(() => { try { return localStorage.getItem("simp.notify") === "1"; } catch { return false; } });
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
+  const toggleNotify = async () => {
+    let on = !notify;
+    if (on && typeof Notification !== "undefined" && Notification.permission !== "granted") {
+      on = (await Notification.requestPermission()) === "granted";
+    }
+    setNotify(on);
+    try { localStorage.setItem("simp.notify", on ? "1" : "0"); } catch { /* storage blocked: keep it for this tab */ }
+  };
 
   const guard = useCallback((e: unknown) => { if (e instanceof AuthError) onLogout(); else console.error(e); }, [onLogout]);
   const refresh = useCallback(() => api.sessions().then(setSessions).catch(guard), [guard]);
@@ -92,7 +103,10 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
     const apply = (ev: ServerEvent) => {
       ref.current = reduce(ref.current, ev);
       setState(ref.current);
-      if (ev.type === "run_state" || ev.type === "snapshot") refresh();
+      if (ev.type === "run_state" || ev.type === "snapshot" || ev.type === "session_title") refresh();
+      if (ev.type === "run_state" && ["waiting_approval", "idle", "error"].includes(ev.state)) {
+        alertUser(ref.current.title || sid, ev.state, notifyRef.current);
+      }
     };
     return subscribe(sid, () => ref.current.lastSeq, apply, setConn, onLogout);
   }, [sid, refresh, onLogout]);
@@ -131,7 +145,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
           {sessions.map((s) => (
             <div key={s.id} className="session-row">
               <button className={`session ${s.id === sid ? "active" : ""}`} onClick={() => setSid(s.id)}>
-                <span>{s.id}</span><Badge state={s.run_state} />
+                <span>{s.title || s.id}</span><Badge state={s.run_state} />
               </button>
               <button className="ghost del" aria-label="Delete session" onClick={() => remove(s.id)}
                 onBlur={() => setConfirm("")}>{confirm === s.id ? "Delete?" : "×"}</button>
@@ -146,7 +160,8 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
       </aside>
       {sid ? (
         <>
-          <Chat sid={sid} state={state} conn={conn} onError={guard} onToggleFiles={() => setShowFiles(!showFiles)} />
+          <Chat sid={sid} state={state} conn={conn} onError={guard} onToggleFiles={() => setShowFiles(!showFiles)}
+            notify={notify} onToggleNotify={toggleNotify} />
           {showFiles && <Files sid={sid} onError={guard} />}
         </>
       ) : (
@@ -158,4 +173,11 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
 
 export function Badge({ state }: { state: string }) {
   return <span className={`badge ${state}`}>{state.replace("_", " ")}</span>;
+}
+
+/** A system notification, only when the tab is hidden and the user turned it on. */
+function alertUser(title: string, state: string, on: boolean) {
+  if (!on || !document.hidden || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  const body = state === "waiting_approval" ? "needs your approval" : state === "error" ? "run failed" : "run finished";
+  try { new Notification(title, { body, tag: title }); } catch { /* some browsers only allow it from a service worker */ }
 }

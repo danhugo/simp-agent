@@ -18,13 +18,15 @@ export interface ChatState {
   results: Record<string, ToolResult>;
   decisions: Record<string, ApprovalResolved["decision"]>;
   pending: PendingApproval | null;
+  title: string;
+  planMode: boolean;
 }
 
 const emptyInFlight = (): InFlight => ({ msg_id: null, thinking: "", text: "", tool_outputs: {} });
 
 export const initialState = (): ChatState => ({
   lastSeq: 0, runState: "idle", items: [], inFlight: emptyInFlight(),
-  toolOutputs: {}, results: {}, decisions: {}, pending: null,
+  toolOutputs: {}, results: {}, decisions: {}, pending: null, title: "", planMode: false,
 });
 
 /** Append `delta` only when it starts exactly at the end of `cur`; anything else is a dup or a gap. */
@@ -54,12 +56,13 @@ export function reduce(s: ChatState, ev: ServerEvent): ChatState {
     case "run_state":
       return { ...s, runState: ev.state };
     case "notice":
+      if (ev.text === "plan mode on" || ev.text === "plan mode off") s = { ...s, planMode: ev.text === "plan mode on" };
       return { ...s, items: [...s.items, { kind: "notice", seq: ev.seq, level: ev.level, text: ev.text }] };
     case "compaction":
       return { ...s, items: [...s.items, { kind: "notice", seq: ev.seq, level: "info",
         text: `Context compacted (${ev.tokens_before} → ${ev.tokens_after} tokens)` }] };
     case "session_title":
-      return s; // the sidebar shows titles (Task D)
+      return { ...s, title: ev.title };
     case "text_delta":
     case "thinking_delta": {
       let f = s.inFlight;
@@ -78,7 +81,15 @@ export function reduce(s: ChatState, ev: ServerEvent): ChatState {
       // The snapshot is the truth for everything live: replace the in-flight bubble and live tool output.
       return {
         ...s, lastSeq: Math.max(s.lastSeq, ev.last_seq), runState: ev.run_state, pending: ev.pending_approval,
+        title: ev.title, planMode: ev.plan_mode,
         inFlight: ev.in_flight, toolOutputs: { ...s.toolOutputs, ...ev.in_flight.tool_outputs },
       };
   }
+}
+
+/** Offer "Continue" after a run that ended in error or was cut off by a server restart (nothing since). */
+export function canContinue(s: ChatState): boolean {
+  const last = s.items[s.items.length - 1];
+  return s.runState === "error" ||
+    (s.runState === "idle" && last?.kind === "notice" && last.text.startsWith("interrupted:"));
 }
