@@ -467,7 +467,8 @@ async def test_title_set_once_event_and_usage(env):
     q = run.subscribe(0)[1]
     await run.command(p.Prompt(text="x" * 3000))
     await settle(run)
-    assert fp.calls == 2 and fp.models[1].max_tokens <= 30
+    # reasoning models spend tokens thinking first: room for that, and the lowest effort every provider accepts
+    assert fp.calls == 2 and fp.models[1].max_tokens == 200 and fp.models[1].compat["reasoning_effort"] == "low"
     assert fp.ctxs[1].messages[0].content == "x" * 2000
     ev = [e for e in drain(q) if e["type"] == "session_title"]
     assert [e["title"] for e in ev] == ["Fix the login bug"] and ev[0]["seq"] > 0
@@ -487,6 +488,14 @@ async def test_title_error_keeps_empty(env):
     assert fp.calls == 2 and run.state == "idle" and run.info.title == ""
     assert (await mgr.store.get_session(user["id"], run.sid))["title"] == ""
     assert not [e for e in run.log if e["type"] == "session_title"]
+
+
+async def test_title_empty_reply_is_logged(env, caplog):
+    fp = FakeProvider(reply("a"), titled(""))
+    _, _, _, _, run = await env(fp, title="")
+    await run.command(p.Prompt(text="hi"))
+    await settle(run)
+    assert run.info.title == "" and "empty title" in caplog.text
 
 
 async def test_title_budget_refused_keeps_empty(env):

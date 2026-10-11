@@ -317,7 +317,8 @@ class Run:
         """One extra small LLM call to name the session. Any failure leaves the title empty."""
         try:
             first = next(e["text"] for e in self.log if e["type"] == "user_message")[:2000]
-            model = dataclasses.replace(self.model, max_tokens=30)
+            # reasoning models think before answering: leave room, and use the lowest effort all of them accept
+            model = dataclasses.replace(self.model, max_tokens=200, compat={**self.model.compat, "reasoning_effort": "low"})
             msg = None
             async for ev in self.guarded_stream(model, Context(TITLE_PROMPT, [UserMessage(first)], []),
                                                 **await api_key_opts(self.mgr.api_key_for(model), model)):
@@ -328,10 +329,11 @@ class Run:
             u = {"input": msg.usage.get("input", 0), "output": msg.usage.get("output", 0)}
             await self.mgr.store.add_usage(self.user_id, self.sid, self.model.id, **u, cost=budget.cost(self.profile, u))
             title = " ".join(msg.text().replace('"', "").replace("'", "").split())[:60]
-            if title:
-                self.info.title = title
-                await self.mgr.store.set_title(self.user_id, self.sid, title)
-                await self.durable(p.SessionTitle, title=title)
+            if not title:
+                raise RuntimeError(f"empty title (stop_reason={msg.stop_reason}, usage={u})")
+            self.info.title = title
+            await self.mgr.store.set_title(self.user_id, self.sid, title)
+            await self.durable(p.SessionTitle, title=title)
         except Exception as e:
             log.warning("session title failed: %s", e, extra={"session": self.sid})
 
