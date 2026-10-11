@@ -1,6 +1,6 @@
 # simp-agent notes
 
-Layers: `ai.py` (messages, `stream` dispatch by `model.api`) → `providers/` (anthropic, openai_completions) → `agent.py` (loop, `Agent`) → `tools.py` + `cli.py` (coding layer).
+Layers (under `packages/simp_agent/src/simp_agent/`): `ai/__init__.py` (messages, `stream` dispatch by `model.api`) → `ai/providers/` (anthropic, openai_completions, openai_responses) → `agent/__init__.py` (loop, `Agent`) → `coding/tools.py` → `session/`; the CLI is `apps/cli/src/simp_cli/`.
 
 Not yet (present in pi, skipped here):
 - parallel tool execution
@@ -22,11 +22,11 @@ Queues + compaction (done):
 - On context overflow, `Agent` compacts once and continues; a second overflow ends with the error.
 
 Pluggability (done; "everything is a plugin"):
-- `get_api_key(provider)` (sync/async) on Agent/LoopConfig, called before every LLM call (and compaction); key goes to `stream(..., api_key=)`. Strict: built-in providers NEVER read env; no key -> error "no API key for provider X" (error_kind fatal). The CLI passes its own env-reading `get_api_key` (`cli.env_api_key`).
+- `get_api_key(provider)` (sync/async) on Agent/LoopConfig, called before every LLM call (and compaction); key goes to `stream(..., api_key=)`. Strict: built-in providers NEVER read env; no key -> error "no API key for provider X" (error_kind fatal). The CLI passes its own env-reading `get_api_key` (`simp_cli.env_api_key`).
 - Tools get `execute(args, ctx)`; `ctx` = cancel, env, cwd, `on_update(text)` (async; emits `tool_execution_update`). `env.ExecutionEnv` Protocol; core ships only `LocalEnv`. `exec` has an extra optional `on_output` callback so bash can stream.
 - `Agent(messages=...)` restores history; `Agent.continue_()` runs with no new message (last must be user/tool_result, else ValueError).
 - `ai.register_provider(api, stream_fn)`; `ai.to_dict` / `ai.from_dict` for all messages + CompactionEntry. A CompactionEntry also fires `message_end`, so stores see it.
-- Example plugin in cli.py: JSONL session store (`~/.simp-agent/sessions/<id>.jsonl`), `--resume <id> [task]` (no task = continue).
+- Example store in `simp_cli`: `JsonlStore` (`~/.simp-agent/sessions/<cwd-slug>/<id>.jsonl`), `--resume <id> [task]` (no task = continue).
 
 Recommended command for the human's gpt-6-luna server (key only via env OPENAI_API_KEY):
 `uv run simp-agent --api openai-completions --base-url <url>/v1 --model openai/gpt-6-luna --context-window 922000 --max-tokens 32000 --max-tokens-field max_completion_tokens --reasoning-effort none "task"`

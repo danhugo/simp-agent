@@ -33,11 +33,13 @@ DURABLE events have `seq` (monotonic per session, = SSE `id`). LIVE events have 
 | `auto_retry_start` / `auto_retry_end` | `notice {level: warning / info}` | durable |
 | `plugin_error`, plugin `emit()` | `notice` | durable |
 | `message_end` (CustomEntry) | - | not shown in v1 |
-| `agent_start` | `run_state running` | durable |
-| `agent_end` | `run_state idle` (or `error` if last stop_reason == error) | durable |
+| `agent_start` / `agent_end` | - | run_state comes from the server's run task, not these events |
 | `turn_start` / `turn_end` | - | |
 
 ## Run state (server-owned)
+The server sets `running` when it accepts a prompt (or starts a queued follow-up). When the run ends: `idle`, or `error`
+if the last assistant stop_reason is error; after an abort: `idle` + notice "run aborted". If the run task itself fails
+(store error, cancel), the state is forced to `error` + an error notice, so it never stays busy.
 `idle -> running -> (waiting_approval <-> running) -> aborting -> idle | error`; `running -> idle | error`; `error -> running | idle`.
 Abort: cancel the run, settle a pending approval as `aborted`, clear queued follow-ups, emit `run_state` + `notice`.
 

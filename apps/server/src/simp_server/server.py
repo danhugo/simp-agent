@@ -29,6 +29,9 @@ from . import protocol as p
 from .fake import sse
 
 SHUTDOWN_GRACE = 2  # seconds
+HEARTBEAT = 15  # seconds between SSE ": ping" comments
+QUEUE_MAX = 1000  # events buffered per SSE client; a client that falls this far behind is dropped and reconnects
+MAX_QUEUED = 20  # steer + follow-up messages waiting per session
 HOME = Path(os.environ.get("SIMP_SERVER_HOME", Path.home() / ".simp-server"))
 DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_server.store:SqliteStore",
                    "auth": "simp_server.server:StaticTokenAuth"}
@@ -107,7 +110,7 @@ def take_keys(settings: dict) -> dict:
     for n in names - {None}:
         if n in os.environ:
             keys.setdefault(n, os.environ.pop(n))
-    return keys
+    return {k: v for k, v in keys.items() if v}  # an empty value is no key
 
 
 def build_model(pr: dict) -> Model:
@@ -126,7 +129,7 @@ class Run:
     """AgentSession + durable protocol log + in-flight buffers. Subscribers only get per-connection queues."""
 
     def __init__(self, mgr: "SessionManager", row: dict, env: ExecutionEnv, entries: list[dict]):
-        self.mgr, self.sid, self.user_id, self.env = mgr, row["id"], row["user_id"], env
+        self.mgr, self.sid, self.user_id, self.env, self.ref = mgr, row["id"], row["user_id"], env, row["sandbox_ref"]
         self.info = p.SessionInfo(id=row["id"], title=row["title"] or "")
         self.log = [e["data"] for e in entries if e["type"] != "msg"]  # ponytail: whole log in memory
         self.seq = entries[-1]["seq"] if entries else 0
@@ -154,8 +157,11 @@ class Run:
         await self.mgr.store.add_entry(self.user_id, self.sid, self.seq, "msg", to_dict(entry))
 
     def _send(self, ev: dict) -> None:
-        for q in self.subs:
-            q.put_nowait(ev)
+        for q in list(self.subs):
+            try:
+                q.put_nowait(ev)
+            except asyncio.QueueFull:  # never block the run: drop the slow client; it reconnects and gets a snapshot
+                self.subs.discard(q)
 
     async def durable(self, cls, **kw) -> None:
         self.seq += 1
@@ -171,7 +177,7 @@ class Run:
 
     def subscribe(self, after: int) -> tuple[list[dict], asyncio.Queue]:
         """Missed durable events, then a snapshot, then live. No await here, so nothing slips in between."""
-        q = asyncio.Queue()
+        q = asyncio.Queue(QUEUE_MAX)
         self.subs.add(q)
         snap = p.Snapshot(last_seq=self.seq, run_state=self.state, in_flight=self.inflight, pending_approval=self.pending)
         return [*(e for e in self.log if e["seq"] > after), snap.model_dump()], q
@@ -225,9 +231,10 @@ class Run:
         """AgentSession approve callback: ask every tab, wait for a decision. Abort cancels this."""
         self.answer = asyncio.get_running_loop().create_future()
         self.pending = p.PendingApproval(call_id=call.id, tool=call.name, args=call.arguments)
-        await self.durable(p.ApprovalRequest, call_id=call.id, tool=call.name, args=call.arguments)
-        await self.set_state("waiting_approval")
-        try:
+        try:  # an abort can land at any await here, not only while waiting for the answer
+            await self.durable(p.ApprovalRequest, call_id=call.id, tool=call.name, args=call.arguments)
+            if self.state == "running":
+                await self.set_state("waiting_approval")
             decision = await self.answer
         except asyncio.CancelledError:
             self.pending = None
@@ -245,8 +252,20 @@ class Run:
 
     async def _run(self, text: str) -> None:
         try:
+            await self._turn(text)
+        finally:  # never leave the session stuck busy, whatever failed (even a store write or a cancel)
+            if self.busy and self.task is asyncio.current_task():
+                self.pending, self.inflight, self.info.run_state = None, p.InFlight(), "error"
+                try:
+                    await self.durable(p.RunState, state="error")
+                    await self.durable(p.Notice, level="error", text="run stopped unexpectedly")
+                except Exception:
+                    pass
+
+    async def _turn(self, text: str) -> None:
+        try:
             await self.session.prompt(text)
-        except Exception as e:  # never leave the session stuck in running
+        except Exception as e:
             await self.durable(p.Notice, level="error", text=f"{type(e).__name__}: {e}")
         self.inflight = p.InFlight()
         agent = self.session.agent
@@ -264,6 +283,8 @@ class Run:
         if isinstance(c, (p.Prompt, p.FollowUp, p.Steer)):
             if not self.busy:
                 await self.start(c.text)
+            elif len(self.session.agent.steering) + len(self.session.agent.follow_ups) >= MAX_QUEUED:
+                raise HTTPException(429, f"{MAX_QUEUED} messages already queued")
             elif isinstance(c, p.Steer):
                 self.session.steer(c.text)
             else:
@@ -317,8 +338,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def lifespan(app):
         await store.open()
         yield
-        for sid in list(mgr.runs):
-            await sandbox.close(sid)
+        for run in list(mgr.runs.values()):
+            await sandbox.close(run.ref)
         await store.close()
 
     app = FastAPI(lifespan=lifespan)
@@ -376,8 +397,13 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             try:
                 for ev in first:
                     yield sse(ev)
-                while True:
-                    yield sse(await q.get())
+                while q in run.subs or not q.empty():  # dropped (queue overflow): send what we have, then end
+                    try:
+                        yield sse(await asyncio.wait_for(q.get(), HEARTBEAT))
+                    except TimeoutError:
+                        if await request.is_disconnected():
+                            return
+                        yield ": ping\n\n"
             finally:
                 run.subs.discard(q)
 
@@ -404,7 +430,16 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
 
     @app.put("/api/sessions/{sid}/files/raw")
     async def upload(sid: str, path: str, request: Request, u=Depends(user)):
-        await fs((await mgr.get(u, sid)).env.write_bytes(path, await request.body()))
+        env = (await mgr.get(u, sid)).env
+        limit = settings.get("files_max_bytes", 50 * 2**20)
+        if int(request.headers.get("content-length") or 0) > limit:
+            raise HTTPException(413, f"file larger than {limit} bytes")
+        data = bytearray()
+        async for chunk in request.stream():
+            data += chunk
+            if len(data) > limit:
+                raise HTTPException(413, f"file larger than {limit} bytes")
+        await fs(env.write_bytes(path, bytes(data)))
         return {"ok": True}
 
     return app

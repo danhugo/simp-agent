@@ -37,9 +37,10 @@ class DockerEnv(LocalEnv):
 
     async def exec(self, command, cwd, timeout, cancel, on_output=None) -> tuple[int | None, str]:
         # setsid: the command leads its own process group; first line out is its pid so we can kill the group.
+        # 2>&1 inside the container: docker sends stderr as its own stream, which could overtake the pid line.
         proc = await asyncio.create_subprocess_exec(
             "docker", "exec", "-w", self._cwd(cwd), self.container,
-            "setsid", "-w", "sh", "-c", 'echo $$; exec sh -c "$0"', command,
+            "setsid", "-w", "sh", "-c", 'echo $$; exec sh -c "$0" 2>&1', command,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
         )
         pid = (await proc.stdout.readline()).strip().decode()
