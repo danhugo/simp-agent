@@ -20,7 +20,7 @@ without rewrites.
   revoke/rotate (also stops the user's LLM calls and open streams), session delete
   (with its files), configurable bind host and allowed hosts; shared `build_model` and
   plugins per profile; JSON logs with `run_id`, launchd service, daily backups with
-  retention and a restore drill. DockerSandbox was not re-run end to end this stage.
+  retention and a restore drill. DockerSandbox verified end to end (tests, API, web with a real model).
   Deferred: Postgres + Alembic (until multiple replicas), `org_id`, OIDC, rate limit,
   TLS (tunnel handles it), tracing, E2B sandbox plugin (when a key is provided).
 
