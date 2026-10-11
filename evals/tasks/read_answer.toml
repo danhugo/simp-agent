@@ -1,0 +1,14 @@
+prompt = "Which TCP port does the server in config.ini listen on? Reply with the number."
+check = "grep -q 8473 _answer.txt"
+
+[setup]
+"config.ini" = """
+[database]
+port = 5432
+host = db.internal
+
+[server]
+host = 0.0.0.0
+port = 8473
+workers = 4
+"""

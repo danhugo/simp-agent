@@ -19,4 +19,4 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 addopts = "--import-mode=importlib"
-testpaths = ["packages/simp_agent/tests", "apps/cli/tests", "apps/server"]
+testpaths = ["packages/simp_agent/tests", "apps/cli/tests", "apps/server", "evals"]

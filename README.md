@@ -106,3 +106,7 @@ the server runs), `settings.toml`, `workspaces/` and `sandboxes/`. `.env` (keys)
 Restore: stop the server (`launchctl unload ~/Library/LaunchAgents/com.simp.server.plist`),
 `rm -f ~/.simp-server/simp.db-wal ~/.simp-server/simp.db-shm` (a stale WAL would be replayed onto the restored db),
 `tar xzf <file> -C ~/.simp-server`, start it again (`launchctl load ...`).
+
+## Evals (`evals/`)
+
+`uv run python evals/run.py --profile sol [--home ~/.simp-server] [--tasks read_answer,fizzbuzz]` runs each task in `evals/tasks/*.toml` (`setup` files, `prompt`, `check` shell command: exit 0 = pass) with AgentSession + LocalEnv in a temp dir, approving every tool call (max 25 turns, 5 minutes per task). It reads the profile and keys like the server (only reads `--home`), prints `name PASS|FAIL turns input/output $cost seconds` plus a total, and writes `evals/results/<timestamp>-<profile>.json` (git-ignored). Cost uses the profile's `price_in`/`price_out` (USD per 1M tokens); without them it is $0 with a warning. The check sees the final reply in `_answer.txt` and the Python interpreter in `$PYTHON`.

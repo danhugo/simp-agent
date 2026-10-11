@@ -1,0 +1,8 @@
+prompt = """Write fizzbuzz.py with a function fizzbuzz(n) that returns a list of strings for 1..n:
+"Fizz" for multiples of 3, "Buzz" for multiples of 5, "FizzBuzz" for both, else the number."""
+check = '''"$PYTHON" -c '
+from fizzbuzz import fizzbuzz
+r = fizzbuzz(15)
+assert r[:5] == ["1", "2", "Fizz", "4", "Buzz"], r
+assert r[14] == "FizzBuzz" and len(r) == 15 and fizzbuzz(0) == [], r
+' '''
