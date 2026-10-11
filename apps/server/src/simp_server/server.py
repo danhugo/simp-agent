@@ -7,6 +7,9 @@ GET /api/sessions/{id}/files?path=, GET|PUT /api/sessions/{id}/files/raw?path=  
 from __future__ import annotations
 
 import asyncio
+import hmac
+import re
+import sqlite3
 import shutil
 import sys
 import logging
@@ -21,7 +24,7 @@ from typing import Protocol
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from simp_agent import ai
 from simp_agent.agent.env import ExecutionEnv, LocalEnv
@@ -88,6 +91,16 @@ class StaticTokenAuth:
     async def authenticate(self, request: Request) -> dict | None:
         h = request.headers.get("authorization", "")
         return await self.store.user_by_token(h[7:]) if h.startswith("Bearer ") else None
+
+
+class Account(BaseModel):
+    name: str
+    password: str
+    code: str = ""
+
+
+NAME_RE = re.compile(r"[a-z0-9_-]{2,32}")
+MIN_PASSWORD = 8
 
 
 def load_plugin(path: str):
@@ -439,6 +452,34 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             raise HTTPException(401, "bad token")
         return u
 
+    @app.post("/api/signup")
+    async def signup(a: Account):
+        code = settings.get("signup_code")
+        if not code or not hmac.compare_digest(a.code.encode(), str(code).encode()):
+            raise HTTPException(403, "sign-up is closed or the invite code is wrong")
+        if not NAME_RE.fullmatch(a.name):
+            raise HTTPException(400, "username: 2-32 of a-z 0-9 _ -")
+        if len(a.password) < MIN_PASSWORD:
+            raise HTTPException(400, f"password: at least {MIN_PASSWORD} characters")
+        if err := check_sandbox(settings, await store.count_users() + 1):
+            raise HTTPException(409, err)
+        try:
+            await store.add_user(a.name, password=a.password, token=False)
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "that username is taken") from None
+        return {"token": await store.login(a.name, a.password)}
+
+    @app.post("/api/login")
+    async def login(a: Account):
+        if (token := await store.login(a.name, a.password)) is None:
+            raise HTTPException(401, "Wrong username or password.")
+        return {"token": token}
+
+    @app.post("/api/logout")
+    async def logout(request: Request, u=Depends(user)):
+        await store.logout(request.headers["authorization"][7:])
+        return {"ok": True}
+
     @app.post("/api/hello")
     def hello(h: p.Hello):
         r = p.check_hello(h)
@@ -549,6 +590,16 @@ async def with_store(fn):
         await store.close()
 
 
+def ask_password() -> str:
+    from getpass import getpass
+    pw = getpass("password: ")
+    if len(pw) < MIN_PASSWORD:
+        raise SystemExit(f"password: at least {MIN_PASSWORD} characters")
+    if getpass("again: ") != pw:
+        raise SystemExit("passwords differ")
+    return pw
+
+
 def main() -> None:
     import argparse
 
@@ -556,7 +607,10 @@ def main() -> None:
 
     ap = argparse.ArgumentParser(prog="simp-server")
     sub = ap.add_subparsers(dest="mode", required=True)
-    sub.add_parser("seed", help="create a user, print its token once").add_argument("--name", required=True)
+    sd = sub.add_parser("seed", help="create a user, print its token once")
+    sd.add_argument("--name", required=True)
+    sd.add_argument("--password", action="store_true", help="also set a password (prompted) for web sign-in")
+    sub.add_parser("passwd", help="set a user's password (prompted)").add_argument("--name", required=True)
     sub.add_parser("users", help="list users")
     sub.add_parser("revoke", help="disable a user's token").add_argument("--name", required=True)
     sub.add_parser("rotate", help="new token for a user, print it once").add_argument("--name", required=True)
@@ -577,12 +631,19 @@ def main() -> None:
     if a.mode == "backup":
         print(ops.backup(Path(load_settings()["data_dir"]), Path(a.to), keep=a.keep))
     elif a.mode == "seed":
+        pw = ask_password() if a.password else None
+
         async def seed(s):
-            token = await s.add_user(a.name)
+            token = await s.add_user(a.name, password=pw)
             if err := check_sandbox(load_settings(), await s.count_users()):
                 print(f"warning: {err} A running server keeps going; it refuses to start next time.", file=sys.stderr)
             return token
         print(asyncio.run(with_store(seed)))
+    elif a.mode == "passwd":
+        pw = ask_password()
+        if not asyncio.run(with_store(lambda s: s.set_password(a.name, pw))):
+            raise SystemExit(f"no user named {a.name}")
+        print("password set")
     elif a.mode == "users":
         for u in asyncio.run(with_store(lambda s: s.list_users())):
             print(f"{u['name']}\t{'active' if u['active'] else 'revoked'}")

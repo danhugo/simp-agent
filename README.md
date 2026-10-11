@@ -57,8 +57,13 @@ make dev                            # server on :8766 (DockerSandbox if docker r
 ```sh
 uv run simp-server users              # name<TAB>active|revoked
 uv run simp-server revoke --name bob  # new requests get 401, open streams end within 15s, no further LLM calls
-uv run simp-server rotate --name bob  # prints a new token once; the old one stops working
+uv run simp-server rotate --name bob  # prints a new token once; the old one and all password logins stop working
+uv run simp-server seed --name ann --password  # also asks for a password (web "Sign in" with username + password)
+uv run simp-server passwd --name ann  # set or change a password
 ```
+Accounts: set `signup_code = "..."` in `settings.toml` to let people "Create account" on the web login page with that
+invite code (unset = sign-up closed). Each password sign-in gets its own token; "Sign out" ends only that one. `revoke`
+disables the user (token, password logins and password sign-in); `rotate` re-enables a revoked user.
 Sessions are deleted from the web sidebar (`×`, click again to confirm); a running session is aborted first and its
 workspace files are deleted. `seed` warns when a second user would need DockerSandbox (the server refuses to start
 with LocalSandbox and several active users unless `allow_local_sandbox = true`).

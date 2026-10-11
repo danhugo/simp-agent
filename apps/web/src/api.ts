@@ -20,7 +20,18 @@ const json = (body: unknown): RequestInit => ({
   method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" },
 });
 
+/** POST /api/login or /api/signup; returns a new token or throws with the server's message. */
+async function account(path: string, body: { name: string; password: string; code?: string }): Promise<string> {
+  const r = await fetch(path, json(body));
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof data.detail === "string" ? data.detail : `${r.status} ${r.statusText}`);
+  return data.token;
+}
+
 export const api = {
+  login: (name: string, password: string) => account("/api/login", { name, password }),
+  signup: (name: string, password: string, code: string) => account("/api/signup", { name, password, code }),
+  logout: () => call("/api/logout", { method: "POST" }),
   hello: () => call("/api/hello", json({ type: "hello", protocol_version: 1 })),
   sessions: async (): Promise<SessionInfo[]> => (await call("/api/sessions")).json(),
   newSession: async (profile: string): Promise<SessionInfo> => (await call("/api/sessions", json({ profile }))).json(),
