@@ -208,6 +208,7 @@ class AgentSession:
         stop.cancel()
         if not ask.done():  # aborted: a browser approval may never answer
             ask.cancel()
+            await asyncio.wait([ask])  # let its cleanup (e.g. an "aborted" event) finish before the run ends
             return "aborted"
         answer = ask.result()
         if answer == "always":

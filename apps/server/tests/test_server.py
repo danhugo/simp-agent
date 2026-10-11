@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from simp_agent.ai import AssistantMessage, TextContent, ToolCall
 from simp_agent.testing import FakeProvider
 
@@ -223,17 +225,13 @@ async def test_profile_compat_reaches_responses_request(tmp_path):
     assert kw["reasoning"] == {"effort": "low", "summary": "auto"} and kw["max_output_tokens"] == 32000
 
 
-async def test_shutdown_with_open_sse_closes_sandboxes(env):
+@asynccontextmanager
+async def serve(app, mgr):
+    """Real uvicorn on a free port (SSE needs real streaming). Yields (port, server); the exit shuts it down."""
     import socket
 
     import uvicorn
     from simp_server.server import SHUTDOWN_GRACE
-    app, mgr, _, token, run = await env(FakeProvider(reply()))
-    closed = list()
-
-    async def close(sid):
-        closed.append(sid)
-    mgr.sandbox.close = close
     await mgr.store.close()  # the lifespan opens its own connection; a leaked one keeps pytest from exiting
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -242,11 +240,97 @@ async def test_shutdown_with_open_sse_closes_sandboxes(env):
                                         log_level="warning"))
     task = asyncio.create_task(srv.serve())
     await wait_for(lambda: srv.started)
-    async with asyncio.timeout(10), httpx.AsyncClient() as c:
+    try:
+        async with asyncio.timeout(10):
+            yield port, srv
+    finally:
+        srv.should_exit = True
+        await asyncio.wait_for(task, SHUTDOWN_GRACE + 5)
+
+
+async def test_shutdown_with_open_sse_closes_sandboxes(env):
+    app, mgr, _, token, run = await env(FakeProvider(reply()))
+    run.ref = "ref-1"  # sandbox_ref, not the session id
+    closed = list()
+
+    async def close(ref):
+        closed.append(ref)
+    mgr.sandbox.close = close
+    async with serve(app, mgr) as (port, srv), httpx.AsyncClient() as c:
         async with c.stream("GET", f"http://127.0.0.1:{port}/api/sessions/{run.sid}/events",
                             headers={"Authorization": f"Bearer {token}"}) as r:
             assert r.status_code == 200
             await wait_for(lambda: run.subs)  # client is connected
             srv.should_exit = True
-            await asyncio.wait_for(task, SHUTDOWN_GRACE + 5)
-    assert closed == [run.sid]
+            await wait_for(lambda: closed, 8)
+    assert closed == ["ref-1"]
+
+
+async def test_sse_heartbeat_and_disconnect(env, monkeypatch):
+    import simp_server.server as srvmod
+    monkeypatch.setattr(srvmod, "HEARTBEAT", 0.05)
+    app, mgr, _, token, run = await env(FakeProvider(reply()))
+    async with serve(app, mgr) as (port, _), httpx.AsyncClient() as c:
+        async with c.stream("GET", f"http://127.0.0.1:{port}/api/sessions/{run.sid}/events",
+                            headers={"Authorization": f"Bearer {token}"}) as r:
+            async for line in r.aiter_lines():
+                if line == ": ping":
+                    break
+        await wait_for(lambda: not run.subs)  # the closed client is gone
+
+
+async def test_slow_client_dropped_never_blocks(env, monkeypatch):
+    import simp_server.server as srvmod
+    monkeypatch.setattr(srvmod, "QUEUE_MAX", 3)
+    _, _, _, _, run = await env(FakeProvider(reply()))
+    _, q = run.subscribe(0)
+    for i in range(5):
+        run._send({"type": "notice", "n": i})
+    assert q not in run.subs and q.qsize() == 3
+
+
+async def test_base_exception_never_leaves_run_busy(env):
+    class Boom(BaseException):  # not an Exception: passes every `except Exception`
+        pass
+
+    async def boom(model, ctx, api_key=None):
+        raise Boom()
+        yield
+    _, _, _, _, run = await env(boom)
+    await run.command(p.Prompt(text="hi"))
+    await asyncio.wait([run.task])
+    assert isinstance(run.task.exception(), Boom)
+    assert run.state == "error" and [e["type"] for e in run.log[-2:]] == ["run_state", "notice"]
+
+
+async def test_caps_upload_and_queue(env):
+    g = Gated(["a"])
+    app, mgr, _, token, run = await env(g)
+    mgr.settings["files_max_bytes"] = 10
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        url, h = f"/api/sessions/{run.sid}/files/raw?path=f", {"Authorization": f"Bearer {token}"}
+        assert (await c.put(url, content=b"x" * 10, headers=h)).status_code == 200
+        assert (await c.put(url, content=b"x" * 11, headers=h)).status_code == 413
+
+        async def chunks():  # no content-length: the streamed check catches it
+            for _ in range(3):
+                yield b"x" * 5
+        assert (await c.put(url, content=chunks(), headers=h)).status_code == 413
+    await run.command(p.Prompt(text="hi"))
+    for _ in range(20):
+        await run.command(p.FollowUp(text="more"))
+    with pytest.raises(HTTPException) as e:
+        await run.command(p.Steer(text="one too many"))
+    assert e.value.status_code == 429
+    g.go.set()
+
+
+def test_empty_key_ignored(tmp_path, monkeypatch):
+    from simp_agent.plugins.redact_secrets import RedactSecrets
+    from simp_server.server import take_keys
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    (tmp_path / ".env").write_text("OPENAI_API_KEY=\nANTHROPIC_API_KEY=''\n")
+    assert take_keys({"data_dir": str(tmp_path), "profiles": dict()}) == dict()
+    r = RedactSecrets()
+    r.setup(None, {"secrets": ["", "short"], "env": False})
+    assert r.secrets == [] and r.mask("text") == "text"

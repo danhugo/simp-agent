@@ -25,6 +25,17 @@ class ExecutionEnv(Protocol):
     ) -> tuple[int | None, str]: ...  # exit code is None when killed (timeout or cancel); output = what came so far
 
 
+async def run_kill(pgid: int) -> None:
+    """SIGKILL the whole process group (start_new_session) until it is empty: a child forked while the first
+    signal is delivered can miss it."""
+    for _ in range(100):
+        try:
+            os.killpg(pgid, 9)
+        except (ProcessLookupError, PermissionError):  # group empty (macOS: EPERM once only zombies are left)
+            return
+        await asyncio.sleep(0.02)
+
+
 class LocalEnv:
     """This machine. File IO runs in a thread so the loop never blocks.
     With a root, file paths are relative to it and may not escape it (via .. or symlinks)."""
@@ -90,7 +101,7 @@ class LocalEnv:
         done, _ = await asyncio.wait({run, stop}, timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
         stop.cancel()
         if run not in done:
-            os.killpg(proc.pid, 9)  # whole process tree (start_new_session)
+            await run_kill(proc.pid)
             await run
             return None, "".join(chunks)
         return proc.returncode, "".join(chunks)

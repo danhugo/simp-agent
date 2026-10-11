@@ -76,10 +76,10 @@ class EnvConformance:
 
     async def test_exec_timeout_kills_tree(self, env):
         t = time.monotonic()
-        code, text = await self.run(env, "echo start; (sleep 4; echo late > late.txt) & sleep 30", timeout=2)
+        code, text = await self.run(env, "echo start; (sleep 6; sleep 1; echo late > late.txt) & sleep 30", timeout=2)
         assert code is None and "start" in text
         assert time.monotonic() - t < 10
-        while time.monotonic() < t + 6:  # past the moment the child would have written
+        while time.monotonic() < t + 8:  # slack for a loaded event loop
             assert not (self.root / "late.txt").exists()  # background child was killed too
             await asyncio.sleep(0.1)
 
