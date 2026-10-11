@@ -17,11 +17,14 @@ the apps import only the library (checked by `packages/simp_agent/tests/test_lay
 ## Server (`apps/server`)
 
 Home: `$SIMP_SERVER_HOME` or `~/.simp-server` (holds `settings.toml`, `.env` with model keys, `simp.db`).
-`uv run simp-server seed --name hung` prints a token once; `uv run simp-server run [--port 8766]` serves on 127.0.0.1
-(`Authorization: Bearer <token>`). `uv run simp-server fake` is the replay server without an LLM.
+`uv run simp-server seed --name hung` prints a token once; `uv run simp-server run [--port 8766]` serves on `host`
+(default 127.0.0.1; `Authorization: Bearer <token>`). `uv run simp-server fake` is the replay server without an LLM.
 
 ```toml
 default_profile = "luna"
+host = "127.0.0.1"                         # bind address
+allowed_hosts = ["localhost", "127.0.0.1"]  # Host headers accepted (DNS rebinding guard); add your LAN name here
+# allow_local_sandbox = true  # the server refuses to start with LocalSandbox and >1 user unless this is set
 
 [plugins]  # optional; defaults: LocalSandbox, SqliteStore, StaticTokenAuth
 sandbox = "simp_server.sandboxes.docker:DockerSandbox"  # needs `uv run simp-server build-sandbox` once
@@ -48,6 +51,15 @@ uv run simp-server seed --name me   # prints your token once; paste it in the we
 make dev                            # server on :8766 (DockerSandbox if docker runs, else LocalSandbox) + web on :5173
 ```
 `make dev ARGS=--fake-llm` uses a scripted model (no key). E2e (real server + fake model): `make e2e`.
+
+### Admin commands
+
+```sh
+uv run simp-server users              # name<TAB>active|revoked
+uv run simp-server revoke --name bob  # token stops working at once (open tabs get 401)
+uv run simp-server rotate --name bob  # prints a new token once; the old one stops working
+```
+Sessions are deleted from the web sidebar (`×`, click again to confirm); a running session is aborted first.
 
 ### Running as a service (macOS launchd)
 

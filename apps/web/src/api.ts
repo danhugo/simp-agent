@@ -25,6 +25,7 @@ export const api = {
   sessions: async (): Promise<SessionInfo[]> => (await call("/api/sessions")).json(),
   newSession: async (profile: string): Promise<SessionInfo> => (await call("/api/sessions", json({ profile }))).json(),
   profiles: async (): Promise<string[]> => (await call("/api/profiles")).json(),
+  deleteSession: (sid: string) => call(`/api/sessions/${sid}`, { method: "DELETE" }),
   command: (sid: string, c: Command) => call(`/api/sessions/${sid}/commands`, json(c)),
   files: async (sid: string, path: string): Promise<FileEntry[]> =>
     (await call(`/api/sessions/${sid}/files?path=${encodeURIComponent(path)}`)).json(),

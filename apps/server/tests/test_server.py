@@ -10,7 +10,7 @@ from simp_agent.ai import AssistantMessage, TextContent, ToolCall
 from simp_agent.testing import FakeProvider
 
 from simp_server import protocol as p
-from simp_server.server import create_app, load_settings
+from simp_server.server import check_sandbox, create_app, load_settings
 
 
 def reply(text="done", calls=()):
@@ -365,3 +365,48 @@ async def test_restart_with_pending_approval(tmp_path):
         await wait_for(lambda: run2.state == "idle" and run2.task.done())
     finally:
         await mgr2.store.close()
+
+
+async def test_revoke_rotate(env):
+    app, mgr, user, token, run = await env(FakeProvider(reply("a")))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        h = {"Authorization": f"Bearer {token}"}
+        assert (await c.get("/api/sessions", headers=h)).status_code == 200
+        new = await mgr.store.rotate_token(user["name"])
+        assert (await c.get("/api/sessions", headers=h)).status_code == 401
+        assert (await c.get("/api/sessions", headers={"Authorization": f"Bearer {new}"})).status_code == 200
+        await mgr.store.revoke(user["name"])
+        assert (await c.get("/api/sessions", headers={"Authorization": f"Bearer {new}"})).status_code == 401
+
+
+async def test_delete_running_session(env):
+    gated = Gated(["a", "b"])
+    app, mgr, user, token, run = await env(gated)
+    await run.command(p.Prompt(text="hi"))
+    await wait_for(lambda: gated.calls == 1)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        h = {"Authorization": f"Bearer {token}"}
+        r = await c.delete(f"/api/sessions/{run.sid}", headers=h)
+        assert r.status_code == 200
+        assert run.task.done() and run.sid not in mgr.runs
+        assert (await c.delete(f"/api/sessions/{run.sid}", headers=h)).status_code == 404
+        assert (await c.get(f"/api/sessions/{run.sid}/files", headers=h)).status_code == 404
+
+
+async def test_allowed_hosts_configurable(tmp_path):
+    (tmp_path / "settings.toml").write_text(
+        'allowed_hosts = ["box.local"]\n[profiles.test]\napi = "fake"\nmodel = "m"\n')
+    app = create_app(load_settings(tmp_path), FakeProvider())
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://box.local") as c:
+        assert (await c.post("/api/hello", json={"type": "hello", "protocol_version": 1})).status_code == 200
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        assert (await c.post("/api/hello", json={"type": "hello", "protocol_version": 1})).status_code == 403
+
+
+def test_check_sandbox(tmp_path):
+    s = load_settings(tmp_path)
+    assert check_sandbox(s, 1) is None
+    assert "LocalSandbox" in check_sandbox(s, 2)
+    assert check_sandbox({**s, "allow_local_sandbox": True}, 2) is None
+    s["plugins"]["sandbox"] = "simp_server.sandboxes.docker:DockerSandbox"
+    assert check_sandbox(s, 5) is None

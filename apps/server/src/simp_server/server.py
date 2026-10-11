@@ -40,7 +40,6 @@ MAX_QUEUED = 20  # steer + follow-up messages waiting per session
 HOME = Path(os.environ.get("SIMP_SERVER_HOME", Path.home() / ".simp-server"))
 DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_server.store:SqliteStore",
                    "auth": "simp_server.server:StaticTokenAuth"}
-ALLOWED_HOSTS = {"localhost", "127.0.0.1"}
 
 
 # ---- plugin slots ---------------------------------------------------------------------------------------------------
@@ -88,6 +87,15 @@ def load_plugin(path: str):
     return getattr(import_module(mod), name)
 
 
+def check_sandbox(settings: dict, n_users: int) -> str | None:
+    """LocalSandbox runs tools on this machine as the server user: fine for one person, not for several."""
+    if settings["plugins"]["sandbox"].endswith(":LocalSandbox") and n_users > 1 and not settings.get("allow_local_sandbox"):
+        return (f"{n_users} users but the sandbox is LocalSandbox (no isolation). Run `simp-server build-sandbox` and set "
+                "[plugins] sandbox = \"simp_server.sandboxes.docker:DockerSandbox\" (or SIMP_SANDBOX=docker), "
+                "or set allow_local_sandbox = true.")
+    return None
+
+
 # ---- settings + keys ------------------------------------------------------------------------------------------------
 
 def load_settings(home: Path = HOME) -> dict:
@@ -98,6 +106,8 @@ def load_settings(home: Path = HOME) -> dict:
     docker = {"sandbox": "simp_server.sandboxes.docker:DockerSandbox"} if os.environ.get("SIMP_SANDBOX") == "docker" else {}
     s["plugins"] = {**DEFAULT_PLUGINS, **docker, **s.get("plugins", dict())}
     s.setdefault("profiles", dict())
+    s.setdefault("host", "127.0.0.1")
+    s["allowed_hosts"] = set(s.get("allowed_hosts", ["localhost", "127.0.0.1"]))
     s.setdefault("default_profile", next(iter(s["profiles"]), None))
     return s
 
@@ -344,6 +354,16 @@ class SessionManager:
                 await self.runs[sid].recover()
         return self.runs[sid]
 
+    async def drop(self, sid: str) -> None:
+        run = self.runs.pop(sid, None)
+        if run is None:
+            return
+        if run.task and not run.task.done():
+            run.session.abort()
+            run.task.cancel()
+            await asyncio.gather(run.task, return_exceptions=True)
+        await self.sandbox.close(run.ref)
+
     def info(self, row: dict) -> p.SessionInfo:
         r = self.runs.get(row["id"])
         return p.SessionInfo(id=row["id"], title=row["title"] or "", run_state=r.state if r else "idle")
@@ -363,6 +383,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         await store.open()
+        if err := check_sandbox(settings, await store.count_users()):
+            raise SystemExit(err)
         yield
         for run in list(mgr.runs.values()):
             await sandbox.close(run.ref)
@@ -374,7 +396,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     @app.middleware("http")
     async def host_guard(request: Request, call_next):  # DNS rebinding: only our own host names
         host = request.headers.get("host", "").rsplit(":", 1)[0]
-        if host not in ALLOWED_HOSTS:
+        if host not in settings["allowed_hosts"]:
             return JSONResponse({"detail": "bad host"}, status_code=403)
         return await call_next(request)
 
@@ -404,6 +426,14 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         if profile not in settings["profiles"]:
             raise HTTPException(400, f"unknown profile {profile!r}; have {sorted(settings['profiles'])}")
         return mgr.info(await store.add_session(u["id"], profile, body.get("title", "")))
+
+    @app.delete("/api/sessions/{sid}")
+    async def delete_session(sid: str, u=Depends(user)):
+        if await store.get_session(u["id"], sid) is None:
+            raise HTTPException(404, "no such session")
+        await mgr.drop(sid)
+        await store.delete_session(u["id"], sid)
+        return {"ok": True}
 
     @app.post("/api/sessions/{sid}/commands")
     async def post_command(sid: str, request: Request, u=Depends(user)):
@@ -471,6 +501,16 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     return app
 
 
+async def with_store(fn):
+    settings = load_settings()
+    store = load_plugin(settings["plugins"]["store"])(settings)
+    await store.open()
+    try:
+        return await fn(store)
+    finally:
+        await store.close()
+
+
 def main() -> None:
     import argparse
 
@@ -479,26 +519,34 @@ def main() -> None:
     ap = argparse.ArgumentParser(prog="simp-server")
     sub = ap.add_subparsers(dest="mode", required=True)
     sub.add_parser("seed", help="create a user, print its token once").add_argument("--name", required=True)
-    r = sub.add_parser("run", help="real server on 127.0.0.1")
+    sub.add_parser("users", help="list users")
+    sub.add_parser("revoke", help="disable a user's token").add_argument("--name", required=True)
+    sub.add_parser("rotate", help="new token for a user, print it once").add_argument("--name", required=True)
+    r = sub.add_parser("run", help="real server on settings host (default 127.0.0.1)")
     r.add_argument("--port", type=int, default=8766)
     r.add_argument("--fake-llm", action="store_true", help="deterministic scripted model (e2e)")
     sub.add_parser("backup", help="snapshot the data dir into a .tar.gz").add_argument("--to", required=True)
     a = ap.parse_args()
     if a.mode == "backup":
         print(ops.backup(Path(load_settings()["data_dir"]), Path(a.to)))
-        return
-    if a.mode == "seed":
-        async def seed():
-            settings = load_settings()
-            store = load_plugin(settings["plugins"]["store"])(settings)
-            await store.open()
-            print(await store.add_user(a.name))
-            await store.close()
-        asyncio.run(seed())
+    elif a.mode == "seed":
+        print(asyncio.run(with_store(lambda s: s.add_user(a.name))))
+    elif a.mode == "users":
+        for u in asyncio.run(with_store(lambda s: s.list_users())):
+            print(f"{u['name']}\t{'active' if u['active'] else 'revoked'}")
+    elif a.mode == "revoke":
+        if not asyncio.run(with_store(lambda s: s.revoke(a.name))):
+            raise SystemExit(f"no active user named {a.name}")
+        print("revoked")
+    elif a.mode == "rotate":
+        if (t := asyncio.run(with_store(lambda s: s.rotate_token(a.name)))) is None:
+            raise SystemExit(f"no user named {a.name}")
+        print(t)
     else:
         if a.fake_llm:
             from .fakellm import stream
         # open SSE streams never end on their own; without the timeout uvicorn waits forever and lifespan never closes sandboxes
         ops.setup_logging()
-        uvicorn.run(create_app(load_settings(), stream if a.fake_llm else ai.stream), host="127.0.0.1", port=a.port,
+        settings = load_settings()
+        uvicorn.run(create_app(settings, stream if a.fake_llm else ai.stream), host=settings["host"], port=a.port,
                     timeout_graceful_shutdown=SHUTDOWN_GRACE, log_config=None)

@@ -44,6 +44,9 @@ pre { background: var(--code); border-radius: 8px; padding: 10px 12px; overflow-
 .new { display: flex; flex-direction: column; gap: 8px; }
 .sidebar nav { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .session { display: flex; justify-content: space-between; align-items: center; border-color: transparent; background: transparent; text-align: left; }
+.session-row { display: flex; gap: 2px; }
+.session-row .session { flex: 1; min-width: 0; }
+.del { padding: 0 6px; }
 .session.active { background: var(--bg); border-color: var(--border); }
 .foot { display: flex; justify-content: space-between; }
 .empty { flex: 1; display: grid; place-items: center; }
