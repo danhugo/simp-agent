@@ -24,12 +24,18 @@ without rewrites.
   Deferred: Postgres + Alembic (until multiple replicas), `org_id`, OIDC, rate limit,
   TLS (tunnel handles it), tracing, E2B sandbox plugin (when a key is provided).
 
-## Stage 3 – scale and reliability
+## Stage 3 – daily use on one machine (decided 2026-10-12)
 
-Multiple server replicas with event fan-out (Postgres LISTEN/NOTIFY first) and
-session leases; resume runs after restart (careful with tool side effects);
-background runs + notifications; BYOK model keys; sandbox pause/resume;
-approval rules for unattended runs; admin UI and cost dashboards; start evals.
+Plan: `docs/superpowers/plans/2026-10-12-stage3-daily-use.md`. Stage 2 leftovers
+(run budget across follow-ups, one workspace dir); idle sessions release their
+container and memory, cap on open sessions; accounts with invite-code sign-up and
+password login; LLM-named sessions; web parity (compact, plan mode); Continue after
+an interruption; browser notifications; a small eval script.
+
+Later: repo upload/zip download and git diff in the web, approval rules for
+unattended runs, web fetch/search tool, read-only admin/usage page, sandbox
+egress allowlist, compaction inside one long turn. Dropped while on one machine:
+replicas, LISTEN/NOTIFY, session leases, Postgres, BYOK.
 
 ## Stage 4 – capabilities via plugins
 
