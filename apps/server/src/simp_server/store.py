@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, user_id TEXT, title TEX
     created REAL, updated REAL);
 CREATE TABLE IF NOT EXISTS entries(session_id TEXT, user_id TEXT, seq INTEGER, type TEXT, json TEXT,
     PRIMARY KEY(session_id, seq));
-CREATE TABLE IF NOT EXISTS usage(user_id TEXT, session_id TEXT, model TEXT, input INTEGER, output INTEGER, at REAL);
+CREATE TABLE IF NOT EXISTS usage(user_id TEXT, session_id TEXT, model TEXT, input INTEGER, output INTEGER, at REAL,
+    cost REAL DEFAULT 0);
 """
 
 
@@ -34,7 +35,11 @@ class SqliteStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.db = await aiosqlite.connect(self.path)
         self.db.row_factory = aiosqlite.Row
+        await self.db.execute("PRAGMA journal_mode=WAL")
         await self.db.executescript(SCHEMA)
+        cols = [r["name"] for r in await self._all("PRAGMA table_info(usage)")]
+        if "cost" not in cols:  # db from Stage 1
+            await self._do("ALTER TABLE usage ADD COLUMN cost REAL DEFAULT 0")
 
     async def close(self) -> None:
         await self.db.close()
@@ -57,6 +62,24 @@ class SqliteStore:
         rows = await self._all("SELECT id, name FROM users WHERE token_sha256=?", sha(token))
         return rows[0] if rows else None
 
+    async def list_users(self) -> list[dict]:
+        return await self._all("SELECT id, name, token_sha256 IS NOT NULL AS active FROM users ORDER BY name")
+
+    async def count_users(self) -> int:
+        return len(await self.list_users())
+
+    async def rotate_token(self, name: str) -> str | None:
+        token = secrets.token_urlsafe(32)
+        cur = await self.db.execute("UPDATE users SET token_sha256=? WHERE name=?", (sha(token), name))
+        await self.db.commit()
+        return token if cur.rowcount else None
+
+    async def revoke(self, name: str) -> bool:
+        cur = await self.db.execute("UPDATE users SET token_sha256=NULL WHERE name=? AND token_sha256 IS NOT NULL",
+                                    (name,))
+        await self.db.commit()
+        return cur.rowcount > 0
+
     # sessions
     async def add_session(self, user_id: str, profile: str, title: str = "") -> dict:
         sid, now = uuid.uuid4().hex[:12], time.time()
@@ -70,6 +93,13 @@ class SqliteStore:
     async def list_sessions(self, user_id: str) -> list[dict]:
         return await self._all("SELECT * FROM sessions WHERE user_id=? ORDER BY updated DESC", user_id)
 
+    async def delete_session(self, user_id: str, sid: str) -> bool:
+        cur = await self.db.execute("DELETE FROM sessions WHERE id=? AND user_id=?", (sid, user_id))
+        if cur.rowcount:
+            await self.db.execute("DELETE FROM entries WHERE session_id=? AND user_id=?", (sid, user_id))
+        await self.db.commit()
+        return cur.rowcount > 0
+
     # entries: protocol durable events (type = event type) and core messages (type = "msg"), one seq counter
     async def add_entry(self, user_id: str, sid: str, seq: int, type: str, data: dict) -> None:
         await self.db.execute("INSERT INTO entries VALUES(?,?,?,?,?)", (sid, user_id, seq, type, json.dumps(data)))
@@ -81,9 +111,16 @@ class SqliteStore:
                                sid, user_id)
         return [{"seq": r["seq"], "type": r["type"], "data": json.loads(r["json"])} for r in rows]
 
-    # usage (recorded only, no budget yet)
-    async def add_usage(self, user_id: str, sid: str, model: str, input: int, output: int) -> None:
-        await self._do("INSERT INTO usage VALUES(?,?,?,?,?,?)", user_id, sid, model, input, output, time.time())
+    # usage: cost in USD, computed by the server from profile prices
+    async def add_usage(self, user_id: str, sid: str, model: str, input: int, output: int, cost: float = 0.0) -> None:
+        await self._do("INSERT INTO usage(user_id, session_id, model, input, output, at, cost) VALUES(?,?,?,?,?,?,?)",
+                       user_id, sid, model, input, output, time.time(), cost)
+
+    async def spent(self, user_id: str, since: float, session_id: str | None = None) -> float:
+        sql, args = "SELECT COALESCE(SUM(cost), 0) AS c FROM usage WHERE user_id=? AND at>=?", [user_id, since]
+        if session_id:
+            sql, args = sql + " AND session_id=?", args + [session_id]
+        return (await self._all(sql, *args))[0]["c"]
 
     async def usage(self, user_id: str) -> list[dict]:
         return await self._all("SELECT * FROM usage WHERE user_id=?", user_id)
