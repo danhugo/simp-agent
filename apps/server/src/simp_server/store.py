@@ -143,6 +143,9 @@ class SqliteStore:
     async def list_sessions(self, user_id: str) -> list[dict]:
         return await self._all("SELECT * FROM sessions WHERE user_id=? ORDER BY updated DESC", user_id)
 
+    async def set_title(self, user_id: str, sid: str, title: str) -> None:
+        await self._do("UPDATE sessions SET title=? WHERE id=? AND user_id=?", title, sid, user_id)
+
     async def delete_session(self, user_id: str, sid: str) -> bool:
         cur = await self.db.execute("DELETE FROM sessions WHERE id=? AND user_id=?", (sid, user_id))
         if cur.rowcount:

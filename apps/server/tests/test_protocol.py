@@ -20,12 +20,13 @@ def test_round_trip_every_event_and_command():
            p.ToolResult(seq=3, call_id="c", tool="bash", content="ok"),
            p.ApprovalRequest(seq=4, call_id="c", tool="bash", args={}), p.ApprovalResolved(seq=5, call_id="c", decision="aborted"),
            p.RunState(seq=6, state="idle"), p.Compaction(seq=7, summary="s", tokens_before=9, tokens_after=1),
-           p.Notice(seq=8, text="n"), p.TextDelta(msg_id="m", offset=0, delta="a"),
+           p.Notice(seq=8, text="n"), p.SessionTitle(seq=9, title="t"), p.TextDelta(msg_id="m", offset=0, delta="a"),
            p.ThinkingDelta(msg_id="m", offset=0, delta="a"), p.ToolOutput(call_id="c", offset=0, delta="a"),
            p.Snapshot(last_seq=8, run_state="running", in_flight=p.InFlight(msg_id="m", text="ab"))]
     for e in evs:
         assert p.server_event.validate_json(e.model_dump_json()) == e
-    for c in [p.Prompt(text="a"), p.Steer(text="a"), p.FollowUp(text="a"), p.Abort(), p.Approve(call_id="c", decision="always")]:
+    for c in [p.Prompt(text="a"), p.Steer(text="a"), p.FollowUp(text="a"), p.Abort(), p.Approve(call_id="c", decision="always"),
+              p.Compact(), p.Continue(), p.SetPlanMode(enabled=True)]:
         assert p.command.validate_json(c.model_dump_json()) == c
     with pytest.raises(ValueError):
         p.command.validate_python({"type": "approve", "call_id": "c", "decision": "maybe"})

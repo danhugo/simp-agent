@@ -58,6 +58,8 @@ export function reduce(s: ChatState, ev: ServerEvent): ChatState {
     case "compaction":
       return { ...s, items: [...s.items, { kind: "notice", seq: ev.seq, level: "info",
         text: `Context compacted (${ev.tokens_before} → ${ev.tokens_after} tokens)` }] };
+    case "session_title":
+      return s; // the sidebar shows titles (Task D)
     case "text_delta":
     case "thinking_delta": {
       let f = s.inFlight;

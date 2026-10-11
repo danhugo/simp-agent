@@ -116,6 +116,12 @@ class Notice(_M):
     text: str
 
 
+class SessionTitle(_M):
+    type: Literal["session_title"] = "session_title"
+    seq: int
+    title: str
+
+
 # ---- live server events (no seq)
 class TextDelta(_M):
     type: Literal["text_delta"] = "text_delta"
@@ -157,12 +163,14 @@ class Snapshot(_M):
     run_state: RunStateName
     in_flight: InFlight
     pending_approval: PendingApproval | None = None
+    title: str = ""
+    plan_mode: bool = False
 
 
-DURABLE = (UserMessage, AssistantMessage, ToolResult, ApprovalRequest, ApprovalResolved, RunState, Compaction, Notice)
+DURABLE = (UserMessage, AssistantMessage, ToolResult, ApprovalRequest, ApprovalResolved, RunState, Compaction, Notice, SessionTitle)
 ServerEvent = Annotated[
     Union[UserMessage, AssistantMessage, ToolResult, ApprovalRequest, ApprovalResolved, RunState, Compaction, Notice,
-          TextDelta, ThinkingDelta, ToolOutput, Snapshot],
+          SessionTitle, TextDelta, ThinkingDelta, ToolOutput, Snapshot],
     Field(discriminator="type"),
 ]
 
@@ -193,13 +201,27 @@ class Approve(_M):
     decision: Decision
 
 
-Command = Annotated[Union[Prompt, Steer, FollowUp, Abort, Approve], Field(discriminator="type")]
+class Compact(_M):
+    type: Literal["compact"] = "compact"
+
+
+class Continue(_M):
+    type: Literal["continue"] = "continue"
+
+
+class SetPlanMode(_M):
+    type: Literal["set_plan_mode"] = "set_plan_mode"
+    enabled: bool
+
+
+Command = Annotated[Union[Prompt, Steer, FollowUp, Abort, Approve, Compact, Continue, SetPlanMode], Field(discriminator="type")]
 
 
 class SessionInfo(_M):
     id: str
     title: str = ""
     run_state: RunStateName = "idle"
+    plan_mode: bool = False
 
 
 class Protocol(_M):
@@ -234,7 +256,7 @@ def check_transition(old: str, new: str) -> None:
 def _untitle(x):
     """Drop per-field titles so TS gets plain inline types, not `type Seq1 = number` aliases."""
     if isinstance(x, dict):
-        return {k: _untitle(v) for k, v in x.items() if not (k == "title" and "type" not in x.get("properties", {}) and "properties" not in x)}
+        return {k: _untitle(v) for k, v in x.items() if not (k == "title" and isinstance(v, str) and "properties" not in x)}
     return [_untitle(v) for v in x] if isinstance(x, list) else x
 
 

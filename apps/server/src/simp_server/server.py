@@ -7,6 +7,8 @@ GET /api/sessions/{id}/files?path=, GET|PUT /api/sessions/{id}/files/raw?path=  
 from __future__ import annotations
 
 import asyncio
+import dataclasses
+import functools
 import hmac
 import re
 import sqlite3
@@ -27,9 +29,10 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ValidationError
 
 from simp_agent import ai
+from simp_agent.agent import api_key_opts
 from simp_agent.agent.env import ExecutionEnv, LocalEnv
-from simp_agent.ai import Model, ThinkingContent, from_dict, to_dict
-from simp_agent.plugins import build_plugins
+from simp_agent.ai import Context, CustomEntry, Model, ThinkingContent, UserMessage, from_dict, to_dict
+from simp_agent.plugins import PlanMode, build_plugins
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
 
@@ -44,6 +47,7 @@ HEARTBEAT = 15  # seconds between SSE ": ping" comments
 QUEUE_MAX = 1000  # events buffered per SSE client; a client that falls this far behind is dropped and reconnects
 MAX_QUEUED = 20  # steer + follow-up messages waiting per session
 HOME = Path(os.environ.get("SIMP_SERVER_HOME", Path.home() / ".simp-server"))
+TITLE_PROMPT = "Name this coding session in 3 to 6 words. Reply with the title only."
 DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_server.store:SqliteStore",
                    "auth": "simp_server.server:StaticTokenAuth"}
 
@@ -168,17 +172,27 @@ class Run:
         self.info.run_state = states[-1] if states else "idle"
         self.seq = entries[-1]["seq"] if entries else 0
         self.inflight, self.pending, self.answer = p.InFlight(), None, None
-        self.subs, self.task = set(), None
+        self.subs, self.task, self.title_task = set(), None, None
         self.profile = mgr.settings["profiles"][row["profile"]]
         self.model = build_model(self.profile)
         self.run_start = time.time()
         self.session = AgentSession(
-            self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=budget.guard(mgr.stream_fn, self.over_budget),
+            self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=self.guarded_stream,
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
-            plugins=build_plugins(["redact_secrets", *[n for n in self.profile.get("plugins", []) if n != "redact_secrets"]]),
+            plugins=build_plugins(["redact_secrets", "plan_mode",
+                                   *[n for n in self.profile.get("plugins", []) if n not in ("redact_secrets", "plan_mode")]]),
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}})
         self.session.subscribe(self.on_event)
+
+    @property
+    def guarded_stream(self):
+        return budget.guard(self.mgr.stream_fn, self.over_budget)
+
+    @property
+    def plan_mode(self) -> bool:
+        last = next((m for m in reversed(self.session.messages) if isinstance(m, CustomEntry) and m.type == "plan_mode"), None)
+        return bool(last and last.data["enabled"])
 
     @property
     def state(self) -> str:
@@ -229,7 +243,8 @@ class Run:
         """Missed durable events, then a snapshot, then live. No await here, so nothing slips in between."""
         q = asyncio.Queue(QUEUE_MAX)
         self.subs.add(q)
-        snap = p.Snapshot(last_seq=self.seq, run_state=self.state, in_flight=self.inflight, pending_approval=self.pending)
+        snap = p.Snapshot(last_seq=self.seq, run_state=self.state, in_flight=self.inflight, pending_approval=self.pending,
+                          title=self.info.title, plan_mode=self.plan_mode)
         return [*(e for e in self.log if e["seq"] > after), snap.model_dump()], q
 
     async def on_event(self, e: dict) -> None:
@@ -259,6 +274,8 @@ class Run:
                     tool_calls=[p.ToolCall(id=c.id, name=c.name, arguments=c.arguments) for c in m.tool_calls()],
                     stop_reason=m.stop_reason, error=m.error)
                 await self.mgr.store.add_usage(self.user_id, self.sid, self.model.id, **u, cost=budget.cost(self.profile, u))
+                if not self.info.title and self.title_task is None:
+                    self.title_task = asyncio.create_task(self._title())
             elif m.role == "tool_result":
                 f.tool_outputs.pop(m.tool_call_id, None)
                 await self.durable(p.ToolResult, call_id=m.tool_call_id, tool=m.tool_name, content=m.content,
@@ -296,13 +313,36 @@ class Run:
             await self.set_state("running")
         return decision
 
-    async def start(self, text: str, fresh: bool = True) -> None:
+    async def _title(self) -> None:
+        """One extra small LLM call to name the session. Any failure leaves the title empty."""
+        try:
+            first = next(e["text"] for e in self.log if e["type"] == "user_message")[:2000]
+            model = dataclasses.replace(self.model, max_tokens=30)
+            msg = None
+            async for ev in self.guarded_stream(model, Context(TITLE_PROMPT, [UserMessage(first)], []),
+                                                **await api_key_opts(self.mgr.api_key_for(model), model)):
+                if ev["type"] in ("done", "error"):
+                    msg = ev["message"]
+            if msg is None or msg.stop_reason == "error":
+                raise RuntimeError(msg.error if msg else "no response")
+            u = {"input": msg.usage.get("input", 0), "output": msg.usage.get("output", 0)}
+            await self.mgr.store.add_usage(self.user_id, self.sid, self.model.id, **u, cost=budget.cost(self.profile, u))
+            title = " ".join(msg.text().replace('"', "").replace("'", "").split())[:60]
+            if title:
+                self.info.title = title
+                await self.mgr.store.set_title(self.user_id, self.sid, title)
+                await self.durable(p.SessionTitle, title=title)
+        except Exception as e:
+            log.warning("session title failed: %s", e, extra={"session": self.sid})
+
+    async def start(self, text, fresh: bool = True) -> None:  # text: a prompt, or a coroutine factory (continue_, compact)
         if fresh:  # a queued follow-up stays inside the same run budget
             self.run_start = time.time()
         await self.set_state("running")
         self.run_id = uuid.uuid4().hex[:8]
         log.info("run start", extra=self._ctx())
-        self.task = asyncio.create_task(self._run(text))
+        fn = text if callable(text) else functools.partial(self.session.prompt, text)
+        self.task = asyncio.create_task(self._run(fn))
 
     async def over_budget(self) -> str | None:
         lim, store, msg = self.mgr.limits, self.mgr.store, None
@@ -321,11 +361,11 @@ class Run:
     def _ctx(self) -> dict:
         return {"run_id": self.run_id, "session": self.sid, "user": self.user_id}
 
-    async def _run(self, text: str) -> None:
+    async def _run(self, fn) -> None:
         try:
-            await self._turn(text)
-        finally:
-            self.mgr.last_used[self.sid] = time.monotonic()  # never leave the session stuck busy, whatever failed (even a store write or a cancel)
+            await self._turn(fn)
+        finally:  # never leave the session stuck busy, whatever failed (even a store write or a cancel)
+            self.mgr.last_used[self.sid] = time.monotonic()
             if self.busy and self.task is asyncio.current_task():
                 log.error("run stopped unexpectedly", extra=self._ctx(), exc_info=True)
                 self.pending, self.inflight, self.info.run_state = None, p.InFlight(), "error"
@@ -335,9 +375,9 @@ class Run:
                 except Exception:
                     pass
 
-    async def _turn(self, text: str) -> None:
+    async def _turn(self, fn) -> None:
         try:
-            await self.session.prompt(text)
+            await fn()
         except Exception as e:
             await self.durable(p.Notice, level="error", text=f"{type(e).__name__}: {e}")
         self.inflight = p.InFlight()
@@ -372,6 +412,14 @@ class Run:
             if not self.pending or self.pending.call_id != c.call_id or self.answer.done():
                 raise HTTPException(409, "no pending approval with that call_id")
             self.answer.set_result(c.decision)
+        elif isinstance(c, (p.Compact, p.Continue)):
+            if self.busy:
+                raise HTTPException(409, f"cannot {c.type} while the session is {self.state}")
+            await self.start(self.session.compact if isinstance(c, p.Compact) else self.session.continue_)
+        elif isinstance(c, p.SetPlanMode):
+            await self.session.start()  # plugin setup runs here (first prompt otherwise)
+            await next(pl for pl in self.session.plugins if isinstance(pl, PlanMode)).set_enabled(c.enabled)
+            await self.durable(p.Notice, text=f"plan mode {'on' if c.enabled else 'off'}")
 
 
 class SessionManager:
@@ -446,7 +494,8 @@ class SessionManager:
 
     def info(self, row: dict) -> p.SessionInfo:
         r = self.runs.get(row["id"])
-        return p.SessionInfo(id=row["id"], title=row["title"] or "", run_state=r.state if r else "idle")
+        return p.SessionInfo(id=row["id"], title=row["title"] or "", run_state=r.state if r else "idle",
+                             plan_mode=r.plan_mode if r else False)
 
 
 # ---- app ------------------------------------------------------------------------------------------------------------

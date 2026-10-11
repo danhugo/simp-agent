@@ -15,11 +15,12 @@ export interface Protocol {
     | RunState
     | Compaction
     | Notice
+    | SessionTitle
     | TextDelta
     | ThinkingDelta
     | ToolOutput
     | Snapshot;
-  command: Prompt | Steer | FollowUp | Abort | Approve;
+  command: Prompt | Steer | FollowUp | Abort | Approve | Compact | Continue | SetPlanMode;
   session: SessionInfo;
 }
 /**
@@ -149,6 +150,15 @@ export interface Notice {
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "SessionTitle".
+ */
+export interface SessionTitle {
+  type: "session_title";
+  seq: number;
+  title: string;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
  * via the `definition` "TextDelta".
  */
 export interface TextDelta {
@@ -187,6 +197,8 @@ export interface Snapshot {
   run_state: "idle" | "running" | "waiting_approval" | "aborting" | "error";
   in_flight: InFlight;
   pending_approval: PendingApproval | null;
+  title: string;
+  plan_mode: boolean;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -253,9 +265,33 @@ export interface Approve {
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Compact".
+ */
+export interface Compact {
+  type: "compact";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Continue".
+ */
+export interface Continue {
+  type: "continue";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "SetPlanMode".
+ */
+export interface SetPlanMode {
+  type: "set_plan_mode";
+  enabled: boolean;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
  * via the `definition` "SessionInfo".
  */
 export interface SessionInfo {
   id: string;
+  title: string;
   run_state: "idle" | "running" | "waiting_approval" | "aborting" | "error";
+  plan_mode: boolean;
 }

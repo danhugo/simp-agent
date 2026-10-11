@@ -39,7 +39,7 @@ describe("snapshot apply", () => {
     // reconnect: server re-sends nothing (seq 1 seen), then a snapshot with more text than we saw
     const s = run([
       { type: "user_message", seq: 1, text: "hi" },
-      { type: "snapshot", last_seq: 1, run_state: "running", pending_approval: null,
+      { type: "snapshot", last_seq: 1, run_state: "running", pending_approval: null, title: "", plan_mode: false,
         in_flight: { msg_id: "m1", thinking: "t", text: "Let me look", tool_outputs: { c1: "out" } } },
       td(8, "look"), // stale, already in the snapshot
       td(11, " here"),
@@ -51,7 +51,7 @@ describe("snapshot apply", () => {
   });
 
   it("restores a pending approval after reload", () => {
-    const s = run([{ type: "snapshot", last_seq: 5, run_state: "waiting_approval", in_flight:
+    const s = run([{ type: "snapshot", last_seq: 5, run_state: "waiting_approval", title: "", plan_mode: false, in_flight:
       { msg_id: null, thinking: "", text: "", tool_outputs: {} },
       pending_approval: { call_id: "call_1", tool: "bash", args: { command: "ls" } } }]);
     expect(s.pending?.call_id).toBe("call_1");
