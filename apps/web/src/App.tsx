@@ -18,27 +18,49 @@ export default function App() {
 }
 
 function Login({ onLogin }: { onLogin: (t: string) => void }) {
-  const [value, setValue] = useState("");
+  const [signup, setSignup] = useState(false);
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [value, setValue] = useState("");  // access token (from `simp-server seed`), instead of a password
   const [error, setError] = useState("");
+  const useToken = !signup && !!value.trim();
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setToken(value.trim());
+    setError("");
     try {
+      const t = useToken ? value.trim()
+        : signup ? await api.signup(name.trim(), password, code.trim()) : await api.login(name.trim(), password);
+      setToken(t);
       await api.hello();
       await api.profiles(); // /api/hello needs no token; this checks it
-      onLogin(value.trim());
+      onLogin(t);
     } catch (err) {
       setToken("");
-      setError(err instanceof AuthError ? "That token was not accepted." : String(err));
+      setError(err instanceof AuthError ? "That token was not accepted." : err instanceof Error ? err.message : String(err));
     }
   };
+  const swap = () => { setSignup(!signup); setError(""); };
   return (
     <form className="login" onSubmit={submit}>
       <h1>simp-agent</h1>
-      <p className="muted">Paste your access token (from <code>simp-server seed</code>).</p>
-      <input type="password" autoFocus value={value} onChange={(e) => setValue(e.target.value)} placeholder="Token" aria-label="Token" />
+      <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Username" aria-label="Username"
+        autoComplete="username" />
+      <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password"
+        aria-label="Password" autoComplete={signup ? "new-password" : "current-password"} />
+      {signup ? (
+        <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Invite code" aria-label="Invite code" />
+      ) : (
+        <>
+          <p className="muted small">Or paste an access token (from <code>simp-server seed</code>):</p>
+          <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Token" aria-label="Token" />
+        </>
+      )}
       {error && <p className="error">{error}</p>}
-      <button className="primary" disabled={!value.trim()}>Sign in</button>
+      <button className="primary" disabled={!useToken && !(name.trim() && password && (!signup || code.trim()))}>
+        {signup ? "Create account" : "Sign in"}
+      </button>
+      <button type="button" className="ghost" onClick={swap}>{signup ? "I have an account" : "Create account"}</button>
     </form>
   );
 }
@@ -119,7 +141,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
         </nav>
         <div className="foot">
           <button className="ghost" onClick={onTheme}>{theme === "dark" ? "Light" : "Dark"} theme</button>
-          <button className="ghost" onClick={onLogout}>Sign out</button>
+          <button className="ghost" onClick={() => api.logout().catch(() => {}).finally(onLogout)}>Sign out</button>
         </div>
       </aside>
       {sid ? (

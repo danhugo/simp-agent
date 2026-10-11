@@ -65,3 +65,17 @@ async def test_revoke_rotate_delete(tmp_path):
         assert await s.spent(uid, -1) == 0.1  # money already spent stays counted for the day
     finally:
         await s.close()
+
+
+async def test_opens_stage2_users_table(tmp_path):
+    db = sqlite3.connect(tmp_path / "simp.db")
+    db.execute("CREATE TABLE users(id TEXT PRIMARY KEY, name TEXT UNIQUE, token_sha256 TEXT UNIQUE)")
+    db.execute("INSERT INTO users VALUES('u','old','x')")
+    db.commit()
+    db.close()
+    s = await opened(tmp_path)
+    try:
+        assert await s.count_users() == 1 and await s.set_password("old", "password1")
+        assert await s.login("old", "password1")
+    finally:
+        await s.close()

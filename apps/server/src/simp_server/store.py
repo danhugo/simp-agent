@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import secrets
 import time
@@ -12,7 +13,9 @@ from pathlib import Path
 import aiosqlite
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, name TEXT UNIQUE, token_sha256 TEXT UNIQUE);
+CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, name TEXT UNIQUE, token_sha256 TEXT UNIQUE, password TEXT,
+    disabled INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS tokens(token_sha256 TEXT PRIMARY KEY, user_id TEXT, created REAL);
 CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, user_id TEXT, title TEXT, profile TEXT, sandbox_ref TEXT,
     created REAL, updated REAL);
 CREATE TABLE IF NOT EXISTS entries(session_id TEXT, user_id TEXT, seq INTEGER, type TEXT, json TEXT,
@@ -24,6 +27,23 @@ CREATE TABLE IF NOT EXISTS usage(user_id TEXT, session_id TEXT, model TEXT, inpu
 
 def sha(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _scrypt(password: str, salt: bytes) -> bytes:
+    return hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1)
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    return f"scrypt${salt.hex()}${_scrypt(password, salt).hex()}"
+
+
+def check_password(password: str, stored: str | None) -> bool:
+    if not stored:
+        _scrypt(password, b"0" * 16)  # same time whether or not the user exists
+        return False
+    _, salt, h = stored.split("$")
+    return hmac.compare_digest(_scrypt(password, bytes.fromhex(salt)), bytes.fromhex(h))
 
 
 class SqliteStore:
@@ -40,6 +60,10 @@ class SqliteStore:
         cols = [r["name"] for r in await self._all("PRAGMA table_info(usage)")]
         if "cost" not in cols:  # db from Stage 1
             await self._do("ALTER TABLE usage ADD COLUMN cost REAL DEFAULT 0")
+        cols = [r["name"] for r in await self._all("PRAGMA table_info(users)")]
+        if "password" not in cols:  # db from Stage 2
+            await self._do("ALTER TABLE users ADD COLUMN password TEXT")
+            await self._do("ALTER TABLE users ADD COLUMN disabled INTEGER DEFAULT 0")
 
     async def close(self) -> None:
         await self.db.close()
@@ -51,34 +75,57 @@ class SqliteStore:
         await self.db.execute(sql, args)
         await self.db.commit()
 
-    # users
-    async def add_user(self, name: str) -> str:
-        """Returns the token (shown once); only its sha256 is stored."""
-        token = secrets.token_urlsafe(32)
-        await self._do("INSERT INTO users VALUES(?,?,?)", uuid.uuid4().hex, name, sha(token))
-        return token
+    # users: a static token (seed/rotate, users.token_sha256) and/or a password whose logins get per-device tokens
+    async def add_user(self, name: str, password: str | None = None, token: bool = True) -> str | None:
+        """Returns the static token (shown once); only its sha256 is stored. Raises sqlite3.IntegrityError on a taken name."""
+        t = secrets.token_urlsafe(32) if token else None
+        await self._do("INSERT INTO users(id, name, token_sha256, password) VALUES(?,?,?,?)", uuid.uuid4().hex, name,
+                       t and sha(t), password and hash_password(password))
+        return t
 
     async def user_by_token(self, token: str) -> dict | None:
-        rows = await self._all("SELECT id, name FROM users WHERE token_sha256=?", sha(token))
+        rows = await self._all("SELECT id, name FROM users WHERE disabled=0 AND (token_sha256=? OR id IN "
+                               "(SELECT user_id FROM tokens WHERE token_sha256=?))", sha(token), sha(token))
         return rows[0] if rows else None
 
+    async def set_password(self, name: str, password: str) -> bool:
+        cur = await self.db.execute("UPDATE users SET password=? WHERE name=?", (hash_password(password), name))
+        await self.db.commit()
+        return cur.rowcount > 0
+
+    async def login(self, name: str, password: str) -> str | None:
+        rows = await self._all("SELECT id, password FROM users WHERE name=? AND disabled=0", name)
+        if not check_password(password, rows[0]["password"] if rows else None):
+            return None
+        token = secrets.token_urlsafe(32)
+        await self._do("INSERT INTO tokens VALUES(?,?,?)", sha(token), rows[0]["id"], time.time())
+        return token
+
+    async def logout(self, token: str) -> None:
+        await self._do("DELETE FROM tokens WHERE token_sha256=?", sha(token))
+
     async def list_users(self) -> list[dict]:
-        return await self._all("SELECT id, name, token_sha256 IS NOT NULL AS active FROM users ORDER BY name")
+        return await self._all("SELECT id, name, NOT disabled AS active FROM users ORDER BY name")
 
     async def count_users(self) -> int:  # active users only: a revoked one cannot log in
         return sum(1 for u in await self.list_users() if u["active"])
 
     async def user_active(self, user_id: str) -> bool:
-        return bool(await self._all("SELECT 1 FROM users WHERE id=? AND token_sha256 IS NOT NULL", user_id))
+        return bool(await self._all("SELECT 1 FROM users WHERE id=? AND disabled=0", user_id))
 
-    async def rotate_token(self, name: str) -> str | None:
+    async def _drop_tokens(self, name: str) -> None:
+        await self.db.execute("DELETE FROM tokens WHERE user_id IN (SELECT id FROM users WHERE name=?)", (name,))
+
+    async def rotate_token(self, name: str) -> str | None:  # also re-enables a revoked user
         token = secrets.token_urlsafe(32)
-        cur = await self.db.execute("UPDATE users SET token_sha256=? WHERE name=?", (sha(token), name))
+        await self._drop_tokens(name)
+        cur = await self.db.execute("UPDATE users SET token_sha256=?, disabled=0 WHERE name=?", (sha(token), name))
         await self.db.commit()
         return token if cur.rowcount else None
 
     async def revoke(self, name: str) -> bool:
-        cur = await self.db.execute("UPDATE users SET token_sha256=NULL WHERE name=? AND token_sha256 IS NOT NULL",
+        await self._drop_tokens(name)
+        cur = await self.db.execute("UPDATE users SET token_sha256=NULL, disabled=1 WHERE name=? AND disabled=0",
                                     (name,))
         await self.db.commit()
         return cur.rowcount > 0
