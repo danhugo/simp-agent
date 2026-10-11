@@ -44,6 +44,9 @@ pre { background: var(--code); border-radius: 8px; padding: 10px 12px; overflow-
 .new { display: flex; flex-direction: column; gap: 8px; }
 .sidebar nav { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .session { display: flex; justify-content: space-between; align-items: center; border-color: transparent; background: transparent; text-align: left; }
+.session-row { display: flex; gap: 2px; }
+.session-row .session { flex: 1; min-width: 0; }
+.del { padding: 0 6px; }
 .session.active { background: var(--bg); border-color: var(--border); }
 .foot { display: flex; justify-content: space-between; }
 .empty { flex: 1; display: grid; place-items: center; }
@@ -54,6 +57,7 @@ pre { background: var(--code); border-radius: 8px; padding: 10px 12px; overflow-
 .badge.error { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
 .conn { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 .conn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+.spend { font-size: 12px; color: var(--muted); }
 .conn.live::before { background: var(--ok); }
 
 .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from simp_agent.ai import Model, from_dict, to_dict
 from simp_agent.coding import make_tools
-from simp_agent.session import AgentSession
+from simp_agent.session import AgentSession, profile
 
 HOME = Path.home() / ".simp-agent"
 SESSIONS = HOME / "sessions"
@@ -85,12 +85,8 @@ def build_model(cfg: dict) -> Model:
     if cfg["api"] in ("openai-completions", "openai-responses"):
         if not cfg.get("model") or not cfg.get("context_window"):
             raise ValueError(f"model and context_window are required for {cfg['api']}")
-        return Model(id=cfg["model"], provider="openai", api=cfg["api"], max_tokens=cfg["max_tokens"],
-                     base_url=cfg.get("base_url") or os.environ.get("OPENAI_BASE_URL"), context_window=cfg["context_window"],
-                     api_key_env=cfg.get("api_key_env"), compat={"include_usage": True, **cfg["compat"]})
-    kw = {"id": cfg.get("model"), "context_window": cfg.get("context_window"), "max_tokens": cfg["max_tokens"],
-          "base_url": cfg.get("base_url"), "api_key_env": cfg.get("api_key_env")}
-    return Model(**{k: v for k, v in kw.items() if v})
+        cfg = {**cfg, "base_url": cfg.get("base_url") or os.environ.get("OPENAI_BASE_URL")}
+    return profile.build_model({k: v for k, v in cfg.items() if v not in (None, "")})
 
 
 def env_api_key(model: Model):

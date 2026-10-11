@@ -92,3 +92,10 @@ test("file upload, list, download", async ({ page }) => {
   await page.click(".files >> text=notes.txt");
   expect(readFileSync(await (await dl).path()!, "utf8")).toBe("hello");
 });
+
+test("budget: header shows spend", async ({ page }) => {
+  await login(page);
+  await say(page, "hello there");  // FakeLLM reports 1 input token -> $0.01 per call
+  await expect(badge(page)).toHaveText("idle");
+  await expect(page.locator(".chat header .spend")).toHaveText(/^\$0\.(0[1-9]|[1-9]\d) \/ \$1$/);
+});

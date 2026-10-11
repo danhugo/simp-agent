@@ -51,6 +51,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   const [state, setState] = useState(initialState);
   const [conn, setConn] = useState<ConnStatus>("connecting");
   const [showFiles, setShowFiles] = useState(false);
+  const [confirm, setConfirm] = useState("");  // session id whose delete button was clicked once
   const ref = useRef(state);
 
   const guard = useCallback((e: unknown) => { if (e instanceof AuthError) onLogout(); else console.error(e); }, [onLogout]);
@@ -82,6 +83,16 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
     } catch (e) { guard(e); }
   };
 
+  const remove = async (id: string) => {
+    if (confirm !== id) return setConfirm(id);  // no native confirm(): first click asks, second deletes
+    setConfirm("");
+    try {
+      await api.deleteSession(id);
+      if (id === sid) setSid("");
+      await refresh();
+    } catch (e) { guard(e); }
+  };
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -96,9 +107,13 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
         </div>
         <nav>
           {sessions.map((s) => (
-            <button key={s.id} className={`session ${s.id === sid ? "active" : ""}`} onClick={() => setSid(s.id)}>
-              <span>{s.id}</span><Badge state={s.run_state} />
-            </button>
+            <div key={s.id} className="session-row">
+              <button className={`session ${s.id === sid ? "active" : ""}`} onClick={() => setSid(s.id)}>
+                <span>{s.id}</span><Badge state={s.run_state} />
+              </button>
+              <button className="ghost del" aria-label="Delete session" onClick={() => remove(s.id)}
+                onBlur={() => setConfirm("")}>{confirm === s.id ? "Delete?" : "×"}</button>
+            </div>
           ))}
           {sessions.length === 0 && <p className="muted small">No sessions yet.</p>}
         </nav>

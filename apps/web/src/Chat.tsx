@@ -19,6 +19,13 @@ export function Chat({ sid, state, conn, onError, onToggleFiles }: Props) {
   const send = (c: Parameters<typeof api.command>[1]) => api.command(sid, c).catch(onError);
   const end = useRef<HTMLDivElement>(null);
   const { inFlight: f } = state;
+  const [spend, setSpend] = useState<Awaited<ReturnType<typeof api.usage>>>();
+  useEffect(() => {  // on every run end, and every 30s so an admin pause/resume shows up while idle
+    const load = () => api.usage().then(setSpend).catch(() => {});
+    if (!busy) load();
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
+  }, [busy]);
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [state.items.length, f.text, f.thinking, state.toolOutputs]);
   const pendingShown = state.items.some((i) => i.kind === "assistant" && i.msg.tool_calls.some((c) => c.id === state.pending?.call_id));
 
@@ -28,6 +35,7 @@ export function Chat({ sid, state, conn, onError, onToggleFiles }: Props) {
         <strong>{sid}</strong>
         <Badge state={state.runState} />
         <span className={`conn ${conn}`} title="Connection">{conn}</span>
+        {spend && <span className="spend" title="Spent today">${spend.today_usd.toFixed(2)} / ${spend.day_limit_usd}{spend.paused && " · paused"}</span>}
         <span className="spacer" />
         <button className="ghost" onClick={onToggleFiles}>Files</button>
       </header>

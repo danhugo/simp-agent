@@ -7,13 +7,15 @@ from ..agent.env import LocalEnv
 
 class FakeProvider:
     """A stream_fn that plays scripted replies in order. A reply may be a callable (ctx) -> message.
-    Records each call: ctxs (the Context), messages (a copy of ctx.messages), api_keys, models."""
+    Records each call: calls (count), ctxs (the Context), messages (a copy of ctx.messages), api_keys, models."""
 
     def __init__(self, *replies):
         self.replies = iter(replies)
         self.ctxs, self.messages, self.api_keys, self.models = [], [], [], []
+        self.calls = 0
 
     async def __call__(self, model, ctx, api_key=None):
+        self.calls += 1
         self.ctxs.append(ctx)
         self.messages.append(list(ctx.messages))
         self.api_keys.append(api_key)

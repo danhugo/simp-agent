@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 import httpx
@@ -10,7 +11,7 @@ from simp_agent.ai import AssistantMessage, TextContent, ToolCall
 from simp_agent.testing import FakeProvider
 
 from simp_server import protocol as p
-from simp_server.server import create_app, load_settings
+from simp_server.server import check_sandbox, create_app, load_settings
 
 
 def reply(text="done", calls=()):
@@ -334,3 +335,117 @@ def test_empty_key_ignored(tmp_path, monkeypatch):
     r = RedactSecrets()
     r.setup(None, {"secrets": ["", "short"], "env": False})
     assert r.secrets == [] and r.mask("text") == "text"
+
+
+async def test_restart_with_pending_approval(tmp_path):
+    (tmp_path / "settings.toml").write_text('[profiles.test]\napi = "fake"\nmodel = "m"\n')
+    settings = load_settings(tmp_path)
+    app = create_app(settings, FakeProvider(bash("c1", "echo hi")))
+    mgr = app.state.mgr
+    await mgr.store.open()
+    user = await mgr.store.user_by_token(await mgr.store.add_user("u"))
+    sid = (await mgr.store.add_session(user["id"], "test"))["id"]
+    run = await mgr.get(user, sid)
+    await run.command(p.Prompt(text="go"))
+    await wait_for(lambda: run.pending is not None)
+    run.durable = lambda *a, **k: asyncio.sleep(0)  # simulate the process dying: no finally-handler writes reach the db
+    run.task.cancel()
+    await asyncio.gather(run.task, return_exceptions=True)
+    await mgr.store.close()
+
+    app2 = create_app(settings, FakeProvider(reply("after")))
+    mgr2 = app2.state.mgr
+    await mgr2.store.open()
+    try:
+        run2 = await mgr2.get(user, sid)
+        assert run2.state == "error" and run2.pending is None
+        tail = [e["type"] for e in run2.log[-3:]]
+        assert tail == ["approval_resolved", "run_state", "notice"]
+        assert run2.log[-3]["decision"] == "aborted" and "interrupted" in run2.log[-1]["text"]
+        await run2.command(p.Prompt(text="again"))  # usable afterwards (core repairs the dangling tool call)
+        await wait_for(lambda: run2.state == "idle" and run2.task.done())
+    finally:
+        await mgr2.store.close()
+
+
+async def test_revoke_rotate(env):
+    app, mgr, user, token, run = await env(FakeProvider(reply("a")))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        h = {"Authorization": f"Bearer {token}"}
+        assert (await c.get("/api/sessions", headers=h)).status_code == 200
+        new = await mgr.store.rotate_token(user["name"])
+        assert (await c.get("/api/sessions", headers=h)).status_code == 401
+        assert (await c.get("/api/sessions", headers={"Authorization": f"Bearer {new}"})).status_code == 200
+        await mgr.store.revoke(user["name"])
+        assert (await c.get("/api/sessions", headers={"Authorization": f"Bearer {new}"})).status_code == 401
+
+
+async def test_delete_running_session(env):
+    gated = Gated(["a", "b"])
+    app, mgr, user, token, run = await env(gated)
+    await run.command(p.Prompt(text="hi"))
+    await wait_for(lambda: gated.calls == 1)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        h = {"Authorization": f"Bearer {token}"}
+        r = await c.delete(f"/api/sessions/{run.sid}", headers=h)
+        assert r.status_code == 200
+        assert run.task.done() and run.sid not in mgr.runs
+        assert (await c.delete(f"/api/sessions/{run.sid}", headers=h)).status_code == 404
+        assert (await c.get(f"/api/sessions/{run.sid}/files", headers=h)).status_code == 404
+
+
+async def test_allowed_hosts_configurable(tmp_path):
+    (tmp_path / "settings.toml").write_text(
+        'allowed_hosts = ["box.local"]\n[profiles.test]\napi = "fake"\nmodel = "m"\n')
+    app = create_app(load_settings(tmp_path), FakeProvider())
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://box.local") as c:
+        assert (await c.post("/api/hello", json={"type": "hello", "protocol_version": 1})).status_code == 200
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        assert (await c.post("/api/hello", json={"type": "hello", "protocol_version": 1})).status_code == 403
+
+
+def test_check_sandbox(tmp_path):
+    s = load_settings(tmp_path)
+    assert check_sandbox(s, 1) is None
+    assert "LocalSandbox" in check_sandbox(s, 2)
+    assert check_sandbox({**s, "allow_local_sandbox": True}, 2) is None
+    s["plugins"]["sandbox"] = "simp_server.sandboxes.docker:DockerSandbox"
+    assert check_sandbox(s, 5) is None
+
+
+async def test_delete_removes_workspace_files(env):
+    app, mgr, user, token, run = await env(FakeProvider(reply("a")))
+    await run.env.write_bytes("a.txt", b"secret")
+    root = Path(run.env.root)
+    assert root.exists()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        assert (await c.delete(f"/api/sessions/{run.sid}", headers={"Authorization": f"Bearer {token}"})).status_code == 200
+    assert not root.exists()
+
+
+async def test_revoked_user_cannot_spend(env):
+    fp = FakeProvider(reply("a"))
+    _, mgr, user, _, run = await env(fp)
+    await mgr.store.revoke(user["name"])
+    await run.command(p.Prompt(text="hi"))
+    await wait_for(lambda: not run.busy and run.task.done())
+    assert fp.calls == 0 and run.state == "error"
+
+
+async def test_open_stream_ends_when_token_rotated(env, monkeypatch):
+    monkeypatch.setattr("simp_server.server.HEARTBEAT", 0.05)
+    app, mgr, user, token, run = await env(FakeProvider(reply()))
+    async with serve(app, mgr) as (port, _), httpx.AsyncClient() as c:
+        async with c.stream("GET", f"http://127.0.0.1:{port}/api/sessions/{run.sid}/events",
+                            headers={"Authorization": f"Bearer {token}"}) as r:
+            await wait_for(lambda: run.subs)
+            await mgr.store.rotate_token(user["name"])
+            body = await asyncio.wait_for(r.aread(), 3)  # ends by itself at the next heartbeat
+    assert b"snapshot" in body
+
+
+async def test_count_users_ignores_revoked(env):
+    _, mgr, user, _, _ = await env(FakeProvider())
+    await mgr.store.add_user("other")
+    await mgr.store.revoke("other")
+    assert await mgr.store.count_users() == 1

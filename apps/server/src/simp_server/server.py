@@ -7,7 +7,11 @@ GET /api/sessions/{id}/files?path=, GET|PUT /api/sessions/{id}/files/raw?path=  
 from __future__ import annotations
 
 import asyncio
+import shutil
+import sys
+import logging
 import os
+import time
 import tomllib
 import uuid
 from contextlib import asynccontextmanager
@@ -22,11 +26,15 @@ from pydantic import ValidationError
 from simp_agent import ai
 from simp_agent.agent.env import ExecutionEnv, LocalEnv
 from simp_agent.ai import Model, ThinkingContent, from_dict, to_dict
-from simp_agent.plugins.redact_secrets import RedactSecrets
+from simp_agent.plugins import build_plugins
 from simp_agent.session import AgentSession
+from simp_agent.session.profile import build_model
 
+from . import budget, ops
 from . import protocol as p
 from .fake import sse
+
+log = logging.getLogger("simp_server")
 
 SHUTDOWN_GRACE = 2  # seconds
 HEARTBEAT = 15  # seconds between SSE ": ping" comments
@@ -35,7 +43,6 @@ MAX_QUEUED = 20  # steer + follow-up messages waiting per session
 HOME = Path(os.environ.get("SIMP_SERVER_HOME", Path.home() / ".simp-server"))
 DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_server.store:SqliteStore",
                    "auth": "simp_server.server:StaticTokenAuth"}
-ALLOWED_HOSTS = {"localhost", "127.0.0.1"}
 
 
 # ---- plugin slots ---------------------------------------------------------------------------------------------------
@@ -44,6 +51,8 @@ class Sandbox(Protocol):
     async def open(self, session_id: str) -> ExecutionEnv: ...
 
     async def close(self, session_id: str) -> None: ...
+
+    async def remove(self, session_id: str) -> None: ...  # delete the workspace files (session deleted)
 
 
 class Store(Protocol):  # see store.SqliteStore for the full method list
@@ -68,6 +77,9 @@ class LocalSandbox:
     async def close(self, session_id: str) -> None:
         pass
 
+    async def remove(self, session_id: str) -> None:
+        shutil.rmtree(self.root / session_id, ignore_errors=True)
+
 
 class StaticTokenAuth:
     def __init__(self, store):
@@ -83,6 +95,15 @@ def load_plugin(path: str):
     return getattr(import_module(mod), name)
 
 
+def check_sandbox(settings: dict, n_users: int) -> str | None:
+    """LocalSandbox runs tools on this machine as the server user: fine for one person, not for several."""
+    if settings["plugins"]["sandbox"].endswith(":LocalSandbox") and n_users > 1 and not settings.get("allow_local_sandbox"):
+        return (f"{n_users} users but the sandbox is LocalSandbox (no isolation). Run `simp-server build-sandbox` and set "
+                "[plugins] sandbox = \"simp_server.sandboxes.docker:DockerSandbox\" (or SIMP_SANDBOX=docker), "
+                "or set allow_local_sandbox = true.")
+    return None
+
+
 # ---- settings + keys ------------------------------------------------------------------------------------------------
 
 def load_settings(home: Path = HOME) -> dict:
@@ -93,6 +114,8 @@ def load_settings(home: Path = HOME) -> dict:
     docker = {"sandbox": "simp_server.sandboxes.docker:DockerSandbox"} if os.environ.get("SIMP_SANDBOX") == "docker" else {}
     s["plugins"] = {**DEFAULT_PLUGINS, **docker, **s.get("plugins", dict())}
     s.setdefault("profiles", dict())
+    s.setdefault("host", "127.0.0.1")
+    s["allowed_hosts"] = set(s.get("allowed_hosts", ["localhost", "127.0.0.1"]))
     s.setdefault("default_profile", next(iter(s["profiles"]), None))
     return s
 
@@ -113,17 +136,10 @@ def take_keys(settings: dict) -> dict:
     return {k: v for k, v in keys.items() if v}  # an empty value is no key
 
 
-def build_model(pr: dict) -> Model:
-    api = pr.get("api", "anthropic-messages")
-    kw = {"id": pr["model"], "api": api, "provider": "openai" if api.startswith("openai") else "anthropic",
-          "base_url": pr.get("base_url"), "api_key_env": pr.get("api_key_env"), "compat": dict(pr.get("compat", dict()))}
-    kw.update({k: pr[k] for k in ("max_tokens", "context_window") if k in pr})
-    if api.startswith("openai"):
-        kw["compat"].setdefault("include_usage", True)
-    return Model(**kw)
-
-
 # ---- one conversation -----------------------------------------------------------------------------------------------
+
+log = logging.getLogger("simp_server")
+
 
 class Run:
     """AgentSession + durable protocol log + in-flight buffers. Subscribers only get per-connection queues."""
@@ -132,15 +148,20 @@ class Run:
         self.mgr, self.sid, self.user_id, self.env, self.ref = mgr, row["id"], row["user_id"], env, row["sandbox_ref"]
         self.info = p.SessionInfo(id=row["id"], title=row["title"] or "")
         self.log = [e["data"] for e in entries if e["type"] != "msg"]  # ponytail: whole log in memory
+        states = [e["state"] for e in self.log if e["type"] == "run_state"]
+        self.info.run_state = states[-1] if states else "idle"
         self.seq = entries[-1]["seq"] if entries else 0
         self.inflight, self.pending, self.answer = p.InFlight(), None, None
         self.subs, self.task = set(), None
-        self.model = build_model(mgr.settings["profiles"][row["profile"]])
+        self.profile = mgr.settings["profiles"][row["profile"]]
+        self.model = build_model(self.profile)
+        self.run_start = time.time()
         self.session = AgentSession(
-            self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=mgr.stream_fn,
+            self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=budget.guard(mgr.stream_fn, self.over_budget),
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
-            plugins=[RedactSecrets()], plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}})
+            plugins=build_plugins(["redact_secrets", *[n for n in self.profile.get("plugins", []) if n != "redact_secrets"]]),
+            plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}})
         self.session.subscribe(self.on_event)
 
     @property
@@ -169,6 +190,19 @@ class Run:
         self.log.append(ev)
         self._send(ev)
         await self.mgr.store.add_entry(self.user_id, self.sid, ev["seq"], ev["type"], ev)
+
+    async def recover(self) -> None:
+        """A run that was busy when the process died: close it in the log so clients see a settled session."""
+        if not self.busy:
+            return
+        log.warning("recovered interrupted run", extra={"session": self.sid})
+        resolved = {e["call_id"] for e in self.log if e["type"] == "approval_resolved"}
+        for e in self.log:
+            if e["type"] == "approval_request" and e["call_id"] not in resolved:
+                await self.durable(p.ApprovalResolved, call_id=e["call_id"], decision="aborted")
+        self.info.run_state = "error"  # any busy state -> error, bypassing check_transition on purpose
+        await self.durable(p.RunState, state="error")
+        await self.durable(p.Notice, level="warning", text="interrupted: the server restarted during this run")
 
     async def set_state(self, s: str) -> None:
         p.check_transition(self.state, s)
@@ -208,7 +242,7 @@ class Run:
                     thinking="".join(c.thinking for c in m.content if isinstance(c, ThinkingContent) and not c.redacted),
                     tool_calls=[p.ToolCall(id=c.id, name=c.name, arguments=c.arguments) for c in m.tool_calls()],
                     stop_reason=m.stop_reason, error=m.error)
-                await self.mgr.store.add_usage(self.user_id, self.sid, self.model.id, **u)
+                await self.mgr.store.add_usage(self.user_id, self.sid, self.model.id, **u, cost=budget.cost(self.profile, u))
             elif m.role == "tool_result":
                 f.tool_outputs.pop(m.tool_call_id, None)
                 await self.durable(p.ToolResult, call_id=m.tool_call_id, tool=m.tool_name, content=m.content,
@@ -247,14 +281,35 @@ class Run:
         return decision
 
     async def start(self, text: str) -> None:
+        self.run_start = time.time()
         await self.set_state("running")
+        self.run_id = uuid.uuid4().hex[:8]
+        log.info("run start", extra=self._ctx())
         self.task = asyncio.create_task(self._run(text))
+
+    async def over_budget(self) -> str | None:
+        lim, store, msg = self.mgr.limits, self.mgr.store, None
+        if self.mgr.paused():
+            msg = "budget: server paused by the admin"
+        elif not await store.user_active(self.user_id):
+            msg = "budget: user revoked"
+        elif await store.spent(self.user_id, budget.day_start()) >= lim.user_day_usd:
+            msg = f"budget: daily limit ${lim.user_day_usd:g} reached"
+        elif await store.spent(self.user_id, self.run_start, self.sid) >= lim.run_usd:
+            msg = f"budget: run limit ${lim.run_usd:g} reached"
+        if msg:
+            log.warning("over budget: %s", msg, extra=self._ctx())
+        return msg
+
+    def _ctx(self) -> dict:
+        return {"run_id": self.run_id, "session": self.sid, "user": self.user_id}
 
     async def _run(self, text: str) -> None:
         try:
             await self._turn(text)
         finally:  # never leave the session stuck busy, whatever failed (even a store write or a cancel)
             if self.busy and self.task is asyncio.current_task():
+                log.error("run stopped unexpectedly", extra=self._ctx(), exc_info=True)
                 self.pending, self.inflight, self.info.run_state = None, p.InFlight(), "error"
                 try:
                     await self.durable(p.RunState, state="error")
@@ -273,9 +328,11 @@ class Run:
             agent.clear_queues()
             await self.set_state("idle")
             await self.durable(p.Notice, level="warning", text="run aborted")
+            log.info("run end", extra={**self._ctx(), "state": "aborted"})
             return
         last = agent.messages[-1] if agent.messages else None
         await self.set_state("error" if last and last.role == "assistant" and last.stop_reason == "error" else "idle")
+        log.info("run end", extra={**self._ctx(), "state": self.state})
         if agent.follow_ups:  # came in after the loop decided to stop
             await self.start(agent.follow_ups.pop(0).content)
 
@@ -303,8 +360,12 @@ class SessionManager:
     def __init__(self, settings: dict, store, sandbox, stream_fn):
         self.settings, self.store, self.sandbox, self.stream_fn = settings, store, sandbox, stream_fn
         self.keys = take_keys(settings)
+        self.limits = budget.limits(settings)
         self.runs: dict[str, Run] = dict()
         self.lock = asyncio.Lock()  # ponytail: one lock for loading runs; per-session locks if it ever matters
+
+    def paused(self) -> bool:
+        return (Path(self.settings["data_dir"]) / "PAUSED").exists()
 
     def api_key_for(self, model: Model):
         name = model.api_key_env or ("OPENAI_API_KEY" if model.api.startswith("openai") else "ANTHROPIC_API_KEY")
@@ -318,7 +379,18 @@ class SessionManager:
             if sid not in self.runs:
                 env = await self.sandbox.open(row["sandbox_ref"])
                 self.runs[sid] = Run(self, row, env, await self.store.entries(user["id"], sid))
+                await self.runs[sid].recover()
         return self.runs[sid]
+
+    async def drop(self, sid: str, ref: str) -> None:
+        """Stop the run (if loaded), close its sandbox, and delete its workspace files."""
+        run = self.runs.pop(sid, None)
+        if run and run.task and not run.task.done():
+            run.session.abort()
+            run.task.cancel()
+            await asyncio.gather(run.task, return_exceptions=True)
+        await self.sandbox.close(ref)
+        await self.sandbox.remove(ref)
 
     def info(self, row: dict) -> p.SessionInfo:
         r = self.runs.get(row["id"])
@@ -329,6 +401,8 @@ class SessionManager:
 
 def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     pl = settings["plugins"]
+    for pr in settings["profiles"].values():
+        build_plugins(pr.get("plugins", []))  # a typo fails at boot, not on first chat
     store = load_plugin(pl["store"])(settings)
     sandbox = load_plugin(pl["sandbox"])(settings)
     auth = load_plugin(pl["auth"])(store)
@@ -337,9 +411,16 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         await store.open()
+        if err := check_sandbox(settings, await store.count_users()):
+            raise SystemExit(err)
+        for name, pr in settings["profiles"].items():
+            if "price_in" not in pr or "price_out" not in pr:
+                log.warning("profile %s has no prices: its calls cost $0 and never hit a budget", name)
         yield
         for run in list(mgr.runs.values()):
             await sandbox.close(run.ref)
+        if hasattr(sandbox, "close_all"):
+            await sandbox.close_all()
         await store.close()
 
     app = FastAPI(lifespan=lifespan)
@@ -348,7 +429,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     @app.middleware("http")
     async def host_guard(request: Request, call_next):  # DNS rebinding: only our own host names
         host = request.headers.get("host", "").rsplit(":", 1)[0]
-        if host not in ALLOWED_HOSTS:
+        if host not in settings["allowed_hosts"]:
             return JSONResponse({"detail": "bad host"}, status_code=403)
         return await call_next(request)
 
@@ -367,6 +448,11 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def profiles(u=Depends(user)) -> list[str]:
         return list(settings["profiles"])
 
+    @app.get("/api/usage")
+    async def usage(u=Depends(user)):
+        return {"today_usd": round(await store.spent(u["id"], budget.day_start()), 4),
+                "day_limit_usd": mgr.limits.user_day_usd, "paused": mgr.paused()}
+
     @app.get("/api/sessions")
     async def list_sessions(u=Depends(user)) -> list[p.SessionInfo]:
         return [mgr.info(r) for r in await store.list_sessions(u["id"])]
@@ -378,6 +464,14 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         if profile not in settings["profiles"]:
             raise HTTPException(400, f"unknown profile {profile!r}; have {sorted(settings['profiles'])}")
         return mgr.info(await store.add_session(u["id"], profile, body.get("title", "")))
+
+    @app.delete("/api/sessions/{sid}")
+    async def delete_session(sid: str, u=Depends(user)):
+        if (row := await store.get_session(u["id"], sid)) is None:
+            raise HTTPException(404, "no such session")
+        await mgr.drop(sid, row["sandbox_ref"])
+        await store.delete_session(u["id"], sid)
+        return {"ok": True}
 
     @app.post("/api/sessions/{sid}/commands")
     async def post_command(sid: str, request: Request, u=Depends(user)):
@@ -401,8 +495,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
                     try:
                         yield sse(await asyncio.wait_for(q.get(), HEARTBEAT))
                     except TimeoutError:
-                        if await request.is_disconnected():
-                            return
+                        if await request.is_disconnected() or await auth.authenticate(request) is None:
+                            return  # gone, or its token was revoked/rotated
                         yield ": ping\n\n"
             finally:
                 run.subs.discard(q)
@@ -445,6 +539,16 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     return app
 
 
+async def with_store(fn):
+    settings = load_settings()
+    store = load_plugin(settings["plugins"]["store"])(settings)
+    await store.open()
+    try:
+        return await fn(store)
+    finally:
+        await store.close()
+
+
 def main() -> None:
     import argparse
 
@@ -453,21 +557,48 @@ def main() -> None:
     ap = argparse.ArgumentParser(prog="simp-server")
     sub = ap.add_subparsers(dest="mode", required=True)
     sub.add_parser("seed", help="create a user, print its token once").add_argument("--name", required=True)
-    r = sub.add_parser("run", help="real server on 127.0.0.1")
+    sub.add_parser("users", help="list users")
+    sub.add_parser("revoke", help="disable a user's token").add_argument("--name", required=True)
+    sub.add_parser("rotate", help="new token for a user, print it once").add_argument("--name", required=True)
+    r = sub.add_parser("run", help="real server on settings host (default 127.0.0.1)")
     r.add_argument("--port", type=int, default=8766)
     r.add_argument("--fake-llm", action="store_true", help="deterministic scripted model (e2e)")
+    b = sub.add_parser("backup", help="snapshot the data dir into a .tar.gz")
+    b.add_argument("--to", required=True)
+    b.add_argument("--keep", type=int, default=0, help="keep only the newest N backups in --to (0 = keep all)")
+    sub.add_parser("pause", help="kill switch: refuse every LLM call until resume")
+    sub.add_parser("resume", help="lift the kill switch")
     a = ap.parse_args()
-    if a.mode == "seed":
-        async def seed():
-            settings = load_settings()
-            store = load_plugin(settings["plugins"]["store"])(settings)
-            await store.open()
-            print(await store.add_user(a.name))
-            await store.close()
-        asyncio.run(seed())
+    if a.mode in ("pause", "resume"):
+        f = Path(load_settings()["data_dir"]) / "PAUSED"
+        f.touch() if a.mode == "pause" else f.unlink(missing_ok=True)
+        print(a.mode + "d")
+        return
+    if a.mode == "backup":
+        print(ops.backup(Path(load_settings()["data_dir"]), Path(a.to), keep=a.keep))
+    elif a.mode == "seed":
+        async def seed(s):
+            token = await s.add_user(a.name)
+            if err := check_sandbox(load_settings(), await s.count_users()):
+                print(f"warning: {err} A running server keeps going; it refuses to start next time.", file=sys.stderr)
+            return token
+        print(asyncio.run(with_store(seed)))
+    elif a.mode == "users":
+        for u in asyncio.run(with_store(lambda s: s.list_users())):
+            print(f"{u['name']}\t{'active' if u['active'] else 'revoked'}")
+    elif a.mode == "revoke":
+        if not asyncio.run(with_store(lambda s: s.revoke(a.name))):
+            raise SystemExit(f"no active user named {a.name}")
+        print("revoked")
+    elif a.mode == "rotate":
+        if (t := asyncio.run(with_store(lambda s: s.rotate_token(a.name)))) is None:
+            raise SystemExit(f"no user named {a.name}")
+        print(t)
     else:
         if a.fake_llm:
             from .fakellm import stream
         # open SSE streams never end on their own; without the timeout uvicorn waits forever and lifespan never closes sandboxes
-        uvicorn.run(create_app(load_settings(), stream if a.fake_llm else ai.stream), host="127.0.0.1", port=a.port,
-                    timeout_graceful_shutdown=SHUTDOWN_GRACE)
+        ops.setup_logging()
+        settings = load_settings()
+        uvicorn.run(create_app(settings, stream if a.fake_llm else ai.stream), host=settings["host"], port=a.port,
+                    timeout_graceful_shutdown=SHUTDOWN_GRACE, log_config=None)

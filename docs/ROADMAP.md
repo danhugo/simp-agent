@@ -14,35 +14,15 @@ without rewrites.
   seq, offsets, snapshot); FastAPI server (token auth, Host guard, SQLite, files
   API, usage); hardened DockerSandbox; React web UI; Playwright e2e; hardening
   from review (SSE heartbeat, bounded queues, caps, no remote markdown images).
-
-## Stage 2 – hosted beta (single region, single replica, ~20 invited users)
-
-Deliverables, in order:
-
-1. Shared wiring helper (model + session factory) used by CLI and server;
-   agent plugins configurable per profile.
-2. Ops basics: server Dockerfile, compose (server + Postgres + web), JSON logs
-   with `run_id`, traces (Opik/OTel).
-3. Full `Store` protocol + conformance suite; Postgres store; Alembic migrations.
-   SQLite stays for dev.
-4. Restart safety: `runs` table with `boot_id`; on startup orphaned runs become
-   `interrupted` (no stuck sessions). Resume is Stage 3.
-5. Identity/tenancy: OIDC auth plugin (static token stays for dev), `org_id` on
-   every row, session delete, token revoke, configurable allowed hosts.
-6. Cost/safety before the first outside user: budget per user/day and per run
-   (`error_kind=budget`), rate limit, usage in the UI, kill switch.
-7. Cloud sandbox plugin (E2B or Daytona): egress denied by default (allowlist),
-   no secrets inside, file I/O via the provider API. DockerSandbox stays for dev.
-8. Deploy to one target with managed Postgres (backups) + e2e against the URL.
-
-Exit criteria: Store and Sandbox conformance suites pass on Postgres and the
-cloud sandbox; killing the server mid-run gives a clean `interrupted` state;
-a test proves one org cannot read another org's data; a runaway loop stops at
-its budget; e2e passes against the deployed URL in CI; one backup restore done.
-
-Open decisions: hosting (Fly/Render vs own VM/K8s), sandbox provider (E2B vs
-Daytona), who pays for the LLM (platform key + caps vs BYOK), login provider,
-network policy for unattended runs, budget ceiling and data retention.
+- **Stage 2 – self-hosted on one machine.** Docker sandbox required for several users;
+  money budgets per user/day and per run (soft, checked before each LLM call) with a
+  pause/resume kill switch and spend in the UI; restart closes interrupted runs; token
+  revoke/rotate (also stops the user's LLM calls and open streams), session delete
+  (with its files), configurable bind host and allowed hosts; shared `build_model` and
+  plugins per profile; JSON logs with `run_id`, launchd service, daily backups with
+  retention and a restore drill. DockerSandbox verified end to end (tests, API, web with a real model).
+  Deferred: Postgres + Alembic (until multiple replicas), `org_id`, OIDC, rate limit,
+  TLS (tunnel handles it), tracing, E2B sandbox plugin (when a key is provided).
 
 ## Stage 3 – scale and reliability
 
