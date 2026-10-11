@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 import tomllib
 import uuid
 from contextlib import asynccontextmanager
@@ -27,7 +28,7 @@ from simp_agent.plugins import build_plugins
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
 
-from . import ops
+from . import budget, ops
 from . import protocol as p
 from .fake import sse
 
@@ -147,8 +148,9 @@ class Run:
         self.subs, self.task = set(), None
         self.profile = mgr.settings["profiles"][row["profile"]]
         self.model = build_model(self.profile)
+        self.run_start = time.time()
         self.session = AgentSession(
-            self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=mgr.stream_fn,
+            self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=budget.guard(mgr.stream_fn, self.over_budget),
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
             plugins=build_plugins(["redact_secrets", *[n for n in self.profile.get("plugins", []) if n != "redact_secrets"]]),
@@ -233,7 +235,7 @@ class Run:
                     thinking="".join(c.thinking for c in m.content if isinstance(c, ThinkingContent) and not c.redacted),
                     tool_calls=[p.ToolCall(id=c.id, name=c.name, arguments=c.arguments) for c in m.tool_calls()],
                     stop_reason=m.stop_reason, error=m.error)
-                await self.mgr.store.add_usage(self.user_id, self.sid, self.model.id, **u)
+                await self.mgr.store.add_usage(self.user_id, self.sid, self.model.id, **u, cost=budget.cost(self.profile, u))
             elif m.role == "tool_result":
                 f.tool_outputs.pop(m.tool_call_id, None)
                 await self.durable(p.ToolResult, call_id=m.tool_call_id, tool=m.tool_name, content=m.content,
@@ -272,10 +274,23 @@ class Run:
         return decision
 
     async def start(self, text: str) -> None:
+        self.run_start = time.time()
         await self.set_state("running")
         self.run_id = uuid.uuid4().hex[:8]
         log.info("run start", extra=self._ctx())
         self.task = asyncio.create_task(self._run(text))
+
+    async def over_budget(self) -> str | None:
+        lim, store, msg = self.mgr.limits, self.mgr.store, None
+        if self.mgr.paused():
+            msg = "budget: server paused by the admin"
+        elif await store.spent(self.user_id, budget.day_start()) >= lim.user_day_usd:
+            msg = f"budget: daily limit ${lim.user_day_usd:g} reached"
+        elif await store.spent(self.user_id, self.run_start, self.sid) >= lim.run_usd:
+            msg = f"budget: run limit ${lim.run_usd:g} reached"
+        if msg:
+            log.warning("over budget: %s", msg, extra=self._ctx())
+        return msg
 
     def _ctx(self) -> dict:
         return {"run_id": self.run_id, "session": self.sid, "user": self.user_id}
@@ -336,8 +351,12 @@ class SessionManager:
     def __init__(self, settings: dict, store, sandbox, stream_fn):
         self.settings, self.store, self.sandbox, self.stream_fn = settings, store, sandbox, stream_fn
         self.keys = take_keys(settings)
+        self.limits = budget.limits(settings)
         self.runs: dict[str, Run] = dict()
         self.lock = asyncio.Lock()  # ponytail: one lock for loading runs; per-session locks if it ever matters
+
+    def paused(self) -> bool:
+        return (Path(self.settings["data_dir"]) / "PAUSED").exists()
 
     def api_key_for(self, model: Model):
         name = model.api_key_env or ("OPENAI_API_KEY" if model.api.startswith("openai") else "ANTHROPIC_API_KEY")
@@ -385,6 +404,9 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         await store.open()
         if err := check_sandbox(settings, await store.count_users()):
             raise SystemExit(err)
+        for name, pr in settings["profiles"].items():
+            if "price_in" not in pr or "price_out" not in pr:
+                log.warning("profile %s has no prices: its calls cost $0 and never hit a budget", name)
         yield
         for run in list(mgr.runs.values()):
             await sandbox.close(run.ref)
@@ -414,6 +436,11 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     @app.get("/api/profiles")
     async def profiles(u=Depends(user)) -> list[str]:
         return list(settings["profiles"])
+
+    @app.get("/api/usage")
+    async def usage(u=Depends(user)):
+        return {"today_usd": round(await store.spent(u["id"], budget.day_start()), 4),
+                "day_limit_usd": mgr.limits.user_day_usd, "paused": mgr.paused()}
 
     @app.get("/api/sessions")
     async def list_sessions(u=Depends(user)) -> list[p.SessionInfo]:
@@ -526,7 +553,14 @@ def main() -> None:
     r.add_argument("--port", type=int, default=8766)
     r.add_argument("--fake-llm", action="store_true", help="deterministic scripted model (e2e)")
     sub.add_parser("backup", help="snapshot the data dir into a .tar.gz").add_argument("--to", required=True)
+    sub.add_parser("pause", help="kill switch: refuse every LLM call until resume")
+    sub.add_parser("resume", help="lift the kill switch")
     a = ap.parse_args()
+    if a.mode in ("pause", "resume"):
+        f = Path(load_settings()["data_dir"]) / "PAUSED"
+        f.touch() if a.mode == "pause" else f.unlink(missing_ok=True)
+        print(a.mode + "d")
+        return
     if a.mode == "backup":
         print(ops.backup(Path(load_settings()["data_dir"]), Path(a.to)))
     elif a.mode == "seed":

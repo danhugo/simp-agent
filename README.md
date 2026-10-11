@@ -61,6 +61,25 @@ uv run simp-server rotate --name bob  # prints a new token once; the old one sto
 ```
 Sessions are deleted from the web sidebar (`×`, click again to confirm); a running session is aborted first.
 
+### Budgets
+
+Each LLM call costs `input * price_in / 1e6 + output * price_out / 1e6` (prices per profile, USD per 1M tokens).
+A profile with no prices costs $0 and never hits a budget (the server warns at startup). Before every LLM call the
+server refuses with a `budget` error when the user's spend since local midnight or the current run's spend is over limit:
+
+```toml
+[profiles.luna]
+price_in = 3
+price_out = 15
+
+[budget]  # defaults
+user_day_usd = 2.0
+run_usd = 0.5
+```
+
+Kill switch: `uv run simp-server pause` (creates `<data_dir>/PAUSED`) refuses every LLM call at once, on running
+servers too; `uv run simp-server resume` lifts it. The web header shows today's spend and limit.
+
 ### Running as a service (macOS launchd)
 
 Logs are JSON lines on stderr (`{"ts", "level", "msg", "run_id", "session", "user", ...}`).
