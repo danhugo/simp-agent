@@ -4,3 +4,4 @@ __pycache__/
 /settings.json
 playwright-report/
 test-results/
+.claude/

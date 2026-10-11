@@ -65,8 +65,11 @@ class SqliteStore:
     async def list_users(self) -> list[dict]:
         return await self._all("SELECT id, name, token_sha256 IS NOT NULL AS active FROM users ORDER BY name")
 
-    async def count_users(self) -> int:
-        return len(await self.list_users())
+    async def count_users(self) -> int:  # active users only: a revoked one cannot log in
+        return sum(1 for u in await self.list_users() if u["active"])
+
+    async def user_active(self, user_id: str) -> bool:
+        return bool(await self._all("SELECT 1 FROM users WHERE id=? AND token_sha256 IS NOT NULL", user_id))
 
     async def rotate_token(self, name: str) -> str | None:
         token = secrets.token_urlsafe(32)

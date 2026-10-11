@@ -56,10 +56,12 @@ make dev                            # server on :8766 (DockerSandbox if docker r
 
 ```sh
 uv run simp-server users              # name<TAB>active|revoked
-uv run simp-server revoke --name bob  # token stops working at once (open tabs get 401)
+uv run simp-server revoke --name bob  # new requests get 401, open streams end within 15s, no further LLM calls
 uv run simp-server rotate --name bob  # prints a new token once; the old one stops working
 ```
-Sessions are deleted from the web sidebar (`×`, click again to confirm); a running session is aborted first.
+Sessions are deleted from the web sidebar (`×`, click again to confirm); a running session is aborted first and its
+workspace files are deleted. `seed` warns when a second user would need DockerSandbox (the server refuses to start
+with LocalSandbox and several active users unless `allow_local_sandbox = true`).
 
 ### Budgets
 
@@ -80,6 +82,10 @@ run_usd = 0.5
 Kill switch: `uv run simp-server pause` (creates `<data_dir>/PAUSED`) refuses every LLM call at once, on running
 servers too; `uv run simp-server resume` lifts it. The web header shows today's spend and limit.
 
+Limits are soft: the check runs before each LLM call and cost is recorded when the call ends, so a user can go over
+by the calls already in flight (one per session running at that moment). `pause` and `revoke` likewise let an
+in-flight call finish.
+
 ### Running as a service (macOS launchd)
 
 Logs are JSON lines on stderr (`{"ts", "level", "msg", "run_id", "session", "user", ...}`).
@@ -90,11 +96,13 @@ for p in server backup; do
 done
 ```
 `com.simp.server` keeps the server up on :8766 with `SIMP_SANDBOX=docker` (log: `~/.simp-server/server.log`);
-`com.simp.backup` runs a backup every day at 03:00 into `~/.simp-server/backups`.
+`com.simp.backup` runs a backup every day at 03:00 into `~/.simp-server/backups`, keeping the newest 14 (`--keep`).
+`server.log` is not rotated by launchd; rotate it with `newsyslog` or truncate it now and then.
 
 ### Backups and restore
 
 `uv run simp-server backup --to DIR` writes `DIR/simp-<YYYYmmdd-HHMMSS>.tar.gz` with `simp.db` (online snapshot, safe while
 the server runs), `settings.toml`, `workspaces/` and `sandboxes/`. `.env` (keys) is never included; back it up separately.
 Restore: stop the server (`launchctl unload ~/Library/LaunchAgents/com.simp.server.plist`),
+`rm -f ~/.simp-server/simp.db-wal ~/.simp-server/simp.db-shm` (a stale WAL would be replayed onto the restored db),
 `tar xzf <file> -C ~/.simp-server`, start it again (`launchctl load ...`).

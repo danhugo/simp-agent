@@ -7,6 +7,8 @@ GET /api/sessions/{id}/files?path=, GET|PUT /api/sessions/{id}/files/raw?path=  
 from __future__ import annotations
 
 import asyncio
+import shutil
+import sys
 import logging
 import os
 import time
@@ -50,6 +52,8 @@ class Sandbox(Protocol):
 
     async def close(self, session_id: str) -> None: ...
 
+    async def remove(self, session_id: str) -> None: ...  # delete the workspace files (session deleted)
+
 
 class Store(Protocol):  # see store.SqliteStore for the full method list
     async def open(self) -> None: ...
@@ -72,6 +76,9 @@ class LocalSandbox:
 
     async def close(self, session_id: str) -> None:
         pass
+
+    async def remove(self, session_id: str) -> None:
+        shutil.rmtree(self.root / session_id, ignore_errors=True)
 
 
 class StaticTokenAuth:
@@ -284,6 +291,8 @@ class Run:
         lim, store, msg = self.mgr.limits, self.mgr.store, None
         if self.mgr.paused():
             msg = "budget: server paused by the admin"
+        elif not await store.user_active(self.user_id):
+            msg = "budget: user revoked"
         elif await store.spent(self.user_id, budget.day_start()) >= lim.user_day_usd:
             msg = f"budget: daily limit ${lim.user_day_usd:g} reached"
         elif await store.spent(self.user_id, self.run_start, self.sid) >= lim.run_usd:
@@ -373,15 +382,15 @@ class SessionManager:
                 await self.runs[sid].recover()
         return self.runs[sid]
 
-    async def drop(self, sid: str) -> None:
+    async def drop(self, sid: str, ref: str) -> None:
+        """Stop the run (if loaded), close its sandbox, and delete its workspace files."""
         run = self.runs.pop(sid, None)
-        if run is None:
-            return
-        if run.task and not run.task.done():
+        if run and run.task and not run.task.done():
             run.session.abort()
             run.task.cancel()
             await asyncio.gather(run.task, return_exceptions=True)
-        await self.sandbox.close(run.ref)
+        await self.sandbox.close(ref)
+        await self.sandbox.remove(ref)
 
     def info(self, row: dict) -> p.SessionInfo:
         r = self.runs.get(row["id"])
@@ -410,6 +419,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         yield
         for run in list(mgr.runs.values()):
             await sandbox.close(run.ref)
+        if hasattr(sandbox, "close_all"):
+            await sandbox.close_all()
         await store.close()
 
     app = FastAPI(lifespan=lifespan)
@@ -456,9 +467,9 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
 
     @app.delete("/api/sessions/{sid}")
     async def delete_session(sid: str, u=Depends(user)):
-        if await store.get_session(u["id"], sid) is None:
+        if (row := await store.get_session(u["id"], sid)) is None:
             raise HTTPException(404, "no such session")
-        await mgr.drop(sid)
+        await mgr.drop(sid, row["sandbox_ref"])
         await store.delete_session(u["id"], sid)
         return {"ok": True}
 
@@ -484,8 +495,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
                     try:
                         yield sse(await asyncio.wait_for(q.get(), HEARTBEAT))
                     except TimeoutError:
-                        if await request.is_disconnected():
-                            return
+                        if await request.is_disconnected() or await auth.authenticate(request) is None:
+                            return  # gone, or its token was revoked/rotated
                         yield ": ping\n\n"
             finally:
                 run.subs.discard(q)
@@ -552,7 +563,9 @@ def main() -> None:
     r = sub.add_parser("run", help="real server on settings host (default 127.0.0.1)")
     r.add_argument("--port", type=int, default=8766)
     r.add_argument("--fake-llm", action="store_true", help="deterministic scripted model (e2e)")
-    sub.add_parser("backup", help="snapshot the data dir into a .tar.gz").add_argument("--to", required=True)
+    b = sub.add_parser("backup", help="snapshot the data dir into a .tar.gz")
+    b.add_argument("--to", required=True)
+    b.add_argument("--keep", type=int, default=0, help="keep only the newest N backups in --to (0 = keep all)")
     sub.add_parser("pause", help="kill switch: refuse every LLM call until resume")
     sub.add_parser("resume", help="lift the kill switch")
     a = ap.parse_args()
@@ -562,9 +575,14 @@ def main() -> None:
         print(a.mode + "d")
         return
     if a.mode == "backup":
-        print(ops.backup(Path(load_settings()["data_dir"]), Path(a.to)))
+        print(ops.backup(Path(load_settings()["data_dir"]), Path(a.to), keep=a.keep))
     elif a.mode == "seed":
-        print(asyncio.run(with_store(lambda s: s.add_user(a.name))))
+        async def seed(s):
+            token = await s.add_user(a.name)
+            if err := check_sandbox(load_settings(), await s.count_users()):
+                print(f"warning: {err} A running server keeps going; it refuses to start next time.", file=sys.stderr)
+            return token
+        print(asyncio.run(with_store(seed)))
     elif a.mode == "users":
         for u in asyncio.run(with_store(lambda s: s.list_users())):
             print(f"{u['name']}\t{'active' if u['active'] else 'revoked'}")

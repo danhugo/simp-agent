@@ -6,7 +6,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/usr/bin/env</string><string>uv</string><string>run</string><string>--project</string><string>__REPO__</string>
-    <string>simp-server</string><string>backup</string><string>--to</string><string>__HOME__/.simp-server/backups</string>
+    <string>simp-server</string><string>backup</string><string>--to</string><string>__HOME__/.simp-server/backups</string><string>--keep</string><string>14</string>
   </array>
   <key>WorkingDirectory</key><string>__REPO__</string>
   <key>EnvironmentVariables</key>

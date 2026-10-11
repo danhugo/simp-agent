@@ -14,33 +14,15 @@ without rewrites.
   seq, offsets, snapshot); FastAPI server (token auth, Host guard, SQLite, files
   API, usage); hardened DockerSandbox; React web UI; Playwright e2e; hardening
   from review (SSE heartbeat, bounded queues, caps, no remote markdown images).
-
-## Stage 2 – self-hosted on one machine (decided 2026-10-11)
-
-The local machine is the deploy target; no cloud deploy. Network exposure (tunnel,
-TLS) is out of scope for now; a tunnel such as Cloudflare provides TLS later.
-LLM: OpenAI-compatible API with an auth key (shared platform key, held by the server).
-
-Deliverables, in order:
-
-1. E2e on the local stack early, as the safety net for the items below.
-2. DockerSandbox is the default; with several users, refuse to start on LocalSandbox.
-3. Budgets: per user/day ($2) and per run ($0.50), `error_kind=budget`; price per
-   1M input/output tokens configured per profile; kill switch; usage in the UI.
-4. Restart safety: `runs` table with `boot_id`; on startup orphaned runs become
-   `interrupted`. Resume is Stage 3.
-5. Token revoke/rotate (CLI), session delete; configurable bind host and allowed hosts.
-6. Shared wiring helper (model + session factory) used by CLI and server;
-   agent plugins configurable per profile.
-7. Ops: JSON logs with `run_id`; run as a service (launchd/systemd); scheduled
-   backup of `simp.db` (WAL on) and `workspaces/`, one restore drill.
-
-Exit criteria: killing the server mid-run gives a clean `interrupted` state; a
-runaway loop stops at its budget; a test proves one user cannot read another
-user's data; e2e passes on the local stack; one backup restore done.
-
-Deferred: Postgres + Alembic (until multiple replicas), `org_id`, OIDC, rate limit,
-TLS (tunnel handles it), tracing, E2B sandbox plugin (when a key is provided).
+- **Stage 2 – self-hosted on one machine.** Docker sandbox required for several users;
+  money budgets per user/day and per run (soft, checked before each LLM call) with a
+  pause/resume kill switch and spend in the UI; restart closes interrupted runs; token
+  revoke/rotate (also stops the user's LLM calls and open streams), session delete
+  (with its files), configurable bind host and allowed hosts; shared `build_model` and
+  plugins per profile; JSON logs with `run_id`, launchd service, daily backups with
+  retention and a restore drill. DockerSandbox was not re-run end to end this stage.
+  Deferred: Postgres + Alembic (until multiple replicas), `org_id`, OIDC, rate limit,
+  TLS (tunnel handles it), tracing, E2B sandbox plugin (when a key is provided).
 
 ## Stage 3 – scale and reliability
 

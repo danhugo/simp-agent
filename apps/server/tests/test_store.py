@@ -51,7 +51,8 @@ async def test_revoke_rotate_delete(tmp_path):
         assert await s.rotate_token("nobody") is None
         assert await s.revoke("a") and await s.user_by_token(new) is None
         assert not await s.revoke("a")
-        assert await s.count_users() == 1  # revoked user keeps its rows; it just cannot log in
+        assert await s.count_users() == 0  # revoked: still listed (rows kept) but not counted as a user who can log in
+        assert [u["name"] for u in await s.list_users()] == ["a"]
 
         await s.add_user("b")
         uid = next(u["id"] for u in await s.list_users() if u["name"] == "b")

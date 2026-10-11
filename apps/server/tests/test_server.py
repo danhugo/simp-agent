@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 import httpx
@@ -410,3 +411,41 @@ def test_check_sandbox(tmp_path):
     assert check_sandbox({**s, "allow_local_sandbox": True}, 2) is None
     s["plugins"]["sandbox"] = "simp_server.sandboxes.docker:DockerSandbox"
     assert check_sandbox(s, 5) is None
+
+
+async def test_delete_removes_workspace_files(env):
+    app, mgr, user, token, run = await env(FakeProvider(reply("a")))
+    await run.env.write_bytes("a.txt", b"secret")
+    root = Path(run.env.root)
+    assert root.exists()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        assert (await c.delete(f"/api/sessions/{run.sid}", headers={"Authorization": f"Bearer {token}"})).status_code == 200
+    assert not root.exists()
+
+
+async def test_revoked_user_cannot_spend(env):
+    fp = FakeProvider(reply("a"))
+    _, mgr, user, _, run = await env(fp)
+    await mgr.store.revoke(user["name"])
+    await run.command(p.Prompt(text="hi"))
+    await wait_for(lambda: not run.busy and run.task.done())
+    assert fp.calls == 0 and run.state == "error"
+
+
+async def test_open_stream_ends_when_token_rotated(env, monkeypatch):
+    monkeypatch.setattr("simp_server.server.HEARTBEAT", 0.05)
+    app, mgr, user, token, run = await env(FakeProvider(reply()))
+    async with serve(app, mgr) as (port, _), httpx.AsyncClient() as c:
+        async with c.stream("GET", f"http://127.0.0.1:{port}/api/sessions/{run.sid}/events",
+                            headers={"Authorization": f"Bearer {token}"}) as r:
+            await wait_for(lambda: run.subs)
+            await mgr.store.rotate_token(user["name"])
+            body = await asyncio.wait_for(r.aread(), 3)  # ends by itself at the next heartbeat
+    assert b"snapshot" in body
+
+
+async def test_count_users_ignores_revoked(env):
+    _, mgr, user, _, _ = await env(FakeProvider())
+    await mgr.store.add_user("other")
+    await mgr.store.revoke("other")
+    assert await mgr.store.count_users() == 1

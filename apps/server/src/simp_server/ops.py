@@ -31,7 +31,7 @@ def setup_logging(level: int = logging.INFO) -> None:
     root.setLevel(level)
 
 
-def backup(data_dir: Path, dest: Path) -> Path:
+def backup(data_dir: Path, dest: Path, keep: int = 0) -> Path:
     data_dir, dest = Path(data_dir), Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
     out = dest / f"simp-{time.strftime('%Y%m%d-%H%M%S')}.tar.gz"
@@ -47,4 +47,7 @@ def backup(data_dir: Path, dest: Path) -> Path:
         for name in ("settings.toml", "workspaces", "sandboxes"):
             if (data_dir / name).exists():
                 tar.add(data_dir / name, name)
+    if keep > 0:  # names sort by time
+        for old in sorted(dest.glob("simp-*.tar.gz"))[:-keep]:
+            old.unlink()
     return out

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -104,6 +105,10 @@ class DockerSandbox:
         env = self.envs.pop(session_id, None)
         if env:
             await _docker("rm", "-f", env.container)
+
+    async def remove(self, session_id: str) -> None:
+        if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", session_id):
+            shutil.rmtree(self.workspaces_dir / session_id, ignore_errors=True)
 
     async def close_all(self) -> None:
         await asyncio.gather(*(self.close(s) for s in list(self.envs)))

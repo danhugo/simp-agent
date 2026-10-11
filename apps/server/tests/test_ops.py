@@ -35,3 +35,15 @@ def test_backup_and_restore(tmp_path):
     tarfile.open(f).extractall(restored, filter="data")
     assert sqlite3.connect(restored / "simp.db").execute("SELECT x FROM t").fetchone() == (42,)
     db.close()
+
+
+def test_backup_keeps_newest(tmp_path):
+    home, out = tmp_path / "home", tmp_path / "out"
+    (home).mkdir()
+    out.mkdir()
+    for i in range(5):
+        (out / f"simp-2026010{i}-000000.tar.gz").write_bytes(b"x")
+    (out / "other.txt").write_text("keep me")
+    f = ops.backup(home, out, keep=3)
+    left = sorted(p.name for p in out.iterdir())
+    assert left == ["other.txt", "simp-20260103-000000.tar.gz", "simp-20260104-000000.tar.gz", f.name]
