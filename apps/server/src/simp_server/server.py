@@ -22,8 +22,9 @@ from pydantic import ValidationError
 from simp_agent import ai
 from simp_agent.agent.env import ExecutionEnv, LocalEnv
 from simp_agent.ai import Model, ThinkingContent, from_dict, to_dict
-from simp_agent.plugins.redact_secrets import RedactSecrets
+from simp_agent.plugins import build_plugins
 from simp_agent.session import AgentSession
+from simp_agent.session.profile import build_model
 
 from . import protocol as p
 from .fake import sse
@@ -113,16 +114,6 @@ def take_keys(settings: dict) -> dict:
     return {k: v for k, v in keys.items() if v}  # an empty value is no key
 
 
-def build_model(pr: dict) -> Model:
-    api = pr.get("api", "anthropic-messages")
-    kw = {"id": pr["model"], "api": api, "provider": "openai" if api.startswith("openai") else "anthropic",
-          "base_url": pr.get("base_url"), "api_key_env": pr.get("api_key_env"), "compat": dict(pr.get("compat", dict()))}
-    kw.update({k: pr[k] for k in ("max_tokens", "context_window") if k in pr})
-    if api.startswith("openai"):
-        kw["compat"].setdefault("include_usage", True)
-    return Model(**kw)
-
-
 # ---- one conversation -----------------------------------------------------------------------------------------------
 
 class Run:
@@ -135,12 +126,14 @@ class Run:
         self.seq = entries[-1]["seq"] if entries else 0
         self.inflight, self.pending, self.answer = p.InFlight(), None, None
         self.subs, self.task = set(), None
-        self.model = build_model(mgr.settings["profiles"][row["profile"]])
+        self.profile = mgr.settings["profiles"][row["profile"]]
+        self.model = build_model(self.profile)
         self.session = AgentSession(
             self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=mgr.stream_fn,
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
-            plugins=[RedactSecrets()], plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}})
+            plugins=build_plugins(["redact_secrets", *[n for n in self.profile.get("plugins", []) if n != "redact_secrets"]]),
+            plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}})
         self.session.subscribe(self.on_event)
 
     @property
@@ -329,6 +322,8 @@ class SessionManager:
 
 def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     pl = settings["plugins"]
+    for pr in settings["profiles"].values():
+        build_plugins(pr.get("plugins", []))  # a typo fails at boot, not on first chat
     store = load_plugin(pl["store"])(settings)
     sandbox = load_plugin(pl["sandbox"])(settings)
     auth = load_plugin(pl["auth"])(store)
