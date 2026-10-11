@@ -27,6 +27,7 @@ from simp_agent.plugins import build_plugins
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
 
+from . import ops
 from . import protocol as p
 from .fake import sse
 
@@ -118,6 +119,9 @@ def take_keys(settings: dict) -> dict:
 
 
 # ---- one conversation -----------------------------------------------------------------------------------------------
+
+log = logging.getLogger("simp_server")
+
 
 class Run:
     """AgentSession + durable protocol log + in-flight buffers. Subscribers only get per-connection queues."""
@@ -259,13 +263,19 @@ class Run:
 
     async def start(self, text: str) -> None:
         await self.set_state("running")
+        self.run_id = uuid.uuid4().hex[:8]
+        log.info("run start", extra=self._ctx())
         self.task = asyncio.create_task(self._run(text))
+
+    def _ctx(self) -> dict:
+        return {"run_id": self.run_id, "session": self.sid, "user": self.user_id}
 
     async def _run(self, text: str) -> None:
         try:
             await self._turn(text)
         finally:  # never leave the session stuck busy, whatever failed (even a store write or a cancel)
             if self.busy and self.task is asyncio.current_task():
+                log.error("run stopped unexpectedly", extra=self._ctx(), exc_info=True)
                 self.pending, self.inflight, self.info.run_state = None, p.InFlight(), "error"
                 try:
                     await self.durable(p.RunState, state="error")
@@ -284,9 +294,11 @@ class Run:
             agent.clear_queues()
             await self.set_state("idle")
             await self.durable(p.Notice, level="warning", text="run aborted")
+            log.info("run end", extra={**self._ctx(), "state": "aborted"})
             return
         last = agent.messages[-1] if agent.messages else None
         await self.set_state("error" if last and last.role == "assistant" and last.stop_reason == "error" else "idle")
+        log.info("run end", extra={**self._ctx(), "state": self.state})
         if agent.follow_ups:  # came in after the loop decided to stop
             await self.start(agent.follow_ups.pop(0).content)
 
@@ -470,7 +482,11 @@ def main() -> None:
     r = sub.add_parser("run", help="real server on 127.0.0.1")
     r.add_argument("--port", type=int, default=8766)
     r.add_argument("--fake-llm", action="store_true", help="deterministic scripted model (e2e)")
+    sub.add_parser("backup", help="snapshot the data dir into a .tar.gz").add_argument("--to", required=True)
     a = ap.parse_args()
+    if a.mode == "backup":
+        print(ops.backup(Path(load_settings()["data_dir"]), Path(a.to)))
+        return
     if a.mode == "seed":
         async def seed():
             settings = load_settings()
@@ -483,5 +499,6 @@ def main() -> None:
         if a.fake_llm:
             from .fakellm import stream
         # open SSE streams never end on their own; without the timeout uvicorn waits forever and lifespan never closes sandboxes
+        ops.setup_logging()
         uvicorn.run(create_app(load_settings(), stream if a.fake_llm else ai.stream), host="127.0.0.1", port=a.port,
-                    timeout_graceful_shutdown=SHUTDOWN_GRACE)
+                    timeout_graceful_shutdown=SHUTDOWN_GRACE, log_config=None)

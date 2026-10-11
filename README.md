@@ -48,3 +48,22 @@ uv run simp-server seed --name me   # prints your token once; paste it in the we
 make dev                            # server on :8766 (DockerSandbox if docker runs, else LocalSandbox) + web on :5173
 ```
 `make dev ARGS=--fake-llm` uses a scripted model (no key). E2e (real server + fake model): `make e2e`.
+
+### Running as a service (macOS launchd)
+
+Logs are JSON lines on stderr (`{"ts", "level", "msg", "run_id", "session", "user", ...}`).
+```sh
+for p in server backup; do
+  sed "s#__REPO__#$PWD#g; s#__HOME__#$HOME#g" deploy/launchd/com.simp.$p.plist > ~/Library/LaunchAgents/com.simp.$p.plist
+  launchctl load ~/Library/LaunchAgents/com.simp.$p.plist
+done
+```
+`com.simp.server` keeps the server up on :8766 with `SIMP_SANDBOX=docker` (log: `~/.simp-server/server.log`);
+`com.simp.backup` runs a backup every day at 03:00 into `~/.simp-server/backups`.
+
+### Backups and restore
+
+`uv run simp-server backup --to DIR` writes `DIR/simp-<YYYYmmdd-HHMMSS>.tar.gz` with `simp.db` (online snapshot, safe while
+the server runs), `settings.toml`, `workspaces/` and `sandboxes/`. `.env` (keys) is never included; back it up separately.
+Restore: stop the server (`launchctl unload ~/Library/LaunchAgents/com.simp.server.plist`),
+`tar xzf <file> -C ~/.simp-server`, start it again (`launchctl load ...`).
