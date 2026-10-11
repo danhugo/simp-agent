@@ -15,34 +15,32 @@ without rewrites.
   API, usage); hardened DockerSandbox; React web UI; Playwright e2e; hardening
   from review (SSE heartbeat, bounded queues, caps, no remote markdown images).
 
-## Stage 2 – hosted beta (single region, single replica, ~20 invited users)
+## Stage 2 – self-hosted on one machine (decided 2026-10-11)
+
+The local machine is the deploy target; no cloud deploy. Network exposure (tunnel,
+TLS) is out of scope for now; a tunnel such as Cloudflare provides TLS later.
+LLM: OpenAI-compatible API with an auth key (shared platform key, held by the server).
 
 Deliverables, in order:
 
-1. Shared wiring helper (model + session factory) used by CLI and server;
-   agent plugins configurable per profile.
-2. Ops basics: server Dockerfile, compose (server + Postgres + web), JSON logs
-   with `run_id`, traces (Opik/OTel).
-3. Full `Store` protocol + conformance suite; Postgres store; Alembic migrations.
-   SQLite stays for dev.
+1. E2e on the local stack early, as the safety net for the items below.
+2. DockerSandbox is the default; with several users, refuse to start on LocalSandbox.
+3. Budgets: per user/day ($2) and per run ($0.50), `error_kind=budget`; price per
+   1M input/output tokens configured per profile; kill switch; usage in the UI.
 4. Restart safety: `runs` table with `boot_id`; on startup orphaned runs become
-   `interrupted` (no stuck sessions). Resume is Stage 3.
-5. Identity/tenancy: OIDC auth plugin (static token stays for dev), `org_id` on
-   every row, session delete, token revoke, configurable allowed hosts.
-6. Cost/safety before the first outside user: budget per user/day and per run
-   (`error_kind=budget`), rate limit, usage in the UI, kill switch.
-7. Cloud sandbox plugin (E2B or Daytona): egress denied by default (allowlist),
-   no secrets inside, file I/O via the provider API. DockerSandbox stays for dev.
-8. Deploy to one target with managed Postgres (backups) + e2e against the URL.
+   `interrupted`. Resume is Stage 3.
+5. Token revoke/rotate (CLI), session delete; configurable bind host and allowed hosts.
+6. Shared wiring helper (model + session factory) used by CLI and server;
+   agent plugins configurable per profile.
+7. Ops: JSON logs with `run_id`; run as a service (launchd/systemd); scheduled
+   backup of `simp.db` (WAL on) and `workspaces/`, one restore drill.
 
-Exit criteria: Store and Sandbox conformance suites pass on Postgres and the
-cloud sandbox; killing the server mid-run gives a clean `interrupted` state;
-a test proves one org cannot read another org's data; a runaway loop stops at
-its budget; e2e passes against the deployed URL in CI; one backup restore done.
+Exit criteria: killing the server mid-run gives a clean `interrupted` state; a
+runaway loop stops at its budget; a test proves one user cannot read another
+user's data; e2e passes on the local stack; one backup restore done.
 
-Open decisions: hosting (Fly/Render vs own VM/K8s), sandbox provider (E2B vs
-Daytona), who pays for the LLM (platform key + caps vs BYOK), login provider,
-network policy for unattended runs, budget ceiling and data retention.
+Deferred: Postgres + Alembic (until multiple replicas), `org_id`, OIDC, rate limit,
+TLS (tunnel handles it), tracing, E2B sandbox plugin (when a key is provided).
 
 ## Stage 3 – scale and reliability
 
