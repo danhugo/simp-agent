@@ -86,6 +86,14 @@ Limits are soft: the check runs before each LLM call and cost is recorded when t
 by the calls already in flight (one per session running at that moment). `pause` and `revoke` likewise let an
 in-flight call finish.
 
+### Session commands, plan mode, titles
+
+Besides prompt/steer/follow_up/abort/approve, `POST /api/sessions/{id}/commands` takes `{"type": "compact"}` and
+`{"type": "continue"}` (retry after an error or interruption; both 409 while busy) and
+`{"type": "set_plan_mode", "enabled": true}` (any time: write/edit/bash are blocked and the model is told to plan only;
+persisted with the session). An untitled session gets a title from one extra small LLM call (≤30 output tokens) after
+its first reply; it counts toward usage and budgets, and a failed or refused call just leaves the title empty.
+
 ### Running as a service (macOS launchd)
 
 Logs are JSON lines on stderr (`{"ts", "level", "msg", "run_id", "session", "user", ...}`).

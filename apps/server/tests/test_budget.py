@@ -28,7 +28,7 @@ async def make(tmp_path, stream_fn, extra=""):
     await mgr.store.open()
     token = await mgr.store.add_user("u")
     user = await mgr.store.user_by_token(token)
-    row = await mgr.store.add_session(user["id"], "test")
+    row = await mgr.store.add_session(user["id"], "test", "t")
     return app, mgr, user, token, await mgr.get(user, row["id"])
 
 

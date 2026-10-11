@@ -61,13 +61,13 @@ async def env(tmp_path):
     settings = load_settings(tmp_path)
     made = list()
 
-    async def make(stream_fn):
+    async def make(stream_fn, title="t"):  # titled: no extra title LLM call unless a test asks for it
         app = create_app(settings, stream_fn)
         mgr = app.state.mgr
         await mgr.store.open()
         token = await mgr.store.add_user(f"u{len(made)}")
         user = await mgr.store.user_by_token(token)
-        row = await mgr.store.add_session(user["id"], "test")
+        row = await mgr.store.add_session(user["id"], "test", title)
         made.append(mgr)
         return app, mgr, user, token, await mgr.get(user, row["id"])
 
@@ -203,7 +203,7 @@ async def test_run_through_docker_sandbox_and_close_on_shutdown(tmp_path):
     mgr = app.state.mgr
     async with app.router.lifespan_context(app):
         user = await mgr.store.user_by_token(await mgr.store.add_user("d"))
-        run = await mgr.get(user, (await mgr.store.add_session(user["id"], "test"))["id"])
+        run = await mgr.get(user, (await mgr.store.add_session(user["id"], "test", "t"))["id"])
         await run.command(p.Prompt(text="go"))
         await wait_for(lambda: run.pending is not None, timeout=30)
         await run.command(p.Approve(call_id="c1", decision="allow"))
@@ -344,7 +344,7 @@ async def test_restart_with_pending_approval(tmp_path):
     mgr = app.state.mgr
     await mgr.store.open()
     user = await mgr.store.user_by_token(await mgr.store.add_user("u"))
-    sid = (await mgr.store.add_session(user["id"], "test"))["id"]
+    sid = (await mgr.store.add_session(user["id"], "test", "t"))["id"]
     run = await mgr.get(user, sid)
     await run.command(p.Prompt(text="go"))
     await wait_for(lambda: run.pending is not None)
@@ -449,3 +449,114 @@ async def test_count_users_ignores_revoked(env):
     await mgr.store.add_user("other")
     await mgr.store.revoke("other")
     assert await mgr.store.count_users() == 1
+
+
+# ---- Stage 3 task C: commands, plan mode, titles
+
+def titled(text):
+    return lambda ctx: reply(text) if ctx.system_prompt.startswith("Name this coding session") else reply("nope")
+
+
+async def settle(run):
+    await wait_for(lambda: not run.busy and run.task.done() and (run.title_task is None or run.title_task.done()))
+
+
+async def test_title_set_once_event_and_usage(env):
+    fp = FakeProvider(reply("a"), titled('"Fix the\nlogin bug"'), reply("b"))
+    _, mgr, user, _, run = await env(fp, title="")
+    q = run.subscribe(0)[1]
+    await run.command(p.Prompt(text="x" * 3000))
+    await settle(run)
+    assert fp.calls == 2 and fp.models[1].max_tokens <= 30
+    assert fp.ctxs[1].messages[0].content == "x" * 2000
+    ev = [e for e in drain(q) if e["type"] == "session_title"]
+    assert [e["title"] for e in ev] == ["Fix the login bug"] and ev[0]["seq"] > 0
+    assert (await mgr.store.get_session(user["id"], run.sid))["title"] == "Fix the login bug"
+    assert run.subscribe(0)[0][-1]["title"] == "Fix the login bug"
+    assert len(await mgr.store.usage(user["id"])) == 2
+    await run.command(p.Prompt(text="again"))
+    await settle(run)
+    assert fp.calls == 3  # no second title call
+
+
+async def test_title_error_keeps_empty(env):
+    fp = FakeProvider(reply("a"), AssistantMessage(stop_reason="error", error="boom"))
+    _, mgr, user, _, run = await env(fp, title="")
+    await run.command(p.Prompt(text="hi"))
+    await settle(run)
+    assert fp.calls == 2 and run.state == "idle" and run.info.title == ""
+    assert (await mgr.store.get_session(user["id"], run.sid))["title"] == ""
+    assert not [e for e in run.log if e["type"] == "session_title"]
+
+
+async def test_title_budget_refused_keeps_empty(env):
+    fp = FakeProvider(reply("a"), titled("T"))
+    _, mgr, user, _, run = await env(fp, title="")
+    run.profile["price_in"] = 1e6  # first reply costs $10 > run limit -> title call refused
+    await run.command(p.Prompt(text="hi"))
+    await settle(run)
+    assert fp.calls == 1 and run.info.title == ""
+
+
+async def test_compact_command(env):
+    g = Gated(["x"])
+    _, _, _, _, run = await env(g)
+    calls = list()
+
+    async def fake_compact():
+        calls.append(run.state)
+        return True
+    run.session.compact = fake_compact
+    await run.command(p.Compact())
+    await wait_for(lambda: run.task.done())
+    assert calls == ["running"] and run.state == "idle"
+    await run.command(p.Prompt(text="hi"))
+    with pytest.raises(HTTPException) as e:
+        await run.command(p.Compact())
+    assert e.value.status_code == 409
+    g.go.set()
+    await wait_for(lambda: run.task.done() and run.state == "idle")
+
+
+async def test_continue_command(env):
+    fp = FakeProvider(AssistantMessage(stop_reason="error", error="overloaded", error_kind="fatal"), reply("ok"))
+    _, _, _, _, run = await env(fp)
+    await run.command(p.Prompt(text="hi"))
+    await wait_for(lambda: run.task.done())
+    assert run.state == "error"
+    await run.command(p.Continue())
+    await wait_for(lambda: run.task.done())
+    assert run.state == "idle" and fp.calls == 2
+    assert [e["text"] for e in run.log if e["type"] == "assistant_message"][-1] == "ok"
+
+
+async def test_continue_busy_409(env):
+    g = Gated(["x"])
+    _, _, _, _, run = await env(g)
+    await run.command(p.Prompt(text="hi"))
+    with pytest.raises(HTTPException) as e:
+        await run.command(p.Continue())
+    assert e.value.status_code == 409
+    g.go.set()
+    await wait_for(lambda: run.task.done())
+
+
+async def test_plan_mode(env, tmp_path):
+    fp = FakeProvider(bash("c1", "echo hi"), reply("planned"))
+    _, mgr, user, _, run = await env(fp)
+    assert run.subscribe(0)[0][-1]["plan_mode"] is False
+    await run.command(p.SetPlanMode(enabled=True))
+    assert [e["text"] for e in run.log if e["type"] == "notice"] == ["plan mode on"]
+    assert run.subscribe(0)[0][-1]["plan_mode"] is True
+    assert mgr.info(await mgr.store.get_session(user["id"], run.sid)).plan_mode is True
+    await run.command(p.Prompt(text="do it"))
+    await wait_for(lambda: run.task.done())
+    tr = [e for e in run.log if e["type"] == "tool_result"]
+    assert tr and tr[0]["is_error"] and "plan mode" in tr[0]["content"]
+    assert "PLAN MODE" in fp.ctxs[0].system_prompt
+    # survives a reload
+    mgr.runs.clear()
+    run2 = await mgr.get(user, run.sid)
+    assert run2.subscribe(0)[0][-1]["plan_mode"] is True
+    await run2.command(p.SetPlanMode(enabled=False))
+    assert run2.subscribe(0)[0][-1]["plan_mode"] is False and run2.log[-1]["text"] == "plan mode off"
