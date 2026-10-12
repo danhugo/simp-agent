@@ -55,3 +55,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - v3 ch 12 Evals written (evals/run.py: TOML tasks, run_task in temp dir with LocalEnv, event counting, 25-turn / 300 s limits, $PYTHON checks, results JSON; host-shell warning; test_run.py with FakeProvider); glossary: Eval, Eval task, Profile.
 - v3 ch 13 Sessions written (SessionStore append/load, AgentSession owns Agent via hooks, save on message_end, resume with messages=store.load(), prompt/continue_, append_entry/CustomEntry, CLI JsonlStore; test_session.py store test); glossary: Session, AgentSession, SessionStore, JSONL, _maybe_await, Append-only history.
 - Review fixes ch 09-12: added Exercises sections; plain-language fixes; Look ahead box in 11.
+- ch 11: cut the session detail about prompt sections down to a summary plus a link to ch 13.
