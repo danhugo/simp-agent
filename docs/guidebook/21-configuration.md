@@ -33,7 +33,7 @@ flowchart LR
 | `signup_code` | none | The shared invite code for the sign-up page. **Not set = sign-up is closed** (403). See [22 Users and accounts](22-users.md). |
 | `default_profile` | the first profile in the file | Used when a new [session](glossary.md#session) names no profile. |
 | `allow_local_sandbox` | `false` | With more than one user and `LocalSandbox`, the server refuses to start or sign up (no isolation). `true` turns this check off. For tests only. |
-| `files_max_bytes` | `52428800` (50 MiB) | Biggest file the file API will serve. |
+| `files_max_bytes` | `52428800` (50 MiB) | Biggest file you can upload (`PUT /files/raw`). Downloads have no limit. |
 
 The port is not in the file: use `simp-server run --port N` (default 8766).
 

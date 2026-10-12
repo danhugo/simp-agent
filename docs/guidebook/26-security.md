@@ -51,7 +51,7 @@ With `DockerSandbox`, each session gets its own container ([23](23-sandboxes.md)
 `LocalSandbox` has none of this. The server refuses a second user while it is the sandbox, unless you set `allow_local_sandbox` ([23](23-sandboxes.md)).
 
 ### 2.4 Caps
-Small limits keep one client from hurting the others: at most 20 queued messages per session (`429`), file upload and download up to 50 MB by default (`413`), and money budgets ([24](24-money.md)). Open sessions and idle time are capped in [21](21-configuration.md).
+Small limits keep one client from hurting the others: at most 20 queued messages per session (`429`), file uploads up to 50 MiB by default (`413`), and money budgets ([24](24-money.md)). Open sessions and idle time are capped in [21](21-configuration.md).
 
 ### 2.5 No remote images in the web UI
 Markdown from the model is shown in the browser. A remote image would make your browser fetch a URL chosen by the model, which can leak data in the URL. The web UI shows an image as a plain link `[image: alt] url` and does not load it. If you click the link, it opens in a new tab: that is your choice, not automatic.
