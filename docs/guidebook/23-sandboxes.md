@@ -120,12 +120,12 @@ Test before users come (steps in [20](20-operator-tutorial.md)). If Docker is no
 
 ## 8. Limits to remember
 
-- Docker is a good limit, not a perfect one. A kernel bug can break any container. Known gaps: 26 Security model (not written yet).
+- Docker is a good limit, not a perfect one. A kernel bug can break any container. Known gaps: [26 Security model](26-security.md).
 - `LocalSandbox` + `allow_local_sandbox = true` + several users means everyone can reach everything.
 - With `network = "none"` the agent cannot install packages or call web APIs. Choose on purpose.
 - Limits are per container, so total use is up to `max_open_sessions` × `memory`. Size your machine for that.
 
 ---
 
-**Built on by:** [24 Money and limits](24-money.md), 26 Security model, 27 Troubleshooting (not written yet).
+**Built on by:** [24 Money and limits](24-money.md), [26 Security model](26-security.md), [27 Troubleshooting](27-troubleshooting.md).
 **Builds on:** [20 Operator tutorial](20-operator-tutorial.md), [21 Configuration reference](21-configuration.md), [22 Users and accounts](22-users.md).

@@ -83,7 +83,7 @@ Things to know:
 
 - These are **LaunchAgents**: they run when your user is logged in, not at boot before login. Keep the Mac logged in and awake. A sleeping Mac does not serve, and a missed 03:00 backup runs when it wakes.
 - **`server.log` is not rotated.** It grows for ever. Rotate it with `newsyslog`, or stop the server, empty it (`: > ~/.simp-server/server.log`), and start again. Check its size now and then.
-- Keys in `.env` still work: the server reads `<data_dir>/.env` itself ([21](21-configuration.md#5-plugins-and-sandbox)). Do not put keys in the plist.
+- Keys in `.env` still work: the server reads `<data_dir>/.env` itself ([21](21-configuration.md#3-profilesname)). Do not put keys in the plist.
 - The plist sets `SIMP_SANDBOX=docker`, so Docker must be running ([23](23-sandboxes.md)). If Docker is down, new sessions fail with `docker run failed`.
 
 ```mermaid
@@ -108,6 +108,8 @@ flowchart LR
 **Keep `.env` yourself.** Store it in a password manager or another safe place. A restored backup without keys can read history but cannot call the model.
 
 **Retention.** `--keep 14` keeps the newest 14 files in `DIR` and deletes older `simp-*.tar.gz` files. File names sort by time, so "newest" is by name. With `--keep 0` (the default) nothing is deleted. With the daily job, 14 files means about two weeks.
+
+**Folder names.** The tutorial in [20](20-operator-tutorial.md) writes backups to `~/simp-backups` to keep it short; the daily job here uses `~/.simp-server/backups`. Both work; pick one and use it in the restore step.
 
 **A backup on the same disk is not a safe backup.** If the disk dies, both are lost. Copy `~/.simp-server/backups` to another disk or another machine now and then (Time Machine, `rsync`).
 
@@ -134,14 +136,14 @@ Also know:
 
 ## 5. When the server restarts
 
-Stopping or crashing the server does not lose history: every event is stored in the database as it happens. But a [run](glossary.md#run) that was in progress cannot go on. At the next start, each session that was busy is **recovered**:
+Stopping or crashing the server does not lose history: every event is stored in the database as it happens. But a [run](glossary.md#run) that was in progress cannot go on. Recovery does **not** happen at start. It happens the first time a session is loaded after the restart (when someone opens it or sends to it). A busy session that nobody opens stays as it was, and its log line and notice appear only then. When a session is loaded, it is **recovered**:
 
 1. The log gets the line `recovered interrupted run`.
 2. Approvals that nobody answered are closed as `aborted`.
 3. Tool calls with no result get the result `aborted: the server restarted before this tool finished`. This keeps the history valid, so the model can continue later.
 4. The run state becomes `error`, and the session gets a warning notice: `interrupted: the server restarted during this run`.
 
-The user sees a settled session with that notice. They press **Continue** ([11](11-web.md)) to ask the agent to try again, or send a new message. Work the agent already wrote to files stays.
+If the session is opened later, the user sees a settled session with that notice. They press **Continue** ([11](11-web.md#6-continue-after-an-interruption)) to ask the agent to try again, or send a new message. Work the agent already wrote to files stays.
 
 Shutdown is quick: the server waits only 2 seconds for open connections. Plan restarts for quiet times, or check the log for `run start` lines without a `run end` first.
 
@@ -172,5 +174,5 @@ If it goes wrong, go back: `git checkout` the old commit, `uv sync`, restore the
 
 ---
 
-**Built on by:** [26 Security model](26-security.md), 27 Troubleshooting (not written yet).
+**Built on by:** [26 Security model](26-security.md), [27 Troubleshooting](27-troubleshooting.md).
 **Builds on:** [20 Operator tutorial](20-operator-tutorial.md), [21 Configuration reference](21-configuration.md), [23 Sandboxes](23-sandboxes.md), [24 Money and limits](24-money.md).

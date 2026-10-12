@@ -38,7 +38,7 @@ simp-server seed --name alice                # prints a token once
 simp-server seed --name alice --password     # also asks for a password
 ```
 
-With `--password` the command asks twice and wants at least 8 characters. Save the token at once; it is printed one time. Names must be unique (a taken name shows a Python error, not a friendly message). The CLI does not check the name pattern; web sign-up does. There is no command to delete a user. When you add a second active user while the sandbox is `LocalSandbox`, `seed` prints a warning (the server will refuse to start next time). See 23 Sandboxes (not written yet) and [21](21-configuration.md#2-top-level-keys).
+With `--password` the command asks twice and wants at least 8 characters. Save the token at once; it is printed one time. Names must be unique (a taken name shows a Python error, not a friendly message). The CLI does not check the name pattern; web sign-up does. There is no command to delete a user. When you add a second active user while the sandbox is `LocalSandbox`, `seed` prints a warning (the server will refuse to start next time). See [23 Sandboxes](23-sandboxes.md) and [21](21-configuration.md#2-top-level-keys).
 
 ## 3. Self sign-up with one shared code
 
@@ -96,7 +96,7 @@ Each password login adds a device token. Nothing in the code expires them. **Sig
 
 ## 8. Warning: no rate limit on login and sign-up
 
-`/api/login` and `/api/signup` have **no rate limit**. Anyone who can reach the server can try passwords or codes as fast as the machine allows (scrypt makes each try slow, but it does not stop them). Before you put the server on the internet (for example through a tunnel), put a rate-limiting proxy in front, and use a long `signup_code` and long passwords. Full list of gaps: 26 Security model (not written yet).
+`/api/login` and `/api/signup` have **no rate limit**. Anyone who can reach the server can try passwords or codes as fast as the machine allows (scrypt makes each try slow, but it does not stop them). Before you put the server on the internet (for example through a tunnel), put a rate-limiting proxy in front, and use a long `signup_code` and long passwords. Full list of gaps: [26 Security model](26-security.md).
 
 ## 9. Quick recipes
 
@@ -108,5 +108,5 @@ Each password login adds a device token. Nothing in the code expires them. **Sig
 
 ---
 
-**Built on by:** [23 Sandboxes](23-sandboxes.md), [24 Money and limits](24-money.md), 26 Security model, 27 Troubleshooting (not written yet).
+**Built on by:** [23 Sandboxes](23-sandboxes.md), [24 Money and limits](24-money.md), [26 Security model](26-security.md), [27 Troubleshooting](27-troubleshooting.md).
 **Builds on:** [11 The web UI](11-web.md) (the login screen), [20 Operator tutorial](20-operator-tutorial.md), [21 Configuration reference](21-configuration.md).
