@@ -7,11 +7,11 @@ Verified at commit: `d74b7ee` (entries from 01: `d3d03f6`).
 
 ## Access token
 A secret string that proves who you are to the server. `simp-server seed --name <name>`
-creates a user and prints its token once; `rotate` prints a new one and stops the old one.
+creates a user and prints its token once; `rotate` prints a new one, stops the old one, and lets a revoked user back in.
 The web UI sends it as `Authorization: Bearer <token>`. You can also sign in with a username
 and password, which gives you a new token for that sign-in.
 Code: `apps/server/src/simp_server/server.py`.
-Introduced in [01](01-quick-start.md#43-make-a-user). Home: 22 Users and accounts.
+Introduced in [01](01-quick-start.md#43-make-a-user). Home: [22 Users and accounts](22-users.md).
 
 ## Agent loop
 The cycle at the heart of simp-agent: send the [messages](#message) to the model, get a reply,

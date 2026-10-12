@@ -6,7 +6,7 @@
 > **Code paths covered:** `apps/server/src/simp_server/server.py` (`load_settings`, `take_keys`, `SessionManager`, `create_app`), `budget.py`, `sandboxes/docker.py`, `packages/simp_agent/src/simp_agent/session/profile.py`, `ai/__init__.py` (`Model`).
 > **Verified at commit:** `2c311ce` (read from code; not run).
 
-**Back:** [20 Operator tutorial](20-operator-tutorial.md) · **Next:** 22 Users and accounts (not written yet)
+**Back:** [20 Operator tutorial](20-operator-tutorial.md) · **Next:** [22 Users and accounts](22-users.md)
 
 ## 1. Where the file is
 
@@ -113,4 +113,4 @@ Why the cap: each loaded session may hold a Docker container, which costs memory
 
 Edit the file and restart the server. Settings are read once at start. To check a sandbox setting before users come, see the steps in [20](20-operator-tutorial.md).
 
-**Back:** [20 Operator tutorial](20-operator-tutorial.md) · **Next:** 22 Users and accounts (not written yet)
+**Back:** [20 Operator tutorial](20-operator-tutorial.md) · **Next:** [22 Users and accounts](22-users.md)
