@@ -70,6 +70,56 @@ It works for one fizzbuzz turn. It breaks when:
 
 The real CLI fixes each point. It also splits into two modes: a simple **print mode** for one task, and a full **REPL** for chat.
 
+## Step by step: from naive to real
+
+**Step 1: stream and print full lines.** Print deltas as they come, but keep a buffer and print only full lines.
+
+```python
+*lines, self.buf = self.buf.split("\n")
+for line in lines:
+    self._line(line)
+```
+
+Why: the answer shows while it runs, and files or pipes get clean lines. This is `LinePrinter`.
+
+**Step 2: handle Ctrl-C.** Call `session.abort()` instead of dying.
+
+```python
+loop.add_signal_handler(signal.SIGINT, session.abort)
+```
+
+Why: the run stops cleanly and the program lives on.
+
+**Step 3: save the session.** Use one `JsonlStore` file per working folder, and load it as `messages=`.
+
+```python
+store = JsonlStore(session_dir(cwd) / f"{sid}.jsonl")
+session = AgentSession(model, make_tools(args.bash_max_timeout_s), store, messages=store.load(), ...)
+```
+
+Why: `-c` and `--resume ID` can open the same chat later.
+
+**Step 4: ask before risky tools.** Pass `approve=` to the session. Anything but yes is "deny".
+
+```python
+approve=None if args.yes else ask
+```
+
+Why: `bash`, `write` and `edit` need a human answer. `-y` turns the question off.
+
+**Step 5: run the agent as a task.** Start the run with `asyncio.ensure_future` and keep one event loop.
+
+```python
+def start(self, coro) -> None:
+    self.task = asyncio.ensure_future(coro)
+```
+
+Why: the input line stays alive, so you can type while the agent works.
+
+**Step 6: route each line.** One pure function decides what a line means (`route`, shown below). Then the REPL wires it to the session.
+
+Why: it is easy to test without a terminal.
+
 ## Real design
 
 ### main: pick a mode
@@ -318,6 +368,11 @@ uv run pytest apps/cli/tests/test_cli.py apps/cli/tests/test_tui.py -q
 ## Why this way
 
 > **A thin app over the session, with pure logic pulled out.** The CLI adds no agent behaviour. Saving, approval policy, steering and abort all live in `AgentSession`; the CLI only connects keys and screen to them. Rules that are easy to get wrong (`route`, `approval_answer`, `interrupt_action`, `LinePrinter`, component `render`) are pure and unit tested. The REPL is not full screen, so finished output stays in normal scrollback. The cost: two modes with two `ask` functions, and the REPL itself is mostly tested by one slow pty test.
+
+## Exercises
+
+1. Run `route(">> later", False)` in your head. What does it return? (Answer: `("prompt", ">> later")`. `>>` only counts while running.)
+2. In `approval_answer`, what does the text `"Y "` return? Why? (Answer: `"allow"`. It uses `strip().lower()`.)
 
 ## Recap
 
