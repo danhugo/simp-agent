@@ -89,6 +89,15 @@ approval, and [plugins](#plugin). The CLI saves sessions as JSONL files in
 Code: `packages/simp_agent/src/simp_agent/session/__init__.py`.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
 
+## System prompt
+The fixed instructions sent to the model before the [messages](#message) on every call. For the
+coding agent it names the tools, gives the working directory and date, and includes your
+`AGENTS.md` / `CLAUDE.md` if one exists. It is built again each turn from sections, and
+[plugins](#plugin) can add sections (`plan_mode` adds one). It is not part of the history.
+Code: `system_prompt()` in `packages/simp_agent/src/simp_agent/coding/__init__.py`,
+`AgentSession.add_prompt_section()`.
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
+
 ## Tool
 An action the model can ask for, such as reading a file. A tool has a name, a description, a
 JSON schema for its arguments, and an `execute` function. The model sends a tool call; the

@@ -35,8 +35,9 @@ behaves the same in the terminal and in the browser; only the outside is differe
 
 Knowing the limits saves you time:
 
-- **Not a cloud product.** The server is built for one machine and a small team. There are no
-  replicas, no Kubernetes, no billing. (These are Stage 5 in the [ROADMAP](../ROADMAP.md).)
+- **Not a cloud product.** The server is built for one machine and a small team. There is no
+  Kubernetes, multi-region or billing (planned for Stage 5 in the [ROADMAP](../ROADMAP.md)),
+  and replicas were dropped while the server stays on one machine.
 - **Not a model.** simp-agent does not contain an LLM. It calls one through a
   [provider](glossary.md#provider). You need an API key, or a fake model for testing.
 - **Not full of features.** The core is kept small on purpose. New abilities (MCP, skills,
@@ -72,7 +73,7 @@ In words:
 1. A [**session**](glossary.md#session) is one conversation. It keeps the full
    [history](glossary.md#history) and saves it, so you can come back later.
 2. Inside the session runs the [**agent loop**](glossary.md#agent-loop). It sends the
-   [messages](glossary.md#message) to the model, gets a reply, runs any tools the model asked
+   [system prompt](glossary.md#system-prompt) and [messages](glossary.md#message) to the model, gets a reply, runs any tools the model asked
    for, and goes again. One pass of "call the model, then run its tools" is a
    [turn](glossary.md#turn).
 3. A [**provider**](glossary.md#provider) is the adapter that speaks one LLM API. simp-agent
