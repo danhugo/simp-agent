@@ -82,7 +82,7 @@ What a revoked user feels:
 
 - Every request with an old token gets 401.
 - Password login fails with 401 "Wrong username or password." (same as a wrong password). A pasted old token shows "That token was not accepted." in the web page ([11](11-web.md)). The user is not told they are revoked, so tell them.
-- A run in progress stops at its next model call with `budget: user revoked` (see 24 Money and limits, not written yet). It is checked before each LLM call, so one call already running may finish.
+- A run in progress stops at its next model call with `budget: user revoked` (see [24](24-money.md)). It is checked before each LLM call, so one call already running may finish.
 - An open event stream ends at its next heartbeat check (every 15 seconds when idle).
 - His sessions and files stay on disk. Nothing is deleted.
 

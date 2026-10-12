@@ -247,7 +247,7 @@ What `make dev` does, in order:
 
 With a profile that has no prices you will also see a warning:
 `profile fake has no prices: its calls cost $0 and never hit a budget`. That is fine for now
-(chapter 24 covers budgets). Press `Ctrl-C` to stop both programs.
+([chapter 24](24-money.md) covers budgets). Press `Ctrl-C` to stop both programs.
 
 ### 4.5 Log in and chat
 

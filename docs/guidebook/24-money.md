@@ -48,7 +48,7 @@ flowchart TD
     E -- no --> F[call goes ahead]
 ```
 
-The run **ends** with that message. It is never retried. The user can wait (daily limit), send a new prompt (run limit), or ask you to raise the limit. See [27 Troubleshooting](#) (not written yet).
+The run **ends** with that message. It is never retried. The user can wait (daily limit), send a new prompt (run limit), or ask you to raise the limit. See 27 Troubleshooting (not written yet).
 
 ## 4. Kill switch
 
@@ -90,5 +90,5 @@ Keep a safety margin: set limits below what you can afford, and set a spending c
 
 ## 7. Where to go next
 
-- [25 Day-to-day ops](25-ops.md) (not written yet): logs and backups of `simp.db`, which holds the usage rows.
-- [27 Troubleshooting](#) (not written yet): budget errors.
+- 25 Day-to-day ops (not written yet): logs and backups of `simp.db`, which holds the usage rows.
+- 27 Troubleshooting (not written yet): budget errors.

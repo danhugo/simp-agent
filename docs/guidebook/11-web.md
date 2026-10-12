@@ -86,7 +86,7 @@ It shows only while nothing newer is in the chat. Press it and the agent carries
 
 ## 9. Spend display
 
-The chat header (only when a session is open) shows `$spent / $limit`, for example `$0.42 / 5`. It is what **you** spent today against your daily limit, and it is refreshed after each run and every 30 seconds. `· paused` means the operator paused the server; new runs are refused (the chat shows "budget: server paused by the admin"; a reached limit gives a similar "budget:" message). "Today" is by the server clock. Titles also cost a little. Limits are set by the operator: 24 Money and limits (not yet written).
+The chat header (only when a session is open) shows `$spent / $limit`, for example `$0.42 / 5`. It is what **you** spent today against your daily limit, and it is refreshed after each run and every 30 seconds. `· paused` means the operator paused the server; new runs are refused (the chat shows "budget: server paused by the admin"; a reached limit gives a similar "budget:" message). "Today" is by the server clock. Titles also cost a little. Limits are set by the operator: [24 Money and limits](24-money.md).
 
 ## 10. Themes
 
