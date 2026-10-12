@@ -6,7 +6,7 @@
 > **Code paths covered:** `apps/server/src/simp_server/server.py` (`Sandbox`, `LocalSandbox`, `check_sandbox`, `SessionManager`), `sandboxes/docker.py`, `apps/server/sandboxes/Dockerfile`, `packages/simp_agent/src/simp_agent/agent/env.py` (`LocalEnv`).
 > **Verified at commit:** `194c41e` (read from code; Docker not run).
 
-**Back:** [22 Users and accounts](22-users.md) · **Next:** 24 Money and limits (not written yet)
+**Back:** [22 Users and accounts](22-users.md) · **Next:** [24 Money and limits](24-money.md)
 
 ## 1. What a sandbox is
 
@@ -127,5 +127,5 @@ Test before users come (steps in [20](20-operator-tutorial.md)). If Docker is no
 
 ---
 
-**Built on by:** 24 Money and limits, 26 Security model, 27 Troubleshooting (all not written yet).
+**Built on by:** [24 Money and limits](24-money.md), 26 Security model, 27 Troubleshooting (not written yet).
 **Builds on:** [20 Operator tutorial](20-operator-tutorial.md), [21 Configuration reference](21-configuration.md), [22 Users and accounts](22-users.md).
