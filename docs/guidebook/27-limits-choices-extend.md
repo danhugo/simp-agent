@@ -35,7 +35,7 @@ This chapter answers the three questions. It uses only code you have already see
 
 ## Naive version
 
-Say you want a new tool: `count_lines`, which tells the model how many lines `fizzbuzz.py` has. The naive way is to add it next to the coding tools, by hand, in each app:
+Say you want a new tool: `count_lines`. It tells the model how many lines `fizzbuzz.py` has. The naive way is to build the tool by hand and pass it to the session:
 
 ```python
 import asyncio
@@ -59,15 +59,51 @@ async def main():
     print(s.messages[-1].content[0].text)
 
 asyncio.run(main())
+# fizzbuzz.py has 15 lines
 ```
 
 It works for one app. It breaks when:
 
-1. **Each app repeats it.** The CLI and the server both build sessions. You must copy the tool into both, and keep them the same.
+1. **Each app repeats it.** The CLI and the server both build sessions. You must copy the tool into both and keep the copies the same.
 2. **The tool cannot react to the session.** It cannot add a line to the system prompt, block other tools, or save its own state. It is just a function.
 3. **You cannot turn it on or off by name.** There is no switch in a profile ([18](18-profiles-plugins.md)).
 
-The fix is not a bigger core. It is to use the sockets the core already has. That is the "extend" part below. But first, the choices and the limits.
+The fix is not a bigger core. It is to use the sockets the core already has.
+
+## Step by step: from naive to real
+
+**Step 1: wrap the tool in a plugin.** A plugin is any object with a `name` and a `setup` method. `setup` gets a `PluginAPI` and registers the tool there, not in each app.
+
+```python
+class CountLines:
+    name = "count_lines"
+    def setup(self, api, config):
+        api.register_tool(tools[0])
+```
+
+Why: the tool now lives in one place. The session is built with `plugins=[CountLines()]`.
+
+**Step 2: let the plugin change the prompt.** `PluginAPI` can add a section to the system prompt.
+
+```python
+        api.add_prompt_section("count_lines", "Use count_lines for file sizes.")
+```
+
+Why: a plain function cannot do this. A plugin can, and the section is rebuilt every turn.
+
+**Step 3: keep state in a custom entry.** `await api.append_entry(type, data)` saves data in the history. It is saved and replayed on resume, and it is never sent to the model.
+
+Why: the plugin keeps its state after a restart. `PlanMode` does exactly this for its on/off switch.
+
+**Step 4: turn it on by name.** Add the class to `known` in `build_plugins`.
+
+```python
+known = {"redact_secrets": RedactSecrets, "plan_mode": PlanMode}
+```
+
+Why: a profile can now list the name, and the CLI and the server both get it. No copy in each app.
+
+**Step 5: know the limits and the choices.** Before you grow the system, learn which choices to keep and which limits are on purpose. That is the real design below.
 
 ## Real design
 
@@ -180,7 +216,7 @@ def register_provider(api: str, stream_fn) -> None:
 
 Write one async generator that yields the same events as the built-in ones ([04](04-providers.md)). It must not raise. Then set `api` in a profile to your new name.
 
-**A plugin.** This fixes the naive version. A **[plugin](glossary.md#plugin)** ([14](14-plugins.md)) is any object with a `name` and some optional hook methods. In `setup` it gets a **[PluginAPI](glossary.md#pluginapi)**. From `packages/simp_agent/src/simp_agent/session/__init__.py`:
+**A plugin.** This is the fix from the steps above. A **[plugin](glossary.md#plugin)** ([14](14-plugins.md)) is any object with a `name` and some optional hook methods. In `setup` it gets a **[PluginAPI](glossary.md#pluginapi)**. From `packages/simp_agent/src/simp_agent/session/__init__.py`:
 
 ```python
 class PluginAPI:
@@ -263,6 +299,11 @@ For the other sockets, see the tests in their chapters: providers in [04](04-pro
 ## Why this way
 
 > **Small core, sockets, and honest limits.** simp-agent does not try to have every feature. It keeps the loop small and puts new behaviour behind small protocols: providers, tools, plugins, sandbox, store, auth. Missing features are written down (`ponytail:` comments, `NOTES.md`, `docs/ROADMAP.md`) instead of half built. The cost: some things other agents have, like parallel tools or split-turn compaction, are not here yet. The gain: each part is easy to read, to test with a fake model, and to replace without touching the rest.
+
+## Exercises
+
+1. Copy the plugin from Step 1 and Step 2. Run it with `FakeProvider`, as in the naive version. Print `model.ctxs[0].system_prompt`: is your prompt line there? (The code in this chapter was run at `2fc2776` and printed `fizzbuzz.py has 15 lines`.)
+2. Pick one limit from Part 2 (for example, tools run one by one). Say which layer you would change, and which socket (if any) could do it without a core change.
 
 ## Recap
 
