@@ -176,7 +176,7 @@ sequenceDiagram
 - **No approval prompt.** [Tool approval](glossary.md#tool-approval) asks only for `bash`, `write` and `edit`. `word_count` runs without asking. That is fine for a tool that only reads. If your tool changes things, think about this first.
 - **Paths.** An absolute path from the model ignores `cwd`. The sandbox decides what the tool can reach ([23](23-sandboxes.md), [26](26-security.md)).
 - **`config`.** `setup` gets a `config` dict from `plugin_config`. The server fills it only for `redact_secrets` today, so for your plugin it is `{}`.
-- **Other hooks.** A plugin can do more than add tools: `tool_call` (block a call; see `plan_mode.py`), `tool_result` and `context` (change results or what the model sees; see `redact_secrets.py`), `session_start`, `on_event`. A hook that raises is reported as a `plugin_error` event; a raising `tool_call` blocks the call. The full list is the topic of 35 Extending: tools and agent plugins.
+- **Other hooks.** A plugin can do more than add tools: `tool_call` (block a call; see `plan_mode.py`), `tool_result` and `context` (change results or what the model sees; see `redact_secrets.py`), `session_start`, `on_event`. A hook that raises is reported as a `plugin_error` event; a raising `tool_call` blocks the call. The full list is the topic of [35 Extending: tools and agent plugins](35-tools-plugins.md).
 
 ## 5. Summary
 
@@ -187,5 +187,5 @@ sequenceDiagram
 
 ---
 
-**Built on by:** [34 Extending: providers](34-providers.md), 35 Extending: tools and agent plugins, 37 Testing and evals (not written yet).
+**Built on by:** [34 Extending: providers](34-providers.md), [35 Extending: tools and agent plugins](35-tools-plugins.md), 37 Testing and evals (not written yet).
 **Builds on:** [23](23-sandboxes.md), [30](30-architecture.md), [31](31-turn-flow.md), [32](32-server-inside.md).

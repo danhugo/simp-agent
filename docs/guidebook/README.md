@@ -1,6 +1,6 @@
 # simp-agent guidebook
 
-Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13, 20–27, 30–34.
+Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13, 20–27, 30–35.
 Tags: [T] tutorial, [H] how-to, [R] reference, [E] explanation.
 
 ## What simp-agent is
@@ -48,7 +48,7 @@ Everyone reads Part 0. Then read only your part; parts link back to what they ne
 - [32 The server inside](32-server-inside.md) [E]: runs, storage; protocol links to `docs/protocol.md`, not copied
 - [33 Developer tutorial](33-dev-tutorial.md) [T]: write a tool plugin, test with `FakeProvider`, load it via a profile's `plugins` list
 - [34 Extending: providers](34-providers.md) [H]
-- 35 Extending: tools and agent plugins [H] (stubs reserved for Stage 4: MCP, skills, memory, sub-agents)
+- [35 Extending: tools and agent plugins](35-tools-plugins.md) [H] (stubs reserved for Stage 4: MCP, skills, memory, sub-agents)
 - 36 Extending: server plugins — Sandbox, Store, Auth [H]
 - 37 Testing and evals [H]: FakeProvider, EnvConformance, fake server, e2e, `evals/run.py`
 - 38 Decision records [E]: SSE + POST, SQLite, Docker, small core

@@ -42,6 +42,9 @@ The most text (in tokens) the model can read at one time: the [system prompt](#s
 Code: `context_window` on the model, used in `packages/simp_agent/src/simp_agent/agent/compaction.py`.
 Introduced in [13](13-working-well.md#3-long-sessions-and-compaction--both). Home: [31 How one turn flows](31-turn-flow.md#when).
 
+## Custom entry
+A piece of plugin or app data saved in [history](#history) as a `CustomEntry(type, data)`. It is saved and comes back when the session is loaded again, but it is **never sent to the LLM**. Plugins use it to keep state, e.g. [plan mode](#plan-mode) on/off. Code: `CustomEntry` in `packages/simp_agent/src/simp_agent/ai/__init__.py`, `append_entry` in `.../session/__init__.py`. Home: [35](35-tools-plugins.md#6-custom-entries).
+
 ## Durable event
 A server event that gets a `seq` number and is saved in SQLite (user message, assistant message, tool result, approval, run state, notice…). A tab that reconnects gets the ones it missed. Compare [live event](#live-event). Code: `apps/server/src/simp_server/protocol.py`. Home: [32 The server inside](32-server-inside.md#4-sse--post-seq-offsets-snapshot).
 
@@ -72,6 +75,9 @@ The full, saved list of a [session's](#session) entries: [messages](#message), c
 markers, and plugin data. It is append-only: entries are added, never changed or removed.
 What is sent to the model is built from it each turn (see [compaction](#compaction)).
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [31 How one turn flows](31-turn-flow.md#5-compaction-home).
+
+## Hook
+A method on a [plugin](#plugin) that the [session](#session) calls at a fixed moment, e.g. `tool_call` before a tool runs or `context` before each model call. All hooks are optional. Code: `packages/simp_agent/src/simp_agent/session/__init__.py`. Home: [35](35-tools-plugins.md#4-hooks-when-each-one-runs).
 
 ## Kill switch
 The `simp-server pause` command. It makes a `PAUSED` file, and every LLM call is refused until `simp-server resume`. Home: [24 Money and limits](24-money.md#4-kill-switch).
@@ -110,7 +116,7 @@ and send messages. Two ship with the library: `redact_secrets` (masks secrets) a
 (blocks `write`, `edit`, `bash`). The server also has its own plugin slots — Sandbox, Store,
 Auth — set in the `[plugins]` table of `settings.toml`; those are a different kind (chapter 36).
 Code: `packages/simp_agent/src/simp_agent/session/__init__.py`, `packages/simp_agent/src/simp_agent/plugins/`.
-Introduced in [00](00-introduction.md#2-what-simp-agent-is-not). First one built step by step: [33](33-dev-tutorial.md). Home: 35 Extending: tools and agent plugins.
+Introduced in [00](00-introduction.md#2-what-simp-agent-is-not). First one built step by step: [33](33-dev-tutorial.md). Home: [35 Extending: tools and agent plugins](35-tools-plugins.md).
 
 ## Print mode
 The CLI's one-shot mode: `simp-agent -p "task"` (or `simp-agent "task"`) runs one task,
@@ -126,6 +132,9 @@ cost $0). The CLI reads profiles from `~/.simp-agent/settings.json`; the
 server reads them from `[profiles.<name>]` in `settings.toml`. Both turn a profile into a model
 with `build_model()` in `packages/simp_agent/src/simp_agent/session/profile.py`.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [21 Configuration reference](21-configuration.md).
+
+## Prompt section
+One named part of the system prompt, with an `id`, an `order` and a value (text, or a function run every turn). The session sorts the sections by order and joins them. Plugins add their own with `add_prompt_section`. Code: `packages/simp_agent/src/simp_agent/session/__init__.py`. Home: [35](35-tools-plugins.md#5-prompt-sections).
 
 ## Provider
 The adapter that talks to one LLM API and turns its reply into simp-agent [messages](#message)
@@ -192,7 +201,7 @@ JSON schema for its arguments, and an `execute` function. The model sends a tool
 `find`, `ls`. By default `write`, `edit` and `bash` need your approval when the app asks for it.
 Code: `AgentTool` in `packages/simp_agent/src/simp_agent/agent/__init__.py`,
 `packages/simp_agent/src/simp_agent/coding/tools.py`.
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 35 Extending: tools and agent plugins.
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [35 Extending: tools and agent plugins](35-tools-plugins.md).
 
 ## Tool approval
 The question before a risky [tool](#tool) runs. `bash`, `write` and `edit` need approval;

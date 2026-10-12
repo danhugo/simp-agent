@@ -62,7 +62,7 @@ Both Python apps work mostly through `session`'s `AgentSession`, and also import
 ## 4. Why layers?
 
 1. **A small core at the bottom.** `ai` and `agent` hold the tricky general parts (streaming, the loop). They can be read and tested with a fake provider and a fake env, without the coding tools, sessions or any app.
-2. **Everything plugs in.** New behaviour is added on top, not inside. A new model API is a provider in `ai/providers/`. A new tool is a tool object. New session behaviour is a plugin using the session hooks. A new place to run commands is a new execution environment. See 34 (providers), 35 (tools and agent plugins), 36 (server plugins).
+2. **Everything plugs in.** New behaviour is added on top, not inside. A new model API is a provider in `ai/providers/`. A new tool is a tool object. New session behaviour is a plugin using the session hooks. A new place to run commands is a new execution environment. See 34 (providers), [35](35-tools-plugins.md) (tools and agent plugins), 36 (server plugins).
 3. **One library, many front ends.** `session` has no terminal: input and output go through the env and the store, which the app passes in (it falls back to `LocalEnv` only when none is given). That is why the same `AgentSession` serves both the CLI and the server.
 4. **Easy to test.** Lower layers have fewer things to fake. The `testing` layer sits at the top so it can fake anything below it.
 
@@ -100,7 +100,7 @@ Two details:
 
 - How a message travels through `ai` → `agent` → `session`: [31 How one turn flows](31-turn-flow.md).
 - What is inside the server: [32 The server inside](32-server-inside.md).
-- How to add providers, tools and plugins: 34, 35, 36 Extending.
+- How to add providers, tools and plugins: 34, [35](35-tools-plugins.md), 36 Extending.
 
 ---
 
