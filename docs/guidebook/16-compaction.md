@@ -4,6 +4,8 @@
 
 **Builds on:** [15 Retry](15-retry.md) · **Next:** [17 Context overflow](17-overflow.md)
 
+## Where we are
+
 ```mermaid
 flowchart LR
     ai --> agent --> coding --> session --> plugins --> testing
@@ -38,6 +40,60 @@ It keeps the call small. It breaks badly:
 2. **Broken pairs.** If the cut lands on a tool result, its tool call is gone. Providers reject a tool result without its call.
 3. **Counting messages is not counting tokens.** 20 small messages are fine; 20 file reads are not.
 4. **History is lost.** If we cut `agent.messages` itself, the saved session loses data too.
+
+## Step by step: from naive to real
+
+We fix the four problems one at a time. Each step is small.
+
+**Step 0: naive.** `messages[-keep:]`. Fast, but it forgets the task and can break pairs.
+
+**Step 1: count tokens, not messages.** Fixes problem 3.
+
+```python
+def estimate(m) -> int:
+    ...
+    return n // 4
+```
+
+A rough guess: 4 characters is about 1 token. Now "too big" means tokens, so 20 file reads count as big.
+
+**Step 2: decide *when* with the window.** Still problem 3.
+
+```python
+def should_compact(tokens: int, model, settings: CompactionSettings) -> bool:
+    return settings.enabled and tokens > model.context_window - settings.reserve_tokens
+```
+
+We act before the limit, not at it. `reserve_tokens` leaves room for the reply and the summary.
+
+**Step 3: cut only on a user or assistant message.** Fixes problem 2.
+
+```python
+ok = [j for j in range(start + 1, len(messages)) if isinstance(messages[j], (UserMessage, AssistantMessage))]
+before = [j for j in ok if j <= i]
+```
+
+`find_cut` walks back about `keep_recent_tokens`, then moves the cut to a safe message. A tool result is never the first kept message, so it never loses its call.
+
+**Step 4: summarize the old part instead of dropping it.** Fixes problem 1.
+
+```python
+summary = await summarize(stream_fn, model, old, previous, settings.reserve_tokens)
+```
+
+The model writes a summary in a fixed format. The first section lists every user request, so the task is not lost.
+
+**Step 5: append a marker, do not cut history.** Fixes problem 4.
+
+```python
+return CompactionEntry(summary + format_files(read, mod), cut, read, mod)
+```
+
+`compact` returns a `CompactionEntry`. The session appends it. `build_view` uses it to make the smaller list for the model. Full history stays in memory and in the store.
+
+**Step 6: be exact about files, and incremental.** The model can forget details, so code adds `<read-files>` and `<modified-files>`. Next time, `summarize` gets only the new old messages plus the `previous` summary, so we never re-read old text.
+
+**Step 7: wire it in the session.** `_prepare` runs before every model call, checks `should_compact`, and returns `build_view(...)`. The sections below show the real code for each step.
 
 ## Real design
 
@@ -297,6 +353,12 @@ uv run pytest packages/simp_agent/tests/test_compaction_serialize.py packages/si
 
 > **Summarize, append a marker, change only the view.** Compaction keeps the model inside its window without losing the user's requests or the list of changed files. The pure logic in `agent/compaction.py` is easy to test; the session only decides *when*. History stays append-only, so the store is never rewritten. The cost: the summary is a model call (time and money), and a summary can still miss details; the fixed format, incremental updates and code-made file lists keep that small.
 
+## Exercises
+
+1. **Try `find_cut` by hand.** Build a list: `UserMessage("a"*4000)`, an `AssistantMessage` with a `ToolCall`, a `ToolResultMessage` with `"b"*4000`, then `UserMessage("c"*4000)`. Call `find_cut(msgs, 0, keep)` for many `keep` values. Check the result is never the tool result index. *Hint:* copy the loop in `test_cut_never_on_tool_result` in `test_queues_compaction.py`.
+
+2. **No compaction below the limit.** Make an `AgentSession` with `Model(context_window=10000)` and a short history. Use `FakeProvider(DONE)` and call `prompt("hi")`. Check that no `CompactionEntry` is in `messages` and only one model call was made. *Hint:* see `small_model`, `compact_agent` and `test_below_threshold_no_compaction` in the same file.
+
 ## Recap
 
 - `should_compact`: tokens > `context_window - reserve_tokens`. Tokens come from real `usage` when possible.
@@ -318,3 +380,4 @@ uv run pytest packages/simp_agent/tests/test_compaction_serialize.py packages/si
 - **reserve_tokens** — tokens kept free for the reply and the summary (default 16384).
 - **keep_recent_tokens** — about how many recent tokens are kept word for word (default 20000).
 - **incremental summary** — updating the previous summary with only the new messages.
+- **cut (first_kept_index)** — the index of the first message kept word for word; always a user or assistant message.
