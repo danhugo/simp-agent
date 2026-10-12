@@ -6,7 +6,7 @@
 > **Code paths covered:** `apps/server/src/simp_server/server.py` (`host_guard`, `authenticate`, `Account`, `signup`), `apps/server/src/simp_server/store.py` (`sha`, `hash_password`), `apps/server/src/simp_server/sandboxes/docker.py`, `packages/simp_agent/src/simp_agent/plugins/redact_secrets.py`, `apps/web/src/Chat.tsx`.
 > **Verified at commit:** `ad5a9bd` (read from code; nothing was attacked or run in this check).
 
-**Back:** [25 Day-to-day ops](25-ops.md) · **Next:** 27 Troubleshooting (not written yet)
+**Back:** [25 Day-to-day ops](25-ops.md) · **Next:** [27 Troubleshooting](27-troubleshooting.md)
 
 ## 1. The goal: a small trusted team on one machine
 
@@ -94,5 +94,5 @@ Date: **2026-10-12**, commit `ad5a9bd`. Check [ROADMAP](../ROADMAP.md) for newer
 
 ---
 
-**Built on by:** 27 Troubleshooting (not written yet).
+**Built on by:** [27 Troubleshooting](27-troubleshooting.md).
 **Builds on:** [22 Users and accounts](22-users.md), [23 Sandboxes](23-sandboxes.md), [24 Money and limits](24-money.md), [25 Day-to-day ops](25-ops.md).

@@ -1,6 +1,6 @@
 # simp-agent guidebook
 
-Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13, 20–26.
+Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13, 20–27.
 Tags: [T] tutorial, [H] how-to, [R] reference, [E] explanation.
 
 ## What simp-agent is
@@ -40,7 +40,7 @@ Everyone reads Part 0. Then read only your part; parts link back to what they ne
 - [24 Money and limits](24-money.md) [H]: budgets, kill switch, how limits can be exceeded
 - [25 Day-to-day ops](25-ops.md) [H]: logs, launchd (macOS only), backups (what they do not cover), upgrades
 - [26 Security model and known gaps](26-security.md) [E]: dated list, links ROADMAP
-- 27 Troubleshooting [H]: 401 after rotate, budget errors, Docker down, provider errors
+- [27 Troubleshooting](27-troubleshooting.md) [H]: 401 after rotate, budget errors, Docker down, provider errors
 
 ### Part 3 — Inside simp-agent (Developer)
 - 30 Architecture [E]: the layers and why; layout details point to code and `test_layers.py`
