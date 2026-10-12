@@ -1,23 +1,253 @@
 # 18 Part 4 · Profiles and built-in plugins
 
-> Skeleton only. Prose not written yet.
-
 **Goal:** Pick models by profile and ship two real plugins.
 
-**Builds on:** [17-overflow](17-overflow.md) · **Next:** [19-cli](19-cli.md)
+**Builds on:** [17 Context overflow](17-overflow.md) · **Next:** [19 The CLI](19-cli.md)
 
-## Planned sections
+```mermaid
+flowchart LR
+    ai --> agent --> coding --> session --> plugins --> testing
+    session -.used by.-> apps["apps: cli, server (+ web)"]
+    style session fill:#ffd54f,stroke:#333,stroke-width:2px
+    style plugins fill:#ffd54f,stroke:#333,stroke-width:2px
+```
 
-- Profiles and build_model
-- plan_mode
-- redact_secrets
+*This chapter adds `session/profile.py` and fills the `plugins` layer (both marked).*
 
-## Code it covers
+## Problem
 
-- `packages/simp_agent/src/simp_agent/session/profile.py`
-- `packages/simp_agent/src/simp_agent/plugins/plan_mode.py`
-- `packages/simp_agent/src/simp_agent/plugins/redact_secrets.py`
+Part 4 is almost done. The session saves, retries, compacts and runs plugins. Two gaps are left before the apps:
 
-## Test it will show
+1. **Choosing a model.** A `Model` ([01](01-messages.md), [04](04-providers.md)) has many fields: `id`, `api`, `provider`, `base_url`, `api_key_env`, `context_window`, `max_tokens`, `compat`. Users want to write "use my `local` setup" in a settings file, not build a `Model` by hand. Both the CLI and the server need this, and they must agree.
+2. **Plugins that prove the sockets.** [14](14-plugins.md) built the hook points. We need real plugins that use them: one that keeps secrets out of the model and the logs, and one that makes the agent read-only.
 
-- `packages/simp_agent/tests/test_profile.py`
+## Naive version
+
+Profiles as a direct dict → `Model`:
+
+```python
+from simp_agent.ai import Model
+
+profiles = {
+    "claude": {"model": "claude-sonnet-5-5"},
+    "local": {"api": "openai-completions", "model": "qwen", "base_url": "http://localhost:8000/v1"},
+}
+
+def model_for(name):
+    return Model(**profiles[name])
+```
+
+It works for `claude`. It breaks when:
+
+1. **`provider` is not set.** For `local` the API is OpenAI, but `provider` keeps its default. The wrong API key is used.
+2. **Unknown keys crash.** A profile with `plugins = [...]` passes `plugins=` to `Model` and raises `TypeError`.
+3. **A `None` hides a default.** If the app sets `base_url=None`, `Model`'s own default is lost.
+4. **No token usage from OpenAI streams.** OpenAI-style servers send usage in a stream only when asked. Without it, `estimate_tokens` ([16](16-compaction.md)) must guess.
+
+## Real design
+
+### Profiles and build_model
+
+A **[profile](glossary.md#profile)** is a plain dict (from a settings file) that describes one model setup. `packages/simp_agent/src/simp_agent/session/profile.py`:
+
+```python
+"""A settings profile (plain dict from TOML) -> Model. Shared by the CLI and the server."""
+
+def build_model(pr: dict) -> Model:
+    api = pr.get("api", "anthropic-messages")
+    kw = {"id": pr.get("model"), "api": api, "provider": "openai" if api.startswith("openai") else "anthropic",
+          "base_url": pr.get("base_url"), "api_key_env": pr.get("api_key_env"), "compat": dict(pr.get("compat", dict()))}
+    kw.update({k: pr[k] for k in ("max_tokens", "context_window") if k in pr})
+    if api.startswith("openai"):
+        kw["compat"].setdefault("include_usage", True)
+    return Model(**{k: v for k, v in kw.items() if v is not None})  # None -> Model's default
+```
+
+Each line fixes one naive problem:
+
+- **`provider` comes from `api`.** `openai-completions` and `openai-responses` → `"openai"`, else `"anthropic"`. The provider name is what `get_api_key` gets ([04](04-providers.md)).
+- **Only known keys are read.** `model` becomes `id`. Other keys, like `plugins`, are ignored here, so one profile dict can hold model and app settings.
+- **`None` is dropped.** `Model`'s own defaults stay.
+- **`include_usage` on by default for OpenAI APIs.** `setdefault` keeps an explicit `False`, for a server that does not support it.
+- `compat` is copied (`dict(...)`), so the settings dict is never changed.
+
+`build_model` lives in the `session` layer because both apps use it. The CLI (`apps/cli/src/simp_cli/__init__.py`) first merges the profile from `~/.simp-agent/settings.json` with command line flags (`resolve_config`), checks a few things, then calls `profile.build_model`. The server imports it directly. One function, so a profile means the same model in both apps.
+
+Note: keys are never in the profile. Only `api_key_env`, the **name** of an env var. The app reads the key ([19](19-cli.md), [22](22-store-auth.md)).
+
+### build_plugins: names to objects
+
+`packages/simp_agent/src/simp_agent/plugins/__init__.py`:
+
+```python
+def build_plugins(names: list[str]) -> list:
+    known = {"redact_secrets": RedactSecrets, "plan_mode": PlanMode}
+    unknown = [n for n in names if n not in known]
+    if unknown:
+        raise ValueError(f"unknown plugin {unknown[0]!r}; have {sorted(known)}")
+    return [known[n]() for n in names]
+```
+
+A profile lists plugins by name. `build_plugins` turns names into fresh objects and fails loudly on a typo. The server calls it for every profile when it starts (`create_app`), so a typo stops the boot, not the first chat.
+
+Why fresh objects? A plugin keeps state (plan mode's on/off). Each session needs its own.
+
+### RedactSecrets
+
+**[RedactSecrets](glossary.md#redactsecrets)** (`plugins/redact_secrets.py`) masks secrets in tool output and in everything sent to the model.
+
+```python
+PATTERNS = re.compile(
+    r"sk-[A-Za-z0-9_-]{16,}"  # OpenAI / Anthropic style keys
+    r"|eyJ[\w-]+\.[\w-]+\.[\w-]+"  # JWT
+    r"|AKIA[0-9A-Z]{16}"  # AWS access key id
+    r"|gh[pousr]_[A-Za-z0-9]{30,}"  # GitHub tokens
+)
+SECRET_ENV = re.compile(r"KEY|TOKEN|SECRET|PASSWORD", re.I)
+MASK = "[REDACTED]"
+```
+
+Two ways to find a secret:
+
+1. **Known shapes** (`PATTERNS`): API keys, JWTs, AWS and GitHub tokens.
+2. **Known values**, collected in `setup`:
+
+```python
+    def setup(self, api, config: dict) -> None:
+        values = list(config.get("secrets", []))
+        if config.get("env", True):
+            values += [v for k, v in os.environ.items() if SECRET_ENV.search(k)]
+        self.secrets = sorted({v for v in values if len(v) >= 8}, key=len, reverse=True)  # longest first
+```
+
+`config["secrets"]` lets the app pass its own keys (the server passes its provider keys). With `env` on (the default), the value of every env var whose name has `KEY`, `TOKEN`, `SECRET` or `PASSWORD` is also masked. Values shorter than 8 characters are skipped: masking `"1"` everywhere would ruin the output. Longest first, so a long secret is masked whole before a shorter one that is part of it.
+
+It uses three hooks from [14](14-plugins.md):
+
+```python
+    def tool_result(self, call, result):
+        masked = self.mask(result.content)
+        return {"content": masked} if masked != result.content else None
+
+    def tool_update(self, call, text: str) -> str:
+        return self.mask(text)
+    ...
+    def context(self, messages: list) -> list:  # copies only: history keeps the original
+        return [self.deep(m) for m in messages]
+```
+
+- `tool_result`: if `bash` prints `cat .env`, the saved tool result is masked.
+- `tool_update`: streamed output is masked before the UI sees it.
+- `context`: every message in the model's view is masked. `deep` walks every string field of every dataclass (text, thinking, tool call arguments) and returns **copies**. It skips `id`, `signature`, `type` and `role`: these are opaque provider data, and changing them would break the next call.
+
+Why `context` and not only `tool_result`? The user may paste a key in their own message. History keeps the user's text (it is theirs), but the model never sees the key. And because the session passes the `context` chain as `redact` to `compact()` ([16](16-compaction.md)), the summary model does not see it either.
+
+### PlanMode
+
+**[Plan mode](glossary.md#plan-mode)** (`plugins/plan_mode.py`) makes the agent read-only: it may read and explore, then describe a plan.
+
+```python
+BLOCKED = {"write", "edit", "bash"}
+PROMPT = "PLAN MODE is on: plan only. Read and explore, then describe the plan. Do not change files or run commands."
+
+
+class PlanMode:
+    name = "plan_mode"
+
+    def __init__(self):
+        self.enabled, self.api = False, None
+
+    def setup(self, api, config: dict) -> None:
+        self.api = api
+        last = next((m for m in reversed(api.get_messages()) if isinstance(m, CustomEntry) and m.type == self.name), None)
+        self._apply(last.data["enabled"] if last else bool(config.get("enabled", False)))
+
+    def _apply(self, on: bool) -> None:
+        self.enabled = on
+        if on:
+            self.api.add_prompt_section(self.name, PROMPT, 1000)
+        else:
+            self.api.remove_prompt_section(self.name)
+
+    async def set_enabled(self, on: bool) -> None:
+        self._apply(on)
+        await self.api.append_entry(self.name, {"enabled": on})
+
+    def tool_call(self, call):
+        if self.enabled and call.name in BLOCKED:
+            return {"block": "plan mode is on (read-only)"}
+        return None
+```
+
+It uses every main socket from [14](14-plugins.md):
+
+- **Two layers of defence.** A prompt section (order 1000, so last) *tells* the model to plan only. The `tool_call` hook *blocks* `write`, `edit` and `bash` if the model tries anyway. The prompt avoids wasted turns; the hook is the real guard. The model gets a tool result that says "blocked by plugin plan_mode: plan mode is on (read-only)", so it knows why.
+- **State as a CustomEntry.** `set_enabled` appends a `CustomEntry` with type `plan_mode` ([13](13-session.md)). It is saved but not sent to the model. On resume, `setup` finds the **last** such entry in history and restores the state. No extra file.
+- **`config["enabled"]`** is only the start value for a new session.
+
+The app turns it on and off. The server has a `SetPlanMode` command that finds the `PlanMode` plugin in `session.plugins` and calls `set_enabled` ([21](21-transport.md)).
+
+For the fizzbuzz task: with plan mode on, the agent may `read` and `ls`, then answers "I will write `fizzbuzz.py` with ...". Its `write` call is blocked. Turn it off, and the next prompt can write the file.
+
+## Test
+
+`packages/simp_agent/tests/test_profile.py`:
+
+```python
+def test_build_model_openai_defaults():
+    m = build_model({"api": "openai-completions", "model": "x", "base_url": "http://h/v1", "context_window": 1000,
+                     "api_key_env": "K"})
+    assert (m.id, m.api, m.provider, m.base_url, m.api_key_env) == ("x", "openai-completions", "openai", "http://h/v1", "K")
+    assert m.compat["include_usage"] is True and m.context_window == 1000
+
+
+def test_build_model_keeps_explicit_compat():
+    m = build_model({"api": "openai-responses", "model": "x", "compat": {"include_usage": False}})
+    assert m.compat["include_usage"] is False
+
+
+def test_build_plugins():
+    assert [type(p).__name__ for p in build_plugins(["plan_mode", "redact_secrets"])] == ["PlanMode", "RedactSecrets"]
+    with pytest.raises(ValueError, match="unknown plugin"):
+        build_plugins(["nope"])
+```
+
+What it checks:
+
+- `model` → `id`, `provider` from `api`, and `include_usage` on by default.
+- An explicit `include_usage: False` is kept.
+- `build_plugins` keeps the order of names and rejects unknown ones.
+
+The two plugins are tested with a full session in `apps/cli/tests/test_sockets.py`:
+
+- `test_redact_plugin_masks_key_in_tool_output`: a tool prints a key; the saved result is `"token=[REDACTED] and [REDACTED]"`, the model's view has no key, and history still has the user's own text.
+- `test_plan_mode_blocks_write_and_survives_resume`: plan mode blocks a `write`, the system prompt has `PLAN MODE`, and a new session loaded from the same `JsonlStore` comes back with plan mode on.
+
+Run them:
+
+```sh
+uv run pytest packages/simp_agent/tests/test_profile.py -q
+uv run pytest apps/cli/tests/test_sockets.py -k "redact or plan_mode" -q
+```
+
+## Why this way
+
+> **One profile function, plugins by name, state in history.** `build_model` is shared, so the CLI and the server read a profile the same way. Plugins are picked by name, so a settings file can turn them on, and a typo fails early. The two built-in plugins use only the public sockets from [14](14-plugins.md); they are proof that the sockets are enough. Plan mode keeps its state as a `CustomEntry`, so resume needs no extra file. The cost: `RedactSecrets` only finds known shapes and known values. A secret with a new shape still gets through.
+
+## Recap
+
+- A profile is a plain dict; `build_model` turns it into a `Model` with the right `provider` and defaults.
+- `build_plugins(names)` makes fresh plugin objects and rejects typos.
+- `RedactSecrets` masks known patterns and known values in tool results, streamed output and the model's view (copies only).
+- `PlanMode` adds a prompt section and blocks `write`, `edit`, `bash`; its on/off state is a `CustomEntry`, so it survives resume.
+- Part 4 is done: the session is ready for the apps in Part 5.
+
+**Builds on:** [17 Context overflow](17-overflow.md) · **Next:** [19 The CLI](19-cli.md)
+
+## Terms to add to glossary
+
+- **profile** — a named settings dict that describes one model setup (`api`, `model`, `base_url`, `context_window`, `plugins`, ...).
+- **build_model** — `session/profile.py`; turns a profile into a `Model`. Shared by the CLI and the server.
+- **build_plugins** — `plugins/__init__.py`; turns plugin names into new plugin objects.
+- **RedactSecrets** — built-in plugin that replaces secrets with `[REDACTED]`.
+- **plan mode** — built-in plugin (`PlanMode`) that makes the agent read-only and asks it for a plan.
