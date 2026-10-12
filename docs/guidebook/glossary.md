@@ -3,7 +3,15 @@
 Every term in this book is defined here, once. Chapters link to these entries the first time
 they use a term. Terms are in A–Z order. "Home" is the chapter that explains the term in full.
 
-Verified at commit: `d74b7ee`.
+Verified at commit: `d74b7ee` (entries from 01: `d3d03f6`).
+
+## Access token
+A secret string that proves who you are to the server. `simp-server seed --name <name>`
+creates a user and prints its token once; `rotate` prints a new one and stops the old one.
+The web UI sends it as `Authorization: Bearer <token>`. You can also sign in with a username
+and password, which gives you a new token for that sign-in.
+Code: `apps/server/src/simp_server/server.py`.
+Introduced in [01](01-quick-start.md#43-make-a-user). Home: 22 Users and accounts.
 
 ## Agent loop
 The cycle at the heart of simp-agent: send the [messages](#message) to the model, get a reply,
@@ -27,6 +35,15 @@ protocol. The library ships one: `LocalEnv`, which uses this machine (optionally
 one root folder). The server's [sandbox](#sandbox) gives each session its own environment.
 Code: `packages/simp_agent/src/simp_agent/agent/env.py`.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 23 Sandboxes.
+
+## Fake LLM
+A scripted model built into the server, for trying the web UI or testing with no API key.
+Start it with `simp-server run --fake-llm` (or `make dev ARGS=--fake-llm`). It echoes your
+text, runs a `bash` tool call when your message starts with `tool`, and streams slowly when it
+starts with `slow`. It needs no key, but the server still needs one [profile](#profile). Not the
+same as `FakeProvider`, the library's scripted model for tests (chapter 37).
+Code: `apps/server/src/simp_server/fakellm.py`.
+Introduced in [01](01-quick-start.md#42-add-a-profile). Home: 37 Testing and evals.
 
 ## History
 The full, saved list of a [session's](#session) entries: [messages](#message), compaction
@@ -55,6 +72,12 @@ Auth — set in the `[plugins]` table of `settings.toml`; those are a different 
 Code: `packages/simp_agent/src/simp_agent/session/__init__.py`, `packages/simp_agent/src/simp_agent/plugins/`.
 Introduced in [00](00-introduction.md#2-what-simp-agent-is-not). Home: 35 Extending: tools and agent plugins.
 
+## Print mode
+The CLI's one-shot mode: `simp-agent -p "task"` (or `simp-agent "task"`) runs one task,
+prints the answer line by line, and exits. Exit code 1 means an error or abort. Compare
+[REPL](#repl). Code: `run()` in `apps/cli/src/simp_cli/__init__.py`.
+Introduced in [01](01-quick-start.md#32-make-a-practice-folder). Home: 10 The CLI.
+
 ## Profile
 A named set of model settings: `api`, `model`, `base_url`, `context_window`, `max_tokens`,
 `api_key_env` (the *name* of the environment variable that holds the key — never the key
@@ -70,6 +93,12 @@ More can be added with `register_provider()`. A provider never raises an error; 
 back as an assistant message with `stop_reason="error"`.
 Code: `packages/simp_agent/src/simp_agent/ai/__init__.py`, `packages/simp_agent/src/simp_agent/ai/providers/`.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 34 Extending: providers.
+
+## REPL
+The CLI's interactive chat ("read–eval–print loop"): run `simp-agent` with no task, type
+messages, and use slash commands such as `/help` and `/exit`. Compare [print mode](#print-mode).
+Code: `apps/cli/src/simp_cli/repl.py`.
+Introduced in [01](01-quick-start.md#34-chat-back-and-forth). Home: 10 The CLI.
 
 ## Sandbox
 The server's way to give each [session](#session) its own [execution environment](#execution-environment),
