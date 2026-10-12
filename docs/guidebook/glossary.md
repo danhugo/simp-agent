@@ -44,7 +44,7 @@ Where [tools](#tool) read and write files and run commands. In code it is the `E
 protocol. The library ships one: `LocalEnv`, which uses this machine (optionally limited to
 one root folder). The server's [sandbox](#sandbox) gives each session its own environment.
 Code: `packages/simp_agent/src/simp_agent/agent/env.py`.
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 23 Sandboxes.
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [23 Sandboxes](23-sandboxes.md).
 
 ## Fake LLM
 A scripted model built into the server, for trying the web UI or testing with no API key.
@@ -131,7 +131,7 @@ server machine — no isolation, fine for one person) and `DockerSandbox` (a loc
 container per session — needed for several users). The CLI does not use a sandbox; its tools run
 on your machine. Code: `apps/server/src/simp_server/server.py` (`Sandbox`, `LocalSandbox`),
 `apps/server/src/simp_server/sandboxes/docker.py`.
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 23 Sandboxes.
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [23 Sandboxes](23-sandboxes.md).
 
 ## Session
 One conversation with the agent, with its saved [history](#history). In code it is
