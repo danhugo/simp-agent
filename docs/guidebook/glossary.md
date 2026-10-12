@@ -81,7 +81,8 @@ Introduced in [01](01-quick-start.md#32-make-a-practice-folder). Home: 10 The CL
 ## Profile
 A named set of model settings: `api`, `model`, `base_url`, `context_window`, `max_tokens`,
 `api_key_env` (the *name* of the environment variable that holds the key — never the key
-itself), and optional prices (`price_in` and `price_out`, USD per 1M tokens; without them calls cost $0). The CLI reads profiles from `~/.simp-agent/settings.json`; the
+itself), and optional prices (`price_in` and `price_out`, USD per 1M tokens; without them calls
+cost $0). The CLI reads profiles from `~/.simp-agent/settings.json`; the
 server reads them from `[profiles.<name>]` in `settings.toml`. Both turn a profile into a model
 with `build_model()` in `packages/simp_agent/src/simp_agent/session/profile.py`.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 21 Configuration reference.

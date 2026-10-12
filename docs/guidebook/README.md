@@ -1,6 +1,6 @@
 # simp-agent guidebook
 
-Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. No chapter is written yet.
+Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01.
 Tags: [T] tutorial, [H] how-to, [R] reference, [E] explanation.
 
 ## What simp-agent is
