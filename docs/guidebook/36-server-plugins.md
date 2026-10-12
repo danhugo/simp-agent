@@ -87,7 +87,7 @@ class Sandbox(Protocol):
 
 | Method | When the server calls it | What it must do |
 |---|---|---|
-| `open(id)` | a session is loaded into memory | return an [execution environment](glossary.md#execution-environment) for that session; files from before must still be there |
+| `open(id)` | a [session](glossary.md#session) is loaded into memory | return an [execution environment](glossary.md#execution-environment) for that session; files from before must still be there |
 | `close(id)` | idle close, limit eviction, server stop | free running things (processes, containers); **keep the files** |
 | `remove(id)` | the session is deleted | free everything and **delete the files** |
 | `close_all()` | server stop | *optional*: the server calls it only if it exists (`hasattr`) |
@@ -156,7 +156,7 @@ The Protocol is only a marker. The real contract is **every method the server ca
 | history | `add_entry`, `entries` |
 | money | `add_usage`, `spent` (`usage` exists too, used only by tests) |
 
-`set_password`, `list_users`, `rotate_token` and `revoke` are used only by the admin commands (`simp-server …`), which load the store through the same `[plugins]` setting (`with_store`). A store that skips them breaks those commands, not the web app.
+`set_password`, `list_users`, `rotate_token` and `revoke` are used only by the operator commands (`simp-server …`), which load the store through the same `[plugins]` setting (`with_store`). A store that skips them breaks those commands, not the web app.
 
 Rules the server relies on (read `SqliteStore` for the exact shape of each row):
 

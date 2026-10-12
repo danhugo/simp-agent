@@ -19,7 +19,7 @@ async def my_stream(model, context, api_key=None):
 
 It gets a `Model` (which model, which URL), a `Context` (system prompt, [messages](glossary.md#message), tools) and the key. It talks to one LLM API and **yields events**. It turns the API's own format into simp-agent messages, and back.
 
-Everything else in the agent (loop, tools, sessions, server) only sees these events. This is why the agent can use Anthropic, OpenAI or a local server without any change: only the provider knows the wire format.
+Everything else in the agent (loop, tools, [sessions](glossary.md#session), server) only sees these events. This is why the agent can use Anthropic, OpenAI or a local server without any change: only the provider knows the wire format.
 
 ```mermaid
 flowchart LR

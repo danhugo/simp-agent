@@ -56,7 +56,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 [profile](glossary.md#profile) only names the variable that holds the key (`api_key_env`).
 This way you can share settings without sharing secrets.
 
-If you forget the key, you get `Error: no API key for provider anthropic`. A wrong key gives
+If you forget the key, you get `Error: no API key for provider anthropic` (a [provider](glossary.md#provider) is the code that talks to one LLM API). A wrong key gives
 an error with `401` and `invalid x-api-key`.
 
 > Using OpenAI or another server instead? You need a profile, or flags such as `--api`,

@@ -178,7 +178,7 @@ curl -s http://127.0.0.1:8766/api/usage -H "authorization: Bearer <token>"
 The web UI shows the same in the chat header, as `$0.00 / $2`. After real chats `today_usd`
 grows. At the limit, the next LLM call is refused with a `budget` error.
 
-**Kill switch.** Stop every LLM call for **everyone** at once, then lift it:
+**[Kill switch](glossary.md#kill-switch).** Stop every LLM call for **everyone** at once, then lift it:
 
 ```sh
 uv run simp-server pause     # prints: paused

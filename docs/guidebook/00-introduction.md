@@ -129,7 +129,7 @@ flowchart LR
 | `ai` | Message types and `stream()`, which sends them to a provider. |
 | `agent` | The generic agent loop, tools, execution environments, compaction helpers. Knows nothing about coding. |
 | `coding` | The seven coding tools, the system prompt, and loading `AGENTS.md` / `CLAUDE.md`. |
-| `session` | `AgentSession`: auto-compaction, retry on errors, saving history, tool approval, plugins. |
+| `session` | `AgentSession`: auto-compaction, retry on errors, saving history, [tool approval](glossary.md#tool-approval), plugins. |
 | `plugins` | Two example plugins: `redact_secrets` and `plan_mode`. |
 | `testing` | `FakeProvider` (a scripted model) and `EnvConformance` (checks an environment). |
 

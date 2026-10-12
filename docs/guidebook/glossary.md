@@ -90,6 +90,9 @@ Checked by `packages/simp_agent/tests/test_layers.py`. Home: [30 Architecture](3
 ## Live event
 A small stream piece from the server (`text_delta`, `thinking_delta`, `tool_output`). It has no `seq` and is not saved; its `offset` says where it goes in the text so far. Compare [durable event](#durable-event). Home: [32 The server inside](32-server-inside.md#4-sse--post-seq-offsets-snapshot).
 
+## MCP
+Model Context Protocol: a standard way for outside servers to offer tools to an agent. simp-agent does **not** support it yet; it is a planned Stage 4 plugin. Home: [35 Extending: tools and agent plugins](35-tools-plugins.md).
+
 ## Message
 One item in a conversation. There are three kinds that the model sees:
 - **user message** — text from you (or from the app on your behalf);
@@ -100,6 +103,9 @@ The [history](#history) can also hold two kinds the model never sees directly:
 `CompactionEntry` (see [compaction](#compaction)) and `CustomEntry` (data saved by an app or
 [plugin](#plugin)). Code: `packages/simp_agent/src/simp_agent/ai/__init__.py`.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [31 How one turn flows](31-turn-flow.md#2-ai-one-model-call).
+
+## Operator
+The person who installs and runs the server: writes the settings, makes users, sets the [budget](#budget), takes backups. This book says "operator", not "admin" (some code names and messages still say "admin"). Home: [20 Operator tutorial](20-operator-tutorial.md).
 
 ## Plan mode
 A switch on a [session](#session) that makes the agent read-only: it can look at files and
@@ -174,6 +180,9 @@ Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [3
 ## Snapshot
 The one event a tab gets right after the missed [durable events](#durable-event) when it connects: last `seq`, run state, the text still streaming, pending approval, title, plan mode. Then the live stream follows. Home: [32 The server inside](32-server-inside.md#4-sse--post-seq-offsets-snapshot).
 
+## SSE
+Server-Sent Events: a plain HTTP stream where the server sends events to the browser, one way, for a long time. The web UI gets all [live](#live-event) and [durable](#durable-event) events this way and sends commands with POST. Home: [32 The server inside](32-server-inside.md#4-sse--post-seq-offsets-snapshot); why: [38](38-decisions.md#2-sse--post-not-websocket).
+
 ## Steer
 In the [REPL](#repl), a message typed while the agent is running. The agent reads it before
 its next step. Compare [follow-up](#follow-up).
@@ -214,3 +223,9 @@ Introduced in [01](01-quick-start.md#33-see-tool-approval). Home: [10 The CLI](1
 One pass of the [agent loop](#agent-loop): one LLM call, then running the tool calls in its
 reply. A single prompt can take many turns.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [31 How one turn flows](31-turn-flow.md#3-agent-the-loop).
+
+## WebSocket
+A two-way connection between browser and server. simp-agent does **not** use it; the web uses [SSE](#sse) + POST. It is only listed as a possible transport for future clients. Home: [38 Decision records](38-decisions.md#2-sse--post-not-websocket).
+
+## Workspace
+The folder where one server [session](#session)'s files live: `<data_dir>/workspaces/<session_id>` (or `workspaces_dir`). The [sandbox](#sandbox) makes it when the session is opened; the agent's tools work inside it. Home: [23 Sandboxes](23-sandboxes.md).

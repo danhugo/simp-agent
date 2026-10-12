@@ -225,7 +225,7 @@ check = '"$PYTHON" -m pytest -q -p no:cacheprovider test_calc.py && grep -q "ass
 For each task the harness:
 
 1. makes a new temp folder and writes the `[setup]` files;
-2. runs an `AgentSession` with `LocalEnv` in that folder and sends `prompt`;
+2. runs an `AgentSession` ([session](glossary.md#session)) with `LocalEnv` in that folder and sends `prompt`;
 3. stops after 25 model turns or 300 seconds;
 4. saves the final answer to `_answer.txt`;
 5. runs `check` as a shell command in the folder (`$PYTHON` is set; 120 s limit). Exit code 0 = PASS.

@@ -65,7 +65,7 @@ uv run simp-server resume    # prints: resumed
 
 - **Web UI:** the chat header shows `$spent / $limit` for the signed-in user, and `· paused` ([11 §9](11-web.md#9-spend-display)).
 - **API:** `GET /api/usage` returns `today_usd`, `day_limit_usd`, `paused`, for the user whose token you send ([20 §8](20-operator-tutorial.md#8-see-the-budget)). It shows no run spend and no other users.
-- **All users:** there is no admin report. Read the `usage` table with `sqlite3`, for example:
+- **All users:** there is no operator report. Read the `usage` table with `sqlite3`, for example:
 
 ```sh
 # default data_dir

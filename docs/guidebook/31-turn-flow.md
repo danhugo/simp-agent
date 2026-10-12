@@ -38,7 +38,7 @@ sequenceDiagram
 
 In words:
 
-1. The **session** gets the prompt, runs [plugin](glossary.md#plugin) hooks, and asks its `Agent` to run. (A plugin's `input` hook may answer `handled`; then nothing more happens and `prompt()` returns `[]`.)
+1. The **session** gets the prompt, runs [plugin](glossary.md#plugin) [hooks](glossary.md#hook), and asks its `Agent` to run. (A plugin's `input` hook may answer `handled`; then nothing more happens and `prompt()` returns `[]`.)
 2. The **agent loop** does turns: ask the model, run the tools it asked for, repeat.
 3. Before each model call the session may **compact** the history.
 4. `ai.stream` talks to the provider and turns its reply into **events**.
