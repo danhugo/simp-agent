@@ -4,6 +4,8 @@
 
 **Builds on:** [13 Sessions](13-session.md) · **Next:** [15 Retry](15-retry.md)
 
+## Where we are
+
 ```mermaid
 flowchart LR
     ai --> agent --> coding --> session --> plugins --> testing
@@ -46,6 +48,41 @@ It blocks `bash` for the fizzbuzz task. Problems:
 2. **One bad plugin breaks the run.** If a plugin's code raises, the whole agent run fails.
 3. **Only one hook point.** No way to change the user's text, the messages sent to the model, the system prompt or the tool list.
 4. **No access to the session.** A plugin cannot add a tool or save state.
+
+## Step by step: from naive to real
+
+We fix the naive `Session` one problem at a time.
+
+**Step 1 — hooks are optional.** Do not call `p.tool_call(...)` directly. Look it up first with `getattr`, and skip the plugin if it has no such method:
+
+```python
+fn = getattr(p, hook, None)
+if fn is None:
+    return None
+```
+
+Now a plugin that only wants events needs only `on_event`. This fixes problem 1.
+
+**Step 2 — sync or async.** Some hooks are plain functions, some are `async`. We wrap the call with `_maybe_await(fn(*args))`. It awaits only when the result can be awaited. Plugin authors can pick either style.
+
+**Step 3 — catch errors in one place.** We put the lookup and the call inside one helper, `_hook`, with a `try`. On error it emits a `plugin_error` event and returns `None`. This fixes problem 2: a bad plugin is reported, but the run goes on.
+
+**Step 4 — but not for safety checks.** For `tool_call`, "skip on error" is wrong. A crashed guard must not let the tool run. So `_hook` gets `isolate=False`, and `_before_tool_call` turns the error into a block:
+
+```python
+try:
+    r = await self._hook(p, "tool_call", call, isolate=False) or {}
+except Exception as e:
+    return f"blocked by plugin {plugin_name(p)} ({type(e).__name__}: {e})"
+```
+
+**Step 5 — more hook points.** One hook is not enough. We call `_hook` at more fixed places: `input` and `before_agent_start` in `prompt()`, `context` before each model call, `tool_result` after a tool, `tool_update` and `on_event` in `_emit`. This fixes problem 3.
+
+**Step 6 — give plugins a handle.** In `start()`, each plugin's `setup` gets a `PluginAPI` and its own config. With it, the plugin can add tools, prompt sections and saved entries. This fixes problem 4, without handing over the whole session.
+
+**Step 7 — a prompt made of parts.** To let plugins add text to the system prompt, the prompt becomes a dict of ordered sections. `_build_prompt` joins them every turn.
+
+The result is the real code below.
 
 ## Real design
 
@@ -265,6 +302,11 @@ uv run pytest apps/cli/tests/test_sockets.py::test_plugin_context_chain_and_erro
 
 > **Optional hooks, isolated errors, except where safety needs "no".** A plugin is any object with some of the hook methods. Errors in most hooks become a `plugin_error` event, so one bad plugin cannot break a run. But `tool_call` fails closed, because it often guards something. Plugins get a small `PluginAPI`, not the whole session, so the core can change inside without breaking them. The cost: hook names are plain strings; a typo like `tool_calls` is silently never called.
 
+## Exercises
+
+1. Write a plugin `class Upper: name = "upper"` with one hook `input(self, text)` that returns `{"text": text.upper()}`. Run a session with a `FakeProvider` and check that the first user message is in upper case. Hint: copy `session(...)` and `DONE` from `apps/cli/tests/test_sockets.py`.
+2. Write a plugin whose `tool_call` raises for the tool `bash`. Check that the tool result says `blocked by plugin` and the tool never ran. Then change the hook name to `tool_calls` (a typo). What happens now, and why? Hint: look at `getattr(p, hook, None)` in `_hook`.
+
 ## Recap
 
 - A plugin is any object; the session calls a hook only if the method exists.
@@ -283,4 +325,5 @@ uv run pytest apps/cli/tests/test_sockets.py::test_plugin_context_chain_and_erro
 - **hook isolation** — an error in a plugin hook becomes a `plugin_error` event instead of breaking the run.
 - **fail closed** — when a safety check itself fails, treat it as "no" (block the tool).
 - **PluginAPI** — the object a plugin gets in `setup`; the actions it may take on its session.
+- **plugin_error** — the event the session emits when an isolated plugin hook raises; it names the plugin and the hook.
 - **prompt section** — one part of the system prompt, with an id and an order; rebuilt every turn.
