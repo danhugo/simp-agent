@@ -29,6 +29,16 @@ the window (`context_window - reserve_tokens`), after a "context too long" error
 ask for it. Code: `packages/simp_agent/src/simp_agent/agent/compaction.py`, `AgentSession.compact()`.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
 
+## Context file
+A Markdown file in the working folder whose text is added to the [system prompt](#system-prompt). The agent tries `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD` in that order and uses the first one found. It looks in the working folder only and reads it once, at the first message of a session.
+Code: `load_context_file()` in `packages/simp_agent/src/simp_agent/coding/__init__.py`.
+Introduced in [13](13-working-well.md#1-give-standing-rules-with-agentsmd--both). Home: [13 Working well with the agent](13-working-well.md).
+
+## Context window
+The most text (in tokens) the model can read at one time: the [system prompt](#system-prompt) plus the [history](#history) it is sent. When the history gets close to it, the session [compacts](#compaction).
+Code: `context_window` on the model, used in `packages/simp_agent/src/simp_agent/agent/compaction.py`.
+Introduced in [13](13-working-well.md#3-long-sessions-and-compaction--both). Home: 31 How one turn flows.
+
 ## Execution environment
 Where [tools](#tool) read and write files and run commands. In code it is the `ExecutionEnv`
 protocol. The library ships one: `LocalEnv`, which uses this machine (optionally limited to
@@ -45,17 +55,17 @@ same as `FakeProvider`, the library's scripted model for tests (chapter 37).
 Code: `apps/server/src/simp_server/fakellm.py`.
 Introduced in [01](01-quick-start.md#42-add-a-profile). Home: 37 Testing and evals.
 
-## History
-The full, saved list of a [session's](#session) entries: [messages](#message), compaction
-markers, and plugin data. It is append-only: entries are added, never changed or removed.
-What is sent to the model is built from it each turn (see [compaction](#compaction)).
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
-
 ## Follow-up
 In the [REPL](#repl), a message typed as `>> text` while the agent is running. It waits
 until the agent is done, then starts a new turn. Compare [steer](#steer).
 Code: `route()` in `apps/cli/src/simp_cli/__init__.py`.
 Introduced in [10](10-cli.md#3-the-repl). Home: [10 The CLI](10-cli.md).
+
+## History
+The full, saved list of a [session's](#session) entries: [messages](#message), compaction
+markers, and plugin data. It is append-only: entries are added, never changed or removed.
+What is sent to the model is built from it each turn (see [compaction](#compaction)).
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
 
 ## Message
 One item in a conversation. There are three kinds that the model sees:

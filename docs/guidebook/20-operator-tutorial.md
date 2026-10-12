@@ -10,8 +10,8 @@
 > **Code paths covered:** `apps/server/src/simp_server/server.py` (`load_settings`, `take_keys`,
 > `check_sandbox`, `signup`, `main`), `__main__.py`, `ops.py`, `budget.py`,
 > `sandboxes/docker.py`, `apps/server/sandboxes/Dockerfile`.
-> **Verified at commit:** `a8615b1`. Every step was run, **except** the steps that need Docker
-> (step 4 and the Docker sandbox itself): Docker was not installed on the test machine. They are
+> **Verified at commit:** `a8615b1`. Steps 5–9 were run with `allow_local_sandbox = true` (LocalSandbox). Step 4 and the Docker
+> sandbox were **not run**: Docker was not installed on the test machine. They are
 > marked *(not run)*. Please tell the Editor if one is wrong.
 
 This chapter gives only the order of the steps. Each step ends with a **Home** link to the
@@ -124,7 +124,7 @@ Startup can take about ten seconds. Wait for the log line `Uvicorn running on
 http://127.0.0.1:8766`. Logs are JSON lines. In a second terminal, check it:
 
 ```sh
-curl -s -XPOST http://127.0.0.1:8766/api/hello -H 'content-type: application/json' -d '{}'
+curl -s -XPOST http://127.0.0.1:8766/api/hello -H 'content-type: application/json' -d '{"protocol_version":1}'
 ```
 
 For the browser, start the web UI as in [01](01-quick-start.md#44-start-it), or run `make dev`
@@ -175,7 +175,7 @@ curl -s http://127.0.0.1:8766/api/usage -H "authorization: Bearer <token>"
 {"today_usd":0,"day_limit_usd":2.0,"paused":false}
 ```
 
-The web UI shows the same in the chat header, as `$0.00 / $2.0`. After real chats `today_usd`
+The web UI shows the same in the chat header, as `$0.00 / $2`. After real chats `today_usd`
 grows. At the limit, the next LLM call is refused with a `budget` error.
 
 **Kill switch.** Stop every LLM call for **everyone** at once, then lift it:
@@ -214,7 +214,6 @@ uv run simp-server users        # prints nothing: all users are gone
 **9.3 Restore:**
 
 ```sh
-rm -f ~/.simp-server/simp.db-wal ~/.simp-server/simp.db-shm   # a stale WAL would be replayed
 tar xzf ~/simp-backups/simp-20261012-153123.tar.gz -C ~/.simp-server
 uv run simp-server users
 ```
@@ -247,6 +246,6 @@ limits, 25 Day-to-day ops, 26 Security model and known gaps, 27 Troubleshooting.
 
 *(Chapters 21–27 are not written yet.)*
 
-**Back:** 13 Working well with the agent (not written yet), [01 Quick start](01-quick-start.md).
+**Back:** [13 Working well with the agent](13-working-well.md), [01 Quick start](01-quick-start.md).
 
 **Built on by:** 21–27 (Part 2).

@@ -1,6 +1,6 @@
 # simp-agent guidebook
 
-Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 20.
+Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13, 20.
 Tags: [T] tutorial, [H] how-to, [R] reference, [E] explanation.
 
 ## What simp-agent is
@@ -30,7 +30,7 @@ Everyone reads Part 0. Then read only your part; parts link back to what they ne
 - [10 The CLI](10-cli.md) [H]: print mode, REPL, profiles, tool approval, `--yes`, where sessions are saved
 - [11 The web UI](11-web.md) [H]: login (token or signup code), sessions, files, compact, Continue, notifications, spend
 - [12 CLI vs web feature table](12-cli-vs-web.md) [R] — one place; other chapters link here
-- 13 Working well with the agent [H]: AGENTS.md / CLAUDE.md, long sessions; each tip tagged CLI/web/both
+- [13 Working well with the agent](13-working-well.md) [H]: AGENTS.md / CLAUDE.md, long sessions; each tip tagged CLI/web/both
 
 ### Part 2 — Running the server (Operator)
 - [20 Operator tutorial](20-operator-tutorial.md) [T]: fresh Mac → DockerSandbox server, two users, a budget, a restore drill
