@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-12
+- v3: rewritten as a build book. Old chapters 00–38 removed; new README outline and 28 chapter skeletons; glossary reset. Pinned at `2fc2776`.
 - Re-read fixes B: footers ("Built on by") for 12, 21, 24 (24 now has the standard footer); removed the internal ROADMAP note from README; split long paragraphs in 11, 22, 23, 25, 26 into bullets (same meaning).
 - Re-read fixes A: glossary adds MCP, operator, SSE, WebSocket, workspace; "operator" instead of "admin" in 24 and 36 (quoted messages and code names kept); first-use glossary links in 00, 01, 10, 20, 31, 34, 36, 37, 38; 10 notes that print mode ignores `-r`.
 - Added [38 Decision records](38-decisions.md) (verified at `5c0f47c`, from ROADMAP, NOTES, Stage 2/3 plans; nothing run): small core + plugins, SSE + POST, SQLite, Docker sandbox, one machine, soft budgets. Linked from 32, 37, README (status now 30–38). Fixed stale 'not written yet' in 30. Glossary unchanged.
