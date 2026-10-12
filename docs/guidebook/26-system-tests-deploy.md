@@ -60,6 +60,54 @@ It looks fine, but it breaks in two ways:
 
 The naive way to test the whole system has the same kind of problem: point the browser at a real model and check the answer. It is slow, costs money, and fails at random. We need something that is **[deterministic](glossary.md#deterministic)**: same input, same output, every time.
 
+## Step by step: from naive to real
+
+**Step 1: use SQLite's own copy.** Do not copy `simp.db` as a file. Ask SQLite to copy it:
+
+```python
+src, dst = sqlite3.connect(home / "simp.db"), sqlite3.connect(snap)
+with dst:
+    src.backup(dst)
+```
+
+Why: `backup` gives a safe copy, even with rows still in the WAL file and the server running.
+
+**Step 2: copy only an allow list.** Do not copy the whole folder:
+
+```python
+for name in ("settings.toml", "workspaces", "sandboxes"):
+    if (data_dir / name).exists():
+        tar.add(data_dir / name, name)
+```
+
+Why: `.env` is not on the list, so keys never enter a backup.
+
+**Step 3: pack it in one file and drop old ones.** Name the file by time, then delete all but the newest N:
+
+```python
+for old in sorted(dest.glob("simp-*.tar.gz"))[:-keep]:
+    old.unlink()
+```
+
+Why: names like `simp-20260101-000000.tar.gz` sort by time as plain text.
+
+**Step 4: a fake model for tests.** Look only at the last message and answer the same way every time:
+
+```python
+else:
+    chunks, calls = ["Echo: ", last.content], []
+```
+
+Why: tests can now say "the answer must be `Echo: hello`". Add more rules (`tool`, `slow`) for more flows.
+
+**Step 5: plug the fake into the real server.** One flag swaps the model and nothing else:
+
+```python
+create_app(settings, stream if a.fake_llm else ai.stream)
+```
+
+Why: the store, auth and tools stay real. Then `ops.py`, `fakellm.py` and the launchd files below are the full code.
+
 ## Real design
 
 ### FakeLLM: a model that always says the same thing
@@ -125,9 +173,7 @@ A `Hub` class holds one session: the event log, the run state, in-flight text, a
         p.server_event.validate_python(ev)  # never put an off-schema frame on the wire
 ```
 
-Files live in a dict in memory (`self.files`), not on disk.
-
-Why have a second server? It was built so the web client ([25](25-web-client.md)) could be written before the real server was ready. It needs no database, no token setup and no Python agent packages. You start it with `simp-server fake` (see `apps/server/src/simp_server/__main__.py`: any mode that is not `run`, `seed`, `backup` and so on goes to `fake.main`). The script `apps/web/e2e/fake_reload.py` is a manual check against it: reload in the middle of a stream, approve after reload, upload a file.
+Why have a second server? It was built so the web client ([25](25-web-client.md)) could be written before the real server was ready. You start it with `simp-server fake` (see `apps/server/src/simp_server/__main__.py`: any mode that is not `run`, `seed`, `backup` and so on goes to `fake.main`). The script `apps/web/e2e/fake_reload.py` is a manual check against it: reload in the middle of a stream, approve after reload, upload a file.
 
 So we have two fakes at two levels:
 
@@ -161,9 +207,9 @@ uv run simp-server seed --name e2e > "$SIMP_SERVER_HOME/token"
 exec uv run simp-server run --port 8767 --fake-llm
 ```
 
-Step by step: delete the old data, write a small `settings.toml` with one fake profile and a tiny budget, create one user and save its token to a file, then start the server with `--fake-llm`. `allow_local_sandbox = true` means no Docker is needed for the tests ([24](24-docker-sandbox.md)). The second server is the Vite dev server for the web client.
+It deletes old data, writes a small `settings.toml` (one fake profile, tiny budget), seeds one user, and starts the server with `--fake-llm`. `allow_local_sandbox = true` means no Docker is needed for the tests ([24](24-docker-sandbox.md)). The second server is the Vite dev server for the web client.
 
-`reuseExistingServer: false` is on purpose. Every test run starts from an empty database. No state leaks from the last run.
+`reuseExistingServer: false` is on purpose: every run starts empty.
 
 The tests are in `apps/web/e2e/`: `app.spec.ts`, `accounts.spec.ts` and `admin.spec.ts`. `app.spec.ts` has small helpers: `login` reads the token from `/tmp/simp-e2e/token`, signs in and opens a new session; `say` types a message and presses Enter.
 
@@ -178,7 +224,7 @@ The tests are in `apps/web/e2e/`: `app.spec.ts`, `accounts.spec.ts` and `admin.s
         d.update({k: v for k, v in vars(r).items() if k not in _STD})
 ```
 
-`_STD` is the set of normal `LogRecord` fields, so only your own extras (like `run_id`) are added. One JSON object per line is easy to search with `grep` or `jq`. The server calls `ops.setup_logging()` right before `uvicorn.run`.
+`_STD` is the set of normal `LogRecord` fields, so only your own extras (like `run_id`) are added. The server calls `ops.setup_logging()` right before `uvicorn.run`.
 
 **Backup.** `backup(data_dir, dest, keep=0)` writes one `.tar.gz` file named by time:
 
@@ -195,7 +241,7 @@ The tests are in `apps/web/e2e/`: `app.spec.ts`, `accounts.spec.ts` and `admin.s
                 tar.add(data_dir / name, name)
 ```
 
-This fixes both naive bugs:
+This fixes both naive bugs (steps 1 and 2 above):
 
 1. **Safe database copy.** `sqlite3.Connection.backup` is SQLite's own [online backup](glossary.md#online-backup). It reads a consistent copy, including rows still in the WAL file, while the server keeps the database open. We write the copy to a temp folder first, then put it in the tar.
 2. **No secrets.** It does not copy the whole folder. It copies an **allow list**: the database, `settings.toml`, `workspaces` and `sandboxes`. `.env` is not on the list, so it never goes in.
@@ -208,7 +254,7 @@ Then old backups are removed:
             old.unlink()
 ```
 
-The name format `simp-YYYYmmdd-HHMMSS.tar.gz` sorts by time as plain text. So "keep the newest N" is just "sort and drop the start". The glob only matches `simp-*.tar.gz`, so other files in the folder are safe.
+The glob only matches `simp-*.tar.gz`, so other files in the folder are safe.
 
 From the command line: `simp-server backup --to DIR --keep N`. To restore, stop the server and unpack the tar into the data folder.
 
@@ -246,8 +292,6 @@ From the command line: `simp-server backup --to DIR --keep N`. To restore, stop 
 
 At 03:00 every day, keep the last 14 backups. `__REPO__` and `__HOME__` are placeholders: you replace them with your real paths before you load the files.
 
-For development there is also `make dev`. It starts the real server (with Docker if `docker info` works) and the web dev server together.
-
 ## Test
 
 Two kinds of tests check this chapter.
@@ -270,7 +314,7 @@ test("tool call: Allow shows the result, Deny is reported", async ({ page }) => 
 
 Follow it through the whole system. `"tool please"` starts with `tool`, so FakeLLM asks for `bash` with `echo hi-from-tool`. The server pauses for approval and the browser shows a card. The test clicks Allow. The real tool runs, the result goes back to FakeLLM, and FakeLLM answers `"Tool said: hi-from-tool"`. One test touches the web client, transport, approval, the tool runner and the session. Then it checks the Deny path too.
 
-Other tests in the same file cover streaming, reload in the middle of a stream, Stop, steering, a second tab, files, budget, plan mode, compaction and the session title. All of them only work because the fake model is deterministic.
+Other tests in the same file cover streaming, reload, Stop, steering, files, budget and more. All of them need a deterministic model.
 
 **The ops tests.** `apps/server/tests/test_ops.py` has three tests:
 
@@ -285,6 +329,11 @@ Run them with `uv run pytest apps/server/tests/test_ops.py`.
 > We fake only the model, not the system. FakeLLM plugs into the same `stream_fn` slot as a real provider, so the e2e tests run the real server, store and tools. The tests are fast, free and the same every time, and they still catch bugs between the real parts.
 >
 > For deploy we chose the smallest thing that works on one machine: SQLite's own backup, a tar file, an allow list, and launchd. No container platform, no cloud. [27](27-limits-choices-extend.md) talks about where this stops.
+
+## Exercises
+
+1. Run `ops.backup` on a folder with a `.env` file and a `settings.toml`. Print `tarfile.open(f).getnames()`. Which file is missing, and why?
+2. Add a rule to `fakellm.py`: a message that starts with `upper` answers with the text in capital letters. Which `elif` order do you need so that tool results still work?
 
 ## Recap
 

@@ -17,7 +17,7 @@ flowchart LR
 
 In [19](19-cli.md) we wrapped an `AgentSession` ([13](13-session.md)) in a terminal app. One person, one process, one screen. Now we want the same agent in a browser. The fizzbuzz task ("write `fizzbuzz.py`") should run on a server, and a web page should show it live.
 
-That brings new problems that the CLI never had:
+New problems:
 
 - **A run takes minutes.** An HTTP request should not wait that long. The run must live on the server, not inside one request.
 - **The browser and the server are two programs.** One is Python, one is TypeScript. They must agree on every message shape. If one side renames a field, the other side breaks in silence.
@@ -58,6 +58,53 @@ It works for one happy fizzbuzz run. It breaks when:
 4. **The tab reloads.** The answer of the running request is lost. There is no way to say "give me what I missed".
 5. **Approval** ([08](08-hooks-approval.md)) cannot work: the request is blocked, so the user has no way to send "allow".
 
+## Step by step: from naive to real
+
+**Step 1 — one fixed list of messages.** Give every message a model with a `type` field, and forbid unknown fields:
+
+```python
+class _M(BaseModel):
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+```
+
+Why: `{"txt": "hi"}` now fails loudly. This fixes problem 3.
+
+**Step 2 — one owner per conversation.** A `Run` holds the `AgentSession` and its state. Only one place can start a loop:
+
+```python
+if not self.busy:
+    await self.start(c.text)
+```
+
+Why: a second prompt cannot start a second loop. This fixes problem 2.
+
+**Step 3 — run in the background.** `start()` makes a task and returns at once:
+
+```python
+self.task = asyncio.create_task(self._run(fn))
+```
+
+Why: the request no longer waits for the run. This fixes problem 1.
+
+**Step 4 — numbered events.** Each event gets a `seq`. Save it, and send it to every open tab:
+
+```python
+self.seq += 1
+ev = cls(seq=self.seq, **kw).model_dump()
+```
+
+Why: a tab that reconnects asks for "everything after seq N". This fixes problem 4.
+
+**Step 5 — wait for the user.** The run waits on a future. A later `Approve` command sets it:
+
+```python
+decision = await self.answer
+```
+
+Why: the run is not blocked inside one HTTP request. This fixes problem 5.
+
+**Step 6 — a state table.** Every state change goes through `check_transition`. Then we generate the TypeScript types from the same models, so the browser cannot drift. The real code below is these six steps together.
+
 ## Real design
 
 The server lives in `apps/server/src/simp_server/`. This chapter covers three parts: the protocol models, the `Run` and its state machine, and the code generator that writes the TypeScript side. Streaming to the browser is [21](21-transport.md). Storage and login are [22](22-store-auth.md).
@@ -77,7 +124,7 @@ def main():
     fake_main()
 ```
 
-`simp-server run` starts the real server in `server.py`. Anything else falls to a fake server (`fake.py`) that plays a scripted run with no model. The fake is useful for the web client and for tests (see below). `build-sandbox` is for [24](24-docker-sandbox.md). `__init__.py` is only a docstring.
+`simp-server run` starts the real server in `server.py`. Anything else falls to a fake server (`fake.py`) that plays a scripted run with no model.
 
 ### Protocol models
 
@@ -88,7 +135,7 @@ class _M(BaseModel):
     model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 ```
 
-`extra="forbid"` means an unknown field is an error, not a silent drop. So `{"txt": "hi"}` fails loudly. The second option marks fields with defaults as "required" in the output schema, because the server always sends them. The TypeScript side can then trust that they exist.
+`extra="forbid"` means an unknown field is an error, not a silent drop. The second option marks default fields as "required" in the schema, so TypeScript can trust they exist.
 
 Every model has a `type` field with a fixed `Literal` value, like `type: Literal["prompt"] = "prompt"`. That field is the **[discriminator](glossary.md#discriminator)**: one field whose value says which model the JSON is. The union types use it:
 
@@ -99,7 +146,7 @@ server_event = TypeAdapter(ServerEvent)
 command = TypeAdapter(Command)
 ```
 
-With a discriminator, Pydantic reads `type` first and checks only that one model. Error messages are short and clear.
+Pydantic reads `type` first and checks only that one model.
 
 There are three groups of messages.
 
@@ -115,7 +162,7 @@ There are three groups of messages.
 - A **[live event](glossary.md#live-event)** has no `seq`: `TextDelta`, `ThinkingDelta`, `ToolOutput`. These are small pieces of streaming text. They are not saved.
 - A **[snapshot](glossary.md#snapshot)** says "here is where we are now": `last_seq`, `run_state`, the `in_flight` text so far, any `pending_approval`, the `title` and `plan_mode`.
 
-Why split? The final `AssistantMessage` holds the full text anyway, so saving every tiny delta is waste. Deltas are only for "watch it type"; the snapshot fills the gap after a reconnect. Each delta has an `offset`, so the client can tell where it fits in the text it already has.
+Why split? The final `AssistantMessage` holds the full text, so saving every delta is waste. The snapshot fills the gap after a reconnect.
 
 ### Run state machine
 
@@ -213,7 +260,7 @@ fn = text if callable(text) else functools.partial(self.session.prompt, text)
 self.task = asyncio.create_task(self._run(fn))
 ```
 
-This fixes naive problem 1: the HTTP request returns at once, and the run goes on without it. `_turn()` runs `fn`, then sets `idle`, or `error` if the last assistant message has `stop_reason == "error"`. If the state is `aborting`, it clears the queues, goes to `idle` and adds a "run aborted" notice. `_run()` wraps `_turn()` in a `finally` that moves a stuck busy run to `error`, so a session is never stuck "running" after a crash.
+This fixes naive problem 1: the HTTP request returns at once, and the run goes on without it. `_turn()` runs `fn`, then sets `idle`, or `error` if the last assistant message has `stop_reason == "error"`. `_run()` has a `finally` that moves a stuck busy run to `error`, so a session is never stuck "running" after a crash.
 
 **Routing commands.** `Run.command()` decides what each command means now:
 
@@ -231,7 +278,7 @@ if isinstance(c, (p.Prompt, p.FollowUp, p.Steer)):
 
 `busy` means `running`, `waiting_approval` or `aborting`. When idle, any text starts a run. When busy, it is queued as a steer or follow-up ([07](07-steering.md)), up to `MAX_QUEUED = 20`. This fixes naive problem 2: there is never a second loop. `Approve` needs a matching pending `call_id`, else 409. `Compact` and `Continue` give 409 while busy.
 
-**Events to protocol.** `on_event()` turns library events ([06](06-events-abort.md)) into protocol events. Text and thinking deltas grow `self.inflight` and go out as live `TextDelta`/`ThinkingDelta` with an `offset`. A `message_end` with an assistant message becomes a durable `AssistantMessage`, and the usage is recorded for cost limits ([23](23-limits.md)). After the first assistant message, a small background task (`_title`) asks the model for a session title and sends `SessionTitle`.
+**Events to protocol.** `on_event()` turns library events ([06](06-events-abort.md)) into protocol events. Deltas grow `self.inflight` and go out as live events with an `offset`. A finished assistant message becomes a durable `AssistantMessage`. Usage is recorded for cost limits ([23](23-limits.md)).
 
 **Approval over the network.** `approve()` is the callback the session calls before a risky tool ([08](08-hooks-approval.md)):
 
@@ -251,13 +298,13 @@ except asyncio.CancelledError:
 
 The run waits on a future. A later `Approve` command (a new HTTP request) calls `self.answer.set_result(...)`. This fixes naive problem 5. If the user aborts, the wait is cancelled and the log still gets a closing `ApprovalResolved` with `"aborted"`. Every request in the log has an answer.
 
-**After a restart.** When a `Run` is loaded from the store, `SessionManager.get()` calls `recover()`. If the last saved state was busy, the process died mid-run. `recover()` closes open approvals as `aborted`, adds an error `ToolResult` for each tool call with no result, then sets `error` and adds a warning notice. Here it writes `self.info.run_state = "error"` directly, "bypassing check_transition on purpose", because `waiting_approval -> error` is not in the table.
+**After a restart.** If the last saved state was busy, the process died mid-run. `recover()` closes open approvals as `aborted`, adds an error `ToolResult` for each tool call with no result, then sets `error`. It writes `self.info.run_state = "error"` directly, "bypassing check_transition on purpose", because `waiting_approval -> error` is not in the table.
 
 **Reconnect.** `subscribe(after)` returns every durable event with `seq > after`, then a `Snapshot`, and gives a new queue for live events. Its docstring: "No await here, so nothing slips in between." This fixes naive problem 4. How the events reach the browser over HTTP is [21](21-transport.md).
 
 ### gen_protocol → protocol.gen.ts
 
-The browser needs the same types in TypeScript. Writing them by hand would drift. So we generate them.
+The browser needs the same types in TypeScript. We generate them, so they cannot drift.
 
 `protocol.py` has a root model only for this job:
 
@@ -272,7 +319,7 @@ class Protocol(_M):
     session: SessionInfo
 ```
 
-`json_schema()` turns it into one **[JSON Schema](glossary.md#json-schema)** document. A small helper `_untitle` drops per-field titles, so the TS output has plain inline types and not aliases like `type Seq1 = number`.
+`json_schema()` turns it into one **[JSON Schema](glossary.md#json-schema)** document. A helper `_untitle` drops per-field titles, so the TS output has plain inline types.
 
 `apps/server/src/simp_server/gen_protocol.py` pipes that schema into the `json-schema-to-typescript` tool through `npx`:
 
@@ -301,12 +348,10 @@ def test_hello_and_state_machine():
         p.check_transition("idle", "waiting_approval")
 ```
 
-It checks the handshake (version 1 is fine, version 2 gets an error) and one legal and one illegal move. You cannot wait for approval when no run has started.
+It checks the handshake and one legal and one illegal move.
 
-Other tests in the same file:
+Other tests: `test_round_trip_every_event_and_command` dumps every event and command to JSON and parses it back. `test_no_ts_drift` checks that `protocol.gen.ts` equals `generate()` (skipped without `npx`).
 
-- `test_round_trip_every_event_and_command` dumps every event and command to JSON and parses it back through `server_event` and `command`. It also checks that `decision="maybe"` is rejected.
-- `test_no_ts_drift` checks that `protocol.gen.ts` equals `generate()`. It is skipped when `npx` is not installed.
 None of these tests call a model, so they need no API key. Run them:
 
 ```
@@ -316,6 +361,11 @@ uv run pytest apps/server/tests/test_protocol.py -q
 ## Why this way
 
 > **One typed protocol, one owner per conversation.** All wire shapes live in one Python file, and TypeScript is generated from it, so the two sides cannot drift without a failing check. Each conversation has one `Run` that owns its `AgentSession`, runs it in a background task, and changes state only through `set_state()` and the `TRANSITIONS` table. Durable events get a `seq` and are saved; live deltas are not, and a snapshot covers the gap. The cost: one extra code-gen step that needs Node, and the whole event log of an open session is kept in memory (marked with a `ponytail:` comment in `Run.__init__`).
+
+## Exercises
+
+1. Add `"paused"` to `RunStateName` and `TRANSITIONS` (idle to paused, paused to idle). Which test in `test_protocol.py` must you extend? Run it.
+2. In `test_hello_and_state_machine`, add a check that `error -> waiting_approval` raises `ValueError`. Does it pass without changing the table?
 
 ## Recap
 
