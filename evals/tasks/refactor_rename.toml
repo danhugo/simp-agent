@@ -1,0 +1,30 @@
+prompt = "Rename the function get_usr to get_user everywhere in this project (definition and all callers). Tests must still pass: python -m pytest -q"
+check = '! grep -rq get_usr --include=*.py . && "$PYTHON" -m pytest -q -p no:cacheprovider'
+
+[setup]
+"users.py" = """
+USERS = {1: "ada", 2: "linus"}
+
+
+def get_usr(uid):
+    return USERS.get(uid)
+"""
+"greet.py" = """
+from users import get_usr
+
+
+def greet(uid):
+    return f"hello {get_usr(uid)}"
+"""
+"test_users.py" = """
+from greet import greet
+from users import get_user
+
+
+def test_get_user():
+    assert get_user(1) == "ada"
+
+
+def test_greet():
+    assert greet(2) == "hello linus"
+"""

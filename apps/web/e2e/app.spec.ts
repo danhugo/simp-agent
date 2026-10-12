@@ -99,3 +99,35 @@ test("budget: header shows spend", async ({ page }) => {
   await expect(badge(page)).toHaveText("idle");
   await expect(page.locator(".chat header .spend")).toHaveText(/^\$0\.(0[1-9]|[1-9]\d) \/ \$1$/);
 });
+
+test("plan mode: toggle shows a notice and a tool call is blocked", async ({ page }) => {
+  await login(page);
+  const plan = page.locator(".chat header button:text('Plan')");
+  await plan.click();
+  await expect(page.locator(".notice").last()).toHaveText("plan mode on");
+  await expect(plan).toHaveAttribute("aria-pressed", "true");
+  await say(page, "tool please");
+  await expect(page.locator(".tool.error")).toContainText("plan mode is on");
+  await expect(badge(page)).toHaveText("idle");
+  await plan.click();
+  await expect(page.locator(".notice").last()).toHaveText("plan mode off");
+  await expect(plan).toHaveAttribute("aria-pressed", "false");
+});
+
+test("compact produces a compaction item", async ({ page }) => {
+  await login(page);
+  await say(page, "hello one");
+  await expect(last(page)).toHaveText("Echo: hello one");
+  await say(page, "hello two");
+  await expect(last(page)).toHaveText("Echo: hello two");
+  await page.click(".chat header button:text('Compact')");
+  await expect(page.locator(".notice").last()).toContainText("Context compacted");
+  await expect(badge(page)).toHaveText("idle");
+});
+
+test("a new session gets a title in the sidebar", async ({ page }) => {
+  await login(page);
+  await say(page, "hello title");
+  await expect(page.locator(".session.active")).toContainText("Fake title");
+  await expect(page.locator(".chat header strong")).toHaveText("Fake title");
+});

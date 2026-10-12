@@ -57,8 +57,15 @@ make dev                            # server on :8766 (DockerSandbox if docker r
 ```sh
 uv run simp-server users              # name<TAB>active|revoked
 uv run simp-server revoke --name bob  # new requests get 401, open streams end within 15s, no further LLM calls
-uv run simp-server rotate --name bob  # prints a new token once; the old one stops working
+uv run simp-server rotate --name bob  # prints a new token once; the old one and all password logins stop working
+uv run simp-server seed --name ann --password  # also asks for a password (web "Sign in" with username + password)
+uv run simp-server passwd --name ann  # set or change a password
 ```
+Accounts: set `signup_code = "..."` in `settings.toml` to let people "Create account" on the web login page with that
+invite code (unset = sign-up closed). Each password sign-in gets its own token; "Sign out" ends only that one. `revoke`
+disables the user (token, password logins and password sign-in); `rotate` re-enables a revoked user.
+There is no rate limit on `/api/login` and `/api/signup`: before exposing the server through a tunnel, put one in
+front (the tunnel's or a reverse proxy's). Passwords are capped at 1024 characters and hashed off the event loop.
 Sessions are deleted from the web sidebar (`×`, click again to confirm); a running session is aborted first and its
 workspace files are deleted. `seed` warns when a second user would need DockerSandbox (the server refuses to start
 with LocalSandbox and several active users unless `allow_local_sandbox = true`).
@@ -84,7 +91,25 @@ servers too; `uv run simp-server resume` lifts it. The web header shows today's 
 
 Limits are soft: the check runs before each LLM call and cost is recorded when the call ends, so a user can go over
 by the calls already in flight (one per session running at that moment). `pause` and `revoke` likewise let an
-in-flight call finish.
+in-flight call finish. A run's budget covers its queued follow-ups too.
+
+Idle sessions are unloaded to free RAM and containers (files and history stay; the next request reloads them):
+
+```toml
+idle_minutes = 15       # top level; unload sessions idle this long (not running, no open tab)
+max_open_sessions = 8   # loaded at once; the least recently used idle one is unloaded first, else 503
+```
+
+Every session's files live in `<data_dir>/workspaces/<session_id>` for both sandboxes (older `sandboxes/<id>` dirs
+move there on first open).
+
+### Session commands, plan mode, titles
+
+Besides prompt/steer/follow_up/abort/approve, `POST /api/sessions/{id}/commands` takes `{"type": "compact"}` and
+`{"type": "continue"}` (retry after an error or interruption; both 409 while busy) and
+`{"type": "set_plan_mode", "enabled": true}` (any time: write/edit/bash are blocked and the model is told to plan only;
+persisted with the session). An untitled session gets a title from one extra small LLM call (≤30 output tokens) after
+its first reply; it counts toward usage and budgets, and a failed or refused call just leaves the title empty.
 
 ### Running as a service (macOS launchd)
 
@@ -106,3 +131,7 @@ the server runs), `settings.toml`, `workspaces/` and `sandboxes/`. `.env` (keys)
 Restore: stop the server (`launchctl unload ~/Library/LaunchAgents/com.simp.server.plist`),
 `rm -f ~/.simp-server/simp.db-wal ~/.simp-server/simp.db-shm` (a stale WAL would be replayed onto the restored db),
 `tar xzf <file> -C ~/.simp-server`, start it again (`launchctl load ...`).
+
+## Evals (`evals/`)
+
+`uv run python evals/run.py --profile sol [--home ~/.simp-server] [--tasks read_answer,fizzbuzz]` runs each task in `evals/tasks/*.toml` (`setup` files, `prompt`, `check` shell command: exit 0 = pass) with AgentSession + LocalEnv in a temp dir, approving every tool call (max 25 turns, 5 minutes per task). It reads the profile and keys like the server (only reads `--home`), prints `name PASS|FAIL turns input/output $cost seconds` plus a total, and writes `evals/results/<timestamp>-<profile>.json` (git-ignored). Cost uses the profile's `price_in`/`price_out` (USD per 1M tokens); without them it is $0 with a warning. The check sees the final reply in `_answer.txt` and the Python interpreter in `$PYTHON`.

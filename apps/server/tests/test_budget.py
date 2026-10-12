@@ -28,7 +28,7 @@ async def make(tmp_path, stream_fn, extra=""):
     await mgr.store.open()
     token = await mgr.store.add_user("u")
     user = await mgr.store.user_by_token(token)
-    row = await mgr.store.add_session(user["id"], "test")
+    row = await mgr.store.add_session(user["id"], "test", "t")
     return app, mgr, user, token, await mgr.get(user, row["id"])
 
 
@@ -81,4 +81,21 @@ async def test_pause_refuses_llm_calls(tmp_path):
     await run.command(p.Prompt(text="hi"))
     await wait_for(lambda: not run.busy and run.task.done())
     assert fp.calls == 0 and run.state == "error"
+    await mgr.store.close()
+
+
+async def test_run_budget_spans_follow_ups(tmp_path):
+    fp = FakeProvider(*[usage_reply(f"r{i}") for i in range(5)])
+    app, mgr, user, _, run = await make(tmp_path, fp, "[budget]\nrun_usd = 1.5\nuser_day_usd = 100\n")
+    orig, nxt = run.session.prompt, {"go": "f1", "f1": "f2"}
+
+    async def prompt(text):  # each follow-up arrives after the loop decided to stop -> _turn starts it
+        await orig(text)
+        if text in nxt:
+            run.session.follow_up(nxt[text])
+    run.session.prompt = prompt
+    await run.command(p.Prompt(text="go"))
+    await wait_for(lambda: [e["text"] for e in run.log if e["type"] == "user_message"] == ["go", "f1", "f2"]
+                   and not run.busy and run.task.done())
+    assert fp.calls == 2 and run.state == "error"
     await mgr.store.close()

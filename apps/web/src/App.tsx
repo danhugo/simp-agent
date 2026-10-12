@@ -18,27 +18,49 @@ export default function App() {
 }
 
 function Login({ onLogin }: { onLogin: (t: string) => void }) {
-  const [value, setValue] = useState("");
+  const [signup, setSignup] = useState(false);
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [value, setValue] = useState("");  // access token (from `simp-server seed`), instead of a password
   const [error, setError] = useState("");
+  const useToken = !signup && !!value.trim();
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setToken(value.trim());
+    setError("");
     try {
+      const t = useToken ? value.trim()
+        : signup ? await api.signup(name.trim(), password, code.trim()) : await api.login(name.trim(), password);
+      setToken(t);
       await api.hello();
       await api.profiles(); // /api/hello needs no token; this checks it
-      onLogin(value.trim());
+      onLogin(t);
     } catch (err) {
       setToken("");
-      setError(err instanceof AuthError ? "That token was not accepted." : String(err));
+      setError(err instanceof AuthError ? "That token was not accepted." : err instanceof Error ? err.message : String(err));
     }
   };
+  const swap = () => { setSignup(!signup); setError(""); };
   return (
     <form className="login" onSubmit={submit}>
       <h1>simp-agent</h1>
-      <p className="muted">Paste your access token (from <code>simp-server seed</code>).</p>
-      <input type="password" autoFocus value={value} onChange={(e) => setValue(e.target.value)} placeholder="Token" aria-label="Token" />
+      <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Username" aria-label="Username"
+        autoComplete="username" />
+      <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password"
+        aria-label="Password" autoComplete={signup ? "new-password" : "current-password"} />
+      {signup ? (
+        <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Invite code" aria-label="Invite code" />
+      ) : (
+        <>
+          <p className="muted small">Or paste an access token (from <code>simp-server seed</code>):</p>
+          <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Token" aria-label="Token" />
+        </>
+      )}
       {error && <p className="error">{error}</p>}
-      <button className="primary" disabled={!value.trim()}>Sign in</button>
+      <button className="primary" disabled={!useToken && !(name.trim() && password && (!signup || code.trim()))}>
+        {signup ? "Create account" : "Sign in"}
+      </button>
+      <button type="button" className="ghost" onClick={swap}>{signup ? "I have an account" : "Create account"}</button>
     </form>
   );
 }
@@ -53,6 +75,17 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   const [showFiles, setShowFiles] = useState(false);
   const [confirm, setConfirm] = useState("");  // session id whose delete button was clicked once
   const ref = useRef(state);
+  const [notify, setNotify] = useState(() => { try { return localStorage.getItem("simp.notify") === "1"; } catch { return false; } });
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
+  const toggleNotify = async () => {
+    let on = !notify;
+    if (on && typeof Notification !== "undefined" && Notification.permission !== "granted") {
+      on = (await Notification.requestPermission()) === "granted";
+    }
+    setNotify(on);
+    try { localStorage.setItem("simp.notify", on ? "1" : "0"); } catch { /* storage blocked: keep it for this tab */ }
+  };
 
   const guard = useCallback((e: unknown) => { if (e instanceof AuthError) onLogout(); else console.error(e); }, [onLogout]);
   const refresh = useCallback(() => api.sessions().then(setSessions).catch(guard), [guard]);
@@ -70,7 +103,10 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
     const apply = (ev: ServerEvent) => {
       ref.current = reduce(ref.current, ev);
       setState(ref.current);
-      if (ev.type === "run_state" || ev.type === "snapshot") refresh();
+      if (ev.type === "run_state" || ev.type === "snapshot" || ev.type === "session_title") refresh();
+      if (ev.type === "run_state" && ["waiting_approval", "idle", "error"].includes(ev.state)) {
+        alertUser(ref.current.title || sid, ev.state, notifyRef.current);
+      }
     };
     return subscribe(sid, () => ref.current.lastSeq, apply, setConn, onLogout);
   }, [sid, refresh, onLogout]);
@@ -109,7 +145,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
           {sessions.map((s) => (
             <div key={s.id} className="session-row">
               <button className={`session ${s.id === sid ? "active" : ""}`} onClick={() => setSid(s.id)}>
-                <span>{s.id}</span><Badge state={s.run_state} />
+                <span>{s.title || s.id}</span><Badge state={s.run_state} />
               </button>
               <button className="ghost del" aria-label="Delete session" onClick={() => remove(s.id)}
                 onBlur={() => setConfirm("")}>{confirm === s.id ? "Delete?" : "×"}</button>
@@ -119,12 +155,13 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
         </nav>
         <div className="foot">
           <button className="ghost" onClick={onTheme}>{theme === "dark" ? "Light" : "Dark"} theme</button>
-          <button className="ghost" onClick={onLogout}>Sign out</button>
+          <button className="ghost" onClick={() => api.logout().catch(() => {}).finally(onLogout)}>Sign out</button>
         </div>
       </aside>
       {sid ? (
         <>
-          <Chat sid={sid} state={state} conn={conn} onError={guard} onToggleFiles={() => setShowFiles(!showFiles)} />
+          <Chat sid={sid} state={state} conn={conn} onError={guard} onToggleFiles={() => setShowFiles(!showFiles)}
+            notify={notify} onToggleNotify={toggleNotify} />
           {showFiles && <Files sid={sid} onError={guard} />}
         </>
       ) : (
@@ -136,4 +173,11 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
 
 export function Badge({ state }: { state: string }) {
   return <span className={`badge ${state}`}>{state.replace("_", " ")}</span>;
+}
+
+/** A system notification, only when the tab is hidden and the user turned it on. */
+function alertUser(title: string, state: string, on: boolean) {
+  if (!on || !document.hidden || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  const body = state === "waiting_approval" ? "needs your approval" : state === "error" ? "run failed" : "run finished";
+  try { new Notification(title, { body, tag: title }); } catch { /* some browsers only allow it from a service worker */ }
 }

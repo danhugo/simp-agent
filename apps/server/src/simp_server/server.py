@@ -7,6 +7,11 @@ GET /api/sessions/{id}/files?path=, GET|PUT /api/sessions/{id}/files/raw?path=  
 from __future__ import annotations
 
 import asyncio
+import dataclasses
+import functools
+import hmac
+import re
+import sqlite3
 import shutil
 import sys
 import logging
@@ -21,12 +26,14 @@ from typing import Protocol
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from simp_agent import ai
+from simp_agent.agent import api_key_opts
 from simp_agent.agent.env import ExecutionEnv, LocalEnv
-from simp_agent.ai import Model, ThinkingContent, from_dict, to_dict
-from simp_agent.plugins import build_plugins
+from simp_agent.ai import (Context, CustomEntry, Model, ThinkingContent, ToolResultMessage, UserMessage, from_dict,
+                           to_dict)
+from simp_agent.plugins import PlanMode, build_plugins
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
 
@@ -41,6 +48,7 @@ HEARTBEAT = 15  # seconds between SSE ": ping" comments
 QUEUE_MAX = 1000  # events buffered per SSE client; a client that falls this far behind is dropped and reconnects
 MAX_QUEUED = 20  # steer + follow-up messages waiting per session
 HOME = Path(os.environ.get("SIMP_SERVER_HOME", Path.home() / ".simp-server"))
+TITLE_PROMPT = "Name this coding session in 3 to 6 words. Reply with the title only."
 DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_server.store:SqliteStore",
                    "auth": "simp_server.server:StaticTokenAuth"}
 
@@ -67,10 +75,13 @@ class LocalSandbox:
     """A per-session dir under the data dir; LocalEnv rooted there. Not isolation: DockerSandbox replaces it."""
 
     def __init__(self, settings: dict):
-        self.root = Path(settings["data_dir"]) / "sandboxes"
+        self.root = Path(settings["data_dir"]) / "workspaces"
 
     async def open(self, session_id: str) -> LocalEnv:
-        d = self.root / session_id
+        d, old = self.root / session_id, self.root.parent / "sandboxes" / session_id
+        if old.exists() and not d.exists():  # Stage 2 layout: keep old sessions' files
+            self.root.mkdir(parents=True, exist_ok=True)
+            shutil.move(old, d)
         d.mkdir(parents=True, exist_ok=True)
         return LocalEnv(str(d.resolve()))
 
@@ -78,7 +89,8 @@ class LocalSandbox:
         pass
 
     async def remove(self, session_id: str) -> None:
-        shutil.rmtree(self.root / session_id, ignore_errors=True)
+        for d in (self.root / session_id, self.root.parent / "sandboxes" / session_id):  # + Stage 2 layout, never opened
+            shutil.rmtree(d, ignore_errors=True)
 
 
 class StaticTokenAuth:
@@ -88,6 +100,16 @@ class StaticTokenAuth:
     async def authenticate(self, request: Request) -> dict | None:
         h = request.headers.get("authorization", "")
         return await self.store.user_by_token(h[7:]) if h.startswith("Bearer ") else None
+
+
+class Account(BaseModel):  # caps keep scrypt and the db cheap whatever a client sends
+    name: str = Field(max_length=64)
+    password: str = Field(max_length=1024)
+    code: str = ""
+
+
+NAME_RE = re.compile(r"[a-z0-9_-]{2,32}")
+MIN_PASSWORD = 8
 
 
 def load_plugin(path: str):
@@ -152,17 +174,27 @@ class Run:
         self.info.run_state = states[-1] if states else "idle"
         self.seq = entries[-1]["seq"] if entries else 0
         self.inflight, self.pending, self.answer = p.InFlight(), None, None
-        self.subs, self.task = set(), None
+        self.subs, self.task, self.title_task = set(), None, None
         self.profile = mgr.settings["profiles"][row["profile"]]
         self.model = build_model(self.profile)
         self.run_start = time.time()
         self.session = AgentSession(
-            self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=budget.guard(mgr.stream_fn, self.over_budget),
+            self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=self.guarded_stream,
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
-            plugins=build_plugins(["redact_secrets", *[n for n in self.profile.get("plugins", []) if n != "redact_secrets"]]),
+            plugins=build_plugins(["redact_secrets", "plan_mode",
+                                   *[n for n in self.profile.get("plugins", []) if n not in ("redact_secrets", "plan_mode")]]),
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}})
         self.session.subscribe(self.on_event)
+
+    @property
+    def guarded_stream(self):
+        return budget.guard(self.mgr.stream_fn, self.over_budget)
+
+    @property
+    def plan_mode(self) -> bool:
+        last = next((m for m in reversed(self.session.messages) if isinstance(m, CustomEntry) and m.type == "plan_mode"), None)
+        return bool(last and last.data["enabled"])
 
     @property
     def state(self) -> str:
@@ -200,6 +232,15 @@ class Run:
         for e in self.log:
             if e["type"] == "approval_request" and e["call_id"] not in resolved:
                 await self.durable(p.ApprovalResolved, call_id=e["call_id"], decision="aborted")
+        msgs = self.session.agent.messages  # tool calls with no result yet: answer them so Continue has a valid history
+        done = {m.tool_call_id for m in msgs if m.role == "tool_result"}
+        last = next((m for m in reversed(msgs) if m.role == "assistant"), None)
+        for c in last.tool_calls() if last else ():
+            if c.id not in done:
+                m = ToolResultMessage(c.id, c.name, "aborted: the server restarted before this tool finished", True)
+                msgs.append(m)
+                await self.append(m)
+                await self.durable(p.ToolResult, call_id=c.id, tool=c.name, content=m.content, is_error=True)
         self.info.run_state = "error"  # any busy state -> error, bypassing check_transition on purpose
         await self.durable(p.RunState, state="error")
         await self.durable(p.Notice, level="warning", text="interrupted: the server restarted during this run")
@@ -213,7 +254,8 @@ class Run:
         """Missed durable events, then a snapshot, then live. No await here, so nothing slips in between."""
         q = asyncio.Queue(QUEUE_MAX)
         self.subs.add(q)
-        snap = p.Snapshot(last_seq=self.seq, run_state=self.state, in_flight=self.inflight, pending_approval=self.pending)
+        snap = p.Snapshot(last_seq=self.seq, run_state=self.state, in_flight=self.inflight, pending_approval=self.pending,
+                          title=self.info.title, plan_mode=self.plan_mode)
         return [*(e for e in self.log if e["seq"] > after), snap.model_dump()], q
 
     async def on_event(self, e: dict) -> None:
@@ -243,6 +285,8 @@ class Run:
                     tool_calls=[p.ToolCall(id=c.id, name=c.name, arguments=c.arguments) for c in m.tool_calls()],
                     stop_reason=m.stop_reason, error=m.error)
                 await self.mgr.store.add_usage(self.user_id, self.sid, self.model.id, **u, cost=budget.cost(self.profile, u))
+                if not self.info.title and self.title_task is None:
+                    self.title_task = asyncio.create_task(self._title())
             elif m.role == "tool_result":
                 f.tool_outputs.pop(m.tool_call_id, None)
                 await self.durable(p.ToolResult, call_id=m.tool_call_id, tool=m.tool_name, content=m.content,
@@ -280,12 +324,38 @@ class Run:
             await self.set_state("running")
         return decision
 
-    async def start(self, text: str) -> None:
-        self.run_start = time.time()
+    async def _title(self) -> None:
+        """One extra small LLM call to name the session. Any failure leaves the title empty."""
+        try:
+            first = next(e["text"] for e in self.log if e["type"] == "user_message")[:2000]
+            # reasoning models think before answering: leave room, and use the lowest effort all of them accept
+            model = dataclasses.replace(self.model, max_tokens=200, compat={**self.model.compat, "reasoning_effort": "low"})
+            msg = None
+            async for ev in self.guarded_stream(model, Context(TITLE_PROMPT, [UserMessage(first)], []),
+                                                **await api_key_opts(self.mgr.api_key_for(model), model)):
+                if ev["type"] in ("done", "error"):
+                    msg = ev["message"]
+            if msg is None or msg.stop_reason == "error":
+                raise RuntimeError(msg.error if msg else "no response")
+            u = {"input": msg.usage.get("input", 0), "output": msg.usage.get("output", 0)}
+            await self.mgr.store.add_usage(self.user_id, self.sid, self.model.id, **u, cost=budget.cost(self.profile, u))
+            title = " ".join(msg.text().replace('"', "").replace("'", "").split())[:60]
+            if not title:
+                raise RuntimeError(f"empty title (stop_reason={msg.stop_reason}, usage={u})")
+            self.info.title = title
+            await self.mgr.store.set_title(self.user_id, self.sid, title)
+            await self.durable(p.SessionTitle, title=title)
+        except Exception as e:
+            log.warning("session title failed: %s", e, extra={"session": self.sid})
+
+    async def start(self, text, fresh: bool = True) -> None:  # text: a prompt, or a coroutine factory (continue_, compact)
+        if fresh:  # a queued follow-up stays inside the same run budget
+            self.run_start = time.time()
         await self.set_state("running")
         self.run_id = uuid.uuid4().hex[:8]
         log.info("run start", extra=self._ctx())
-        self.task = asyncio.create_task(self._run(text))
+        fn = text if callable(text) else functools.partial(self.session.prompt, text)
+        self.task = asyncio.create_task(self._run(fn))
 
     async def over_budget(self) -> str | None:
         lim, store, msg = self.mgr.limits, self.mgr.store, None
@@ -304,10 +374,11 @@ class Run:
     def _ctx(self) -> dict:
         return {"run_id": self.run_id, "session": self.sid, "user": self.user_id}
 
-    async def _run(self, text: str) -> None:
+    async def _run(self, fn) -> None:
         try:
-            await self._turn(text)
+            await self._turn(fn)
         finally:  # never leave the session stuck busy, whatever failed (even a store write or a cancel)
+            self.mgr.last_used[self.sid] = time.monotonic()
             if self.busy and self.task is asyncio.current_task():
                 log.error("run stopped unexpectedly", extra=self._ctx(), exc_info=True)
                 self.pending, self.inflight, self.info.run_state = None, p.InFlight(), "error"
@@ -317,9 +388,9 @@ class Run:
                 except Exception:
                     pass
 
-    async def _turn(self, text: str) -> None:
+    async def _turn(self, fn) -> None:
         try:
-            await self.session.prompt(text)
+            await fn()
         except Exception as e:
             await self.durable(p.Notice, level="error", text=f"{type(e).__name__}: {e}")
         self.inflight = p.InFlight()
@@ -334,7 +405,7 @@ class Run:
         await self.set_state("error" if last and last.role == "assistant" and last.stop_reason == "error" else "idle")
         log.info("run end", extra={**self._ctx(), "state": self.state})
         if agent.follow_ups:  # came in after the loop decided to stop
-            await self.start(agent.follow_ups.pop(0).content)
+            await self.start(agent.follow_ups.pop(0).content, fresh=False)
 
     async def command(self, c) -> None:
         if isinstance(c, (p.Prompt, p.FollowUp, p.Steer)):
@@ -354,6 +425,14 @@ class Run:
             if not self.pending or self.pending.call_id != c.call_id or self.answer.done():
                 raise HTTPException(409, "no pending approval with that call_id")
             self.answer.set_result(c.decision)
+        elif isinstance(c, (p.Compact, p.Continue)):
+            if self.busy:
+                raise HTTPException(409, f"cannot {c.type} while the session is {self.state}")
+            await self.start(self.session.compact if isinstance(c, p.Compact) else self.session.continue_)
+        elif isinstance(c, p.SetPlanMode):
+            await self.session.start()  # plugin setup runs here (first prompt otherwise)
+            await next(pl for pl in self.session.plugins if isinstance(pl, PlanMode)).set_enabled(c.enabled)
+            await self.durable(p.Notice, text=f"plan mode {'on' if c.enabled else 'off'}")
 
 
 class SessionManager:
@@ -362,6 +441,9 @@ class SessionManager:
         self.keys = take_keys(settings)
         self.limits = budget.limits(settings)
         self.runs: dict[str, Run] = dict()
+        self.last_used: dict[str, float] = dict()
+        self.idle_s = settings.get("idle_minutes", 15) * 60
+        self.cap = settings.get("max_open_sessions", 8)
         self.lock = asyncio.Lock()  # ponytail: one lock for loading runs; per-session locks if it ever matters
 
     def paused(self) -> bool:
@@ -377,14 +459,49 @@ class SessionManager:
             raise HTTPException(404, "no such session")
         async with self.lock:
             if sid not in self.runs:
+                if len(self.runs) >= self.cap:
+                    lru = min((s for s, r in self.runs.items() if self.evictable(r)), key=self.last_used.get, default=None)
+                    if lru is None:
+                        raise HTTPException(503, "too many active sessions, try again later")
+                    await self.evict(lru)
                 env = await self.sandbox.open(row["sandbox_ref"])
                 self.runs[sid] = Run(self, row, env, await self.store.entries(user["id"], sid))
                 await self.runs[sid].recover()
+            self.last_used[sid] = time.monotonic()
         return self.runs[sid]
+
+    def evictable(self, run: Run) -> bool:
+        return (not run.busy and not run.subs and (run.task is None or run.task.done())
+                and (run.title_task is None or run.title_task.done()))
+
+    async def evict(self, sid: str) -> None:
+        """Free RAM and the container; files and log stay, the next get reloads from the store."""
+        run = self.runs.pop(sid)
+        self.last_used.pop(sid, None)
+        await self.sandbox.close(run.ref)
+
+    async def evict_idle(self) -> None:
+        async with self.lock:
+            now = time.monotonic()
+            for sid, run in list(self.runs.items()):
+                if self.evictable(run) and now - self.last_used.get(sid, 0) >= self.idle_s:
+                    await self.evict(sid)
+
+    async def evict_loop(self, every: float) -> None:
+        while True:
+            await asyncio.sleep(every)
+            try:
+                await self.evict_idle()
+            except Exception:
+                log.exception("idle eviction failed")
 
     async def drop(self, sid: str, ref: str) -> None:
         """Stop the run (if loaded), close its sandbox, and delete its workspace files."""
         run = self.runs.pop(sid, None)
+        self.last_used.pop(sid, None)
+        if run and run.title_task and not run.title_task.done():  # deleted: no title call, no write to a gone session
+            run.title_task.cancel()
+            await asyncio.gather(run.title_task, return_exceptions=True)
         if run and run.task and not run.task.done():
             run.session.abort()
             run.task.cancel()
@@ -394,7 +511,8 @@ class SessionManager:
 
     def info(self, row: dict) -> p.SessionInfo:
         r = self.runs.get(row["id"])
-        return p.SessionInfo(id=row["id"], title=row["title"] or "", run_state=r.state if r else "idle")
+        return p.SessionInfo(id=row["id"], title=row["title"] or "", run_state=r.state if r else "idle",
+                             plan_mode=r.plan_mode if r else False)
 
 
 # ---- app ------------------------------------------------------------------------------------------------------------
@@ -416,7 +534,9 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         for name, pr in settings["profiles"].items():
             if "price_in" not in pr or "price_out" not in pr:
                 log.warning("profile %s has no prices: its calls cost $0 and never hit a budget", name)
+        evictor = asyncio.create_task(mgr.evict_loop(settings.get("evict_every", 60)))
         yield
+        evictor.cancel()
         for run in list(mgr.runs.values()):
             await sandbox.close(run.ref)
         if hasattr(sandbox, "close_all"):
@@ -438,6 +558,34 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         if u is None:
             raise HTTPException(401, "bad token")
         return u
+
+    @app.post("/api/signup")
+    async def signup(a: Account):
+        code = settings.get("signup_code")
+        if not code or not hmac.compare_digest(a.code.encode(), str(code).encode()):
+            raise HTTPException(403, "sign-up is closed or the invite code is wrong")
+        if not NAME_RE.fullmatch(a.name):
+            raise HTTPException(400, "username: 2-32 of a-z 0-9 _ -")
+        if len(a.password) < MIN_PASSWORD:
+            raise HTTPException(400, f"password: at least {MIN_PASSWORD} characters")
+        if err := check_sandbox(settings, await store.count_users() + 1):
+            raise HTTPException(409, err)
+        try:
+            await store.add_user(a.name, password=a.password, token=False)
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "that username is taken") from None
+        return {"token": await store.login(a.name, a.password)}
+
+    @app.post("/api/login")
+    async def login(a: Account):
+        if (token := await store.login(a.name, a.password)) is None:
+            raise HTTPException(401, "Wrong username or password.")
+        return {"token": token}
+
+    @app.post("/api/logout")
+    async def logout(request: Request, u=Depends(user)):
+        await store.logout(request.headers["authorization"][7:])
+        return {"ok": True}
 
     @app.post("/api/hello")
     def hello(h: p.Hello):
@@ -549,6 +697,16 @@ async def with_store(fn):
         await store.close()
 
 
+def ask_password() -> str:
+    from getpass import getpass
+    pw = getpass("password: ")
+    if len(pw) < MIN_PASSWORD:
+        raise SystemExit(f"password: at least {MIN_PASSWORD} characters")
+    if getpass("again: ") != pw:
+        raise SystemExit("passwords differ")
+    return pw
+
+
 def main() -> None:
     import argparse
 
@@ -556,7 +714,10 @@ def main() -> None:
 
     ap = argparse.ArgumentParser(prog="simp-server")
     sub = ap.add_subparsers(dest="mode", required=True)
-    sub.add_parser("seed", help="create a user, print its token once").add_argument("--name", required=True)
+    sd = sub.add_parser("seed", help="create a user, print its token once")
+    sd.add_argument("--name", required=True)
+    sd.add_argument("--password", action="store_true", help="also set a password (prompted) for web sign-in")
+    sub.add_parser("passwd", help="set a user's password (prompted)").add_argument("--name", required=True)
     sub.add_parser("users", help="list users")
     sub.add_parser("revoke", help="disable a user's token").add_argument("--name", required=True)
     sub.add_parser("rotate", help="new token for a user, print it once").add_argument("--name", required=True)
@@ -577,12 +738,19 @@ def main() -> None:
     if a.mode == "backup":
         print(ops.backup(Path(load_settings()["data_dir"]), Path(a.to), keep=a.keep))
     elif a.mode == "seed":
+        pw = ask_password() if a.password else None
+
         async def seed(s):
-            token = await s.add_user(a.name)
+            token = await s.add_user(a.name, password=pw)
             if err := check_sandbox(load_settings(), await s.count_users()):
                 print(f"warning: {err} A running server keeps going; it refuses to start next time.", file=sys.stderr)
             return token
         print(asyncio.run(with_store(seed)))
+    elif a.mode == "passwd":
+        pw = ask_password()
+        if not asyncio.run(with_store(lambda s: s.set_password(a.name, pw))):
+            raise SystemExit(f"no user named {a.name}")
+        print("password set")
     elif a.mode == "users":
         for u in asyncio.run(with_store(lambda s: s.list_users())):
             print(f"{u['name']}\t{'active' if u['active'] else 'revoked'}")
