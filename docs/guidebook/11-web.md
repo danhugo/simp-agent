@@ -27,7 +27,7 @@ Open the URL. You see a login page with three ways in.
 
 Signing in with a password or a signup gives you a new token. The page keeps it in your browser (`localStorage`), so a reload keeps you signed in. Any refused sign-in shows "That token was not accepted."; a wrong signup code shows the server message ("sign-up is closed or the invite code is wrong"). The Token box is hidden on the signup form. **Sign out** (bottom left) tells the server to stop that token and clears it from the browser.
 If the server later says 401 (for example your operator rotated the token), you are sent back to the login page.
-How operators make tokens and codes: 22 Users and accounts (not yet written).
+How operators make tokens and codes: [22 Users and accounts](22-users.md).
 
 ## 2. Sessions
 
@@ -104,4 +104,4 @@ Tell your operator the exact message. Messages you may see: "That token was not 
 
 **Back:** [10 The CLI](10-cli.md).
 **Next:** [12 CLI vs web feature table](12-cli-vs-web.md).
-**Built on by:** [12 CLI vs web feature table](12-cli-vs-web.md), 13 Working well with the agent, 22 Users and accounts, 24 Money and limits.
+**Built on by:** [12 CLI vs web feature table](12-cli-vs-web.md), 13 Working well with the agent, [22 Users and accounts](22-users.md), 24 Money and limits.
