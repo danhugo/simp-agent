@@ -33,8 +33,9 @@ flowchart LR
 | `signup_code` | none | The shared invite code for the sign-up page. **Not set = sign-up is closed** (403). See 22. |
 | `default_profile` | the first profile in the file | Used when a new [session](glossary.md#session) names no profile. |
 | `allow_local_sandbox` | `false` | With more than one user and `LocalSandbox`, the server refuses to start or sign up (no isolation). `true` turns this check off. For tests only. |
-| `port` | not a setting | The port is not in the file. Use `simp-server run --port N` (default 8766). |
 | `files_max_bytes` | `52428800` (50 MiB) | Biggest file the file API will serve. |
+
+The port is not in the file: use `simp-server run --port N` (default 8766).
 
 ## 3. `[profiles.<name>]`
 
@@ -93,7 +94,7 @@ Setting the environment variable `SIMP_SANDBOX=docker` switches `sandbox` to `Do
 | `image` | the image from `build-sandbox` |
 | `network` | `"none"` (no network) |
 | `memory` | `"1g"` |
-| `cpus` | `"1"` (read as a string) |
+| `cpus` | `"1"` (any value works; it is turned into a string) |
 | `pids_limit` | `256` |
 
 ## 6. Capacity
