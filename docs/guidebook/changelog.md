@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-12
+- v3: wrote [02 A fake provider](02-fake-provider.md) (checked at `2fc2776`; ran `test_no_tool_call_one_turn` and `test_tool_call_then_second_turn`, 2 passed, and the standalone example): stream function contract, `stream_fn` injection, naive fake, FakeProvider script/records/callable replies/start+done|error, use in tests. Glossary: provider, stream function, scripted reply.
 - v3: wrote [01 Messages](01-messages.md) (checked at `2fc2776`; ran `test_from_dict_old_and_new` and `test_entry_roundtrip_and_old_format`, 2 passed): message and block types, CompactionEntry/CustomEntry, Tool/Context/Model, to_dict/from_dict. Test file corrected from skeleton (`test_core.py` has no round-trip test). Glossary: message, context, compaction entry, custom entry.
 - v3: wrote [00 Overview](00-overview.md) (checked at `2fc2776`; `test_layers.py` run, 1 passed): what simp-agent is, layer map, layer test, apps, build path, capability table, fizzbuzz running example. Glossary: coding agent, layer, tool call.
 - v3: rewritten as a build book. Old chapters 00–38 removed; new README outline and 28 chapter skeletons; glossary reset. Pinned at `2fc2776`.
