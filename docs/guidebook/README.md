@@ -1,6 +1,6 @@
 # simp-agent guidebook
 
-Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13, 20–25.
+Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13, 20–26.
 Tags: [T] tutorial, [H] how-to, [R] reference, [E] explanation.
 
 ## What simp-agent is
@@ -39,7 +39,7 @@ Everyone reads Part 0. Then read only your part; parts link back to what they ne
 - [23 Sandboxes](23-sandboxes.md) [E] — home chapter for sandbox: Local vs Docker, why Docker for several users
 - [24 Money and limits](24-money.md) [H]: budgets, kill switch, how limits can be exceeded
 - [25 Day-to-day ops](25-ops.md) [H]: logs, launchd (macOS only), backups (what they do not cover), upgrades
-- 26 Security model and known gaps [E]: dated list, links ROADMAP
+- [26 Security model and known gaps](26-security.md) [E]: dated list, links ROADMAP
 - 27 Troubleshooting [H]: 401 after rotate, budget errors, Docker down, provider errors
 
 ### Part 3 — Inside simp-agent (Developer)

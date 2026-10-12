@@ -6,7 +6,7 @@
 > **Code paths covered:** `apps/server/src/simp_server/ops.py` (`JsonFormatter`, `backup`), `apps/server/src/simp_server/server.py` (`recover`, `backup` command), `deploy/launchd/com.simp.server.plist`, `deploy/launchd/com.simp.backup.plist`.
 > **Verified at commit:** `131851b` (read from code and files; launchd not run in this check).
 
-**Back:** [24 Money and limits](24-money.md) · **Next:** 26 Security model and known gaps (not written yet)
+**Back:** [24 Money and limits](24-money.md) · **Next:** [26 Security model and known gaps](26-security.md)
 
 **Scope:** launchd is macOS only. This book does not cover Linux services (systemd). On Linux you can still run `simp-server run` and `simp-server backup` by hand or from your own scheduler.
 
@@ -172,5 +172,5 @@ If it goes wrong, go back: `git checkout` the old commit, `uv sync`, restore the
 
 ---
 
-**Built on by:** 26 Security model, 27 Troubleshooting (not written yet).
+**Built on by:** [26 Security model](26-security.md), 27 Troubleshooting (not written yet).
 **Builds on:** [20 Operator tutorial](20-operator-tutorial.md), [21 Configuration reference](21-configuration.md), [23 Sandboxes](23-sandboxes.md), [24 Money and limits](24-money.md).
