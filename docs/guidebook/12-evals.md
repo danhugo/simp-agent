@@ -21,7 +21,7 @@ Code in this chapter (commit `2fc2776`):
 - `evals/tasks/*.toml` — four [eval tasks](glossary.md#eval-task): `read_answer`, `fizzbuzz`, `fix_bug`, `refactor_rename`
 - `evals/test_run.py` — tests for the harness itself, with the FakeProvider
 
-`evals/run.py` imports `AgentSession` and `build_model`. We build those in [13](13-session.md) and [18](18-profiles-plugins.md). Here we only use them; you can read this chapter first and come back.
+`evals/run.py` imports `AgentSession` and `build_model`. We build those in [13](13-session.md) and [18](18-profiles-plugins.md). `main()` also uses `load_settings` and `take_keys` from the server ([22](22-store-auth.md)). Here we only use them; you can read this chapter first and come back.
 
 ## Problem
 
@@ -144,7 +144,7 @@ with tempfile.TemporaryDirectory(prefix=f"simp-eval-{task['name']}-") as d:
 Why each part:
 
 - **Temp folder.** Every task starts clean, and the folder is deleted at the end. Runs do not affect each other.
-- **`.resolve()`.** On macOS `/tmp` is a link to `/private/tmp`. Using the real path as root and cwd keeps it the same everywhere, including `LocalEnv`'s path checks ([09](09-exec-env.md)).
+- **`.resolve()`.** On macOS `/tmp` is a symlink (a link to another folder) to `/private/tmp`. Using the real path as root and cwd keeps it the same everywhere, including `LocalEnv`'s path checks ([09](09-exec-env.md)).
 - **`LocalEnv`** — the same [execution environment](glossary.md#execution-environment) the CLI uses. We measure the real tools, not a copy.
 - **`stream_fn`** — by default `ai.stream`, the real [provider](glossary.md#provider) call ([04](04-providers.md)). The test passes a FakeProvider here instead.
 - **`max_retries=1`** — retry a failed model call only once ([15](15-retry.md)). An eval should show problems, not hide them behind long waits.
@@ -202,7 +202,7 @@ Then cost: `(input * price_in + output * price_out) / 1e6`. Prices in the profil
 ```
 read_answer     PASS     2 turns       300/30       $0.0004  1.2s
 total           1/1      2 turns       300/30       $0.0004  1.2s
-wrote evals/results/20261013-101500-sol.json
+wrote /path/to/simp-agent/evals/results/20261013-101500-sol.json
 ```
 
 It then writes `evals/results/<date-time>-<profile>.json` with every row and the total. That folder is in `.gitignore`: results are yours, not the repo's. If the profile has no `price_in` / `price_out`, it warns that cost will show `$0`.
@@ -217,7 +217,7 @@ keys = take_keys(settings)
 asyncio.run(run_all(a.profile, settings["profiles"][a.profile], keys, a.tasks.split(",") if a.tasks else None))
 ```
 
-The harness reads the same `settings.toml` as the server ([22](22-store-auth.md)), from `--home` (default `$SIMP_SERVER_HOME` or `~/.simp-server`), and keys from `<data_dir>/.env` and the process env (`data_dir` is `--home` unless settings change it). So you eval exactly the profiles you serve. Run it like this:
+The harness reads the same `settings.toml` as the server ([22](22-store-auth.md)), from `--home` (default `$SIMP_SERVER_HOME` or `~/.simp-server`). It reads keys from `<data_dir>/.env` and the process env. `data_dir` is `--home` unless settings change it. So you eval exactly the profiles you serve. Run it like this:
 
 ```bash
 uv run python evals/run.py --profile sol
@@ -238,7 +238,7 @@ That is the "each later Part adds a case" plan: when a later chapter adds a capa
 
 ### Host-shell warning
 
-> ⚠️ **Evals run on your own machine, with no sandbox.** `LocalEnv` runs the agent's `bash` tool on your host, as you ([09](09-exec-env.md)). The temp folder is only the *starting* folder; a command like `rm -rf ~` or `curl ... | sh` is not blocked. The `check` also runs with `shell=True` on your host. Only run tasks you trust, with models you trust, ideally in a throwaway VM or container. The [Docker sandbox](24-docker-sandbox.md) is not used here.
+> ⚠️ **Evals run on your own machine, with no sandbox.** `LocalEnv` runs the agent's `bash` tool on your host, as you ([09](09-exec-env.md)). The temp folder is only the *starting* folder; a command like `rm -rf ~` or `curl ... | sh` is not blocked. The `check` also runs with `shell=True` on your host. Only run tasks you trust, with models you trust, ideally in a spare VM you can delete, or container. The [Docker sandbox](24-docker-sandbox.md) is not used here.
 
 Also note: `take_keys` removes the known key variables (each profile's `api_key_env`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) from `os.environ` before the agent runs. Commands the agent starts do not see those keys. Other secrets in your environment are still visible.
 
@@ -277,6 +277,11 @@ uv run python evals/run.py --help # shows --profile, --home, --tasks
 > **Cost is a result.** Turns, tokens, dollars and seconds sit next to PASS/FAIL, because a cheaper agent is a better agent.
 >
 > **Small on purpose.** Four tasks, run in order, no scoring model. It is a quick signal after a change, not a benchmark.
+
+## Exercises
+
+1. Add `evals/tasks/count_lines.toml`. In `[setup]` put a file with 7 lines. Ask the agent how many lines it has, and check with `grep -q 7 _answer.txt`. Run `uv run pytest -q evals`: which test must you update, and why?
+2. Run one task with `--tasks fix_bug,nope`. What happens, and how much money was spent?
 
 ## Recap
 
