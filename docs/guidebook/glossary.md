@@ -85,3 +85,6 @@ One of two optional functions in `LoopConfig` (and `Agent`) that wrap each tool 
 
 ## Tool approval
 Asking a human before a risky tool runs. Built as one `before_tool_call` in `AgentSession`: `approve(call)` answers `"allow"`, `"always"` (remember this tool name) or anything else (deny). Only `bash`, `write` and `edit` ask, and the question ends on abort. Home: [08](08-hooks-approval.md#approval-a-before_tool_call-that-asks-a-human).
+
+## Truncation
+How tools keep output small (`coding/truncate.py`): keep whole lines under 2000 lines and 50 KB. `truncate_head` / `head` keep the start (read, ls, grep, find); `truncate_tail` / `tail` keep the end (bash). The wrappers add a note so the model knows it was cut. Home: [10](10-coding-tools.md#truncation-truncate_head-and-truncate_tail).
