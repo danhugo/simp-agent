@@ -1,26 +1,307 @@
 # 26 Part 5 · System tests and deploy
 
-> Skeleton only. Prose not written yet.
-
 **Goal:** Test the whole system and run it on one machine.
 
 **Builds on:** [25-web-client](25-web-client.md) · **Next:** [27-limits-choices-extend](27-limits-choices-extend.md)
 
-## Planned sections
+```mermaid
+flowchart LR
+    ai --> agent --> coding --> session --> plugins --> testing
+    session -.used by.-> apps["apps: cli, server (+ web)"]
+    apps -.checked and run by.-> ops["e2e tests + deploy"]
+    style ops fill:#ffd54f,stroke:#333,stroke-width:2px
+```
 
-- fake.py / fakellm.py
-- End-to-end tests
-- ops backup
-- launchd
+*This chapter adds the part around the apps (marked): end-to-end tests, backups and a service on one machine.*
 
-## Code it covers
+## Problem
 
-- `apps/server/src/simp_server/fake.py`
-- `apps/server/src/simp_server/fakellm.py`
-- `apps/server/src/simp_server/ops.py`
-- `apps/web/e2e/`
-- `deploy/launchd/`
+At the end of [25](25-web-client.md) we have all the pieces. A user opens the browser, types "write fizzbuzz.py", and the server runs a session ([20](20-server-run.md)), streams events ([21](21-transport.md)), stores them ([22](22-store-auth.md)) and runs tools in a sandbox ([24](24-docker-sandbox.md)).
 
-## Test it will show
+Each piece has its own unit tests. But three things are still missing:
 
-- `make e2e; apps/server/tests/test_ops.py`
+1. **Nobody tests the pieces together.** A unit test for the transport does not click a button in a real browser. A bug between the web client and the server can hide.
+2. **A real model is a bad test partner.** It costs money, it is slow, and it gives a different answer each time. A test that says "the answer must be `Echo: hello`" cannot work with it.
+3. **Nobody keeps the server alive.** If the laptop reboots, the server is gone. If the disk dies, all users, sessions and workspaces are gone.
+
+This chapter fixes all three with small, boring tools: a fake model, a fake server, browser tests, a backup function and two launchd files.
+
+## Naive version
+
+Start with the backup. The simplest idea: copy the data folder.
+
+```python
+import shutil, sqlite3, tempfile
+from pathlib import Path
+
+home = Path(tempfile.mkdtemp())
+db = sqlite3.connect(home / "simp.db")
+db.execute("PRAGMA journal_mode=WAL")     # the server uses WAL mode
+db.execute("CREATE TABLE t(x)")
+db.execute("INSERT INTO t VALUES(42)")
+db.commit()                               # committed, but db stays open (server is running)
+
+(home / ".env").write_text("OPENAI_API_KEY=secret")
+
+copy = Path(tempfile.mkdtemp()) / "copy"
+shutil.copytree(home, copy, ignore=shutil.ignore_patterns("*-wal", "*-shm"))
+
+print(sorted(p.name for p in copy.iterdir()))   # .env is in the backup
+try:
+    print(sqlite3.connect(copy / "simp.db").execute("SELECT x FROM t").fetchone())
+except sqlite3.Error as e:
+    print("broken backup:", e)
+```
+
+It looks fine, but it breaks in two ways:
+
+1. **The database copy can be wrong.** In [WAL mode](glossary.md#wal-mode), SQLite first writes new rows to a side file (`simp.db-wal`). The main file gets them later. A plain file copy of `simp.db` alone can miss rows, or even the table. Copying the `-wal` file too is not safe either: the server may write to it in the middle of the copy.
+2. **It copies secrets.** The `.env` file with API keys goes into every backup. Backups often go to less safe places than the server.
+
+The naive way to test the whole system has the same kind of problem: point the browser at a real model and check the answer. It is slow, costs money, and fails at random. We need something that is **[deterministic](glossary.md#deterministic)**: same input, same output, every time.
+
+## Real design
+
+### FakeLLM: a model that always says the same thing
+
+In [02](02-fake-provider.md) we learned that the agent never calls a model directly. It calls a `stream_fn`. So the server can take a fake one. `apps/server/src/simp_server/fakellm.py`:
+
+```python
+async def stream(model, ctx, api_key=None):
+    last = ctx.messages[-1]
+    if ctx.system_prompt.startswith("Name this coding session"):
+        chunks, calls = ["Fake title"], []
+    elif last.role == "tool_result":
+        chunks, calls = [f"Tool said: {last.content.strip()}"], []
+    elif last.content.startswith("tool"):
+        chunks, calls = ["Running a command."], [ToolCall(f"call{next(ids)}", "bash", {"command": "echo hi-from-tool"})]
+    elif last.content.startswith("slow"):
+        chunks, calls = [f"w{i} " for i in range(40)], []
+    else:
+        chunks, calls = ["Echo: ", last.content], []
+```
+
+It only looks at the last message. Each rule exists for one kind of test:
+
+- **Echo** for a normal streaming answer.
+- **"tool ..."** makes a `bash` call, so the test can see an approval card ([08](08-hooks-approval.md)) and a real tool result.
+- **"slow ..."** streams 40 chunks with a longer wait. This gives the test time to reload the page, press Stop, or steer while the run is busy.
+- **"Name this coding session"** answers the title request with `"Fake title"`.
+
+Then it yields the same events a real provider yields: `start`, `thinking_delta`, some `text_delta`, `done`. The wait between chunks comes from `SIMP_FAKE_DELAY` (default `0.05` seconds).
+
+How does the server use it? One flag in `apps/server/src/simp_server/server.py`:
+
+```python
+r.add_argument("--fake-llm", action="store_true", help="deterministic scripted model (e2e)")
+...
+        if a.fake_llm:
+            from .fakellm import stream
+        ...
+        uvicorn.run(create_app(settings, stream if a.fake_llm else ai.stream), host=settings["host"], port=a.port,
+                    timeout_graceful_shutdown=SHUTDOWN_GRACE, log_config=None)
+```
+
+Everything else is the **real** server: real store, real auth, real budget, real tools. Only the model is fake. Why? Because the model is the only part that is slow, costs money, and is random. Everything we want to test is the code around it.
+
+### fake.py: a whole fake server
+
+`apps/server/src/simp_server/fake.py` is a different thing. It is a small FastAPI app with the **same HTTP API** as the real server, but no agent at all. It plays back a recorded `SCRIPT`:
+
+```python
+SCRIPT = [
+    ("thinking", "The user wants the files listed. I will run ls."),
+    ("text", "Let me look at the directory."),
+    ("tool_call", {"id": "call_1", "name": "bash", "arguments": {"command": "ls -la"}}),
+    ("tool_output", ("call_1", "total 3\ndrwxr-xr-x  README.md\ndrwxr-xr-x  src\n")),
+    ("final", "There are two entries: README.md and src."),
+]
+```
+
+A `Hub` class holds one session: the event log, the run state, in-flight text, and the live subscribers. Text is streamed 4 characters at a time. Every frame is checked against the protocol before it goes on the wire:
+
+```python
+    def _send(self, ev: dict) -> None:
+        p.server_event.validate_python(ev)  # never put an off-schema frame on the wire
+```
+
+Files live in a dict in memory (`self.files`), not on disk.
+
+Why have a second server? It was built so the web client ([25](25-web-client.md)) could be written before the real server was ready. It needs no database, no token setup and no Python agent packages. You start it with `simp-server fake` (see `apps/server/src/simp_server/__main__.py`: any mode that is not `run`, `seed`, `backup` and so on goes to `fake.main`). The script `apps/web/e2e/fake_reload.py` is a manual check against it: reload in the middle of a stream, approve after reload, upload a file.
+
+So we have two fakes at two levels:
+
+| | `fake.py` | `fakellm.py` |
+|---|---|---|
+| What is fake | the whole server | only the model |
+| Uses store, auth, sandbox | no | yes |
+| Started by | `simp-server fake` | `simp-server run --fake-llm` |
+| Used by | manual checks, early web work | `make e2e` |
+
+### End-to-end tests with Playwright
+
+An **[end-to-end test](glossary.md#end-to-end-test)** (e2e test) drives the real app from the outside, like a user. We use [Playwright](glossary.md#playwright), a tool that controls a real browser.
+
+`make e2e` runs `cd apps/web && pnpm e2e`, which is `playwright test`. The config `apps/web/playwright.config.ts` starts two servers before the tests:
+
+```ts
+  webServer: [
+    { command: "sh e2e/serve.sh", url: "http://127.0.0.1:8767/docs", reuseExistingServer: false },
+    { command: "SIMP_SERVER=http://127.0.0.1:8767 pnpm exec vite --port 5198 --strictPort", url: "http://127.0.0.1:5198" },
+  ],
+```
+
+The first is the real server. `apps/web/e2e/serve.sh` makes a fresh home every time:
+
+```sh
+export SIMP_SERVER_HOME=/tmp/simp-e2e SIMP_FAKE_DELAY=0.05
+rm -rf "$SIMP_SERVER_HOME" && mkdir -p "$SIMP_SERVER_HOME"
+printf 'signup_code = "e2e-code"\nallow_local_sandbox = true\n[profiles.fake]\napi = "fake"\n...' > "$SIMP_SERVER_HOME/settings.toml"
+uv run simp-server seed --name e2e > "$SIMP_SERVER_HOME/token"
+exec uv run simp-server run --port 8767 --fake-llm
+```
+
+Step by step: delete the old data, write a small `settings.toml` with one fake profile and a tiny budget, create one user and save its token to a file, then start the server with `--fake-llm`. `allow_local_sandbox = true` means no Docker is needed for the tests ([24](24-docker-sandbox.md)). The second server is the Vite dev server for the web client.
+
+`reuseExistingServer: false` is on purpose. Every test run starts from an empty database. No state leaks from the last run.
+
+The tests are in `apps/web/e2e/`: `app.spec.ts`, `accounts.spec.ts` and `admin.spec.ts`. `app.spec.ts` has small helpers: `login` reads the token from `/tmp/simp-e2e/token`, signs in and opens a new session; `say` types a message and presses Enter.
+
+### ops.py: logs and backup
+
+`apps/server/src/simp_server/ops.py` has two jobs for a long-lived server.
+
+**JSON logs.** `setup_logging` sends every log line to stderr as one JSON object. `JsonFormatter` keeps `ts`, `level`, `msg`, plus any extra fields you pass:
+
+```python
+        d = {"ts": round(r.created, 3), "level": r.levelname, "msg": r.getMessage()}
+        d.update({k: v for k, v in vars(r).items() if k not in _STD})
+```
+
+`_STD` is the set of normal `LogRecord` fields, so only your own extras (like `run_id`) are added. One JSON object per line is easy to search with `grep` or `jq`. The server calls `ops.setup_logging()` right before `uvicorn.run`.
+
+**Backup.** `backup(data_dir, dest, keep=0)` writes one `.tar.gz` file named by time:
+
+```python
+        if (data_dir / "simp.db").exists():
+            snap = Path(tmp) / "simp.db"
+            src, dst = sqlite3.connect(data_dir / "simp.db"), sqlite3.connect(snap)
+            with dst:
+                src.backup(dst)
+            ...
+            tar.add(snap, "simp.db")
+        for name in ("settings.toml", "workspaces", "sandboxes"):
+            if (data_dir / name).exists():
+                tar.add(data_dir / name, name)
+```
+
+This fixes both naive bugs:
+
+1. **Safe database copy.** `sqlite3.Connection.backup` is SQLite's own [online backup](glossary.md#online-backup). It reads a consistent copy, including rows still in the WAL file, while the server keeps the database open. We write the copy to a temp folder first, then put it in the tar.
+2. **No secrets.** It does not copy the whole folder. It copies an **allow list**: the database, `settings.toml`, `workspaces` and `sandboxes`. `.env` is not on the list, so it never goes in.
+
+Then old backups are removed:
+
+```python
+    if keep > 0:  # names sort by time
+        for old in sorted(dest.glob("simp-*.tar.gz"))[:-keep]:
+            old.unlink()
+```
+
+The name format `simp-YYYYmmdd-HHMMSS.tar.gz` sorts by time as plain text. So "keep the newest N" is just "sort and drop the start". The glob only matches `simp-*.tar.gz`, so other files in the folder are safe.
+
+From the command line: `simp-server backup --to DIR --keep N`. To restore, stop the server and unpack the tar into the data folder.
+
+### launchd: run it as a service on a Mac
+
+[launchd](glossary.md#launchd) is the macOS service manager. It starts programs at login, restarts them if they die, and runs jobs on a timer. You tell it what to do with a `.plist` file. `deploy/launchd/` has two.
+
+`com.simp.server.plist` runs the server:
+
+```xml
+    <string>/usr/bin/env</string><string>uv</string><string>run</string><string>--project</string><string>__REPO__</string>
+    <string>simp-server</string><string>run</string><string>--port</string><string>8766</string>
+  ...
+    <key>SIMP_SANDBOX</key><string>docker</string>
+  ...
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardErrorPath</key><string>__HOME__/.simp-server/server.log</string>
+```
+
+- `RunAtLoad` starts it when loaded (for example at login).
+- `KeepAlive` restarts it if it crashes.
+- `SIMP_SANDBOX=docker` makes the real service use the Docker sandbox ([24](24-docker-sandbox.md)).
+- stderr goes to `server.log`. That is where the JSON log lines land.
+- `PATH` is set by hand, because launchd does not load your shell profile, so it would not find `uv` or `docker`.
+
+`com.simp.backup.plist` runs the backup every night:
+
+```xml
+    <string>simp-server</string><string>backup</string><string>--to</string><string>__HOME__/.simp-server/backups</string><string>--keep</string><string>14</string>
+  ...
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>0</integer></dict>
+```
+
+At 03:00 every day, keep the last 14 backups. `__REPO__` and `__HOME__` are placeholders: you replace them with your real paths before you load the files.
+
+For development there is also `make dev`. It starts the real server (with Docker if `docker info` works) and the web dev server together.
+
+## Test
+
+Two kinds of tests check this chapter.
+
+**The e2e suite.** Run `make e2e`. Here is one real test, `"tool call: Allow shows the result, Deny is reported"` in `apps/web/e2e/app.spec.ts`:
+
+```ts
+test("tool call: Allow shows the result, Deny is reported", async ({ page }) => {
+  await login(page);
+  await say(page, "tool please");
+  await page.click(".approval-card button:text('Allow')");
+  await expect(last(page)).toContainText("Tool said: hi-from-tool");
+  await expect(page.locator(".tool.done")).toHaveCount(1);
+  await say(page, "tool again");
+  await page.click(".approval-card button:text('Deny')");
+  await expect(badge(page)).toHaveText("idle");
+  await expect(page.locator(".tool").last()).toContainText("Decision: deny");
+});
+```
+
+Follow it through the whole system. `"tool please"` starts with `tool`, so FakeLLM asks for `bash` with `echo hi-from-tool`. The server pauses for approval and the browser shows a card. The test clicks Allow. The real tool runs, the result goes back to FakeLLM, and FakeLLM answers `"Tool said: hi-from-tool"`. One test touches the web client, transport, approval, the tool runner and the session. Then it checks the Deny path too.
+
+Other tests in the same file cover streaming, reload in the middle of a stream, Stop, steering, a second tab, files, budget, plan mode, compaction and the session title. All of them only work because the fake model is deterministic.
+
+**The ops tests.** `apps/server/tests/test_ops.py` has three tests:
+
+- `test_json_log_line` logs with `extra={"run_id": "r1", "session": "s1"}` and checks that the JSON line has them.
+- `test_backup_and_restore` is the naive version's bug, turned into a test. It opens a WAL database, inserts `42`, and leaves the connection **open** ("backup must work while the server holds the db"). It also writes `.env`. Then it checks that `.env` is not in the tar, `settings.toml` and `workspaces/s1/a.txt` are, and that the restored database still returns `(42,)`.
+- `test_backup_keeps_newest` makes 5 old backups and one `other.txt`, runs `backup(..., keep=3)`, and checks that only the 3 newest `simp-*` files and `other.txt` remain.
+
+Run them with `uv run pytest apps/server/tests/test_ops.py`.
+
+> **Why this way**
+>
+> We fake only the model, not the system. FakeLLM plugs into the same `stream_fn` slot as a real provider, so the e2e tests run the real server, store and tools. The tests are fast, free and the same every time, and they still catch bugs between the real parts.
+>
+> For deploy we chose the smallest thing that works on one machine: SQLite's own backup, a tar file, an allow list, and launchd. No container platform, no cloud. [27](27-limits-choices-extend.md) talks about where this stops.
+
+## Recap
+
+- `fakellm.py` is a deterministic `stream_fn`. `simp-server run --fake-llm` runs the real server with it.
+- `fake.py` is a whole fake server with the same API that replays a script. It helped build the web client early.
+- `make e2e` starts a fresh server (`serve.sh`) and the web client, then Playwright clicks through real user flows.
+- `ops.backup` uses SQLite's online backup, copies an allow list (no `.env`), and keeps the newest N files.
+- `ops.setup_logging` writes one JSON object per log line.
+- Two launchd files keep the server alive and back it up every night at 03:00.
+
+**Builds on:** [25-web-client](25-web-client.md) · **Next:** [27-limits-choices-extend](27-limits-choices-extend.md)
+
+## Terms to add to glossary
+
+- End-to-end test: a test that drives the whole running app from the outside, like a real user.
+- Playwright: a tool that controls a real browser from test code.
+- Deterministic: gives the same output for the same input, every time.
+- WAL mode: a SQLite mode where new writes go to a side file (`-wal`) first and move into the main file later.
+- Online backup: SQLite's built-in way to copy a database safely while it is open and in use.
+- launchd: the macOS service manager; it starts, restarts and schedules programs from `.plist` files.
