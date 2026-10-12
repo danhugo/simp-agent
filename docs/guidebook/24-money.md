@@ -93,3 +93,10 @@ Keep a safety margin: set limits below what you can afford, and set a spending c
 
 - [25 Day-to-day ops](25-ops.md): logs and backups of `simp.db`, which holds the usage rows.
 - [27 Troubleshooting](27-troubleshooting.md): budget errors.
+
+---
+
+**Back:** [23 Sandboxes](23-sandboxes.md) · **Next:** [25 Day-to-day ops](25-ops.md)
+
+**Built on by:** [25 Day-to-day ops](25-ops.md), [26 Security model](26-security.md), [27 Troubleshooting](27-troubleshooting.md).
+**Builds on:** [11 The web UI](11-web.md), [21 Configuration reference](21-configuration.md), [22 Users and accounts](22-users.md), [23 Sandboxes](23-sandboxes.md).

@@ -38,7 +38,15 @@ simp-server seed --name alice                # prints a token once
 simp-server seed --name alice --password     # also asks for a password
 ```
 
-With `--password` the command asks twice and wants at least 8 characters. Save the token at once; it is printed one time. Names must be unique (a taken name shows a Python error, not a friendly message). The CLI does not check the name pattern; web sign-up does. There is no command to delete a user. When you add a second active user while the sandbox is `LocalSandbox`, `seed` prints a warning (the server will refuse to start next time). See [23 Sandboxes](23-sandboxes.md) and [21](21-configuration.md#2-top-level-keys).
+With `--password` the command asks twice and wants at least 8 characters.
+
+- Save the token at once; it is printed one time.
+- Names must be unique (a taken name shows a Python error, not a friendly message).
+- The CLI does not check the name pattern; web sign-up does.
+- There is no command to delete a user.
+- When you add a second active user while the sandbox is `LocalSandbox`, `seed` prints a warning (the server will refuse to start next time).
+
+See [23 Sandboxes](23-sandboxes.md) and [21](21-configuration.md#2-top-level-keys).
 
 ## 3. Self sign-up with one shared code
 

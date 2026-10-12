@@ -53,7 +53,14 @@ The message tells you the fix: run `simp-server build-sandbox`, then set `sandbo
 
 One container per session, named `simp-<session_id>`, made with `docker run`. It stays alive (`sleep infinity`) and each command is sent in with `docker exec`.
 
-The key idea is the files. The session folder on the host is mounted in the container at `/work`. File tools (`read`, `write`, `edit`) work on the **host** folder directly, with the same path-escape check as before. Only `bash` goes through `docker exec`, in `/work`. Both sides see the same files. The container user has id 1000; if the server runs as another user, `bash` may not be able to write in the folder (the code does not fix this).
+The key idea is the files.
+
+- The session folder on the host is mounted in the container at `/work`.
+- File tools (`read`, `write`, `edit`) work on the **host** folder directly, with the same path-escape check as before.
+- Only `bash` goes through `docker exec`, in `/work`.
+- Both sides see the same files.
+
+The container user has id 1000; if the server runs as another user, `bash` may not be able to write in the folder (the code does not fix this).
 
 Fixed settings (you cannot change them in `settings.toml`):
 

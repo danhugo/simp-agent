@@ -25,7 +25,11 @@ Open the URL. You see a login page with three ways in.
 | A username and password | Fill both. Press **Sign in**. |
 | A signup code (one code for the whole team) | Press **Create account**. Fill username, password and **Invite code**. Press **Create account**. |
 
-Signing in with a password or a signup gives you a new token. The page keeps it in your browser (`localStorage`), so a reload keeps you signed in. Any refused sign-in shows "That token was not accepted."; a wrong signup code shows the server message ("sign-up is closed or the invite code is wrong"). The Token box is hidden on the signup form. **Sign out** (bottom left) tells the server to stop that token and clears it from the browser.
+Signing in with a password or a signup gives you a new token. The page keeps it in your browser (`localStorage`), so a reload keeps you signed in.
+
+- Any refused sign-in shows "That token was not accepted."; a wrong signup code shows the server message ("sign-up is closed or the invite code is wrong").
+- The Token box is hidden on the signup form.
+- **Sign out** (bottom left) tells the server to stop that token and clears it from the browser.
 If the server later says 401 (for example your operator rotated the token), you are sent back to the login page.
 How operators make tokens and codes: [22 Users and accounts](22-users.md).
 
@@ -86,7 +90,12 @@ It shows only while nothing newer is in the chat. Press it and the agent carries
 
 ## 9. Spend display
 
-The chat header (only when a session is open) shows `$spent / $limit`, for example `$0.42 / $5`. It is what **you** spent today against your daily limit, and it is refreshed after each run and every 30 seconds. `· paused` means the operator paused the server; new runs are refused (the chat shows "budget: server paused by the admin"; a reached limit gives a similar "budget:" message). "Today" is by the server clock. Titles also cost a little. Limits are set by the operator: [24 Money and limits](24-money.md).
+The chat header (only when a session is open) shows `$spent / $limit`, for example `$0.42 / $5`. It is what **you** spent today against your daily limit, and it is refreshed after each run and every 30 seconds.
+
+- `· paused` means the operator paused the server; new runs are refused (the chat shows "budget: server paused by the admin"; a reached limit gives a similar "budget:" message).
+- "Today" is by the server clock.
+- Titles also cost a little.
+- Limits are set by the operator: [24 Money and limits](24-money.md).
 
 ## 10. Themes
 
