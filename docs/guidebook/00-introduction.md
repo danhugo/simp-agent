@@ -167,4 +167,4 @@ The full outline is in the [guidebook README](README.md).
 **Next:** [01 Quick start](01-quick-start.md) — run the CLI in two minutes, or the web UI with `make dev`.
 
 **Built on by:** every chapter. The ideas here are used most in [10](10-cli.md) (The CLI),
-11 (The web UI), 23 (Sandboxes), 30 (Architecture) and 31 (How one turn flows).
+[11](11-web.md) (The web UI), 23 (Sandboxes), 30 (Architecture) and 31 (How one turn flows).
