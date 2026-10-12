@@ -244,7 +244,7 @@ here: running as a service, logs and upgrades (25), the security model (26), pro
 **Next:** [21 Configuration reference](21-configuration.md), then [22 Users and accounts](22-users.md), 23 Sandboxes, 24 Money and
 limits, 25 Day-to-day ops, 26 Security model and known gaps, 27 Troubleshooting.
 
-*(Chapters 23–27 are not written yet.)*
+*(Next: [21](21-configuration.md), [25](25-ops.md), [27](27-troubleshooting.md).)*
 
 **Back:** [13 Working well with the agent](13-working-well.md), [01 Quick start](01-quick-start.md).
 
