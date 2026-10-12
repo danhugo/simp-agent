@@ -17,6 +17,7 @@
 
 ## Code it covers
 
+- `apps/cli/scripts/replay_compaction.py`
 - `packages/simp_agent/src/simp_agent/agent/compaction.py`
 - `packages/simp_agent/src/simp_agent/session/__init__.py`
 
