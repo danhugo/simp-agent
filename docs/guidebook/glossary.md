@@ -37,3 +37,12 @@ One small piece of a streamed model answer (a bit of text, thinking, or tool-cal
 
 ## Usage
 The token count of one model call, kept in `AssistantMessage.usage` as `{"input", "output", "reasoning"}`. `reasoning` is already inside `output`. Home: [03](03-stream-parser.md#usage).
+
+## Agent loop
+The loop that calls the model, runs the tool calls it asks for, adds the results, and calls the model again until it stops asking. Built in [05](05-agent-loop.md).
+
+## Provider registry
+The dict `_PROVIDERS` in `ai` that maps a `Model.api` string (`anthropic-messages`, `openai-completions`, `openai-responses`) to a stream function. `register_provider` adds or replaces one; `ai.stream` looks it up. Home: [04](04-providers.md#the-registry-_providers-register_provider-stream).
+
+## Context overflow
+An error that says the request is bigger than the model's context window. Found by `is_context_overflow`; never retried as-is. Defined in [04](04-providers.md#error-classification-is_retryable-is_context_overflow); handled in [17](17-overflow.md).
