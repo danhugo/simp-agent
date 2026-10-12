@@ -63,6 +63,66 @@ Run the fizzbuzz task with this. It breaks in three ways:
 2. **Duplicate words after a reconnect.** Say the client has `"Let me w"` and the line drops. On reconnect the server sends the live state again. `text += ev.delta` adds `"rite"` on top of words it may already have. The user sees `"Let me wLet me write"`.
 3. **One screen, many writers.** Tool output, approvals and run state need their own `if` blocks that each poke the page. There is no single place that says "this is the state of the chat".
 
+## Step by step: from naive to real
+
+We fix the three breaks one by one.
+
+**Step 1 — use `fetch`, so we can send the token.** `EventSource` cannot set headers. `fetch` can:
+
+```ts
+const r = await fetch(`/api/sessions/${sid}/events`, {
+  headers: { Authorization: `Bearer ${getToken()}` },
+});
+```
+
+Why: the server needs the header, and a token in the URL would leak into logs.
+
+**Step 2 — read the stream by hand.** An SSE event ends with a blank line. Keep a buffer and cut at each `\n\n`:
+
+```ts
+buf += value;
+while ((i = buf.indexOf("\n\n")) >= 0) { /* cut one event, JSON.parse its data: lines */ }
+```
+
+Why: a network chunk can stop in the middle of an event. The buffer holds the rest.
+
+**Step 3 — reconnect with a resume point.** Loop forever. Send the last `seq` we applied:
+
+```ts
+headers: { "Last-Event-ID": String(lastSeq()) }
+```
+
+Why: the server then sends only what we missed. Wait 1 s, 2 s, 4 s ... up to 10 s between tries.
+
+**Step 4 — one reducer for all events.** Put every change in one pure function. Skip durable events we already have:
+
+```ts
+if ("seq" in ev) {
+  if (ev.seq <= s.lastSeq) return s;
+  s = { ...s, lastSeq: ev.seq };
+}
+```
+
+Why: one place says what the chat is. A repeated event does nothing.
+
+**Step 5 — check the offset of each delta.** Deltas have no `seq`. They have an `offset`:
+
+```ts
+export function appendAt(cur: string, offset: number, delta: string): string {
+  return offset === cur.length ? cur + delta : cur;
+}
+```
+
+Why: a repeated delta (dup) or a skipped one (gap) does not fit the end of the text, so it is dropped.
+
+**Step 6 — let the snapshot replace live state.** On each connect the server sends a `snapshot`:
+
+```ts
+inFlight: ev.in_flight, pending: ev.pending_approval, runState: ev.run_state,
+```
+
+Why: it does not add to the bubble. It replaces it. So any dropped gap is fixed. This leads into the real code below.
+
 ## Real design
 
 The web app is React + Vite in `apps/web/`. Four ideas carry it:
@@ -72,22 +132,11 @@ The web app is React + Vite in `apps/web/`. Four ideas carry it:
 - `appendAt()` in `state.ts`: an offset check that drops dup and gap deltas.
 - `App.tsx` and `Chat.tsx`: wire the two together and draw the state.
 
-### The shape of the files
-
-| File | Job |
-|---|---|
-| `apps/web/src/main.tsx` | Mounts `<App />` into `#root`. Five lines. |
-| `apps/web/src/api.ts` | Every HTTP call, the token, and `subscribe()`. |
-| `apps/web/src/state.ts` | `ChatState`, `reduce()`, `appendAt()`, `canContinue()`. |
-| `apps/web/src/App.tsx` | Login, session list, and the effect that connects `subscribe` to `reduce`. |
-| `apps/web/src/Chat.tsx` | Draws messages, tools, approvals, the composer and the header buttons. |
-| `apps/web/src/Files.tsx` | Lists, uploads and downloads files in the session's workspace. |
-
-Types like `Protocol`, `AssistantMessage` and `PendingApproval` come from `apps/web/src/protocol.gen.ts`. That file is generated from the server's protocol ([20](20-server-run.md)), so the client and server cannot disagree on event shapes.
+Types like `Protocol` and `PendingApproval` come from `apps/web/src/protocol.gen.ts`, generated from the server's protocol ([20](20-server-run.md)). Files: `main.tsx` (mount), `api.ts` (HTTP, token, `subscribe()`), `state.ts` (`ChatState`, `reduce()`, `appendAt()`, `canContinue()`), `App.tsx` (login, session list, wiring), `Chat.tsx` (drawing), `Files.tsx` (workspace files).
 
 ### fetch-based SSE
 
-`apps/web/src/api.ts` first wraps `fetch` once, so every call carries the token:
+`api.ts` first wraps `fetch` once, so every call carries the token:
 
 ```ts
 export const getToken = () => localStorage.getItem("simp.token") ?? "";
@@ -313,6 +362,11 @@ The unit tests run with `cd apps/web && pnpm test`.
 ## Why this way
 
 > **Server is the truth; the client is a pure reducer.** The client never guesses. Durable events are deduped by `seq`, deltas by `offset`, and the snapshot replaces all live state on every connect. So any order of reconnects ends in the same screen. `fetch` is used instead of `EventSource` because only `fetch` can send the `Authorization` header; the cost is about 15 lines of SSE parsing and a hand-written retry loop. A dropped gap delta is not repaired at once; the screen waits for the next snapshot or the final `assistant_message`.
+
+## Exercises
+
+1. Do it on paper. The bubble is `"Hi"`. Apply these deltas in order with `appendAt`: `(2, " there")`, `(2, " there")`, `(30, "!")`. What is the text after each one?
+2. In `state.test.ts` style, write a test: call `reduce` twice with the same `user_message` event (same `seq`). Check that `items` has length 1.
 
 ## Recap
 
