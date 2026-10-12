@@ -24,11 +24,7 @@ Everyone reads Part 0. Then read only your part; parts link back to what they ne
 
 ### Part 0 — Start here (everyone)
 - [00 Introduction and core ideas](00-introduction.md) [E]: what it is and is not, the three apps, the main terms (links to glossary), how to read this book
-- 01 Quick start [T]: two paths — CLI in 2 minutes; web via `make dev` + `seed`. No API key? web: `make dev ARGS=--fake-llm`, server: `simp-server fake` (the CLI has no fake mode)
 
-### Part 1 — Using simp-agent (User)
-- 10 The CLI [H]: print mode, REPL, profiles, tool approval, `--yes`, where sessions are saved
-- 11 The web UI [H]: login (token or signup code), sessions, files, compact, Continue, notifications, spend
 - 12 CLI vs web feature table [R] — one place; other chapters link here
 - 13 Working well with the agent [H]: AGENTS.md / CLAUDE.md, long sessions; each tip tagged CLI/web/both
 
