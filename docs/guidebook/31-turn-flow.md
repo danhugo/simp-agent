@@ -185,5 +185,5 @@ On every `message_end` the session calls `store.append(message)` right away. So 
 
 ---
 
-**Built on by:** [32 The server inside](32-server-inside.md), 34 Extending: providers, 35 Extending: tools and agent plugins (not written yet).
+**Built on by:** [32 The server inside](32-server-inside.md), 34 Extending: providers, [35 Extending: tools and agent plugins](35-tools-plugins.md).
 **Builds on:** [00](00-introduction.md), [10](10-cli.md) (`/compact`), [13](13-working-well.md), [30](30-architecture.md).

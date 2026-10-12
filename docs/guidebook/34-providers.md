@@ -6,7 +6,7 @@
 > **Code paths covered:** `packages/simp_agent/src/simp_agent/ai/__init__.py` (`Model`, `stream`, `register_provider`, `transform_messages`, `is_retryable`, `is_context_overflow`), `.../ai/providers/` (`anthropic.py`, `openai_completions.py`, `openai_responses.py`), `.../session/profile.py` (`build_model`), `.../testing/__init__.py` (`FakeProvider`), `apps/server/src/simp_server/server.py` (`api_key_for`).
 > **Verified at commit:** `53753a9`, from code and tests (`test_register_provider` in `apps/cli/tests/test_plugins.py`). No real API was called.
 
-**Back:** [33 Developer tutorial](33-dev-tutorial.md) · **Next:** 35 Extending: tools and agent plugins (not written yet)
+**Back:** [33 Developer tutorial](33-dev-tutorial.md) · **Next:** [35 Extending: tools and agent plugins](35-tools-plugins.md)
 
 ## 1. What a provider is
 
