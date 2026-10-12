@@ -201,5 +201,5 @@ For the parse step, copy the style of `tests/test_openai.py`: feed fake chunk ob
 
 ---
 
-**Built on by:** 37 Testing and evals (not written yet).
+**Built on by:** [35 Extending: tools and agent plugins](35-tools-plugins.md), 37 Testing and evals (not written yet).
 **Builds on:** [21](21-configuration.md), [24](24-money.md), [30](30-architecture.md), [31](31-turn-flow.md), [33](33-dev-tutorial.md).
