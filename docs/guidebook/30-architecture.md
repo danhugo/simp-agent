@@ -100,9 +100,9 @@ Two details:
 
 - How a message travels through `ai` → `agent` → `session`: [31 How one turn flows](31-turn-flow.md).
 - What is inside the server: [32 The server inside](32-server-inside.md).
-- How to add providers, tools and plugins: 34, [35](35-tools-plugins.md), [36](36-server-plugins.md) Extending.
+- How to add providers, tools and plugins: 34, [35](35-tools-plugins.md), [36](36-server-plugins.md) Extending, [38 Decision records](38-decisions.md).
 
 ---
 
-**Built on by:** [31 How one turn flows](31-turn-flow.md), [32 The server inside](32-server-inside.md), [34](34-providers.md), [35](35-tools-plugins.md), [36](36-server-plugins.md) Extending.
+**Built on by:** [31 How one turn flows](31-turn-flow.md), [32 The server inside](32-server-inside.md), [34](34-providers.md), [35](35-tools-plugins.md), [36](36-server-plugins.md) Extending, [38 Decision records](38-decisions.md).
 **Builds on:** [00](00-introduction.md), [10](10-cli.md), [11](11-web.md), [20](20-operator-tutorial.md), [21](21-configuration.md), [27](27-troubleshooting.md).
