@@ -60,9 +60,9 @@ A scripted model built into the server, for trying the web UI or testing with no
 Start it with `simp-server run --fake-llm` (or `make dev ARGS=--fake-llm`). It echoes your
 text, runs a `bash` tool call when your message starts with `tool`, and streams slowly when it
 starts with `slow`. It needs no key, but the server still needs one [profile](#profile). Not the
-same as `FakeProvider`, the library's scripted model for tests (chapter 37).
+same as `FakeProvider`, the library's scripted model for tests ([37](37-testing.md#3-fakeprovider-and-fakeenv)).
 Code: `apps/server/src/simp_server/fakellm.py`.
-Introduced in [01](01-quick-start.md#42-add-a-profile). Home: 37 Testing and evals.
+Introduced in [01](01-quick-start.md#42-add-a-profile). Home: [37](37-testing.md#5-two-fake-servers).
 
 ## Follow-up
 In the [REPL](#repl), a message typed as `>> text` while the agent is running. It waits
