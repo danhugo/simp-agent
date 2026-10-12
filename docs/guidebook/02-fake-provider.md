@@ -22,7 +22,7 @@ It lives in the `testing` [layer](glossary.md#layer), at the far right of the ma
 Almost every later chapter needs "the model said X" to test something:
 
 - The loop (ch [05](05-agent-loop.md)) must run a tool when the model asks for one. To test that, we need a model that *always* asks for that tool.
-- Abort (ch [06](06-events-abort.md)), retry (ch [15](15-retry.md)) and compaction (ch [16](16-compaction.md)) need a model that fails, or that writes a summary, on cue.
+- Abort (ch [06](06-events-abort.md)), retry (ch [15](15-retry.md)) and compaction (ch [16](16-compaction.md)) need a model that fails, or that writes a summary, at the exact call we choose.
 - The server budget tests (ch [23](23-limits.md)) need to count how many model calls happened.
 
 A real model cannot do this. We cannot tell it "on the second call, return an error". And a test that calls a real API is slow, costs money, and fails when the network is down.
@@ -72,9 +72,33 @@ This works for a test where the model only says "ok". But it breaks fast:
 - **No memory.** The test cannot ask "how many times was the model called?" or "what did the loop send on the second call?".
 - **No errors.** A message with `stop_reason="error"` still comes out as a `done` event, which a real provider never does.
 
+## Step by step: from naive to real
+
+**Step 1 — a script of replies.** Keep a list and take the next one each call:
+
+```python
+class FakeProvider:
+    def __init__(self, *replies):
+        self.replies = iter(replies)
+        self.calls = 0
+
+    async def __call__(self, model, ctx, api_key=None):
+        msg = next(self.replies)
+        yield {"type": "start", "partial": msg}
+        yield {"type": "done", "message": msg}
+```
+
+Why a class: it must remember where it is in the script between calls.
+
+**Step 2 — memory.** Write down each call (`self.calls += 1`, `self.messages.append(list(ctx.messages))`, ...) so the test can check *what* was sent.
+
+**Step 3 — errors.** End with `error` instead of `done` when the reply has `stop_reason == "error"`, like a real provider.
+
+**Step 4 — replies that are functions.** `msg = msg(ctx) if callable(msg) else msg`, so a reply can look at the context.
+
 ## Real design: `FakeProvider`
 
-`FakeProvider` fixes all three. Here is the full class:
+Put the four steps together and you get the full class:
 
 ```python
 class FakeProvider:
@@ -154,17 +178,14 @@ A reply may be a message *or* a callable `(ctx) -> message`:
 msg = msg(ctx) if callable(msg) else msg
 ```
 
-This lets a reply look at the context, or do something at the exact moment the model is "thinking". The compaction tests use it to type a message while the summary call runs (`tests/test_queues_compaction.py`):
+This lets a reply look at the context, or do something at the exact moment the model is "thinking". A tiny example: a reply that repeats the last user text.
 
 ```python
-def summary(ctx):
-    a.steer("late")  # typed while the slow summary call runs
-    return AssistantMessage([TextContent("SUM")])
-
-stream = FakeProvider(summary, DONE)
+echo_back = lambda ctx: AssistantMessage([TextContent(ctx.messages[-1].content)])
+fp = FakeProvider(echo_back)
 ```
 
-Steering is ch [07](07-steering.md); here, just see that a reply can run code.
+Later chapters use this to act *during* a call, for example to type a new message while a summary is being made (ch [07](07-steering.md), [16](16-compaction.md)).
 
 ### Two events, like a real provider
 
@@ -187,37 +208,9 @@ The `error` rule matters. To test retry, a test writes `AssistantMessage(stop_re
 
 The same file also has `FakeEnv`, a fake for running shell commands. It needs the execution environment from ch [09](09-exec-env.md), so we meet it there.
 
-## Using it in a test
+## Using it
 
-The agent-loop tests in `packages/simp_agent/tests/test_core.py` all go through one helper:
-
-```python
-DONE = AssistantMessage([TextContent("ok")])
-
-async def run(*replies, tools=(ECHO, BOOM)):
-    events = []
-    cfg = LoopConfig(Model(), list(tools), stream_fn=FakeProvider(*replies))
-    new = await agent_loop("sys", [], [UserMessage("hi")], cfg, events.append)
-    return new, [e["type"] for e in events]
-
-
-async def test_no_tool_call_one_turn():
-    new, ev = await run(DONE)
-    assert [m.role for m in new] == ["user", "assistant"]
-    assert ev.count("turn_end") == 1 and ev[-1] == "agent_end"
-```
-
-Read it like this: "the model will say `ok` once". The loop sends `hi`, gets `ok` back, sees no tool call, and stops. `Model()` is just the default model; the fake never uses it. We build `agent_loop` and `LoopConfig` in ch [05](05-agent-loop.md).
-
-The next test in the same file scripts two replies: first a tool call, then `DONE`. That is the diagram above:
-
-```python
-async def test_tool_call_then_second_turn():
-    new, ev = await run(call("echo", x="a"), DONE)
-    assert [m.role for m in new] == ["user", "assistant", "tool_result", "assistant"]
-```
-
-You can also use the fake alone, with no loop, to see the events and the records:
+First, the fake alone. Only `FakeProvider` and the types from [01](01-messages.md); no loop:
 
 ```python
 import asyncio
@@ -241,7 +234,13 @@ asyncio.run(main())
 # 2 hi
 ```
 
-Run the chapter's tests:
+The first reply ends with `done`, the second with `error`, and `fp.messages` kept what was sent.
+
+The fake can also stand in for `ai.stream` directly. Note one difference: `ai.stream` cleans the history with `transform_messages` before calling a provider (ch [04](04-providers.md#transform_messages-clean-history-before-sending)). The fake skips that step; it gets the messages exactly as passed.
+
+> **Forward note: the fake inside the loop.** Most real tests pass the fake to the agent loop as `stream_fn`. For example, `tests/test_core.py` scripts "call the `echo` tool, then say ok" as `run(call("echo", x="a"), DONE)`. We build the loop and this `run` helper in ch [05](05-agent-loop.md), and use a reply function to steer mid-call in ch [07](07-steering.md).
+
+Run tests that use the fake (they use the loop from ch [05](05-agent-loop.md); you can run them now, and they pass):
 
 ```bash
 cd packages/simp_agent
@@ -256,6 +255,11 @@ uv run pytest -q tests/test_core.py::test_no_tool_call_one_turn \
 > - **Same event shape as real providers.** The fake only yields `start` and `done`/`error`, but they are the same events a real provider ends with, so code tested on the fake works on the real thing.
 > - **Record everything.** `calls`, `messages`, `ctxs`, `api_keys`, `models` let a test check *what* was sent, not only what came back.
 > - **Cost:** the fake never streams small pieces, so it cannot test the stream parser, and running past the end of the script fails with a `RuntimeError` (caused by `StopIteration`) instead of a clean error.
+
+## Exercises
+
+1. Script a fake with three replies: text, error, text. Call it three times and print the end event type of each. Then call it a fourth time: what error do you get, and why?
+2. Use a reply function to answer with the number of messages in the context (`len(ctx.messages)`).
 
 ## Recap
 

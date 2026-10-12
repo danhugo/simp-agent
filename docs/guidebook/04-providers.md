@@ -62,6 +62,25 @@ Where it breaks:
 - A raised exception (network down, bad key) crashes the loop. The [stream function](glossary.md#stream-function) rule says "never raise".
 - It sends the history as-is, so an orphan tool call gives a 400 error from the vendor.
 
+## Step by step: from naive to real
+
+**Step 1 — a dict instead of `if`.** Map `model.api` to a stream function. A new vendor is one new entry; users add theirs with `register_provider`.
+
+```python
+_PROVIDERS = {"anthropic-messages": ..., "openai-completions": ...}
+fn = _PROVIDERS[model.api]
+```
+
+**Step 2 — import late.** Each entry imports its SDK only on the first call (`_builtin`), so you need only the SDK you use.
+
+**Step 3 — never raise.** An unknown `api`, or a missing key for a built-in provider, becomes an `error` event. Each provider catches its own errors the same way.
+
+**Step 4 — clean history once.** Before calling any provider, `ai.stream` runs `transform_messages`, so an orphan tool call gets a "No result provided" result instead of a 400 error.
+
+**Step 5 — read errors.** `is_context_overflow` and `is_retryable` turn an error string into "compact", "retry" or "give up".
+
+The real code puts all five in `ai.stream` and a few helpers.
+
 ## Real design
 
 ```mermaid
@@ -327,6 +346,11 @@ uv run pytest packages/simp_agent/tests/test_openai.py packages/simp_agent/tests
 > We pick the provider by **API format** (`model.api`), not by vendor. Many vendors and local servers speak the OpenAI format, so three providers cover almost all of them, and `compat` handles the small differences.
 >
 > The shared work — unknown api, history cleaning, stamping — lives once in `ai.stream`. Each provider only converts and parses. A provider never raises and never reads the environment, so the loop has one rule (read the last event) and the app stays in control of keys.
+
+## Exercises
+
+1. Register your own provider with `register_provider("echo", fn)` where `fn` yields one `done` event with the last user text. Call `ai.stream` with `Model(api="echo")`. Which fields did `ai.stream` set (stamp) on the message?
+2. Call `ai.is_retryable("Error code: 529 overloaded")` and `ai.is_retryable("x", "fatal")`. Explain each answer.
 
 ## Recap
 

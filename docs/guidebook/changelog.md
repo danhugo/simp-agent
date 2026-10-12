@@ -2,6 +2,9 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-10-13
+- v3 review fixes, Part 1 (ch 00–04, still checked at `2fc2776`): ch 01–04 each get a "Step by step: from naive to real" section and two exercises. Ch 02: standalone FakeProvider example first, loop use moved to a forward note (ch 05/07), says the fake skips `transform_messages`. Ch 01: `is_retryable` and `transform_messages` link to ch 04. Ch 03: shows the test `run()` helper. Hard words replaced ("on cue", "opaque", "in flight", "append-only"). Ran the new ch 02/04 examples.
+
 ## 2026-10-12
 - v3: wrote [02 A fake provider](02-fake-provider.md) (checked at `2fc2776`; ran `test_no_tool_call_one_turn` and `test_tool_call_then_second_turn`, 2 passed, and the standalone example): stream function contract, `stream_fn` injection, naive fake, FakeProvider script/records/callable replies/start+done|error, use in tests. Glossary: provider, stream function, scripted reply.
 - v3: wrote [01 Messages](01-messages.md) (checked at `2fc2776`; ran `test_from_dict_old_and_new` and `test_entry_roundtrip_and_old_format`, 2 passed): message and block types, CompactionEntry/CustomEntry, Tool/Context/Model, to_dict/from_dict. Test file corrected from skeleton (`test_core.py` has no round-trip test). Glossary: message, context, compaction entry, custom entry.
