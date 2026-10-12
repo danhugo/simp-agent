@@ -77,7 +77,24 @@ It works for "Hello" and for one tool call. Then it breaks:
 - **No stop reason.** We always say `done`, even if the server stopped because it ran out of tokens, or the stream was cut off.
 - **Thinking.** Some models send "reasoning" text before the answer. We drop it.
 
-The real `parse` fixes each one. We walk through it in four parts: text, tool calls, stop reasons, usage.
+## Step by step: from naive to real
+
+**Step 1 — skip chunks with no choices.** Fixes the `IndexError`:
+
+```python
+        if not chunk.choices:
+            continue
+```
+
+**Step 2 — one entry per tool call.** Keep a list `calls` and find the entry for each piece by `index` (then by `id`). Each call gets its own argument string, so the arguments of two calls are never mixed.
+
+**Step 3 — parse JSON once, safely.** At the end, `json.loads` each call in `try`; bad text becomes `{"_raw": ...}` instead of an exception.
+
+**Step 4 — map `finish_reason`.** Remember the last one seen; turn it into our `stop_reason`, and end with `error` when it is missing or unknown.
+
+**Step 5 — thinking.** Read the reasoning field and keep it as a `ThinkingContent` before the text.
+
+The real `parse` is these five steps together. We walk through it in four parts: text, tool calls, stop reasons, usage.
 
 ## Real design
 
@@ -134,7 +151,7 @@ When the first text arrives after thinking, the text branch yields `thinking_end
 
 ### Tool-call assembly from deltas
 
-This is the hard part. A tool call arrives in pieces, and several calls can be in flight at once. Each piece must be matched to the right call.
+This is the hard part. A tool call arrives in pieces, and the pieces of several calls can arrive mixed together, before any of them is finished. Each piece must be matched to the right call.
 
 ```python
         for tc in d.tool_calls or []:
@@ -275,7 +292,7 @@ Only `start`, `done` and `error` carry a message. The loop needs only the last e
 
 ## Test
 
-`packages/simp_agent/tests/test_openai.py` tests `parse` with fake chunks built from `SimpleNamespace`. No network, no API key. Two small helpers make chunks:
+`packages/simp_agent/tests/test_openai.py` tests `parse` with fake chunks built from `SimpleNamespace`. No network, no API key. Three small helpers. Two make chunks:
 
 ```python
 def tc(index=None, id=None, name=None, args=None):
@@ -285,6 +302,19 @@ def tc(index=None, id=None, name=None, args=None):
 def ch(content=None, tool_calls=None, finish=None, usage=None):
     return NS(choices=[NS(delta=NS(content=content, tool_calls=tool_calls), finish_reason=finish)], usage=usage)
 ```
+
+The third, `run`, feeds a list of chunks to `parse` and collects all events:
+
+```python
+async def run(chunks, compat=None):
+    async def gen():
+        for c in chunks:
+            yield c
+
+    return [e async for e in oc.parse(gen(), compat or {})]
+```
+
+`parse` reads chunks with `async for`, so `gen` turns a plain list into an async iterator. `oc` is `simp_agent.ai.providers.openai_completions`.
 
 The tool-call example from the Problem section, as a test:
 
@@ -319,6 +349,11 @@ uv run pytest packages/simp_agent/tests/test_openai.py
 > We build the message *while* streaming, and hand out the same object as `partial` at `start` and as `message` at the end. One pass, one object, no second "assemble" step that could get out of sync with the events.
 >
 > We never raise inside `parse`. Every problem — cut stream, odd finish reason, broken JSON — becomes data: an `error` stop reason, or `{"_raw": ...}` arguments. The loop then has one simple rule: read the last event. And the model gets to see and fix its own bad tool calls, instead of the whole run crashing.
+
+## Exercises
+
+1. Write a test with two tool calls whose pieces are mixed: `index` 0, then 1, then 0, then 1. Check both `ToolCall`s come out with the right arguments.
+2. Send the chunks for "Hello" with no `finish_reason`. What is the last event? Now pass `compat={"supports_finish_reason": False}`. What changes?
 
 ## Recap
 

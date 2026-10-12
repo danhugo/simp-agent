@@ -59,6 +59,32 @@ It saves to JSON for free, but it breaks fast:
 - There is nowhere to put "why did the model stop?" or "how many tokens did this cost?".
 - The shape is close to one vendor. A second vendor means `if vendor == ...` all over the code.
 
+## Step by step: from naive to real
+
+We fix the dict version one problem at a time. Each step is small.
+
+**Step 1 — a class per kind of message.** Typos like `args`/`arguments` must fail early. A dataclass checks field names when the object is built:
+
+```python
+@dataclass
+class ToolCall:
+    id: str
+    name: str
+    arguments: dict
+
+ToolCall("c1", "write", args={})   # TypeError right here, not later
+```
+
+**Step 2 — content is a list of blocks.** One string cannot keep "think, text, tool call, more text" in order. So `AssistantMessage.content` becomes a list of `TextContent | ThinkingContent | ToolCall`.
+
+**Step 3 — room for "why it stopped" and "what it cost".** We add `stop_reason`, `usage`, `error` and `error_kind` to `AssistantMessage`. Now the loop can tell a normal end from a failure.
+
+**Step 4 — a tag on every class.** Dataclasses are not JSON. `dataclasses.asdict` turns them into dicts, but to come back we must know *which* class a dict was. So each class gets a fixed `role` (messages) or `type` (blocks), and `from_dict` reads it.
+
+**Step 5 — our own shape, not a vendor's.** Nothing in these classes is Anthropic or OpenAI JSON. Each provider translates at the edge (ch [04](04-providers.md)).
+
+The result is the real code below.
+
 ## Real design
 
 simp-agent uses small Python **dataclasses**. Each one has a fixed `role` (or `type`) field, so it can always tell what it is, even after a trip through JSON.
@@ -129,7 +155,7 @@ Why each field is there:
 - `content` is a **list of blocks**, not a string. A model can think, write text, call a tool, write more text, call another tool — all in one answer. The list keeps that order.
 - `stop_reason` says why the model stopped: `stop`, `tool_use`, `length`, `error` or `aborted`. Note: the loop in ch [05](05-agent-loop.md) decides "run tools?" from `tool_calls()`, not from `tool_use`. It uses `stop_reason` for the special cases: `error` and `aborted` end the turn (ch [06](06-events-abort.md), [15](15-retry.md)); on `length` the tool calls are cut off, so they are not run and each gets an error result.
 - `usage` ([usage](glossary.md#usage)) counts input and output tokens. Compaction uses it to estimate size (ch [16](16-compaction.md)).
-- `error` and `error_kind` hold what went wrong. A provider never raises; it returns an assistant message with `stop_reason="error"` instead (ch [04](04-providers.md)). `error_kind` of `"fatal"`, `"budget"` or `"policy"` means "do not retry" (ch [15](15-retry.md)).
+- `error` and `error_kind` hold what went wrong. A provider never raises; it returns an assistant message with `stop_reason="error"` instead (ch [04](04-providers.md)). `error_kind` of `"fatal"`, `"budget"` or `"policy"` means "do not retry". The function that reads it is `is_retryable`, built in ch [04](04-providers.md#error-classification-is_retryable-is_context_overflow) and used by retry in ch [15](15-retry.md).
 - `api`, `provider`, `model` record who wrote the message. `stream()` fills them in. They matter when you switch models mid-chat: some thinking blocks can only be sent back to the same model (ch [04](04-providers.md)).
 - `text()` and `tool_calls()` are small helpers so callers do not loop over blocks by hand.
 
@@ -158,7 +184,7 @@ class ToolCall:
 ```
 
 - `TextContent` is normal text shown to the user.
-- `ThinkingContent` is the model's reasoning before it answers. `signature` is an opaque value from the vendor; it must be sent back unchanged. `redacted` marks thinking the vendor hid from us. Ch [04](04-providers.md) explains how these are replayed.
+- `ThinkingContent` is the model's reasoning before it answers. `signature` is a value from the vendor that we cannot read or change; we only keep it and send it back unchanged. `redacted` marks thinking the vendor hid from us. Ch [04](04-providers.md) explains how these are replayed.
 - `ToolCall` is one request to run a tool. `arguments` is already a parsed `dict`, not a JSON string. Ch [03](03-stream-parser.md) shows how streamed pieces become this dict.
 
 ### Two history entries that are not messages
@@ -181,10 +207,10 @@ class CustomEntry:
     role: Literal["custom"] = "custom"
 ```
 
-- A **[compaction entry](glossary.md#compaction-entry)** marks "everything before `first_kept_index` is now replaced by `summary`". The history stays append-only; old messages are not deleted. Ch [16](16-compaction.md) builds this.
+- A **[compaction entry](glossary.md#compaction-entry)** marks "everything before `first_kept_index` is now replaced by `summary`". We only ever add to the end of the history; old messages are not deleted or changed. Ch [16](16-compaction.md) builds this.
 - A **[custom entry](glossary.md#custom-entry)** is a place for plugins to keep their own data in the history, so it is saved and comes back on resume. Ch [14](14-plugins.md) uses it.
 
-They have a `role` too, so they save and load just like messages. Before a request is sent, `transform_messages()` skips both (ch [04](04-providers.md)).
+They have a `role` too, so they save and load just like messages. Before a request is sent, `transform_messages()` skips both (ch [04](04-providers.md#transform_messages-clean-history-before-sending)).
 
 ### Going to JSON and back
 
@@ -304,6 +330,11 @@ No model is needed. Messages are plain data, so they are the easiest part to tes
 > - **Dataclasses, not a library like pydantic.** No extra dependency in the lowest layer. We do not validate on load; the data was written by us.
 > - **A `role`/`type` tag on everything.** One small lookup table in `from_dict` is all the loading code we need.
 > - **Cost:** `from_dict` trusts its input. An unknown `role` raises `KeyError`, and a stray field raises `TypeError`. That is fine for files we wrote ourselves.
+
+## Exercises
+
+1. Build an `AssistantMessage` with a `ThinkingContent`, a `TextContent` and a `ToolCall`. Pass it through `to_dict`, `json.dumps`, `json.loads` and `from_dict`. Check that the result `==` the start.
+2. Add a new field `note: str = ""` to `UserMessage` in your own copy. Does an old saved dict without `note` still load? Why?
 
 ## Recap
 
