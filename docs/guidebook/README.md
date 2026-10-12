@@ -1,76 +1,64 @@
-# simp-agent guidebook
+# simp-agent: a build book
 
-Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13, 20–27, 30–38.
-Tags: [T] tutorial, [H] how-to, [R] reference, [E] explanation.
+This book teaches you how to **build** simp-agent, step by step. It is not a user manual.
 
-## What simp-agent is
+**Who it is for:** developers who know Python (and a little TypeScript for ch 25) and want to understand how a coding agent works inside.
 
-simp-agent is a small coding agent: a Python library (`packages/simp_agent`) with a
-small, stable core and plug-in points, plus three apps built on it — a terminal CLI
-(`apps/cli`), a multi-user server (`apps/server`) and a web UI (`apps/web`).
-See [ROADMAP](../ROADMAP.md) for where it is going.
+**Pinned commit:** `2fc2776` (master). Every path, symbol and code excerpt matches this commit.
 
-## Who this book is for
+## How the book goes
 
-Three readers, in this order. Each part says who it is for at the top.
+Chapter 00 shows the whole system. Then we start from the smallest piece and add one capability per chapter. Each chapter builds on the one before it.
 
-1. **User** — wants to chat with the agent in the terminal or the browser.
-2. **Operator** — runs the server for a small team on one machine.
-3. **Developer** — changes the library, writes a provider, tool or plugin.
+- [00 Overview: what we build](00-overview.md) — See the whole of simp-agent before building it piece by piece.
+- [01 Part 1 · Messages](01-messages.md) — Define the message types every other part passes around.
+- [02 Part 1 · A fake provider](02-fake-provider.md) — Test a model call before any real model exists.
+- [03 Part 1 · The stream parser](03-stream-parser.md) — Turn streamed deltas into a complete assistant message.
+- [04 Part 1 · Providers](04-providers.md) — Talk to real models through one small registry.
+- [05 Part 2 · The agent loop](05-agent-loop.md) — Build the smallest loop that calls a model and runs tools.
+- [06 Part 2 · Events and abort](06-events-abort.md) — Let callers watch the loop and stop it.
+- [07 Part 2 · Steering](07-steering.md) — Let the user add messages while the agent works.
+- [08 Part 2 · Hooks and approval](08-hooks-approval.md) — Check or change tool calls before and after they run.
+- [09 Part 3 · Execution environment](09-exec-env.md) — Give tools one safe place to touch files and run commands.
+- [10 Part 3 · Coding tools](10-coding-tools.md) — Build read, write, edit, ls, grep, find and bash.
+- [11 Part 3 · The system prompt](11-system-prompt.md) — Tell the model who it is and what the project wants.
+- [12 Part 3 · Evals](12-evals.md) — Measure the agent on real tasks; each later Part adds a case.
+- [13 Part 4 · Sessions](13-session.md) — Keep a conversation across turns and save it.
+- [14 Part 4 · Plugins](14-plugins.md) — Add behaviour without changing the core.
+- [15 Part 4 · Retry](15-retry.md) — Retry failed model calls with backoff.
+- [16 Part 4 · Compaction](16-compaction.md) — Keep long conversations inside the context window.
+- [17 Part 4 · Context overflow](17-overflow.md) — Recover when the model says the context is too big.
+- [18 Part 4 · Profiles and built-in plugins](18-profiles-plugins.md) — Pick models by profile and ship two real plugins.
+- [19 Part 5 · The CLI](19-cli.md) — Wrap the session in a terminal app.
+- [20 Part 5 · Server: the Run](20-server-run.md) — Run a session on a server with a typed protocol.
+- [21 Part 5 · Transport](21-transport.md) — Stream events to clients and take commands back.
+- [22 Part 5 · Store and auth](22-store-auth.md) — Save users, sessions and events durably.
+- [23 Part 5 · Limits](23-limits.md) — Stop runaway cost and free idle resources.
+- [24 Part 5 · Docker sandbox](24-docker-sandbox.md) — Run each session's tools inside a container.
+- [25 Part 5 · Web client](25-web-client.md) — Build the browser UI on the protocol.
+- [26 Part 5 · System tests and deploy](26-system-tests-deploy.md) — Test the whole system and run it on one machine.
+- [27 Choices, limits and extending](27-limits-choices-extend.md) — Know why it is built this way, where it stops, and how to grow it.
 
-Everyone reads Part 0. Then read only your part; parts link back to what they need.
+Also: [glossary](glossary.md) · [changelog](changelog.md)
 
-## Outline
+## Chapter template
 
-### Part 0 — Start here (everyone)
-- [00 Introduction and core ideas](00-introduction.md) [E]: what it is and is not, the three apps, the main terms (links to glossary), how to read this book
-- [01 Quick start](01-quick-start.md) [T]: two paths — CLI in 2 minutes; web via `make dev` + `seed`. No API key? web: `make dev ARGS=--fake-llm`, server: `simp-server fake` (the CLI has no fake mode)
+Every chapter has these parts, in this order:
 
-### Part 1 — Using simp-agent (User)
-- [10 The CLI](10-cli.md) [H]: print mode, REPL, profiles, tool approval, `--yes`, where sessions are saved
-- [11 The web UI](11-web.md) [H]: login (token or signup code), sessions, files, compact, Continue, notifications, spend
-- [12 CLI vs web feature table](12-cli-vs-web.md) [R] — one place; other chapters link here
-- [13 Working well with the agent](13-working-well.md) [H]: AGENTS.md / CLAUDE.md, long sessions; each tip tagged CLI/web/both
+1. **Goal** — one sentence.
+2. **Problem** — what is missing without this part.
+3. **Naive version** — 15–30 runnable lines; show where it breaks.
+4. **Real design** — short excerpts with file path; why each part exists.
+5. **Test** — use FakeProvider where possible.
+6. **Why this way** — a short box with the main design choice.
+7. **Recap** + **Builds on / Next** links.
 
-### Part 2 — Running the server (Operator)
-- [20 Operator tutorial](20-operator-tutorial.md) [T]: fresh Mac → DockerSandbox server, two users, a budget, a restore drill
-- [21 Configuration reference](21-configuration.md) [R]: profiles, hosts, plugins, capacity (`idle_minutes`, `max_open_sessions`)
-- [22 Users and accounts](22-users.md) [H]: tokens, one shared signup code, passwords, revoke/rotate
-- [23 Sandboxes](23-sandboxes.md) [E] — home chapter for sandbox: Local vs Docker, why Docker for several users
-- [24 Money and limits](24-money.md) [H]: budgets, kill switch, how limits can be exceeded
-- [25 Day-to-day ops](25-ops.md) [H]: logs, launchd (macOS only), backups (what they do not cover), upgrades
-- [26 Security model and known gaps](26-security.md) [E]: dated list, links ROADMAP
-- [27 Troubleshooting](27-troubleshooting.md) [H]: 401 after rotate, budget errors, Docker down, provider errors
-
-### Part 3 — Inside simp-agent (Developer)
-- [30 Architecture](30-architecture.md) [E]: the layers and why; layout details point to code and `test_layers.py`
-- [31 How one turn flows](31-turn-flow.md) [E]: ai → agent → session (stream, loop, tools, retry, compaction home)
-- [32 The server inside](32-server-inside.md) [E]: runs, storage; protocol links to `docs/protocol.md`, not copied
-- [33 Developer tutorial](33-dev-tutorial.md) [T]: write a tool plugin, test with `FakeProvider`, load it via a profile's `plugins` list
-- [34 Extending: providers](34-providers.md) [H]
-- [35 Extending: tools and agent plugins](35-tools-plugins.md) [H] (stubs reserved for Stage 4: MCP, skills, memory, sub-agents)
-- [36 Extending: server plugins — Sandbox, Store, Auth](36-server-plugins.md) [H]
-- [37 Testing and evals](37-testing.md) [H]: FakeProvider, EnvConformance, fake server, e2e, `evals/run.py`
-- [38 Decision records](38-decisions.md) [E]: small core, SSE + POST, SQLite, Docker, one machine, soft budgets
-
-### Appendix
-- [glossary.md](glossary.md) — every term defined once; chapters link here
-- [changelog.md](changelog.md) — book changes, tied to project commits
+One architecture diagram is repeated in every chapter, with the new part marked.
 
 ## Writing rules
-- Plain, simple English. Short sentences. One idea per paragraph.
-- Each chapter starts with: who it is for, what you need first (links), what you will learn.
-- Each chapter ends with: "Next" links and "Built on by" links.
-- A term is defined only in the glossary; the first use in a chapter links to it.
-- Facts come from the code. Every command and config example is tested before commit.
-- Each topic has one home chapter; others link to it, never repeat it.
-- Each chapter header lists the code paths it covers and "verified at commit X".
-- One section per task. Writer drafts, Reviewer checks, Editor merges.
 
-## Plan
-1. Outline debated and locked (v2).
-2. Write Part 0 first (00 + glossary seed, then 01), one section at a time.
-3. Then Part 1, Part 2, Part 3, in order.
-4. Keep up to date: every project change → a book-update task. Full re-read after each part and at each new stage.
-5. Source of truth: the book. Later, the README shrinks to pitch + quick start + links (separate task, after Part 2).
-6. Later: generate reference pages (CLI help, settings keys) and add a CI drift check.
+- Plain, simple English. Short sentences.
+- 1500–2500 words per chapter.
+- Define a term at its first use and link it to the [glossary](glossary.md).
+- Never invent behaviour: read the real code at the pinned commit.
+- Explain "why", not only "what".
