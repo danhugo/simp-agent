@@ -51,6 +51,12 @@ markers, and plugin data. It is append-only: entries are added, never changed or
 What is sent to the model is built from it each turn (see [compaction](#compaction)).
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
 
+## Follow-up
+In the [REPL](#repl), a message typed as `>> text` while the agent is running. It waits
+until the agent is done, then starts a new turn. Compare [steer](#steer).
+Code: `route()` in `apps/cli/src/simp_cli/__init__.py`.
+Introduced in [10](10-cli.md#3-the-repl). Home: [10 The CLI](10-cli.md).
+
 ## Message
 One item in a conversation. There are three kinds that the model sees:
 - **user message** — text from you (or from the app on your behalf);
@@ -76,7 +82,7 @@ Introduced in [00](00-introduction.md#2-what-simp-agent-is-not). Home: 35 Extend
 The CLI's one-shot mode: `simp-agent -p "task"` (or `simp-agent "task"`) runs one task,
 prints the answer line by line, and exits. Exit code 1 means an error or abort. Compare
 [REPL](#repl). Code: `run()` in `apps/cli/src/simp_cli/__init__.py`.
-Introduced in [01](01-quick-start.md#32-make-a-practice-folder). Home: 10 The CLI.
+Introduced in [01](01-quick-start.md#32-make-a-practice-folder). Home: [10 The CLI](10-cli.md).
 
 ## Profile
 A named set of model settings: `api`, `model`, `base_url`, `context_window`, `max_tokens`,
@@ -99,7 +105,7 @@ Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 34
 The CLI's interactive chat ("read–eval–print loop"): run `simp-agent` with no task, type
 messages, and use slash commands such as `/help` and `/exit`. Compare [print mode](#print-mode).
 Code: `apps/cli/src/simp_cli/repl.py`.
-Introduced in [01](01-quick-start.md#34-chat-back-and-forth). Home: 10 The CLI.
+Introduced in [01](01-quick-start.md#34-chat-back-and-forth). Home: [10 The CLI](10-cli.md).
 
 ## Sandbox
 The server's way to give each [session](#session) its own [execution environment](#execution-environment),
@@ -119,6 +125,12 @@ approval, and [plugins](#plugin). The CLI saves sessions as JSONL files in
 Code: `packages/simp_agent/src/simp_agent/session/__init__.py`.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
 
+## Steer
+In the [REPL](#repl), a message typed while the agent is running. The agent reads it before
+its next step. Compare [follow-up](#follow-up).
+Code: `route()` in `apps/cli/src/simp_cli/__init__.py`.
+Introduced in [10](10-cli.md#3-the-repl). Home: [10 The CLI](10-cli.md).
+
 ## System prompt
 The fixed instructions sent to the model before the [messages](#message) on every call. For the
 coding agent it names the tools, gives the working directory and date, and includes your
@@ -137,6 +149,13 @@ JSON schema for its arguments, and an `execute` function. The model sends a tool
 Code: `AgentTool` in `packages/simp_agent/src/simp_agent/agent/__init__.py`,
 `packages/simp_agent/src/simp_agent/coding/tools.py`.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 35 Extending: tools and agent plugins.
+
+## Tool approval
+The question before a risky [tool](#tool) runs. `bash`, `write` and `edit` need approval;
+answers are allow, deny, or always (allow this tool for the rest of the session). The CLI asks
+`Allow? [y/N/a]`; `--yes` turns it off; the web UI shows buttons.
+Code: `approve` in `packages/simp_agent/src/simp_agent/session/__init__.py`.
+Introduced in [01](01-quick-start.md#33-see-tool-approval). Home: [10 The CLI](10-cli.md).
 
 ## Turn
 One pass of the [agent loop](#agent-loop): one LLM call, then running the tool calls in its

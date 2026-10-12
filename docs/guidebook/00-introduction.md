@@ -145,7 +145,7 @@ your role. Parts link back to what they need.
 | Part | Chapters | For | Start here if you want to... |
 |---|---|---|---|
 | 0 Start here | 00–01 | Everyone | understand the ideas and run it once |
-| 1 Using simp-agent | 10–13 | User | chat in the terminal or browser |
+| 1 Using simp-agent | [10](10-cli.md)–13 | User | chat in the terminal or browser |
 | 2 Running the server | 20–27 | Operator | host it for a small team |
 | 3 Inside simp-agent | 30–38 | Developer | change the library or write a plugin |
 
@@ -166,5 +166,5 @@ The full outline is in the [guidebook README](README.md).
 
 **Next:** [01 Quick start](01-quick-start.md) — run the CLI in two minutes, or the web UI with `make dev`.
 
-**Built on by:** every chapter. The ideas here are used most in 10 (The CLI),
+**Built on by:** every chapter. The ideas here are used most in [10](10-cli.md) (The CLI),
 11 (The web UI), 23 (Sandboxes), 30 (Architecture) and 31 (How one turn flows).
