@@ -51,5 +51,5 @@ Which to choose: quick work in a folder you trust, use the CLI. Shared, long or 
 ---
 
 **Back:** [11 The web UI](11-web.md).
-**Next:** 13 Working well with the agent (not yet written).
+**Next:** [13 Working well with the agent](13-working-well.md).
 **Builds on:** [10 The CLI](10-cli.md), [11 The web UI](11-web.md).
