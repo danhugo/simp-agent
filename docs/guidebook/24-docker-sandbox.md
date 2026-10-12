@@ -68,6 +68,50 @@ It runs `python fizzbuzz.py` and prints the output. But it breaks in many ways:
 5. **No cancel, no streaming.** `cancel` is never checked, and `on_output` is never called. The user sees nothing until the end.
 6. **No life cycle.** Nobody knows when to start or stop anything per session.
 
+## Step by step: from naive to real
+
+**Step 1 — start the container once.** Run `sleep infinity` in a named container, then send each command with `docker exec`:
+
+```python
+await _docker("run", "-d", "--name", name, image, "sleep", "infinity")
+# later, per command:
+# docker exec <name> sh -c "<command>"
+```
+
+Why: one start per session, not per command. This fixes "slow".
+
+**Step 2 — harden the container.** Add flags to the same `docker run`:
+
+```python
+"--user", "1000:1000", "--network", "none", "--pids-limit", "256", "--memory", "1g",
+"--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+```
+
+Why: each flag closes one hole (root, network, fork bomb, memory, writes, extra powers).
+
+**Step 3 — map `cwd`.** Turn the host path into a path under `/work`:
+
+```python
+rel = self._path(cwd).relative_to(Path(self.root).resolve())
+return str(Path("/work") / rel)
+```
+
+Why: the container only knows `/work`. The root check from `LocalEnv` still applies.
+
+**Step 4 — kill the whole group.** Start the command with `setsid`, print its pid first, and kill `-<pid>` inside the container:
+
+```python
+"setsid", "-w", "sh", "-c", 'echo $$; exec sh -c "$0" 2>&1', command,
+...
+await _docker("exec", self.container, "kill", "-9", "--", f"-{pid}")
+```
+
+Why: killing the host `docker` program does not stop the command in the box. This fixes timeout and cancel. We also read output in chunks and call `on_output`, as `LocalEnv.exec` does.
+
+**Step 5 — a life cycle.** Wrap steps 1 to 4 in `DockerSandbox` with `open`, `close`, `remove`, and plug it into the server as the `Sandbox` slot.
+
+Why: now the server knows when to start and stop a container for each session. Next we read the real code.
+
 ## Real design
 
 The real code has two parts:
@@ -104,8 +148,6 @@ In `load_settings()`, the env var `SIMP_SANDBOX=docker` switches the default:
 ```python
 docker = {"sandbox": "simp_server.sandboxes.docker:DockerSandbox"} if os.environ.get("SIMP_SANDBOX") == "docker" else {}
 ```
-
-You can also set `[plugins] sandbox = "simp_server.sandboxes.docker:DockerSandbox"` in `settings.toml`. The server builds the class with `load_plugin(pl["sandbox"])(settings)`.
 
 The session manager uses the slot at three moments:
 
@@ -192,8 +234,6 @@ self.memory, self.cpus, self.pids_limit = s.get("memory", "1g"), str(s.get("cpus
 ```
 
 The session folder `workspaces_dir/<session_id>` is a **[bind mount](glossary.md#bind-mount)** at `/work`. So a file the agent writes is a normal file on the host, and also visible inside the container.
-
-`open()` also moves an old folder from `data_dir/sandboxes/<id>` to the new place, if one exists. `LocalSandbox` does the same move, so old sessions keep their files.
 
 ### DockerEnv: files on the host, commands in the box
 
@@ -322,11 +362,14 @@ Run it (needs Docker):
 uv run pytest apps/server/tests/test_docker_sandbox.py -q
 ```
 
-No model is involved here, so we do not need `FakeProvider` ([02](02-fake-provider.md)). We test the env directly.
-
 ## Why this way
 
 > **One long-lived container per session; files on the host, only `exec` in the box.** Starting the container once in `open()` makes each `bash` call fast. Keeping file tools on the host reuses `LocalEnv` and its root check, so only `exec` is new code, and `EnvConformance` proves both envs act the same. The `Sandbox` slot keeps Docker out of the server core: one person can use `LocalSandbox`, a shared server switches with one setting. The cost: you need Docker and a built image, and a container uses memory while the session is open. That is why idle sessions are closed ([23](23-limits.md)).
+
+## Exercises
+
+1. In the Step 2 flags, change `--network none` to the default network. Which line of `test_hardening` would fail, and why?
+2. Open a session, write a file, call `close`, then `open` the same id again. Is the file still there? Why?
 
 ## Recap
 
