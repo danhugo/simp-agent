@@ -21,7 +21,7 @@ flowchart LR
 
 A [plugin](glossary.md#plugin) is a plain object. It has a `name` and some **hooks** (methods with known names). The session calls the hooks it finds and skips the rest. No base class is needed.
 
-To add a [tool](glossary.md#tool), use the `setup(api, config)` hook. The session calls it once, when the session starts (on the first prompt). `api` is a `PluginAPI`; `api.register_tool(...)` adds a tool to this session only.
+To add a [tool](glossary.md#tool), use the `setup(api, config)` hook. The session calls it once, when the session starts (on the first prompt, `continue`, or plan-mode change). `api` is a `PluginAPI`; `api.register_tool(...)` adds a tool to this session only.
 
 Create `packages/simp_agent/src/simp_agent/plugins/word_count.py`:
 
@@ -187,5 +187,5 @@ sequenceDiagram
 
 ---
 
-**Built on by:** [34 Extending: providers](34-providers.md), [35 Extending: tools and agent plugins](35-tools-plugins.md), [37 Testing and evals](37-testing.md).
+**Built on by:** [34 Extending: providers](34-providers.md), [35 Extending: tools and agent plugins](35-tools-plugins.md), [36 Extending: server plugins](36-server-plugins.md), [37 Testing and evals](37-testing.md).
 **Builds on:** [23](23-sandboxes.md), [30](30-architecture.md), [31](31-turn-flow.md), [32](32-server-inside.md).

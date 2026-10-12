@@ -173,7 +173,7 @@ class Auth(Protocol):
     async def authenticate(self, request: Request) -> dict | None: ...  # user {id, name} or None
 ```
 
-One method. It gets the FastAPI `Request` and returns the user (a dict with at least `id` and `name`) or `None`. `None` means **401 bad token**. The server calls it on every API request. On an open event stream it checks again only when no event came for a heartbeat period, so a revoked user is cut off at the next quiet moment, not at once.
+One method. It gets the FastAPI `Request` and returns the user (a dict with at least `id` and `name`) or `None`. `None` means **401 bad token**. The server calls it on every API request except `/api/hello`, `/api/signup` and `/api/login`. On an open event stream it checks again only when no event came for a heartbeat period, so a revoked user is cut off at the next quiet moment, not at once.
 
 The default, `StaticTokenAuth`, reads `Authorization: Bearer <token>` and asks the store (`user_by_token`). That is all. Login with a password (`/api/login`) is not part of Auth: it is a store method that hands out a token ([22](22-users.md)).
 
@@ -197,3 +197,4 @@ Because Auth gets the store in its constructor, a new Auth can still use the sto
 **Back:** [35 Extending: tools and agent plugins](35-tools-plugins.md) · **Next:** [37 Testing and evals](37-testing.md)
 
 **Built on by:** [37 Testing and evals](37-testing.md): `EnvConformance`, fake server.
+**Builds on:** [21](21-configuration.md), [22](22-users.md), [23](23-sandboxes.md), [26](26-security.md), [32](32-server-inside.md), [35](35-tools-plugins.md).

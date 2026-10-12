@@ -80,7 +80,7 @@ In `setup(api, config)` the plugin gets a `PluginAPI`. This is everything a plug
 
 | Hook | When | Return | Error behaviour |
 |---|---|---|---|
-| `setup(api, config)` | Once, at session start (first prompt) | — | reported |
+| `setup(api, config)` | Once, at session start (first prompt, `continue`, or plan-mode change) | — | reported |
 | `session_start()` | After all `setup`s | — | reported |
 | `input(text)` | Each user prompt | `{"handled": True}` stops it; `{"text": ...}` changes it | reported |
 | `before_agent_start(info)` | After `input`. `info` has `prompt`, `messages` | `{"messages": [...]}` adds extra messages (strings become user messages) | reported |
