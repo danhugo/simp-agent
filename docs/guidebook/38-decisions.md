@@ -48,7 +48,7 @@ A record says only what the sources say. Where a source gives no reason, the rec
 
 - **Context.** With `LocalSandbox`, every user's commands run as the same account on the server machine. One user could read another user's files, the database or `settings.toml`.
 - **Decision.** Stage 2: "Docker sandbox required for several users". `check_sandbox` refuses more than one active user with `LocalSandbox`, unless `allow_local_sandbox = true` (for tests). DockerSandbox runs one container per session ([23](23-sandboxes.md)); one workspace folder `<data_dir>/workspaces/<sid>`.
-- **Why.** Isolation between users: each session can touch only its own folder ([23 §3](23-sandboxes.md#3-why-docker-for-several-users)). Stage 2 deferred E2B "when a key is provided". Stage 5 plans stronger isolation (Firecracker/gVisor) on own infrastructure.
+- **Why.** Isolation between users: each [session](glossary.md#session) can touch only its own folder ([23 §3](23-sandboxes.md#3-why-docker-for-several-users)). Stage 2 deferred E2B "when a key is provided". Stage 5 plans stronger isolation (Firecracker/gVisor) on own infrastructure.
 - **What would change it.** Moving to own infrastructure (Stage 5), or an E2B key (then an E2B sandbox plugin).
 - **Read more:** [23](23-sandboxes.md), [26](26-security.md).
 

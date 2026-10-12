@@ -3,7 +3,7 @@
 **For:** Users who chat with the agent in a terminal.
 **You need first:** [01 Quick start](01-quick-start.md) (Path A) and the terms in [00](00-introduction.md).
 **You will learn:** the two modes (print and REPL), the REPL commands, how to write
-[profiles](glossary.md#profile), how tool approval and `--yes` work, and where sessions are saved.
+[profiles](glossary.md#profile), how tool approval and `--yes` work, and where [sessions](glossary.md#session) are saved.
 **Code covered:** `apps/cli/src/simp_cli/__init__.py`, `apps/cli/src/simp_cli/repl.py`.
 Verified at commit `8efbd9c`.
 
@@ -156,12 +156,12 @@ Compaction entries are saved in the same file.
 | `--resume ID` | continue that session (this folder) |
 | `-r` | open the REPL and show the session list at once |
 
-Print mode with `-c` or `--resume` adds your new task to the old session. To delete a
+Print mode ignores `-r` (it works only in the REPL). Print mode with `-c` or `--resume` adds your new task to the old session. To delete a
 session, delete its file. The server keeps sessions in SQLite instead (see [01](01-quick-start.md#4-path-b--chat-in-the-browser)).
 
 ## 7. Limits of the CLI
 
-No sandbox: tools run on your machine. No budget limits. One user. For those, use the web UI
+No sandbox: tools run on your machine. No [budget](glossary.md#budget) limits. One user. For those, use the web UI
 ([11](11-web.md)) or the server (Part 2). The side-by-side list is in [12](12-cli-vs-web.md).
 
 ---
