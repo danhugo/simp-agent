@@ -187,7 +187,7 @@ uv run simp-server resume    # prints: resumed
 
 Limits are *soft*: calls already running may finish and push a user a little over.
 
-**Home:** 24 Money and limits.
+**Home:** [24 Money and limits](24-money.md).
 
 ## 9. Restore drill
 
