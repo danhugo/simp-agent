@@ -38,7 +38,7 @@ The left bar lists your [sessions](glossary.md#session). Each has a badge with t
 - Click a session to open it. The address in your browser (`#<id>`) is the session id, so you can bookmark it or reload.
 - **Delete:** click `×` once. It changes to **Delete?**. Click again to delete. Clicking elsewhere cancels. There is no undo.
 
-Your sessions live on the server, not in the browser, so you can open them from another computer. Other apps (the CLI) keep sessions in a different place, see [10](10-cli.md#6-sessions-where-they-are-saved).
+Your sessions live on the server, not in the browser, so you can open them from another computer. The CLI keeps its sessions apart; see [12](12-cli-vs-web.md#2-where-sessions-live).
 
 ## 3. Chat
 
@@ -50,7 +50,7 @@ While the agent runs, the same box has two uses (the same ideas as in the [REPL]
 - tick **Queue as follow-up** to send a [follow-up](glossary.md#follow-up) instead.
 
 **Stop** (or **Esc** while typing in the box) aborts the run. Tool calls appear as folded cards with a dot: running, done, error, or waiting for you.
-When a tool needs [approval](glossary.md#tool-approval), a card asks **Allow**, **Always** or **Deny**. Unlike `--yes` in the CLI, the web has no switch that approves everything. **Always** is the same as in the CLI: it lasts for that tool in that session only.
+When a tool needs [approval](glossary.md#tool-approval), a card asks **Allow**, **Always** or **Deny**. **Always** lasts for that tool in that session only. For differences from the CLI, see [12](12-cli-vs-web.md).
 The model's "thinking" is shown in a box that is open while it streams and folded after. Images in answers are never loaded; you see a link instead (so a bad prompt cannot leak data through an image address).
 
 The small word next to the title (`live`, `reconnecting`) is the connection. If it drops, the page reconnects by itself and gets what it missed. Your run keeps going on the server meanwhile.

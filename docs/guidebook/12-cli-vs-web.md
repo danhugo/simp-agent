@@ -15,14 +15,17 @@ This is the only place where the two apps are compared. Chapters 10 and 11 descr
 | Feature | CLI | Web |
 |---|---|---|
 | Chat | [REPL](10-cli.md#3-the-repl) and [print mode](10-cli.md#2-print-mode) (one task) | [Chat box](11-web.md#3-chat) |
-| Steer / follow-up while running | plain text / `>>` text ([REPL](10-cli.md#3-the-repl)) | default / **Queue as follow-up** ([Chat](11-web.md#3-chat)) |
+| [Steer](glossary.md#steer) / [follow-up](glossary.md#follow-up) while running | plain text / `>>` text ([REPL](10-cli.md#3-the-repl)) | default / **Queue as follow-up** ([Chat](11-web.md#3-chat)) |
 | Stop a run | Ctrl-C ([REPL](10-cli.md#3-the-repl)) | **Stop** or Esc ([Chat](11-web.md#3-chat)) |
-| Tool approval | `y` / `a` / no ([section 5](10-cli.md#5-tool-approval-and---yes)) | **Allow** / **Always** / **Deny** cards ([Chat](11-web.md#3-chat)) |
+| [Tool approval](glossary.md#tool-approval) | `y` / `a` / no ([section 5](10-cli.md#5-tool-approval-and---yes)) | **Allow** / **Always** / **Deny** cards ([Chat](11-web.md#3-chat)) |
 | Approve everything | `--yes` ([section 5](10-cli.md#5-tool-approval-and---yes)) | — (no such switch) |
-| Compact | `/compact` ([Commands](10-cli.md#commands)) | **Compact** button ([section 5](11-web.md#5-compact)) |
-| Plan mode | — | **Plan** button ([section 4](11-web.md#4-plan-mode)) |
+| Compact ([compaction](glossary.md#compaction)) | `/compact` ([Commands](10-cli.md#commands)) | **Compact** button ([section 5](11-web.md#5-compact)) |
+| [Plan mode](glossary.md#plan-mode) | — | **Plan** button ([section 4](11-web.md#4-plan-mode)) |
 | Continue after an error or restart | — (you can send a new message) | **Continue** button ([section 6](11-web.md#6-continue-after-an-interruption)) |
-| Resume an old session | `-c`, `--resume ID`, `-r` ([section 6](10-cli.md#6-sessions-where-they-are-saved)) | click it in the list ([section 2](11-web.md#2-sessions)) |
+| Resume an old session | `-c`, `--resume ID`, `-r` (`-r` works only in the REPL; print mode ignores it) ([section 6](10-cli.md#6-sessions-where-they-are-saved)) | click it in the list ([section 2](11-web.md#2-sessions)) |
+| New session | `/new` ([Commands](10-cli.md#commands)) | **New session** button ([section 2](11-web.md#2-sessions)) |
+| Choose a model | `--model`, `--api`, `--base-url` ([section 4](10-cli.md#4-settings-and-profiles)) | only pick a profile ([section 2](11-web.md#2-sessions)) |
+| Status and usage | bottom bar: model, `~N tokens`, run state ([REPL](10-cli.md#3-the-repl)) | state badge per session ([section 2](11-web.md#2-sessions)) |
 | List sessions | `/sessions` (this folder only) ([Commands](10-cli.md#commands)) | left bar ([section 2](11-web.md#2-sessions)) |
 | Delete a session | delete the file ([section 6](10-cli.md#6-sessions-where-they-are-saved)) | `×`, then **Delete?** ([section 2](11-web.md#2-sessions)) |
 | Session titles | — (you see the id) | made by the model ([section 2](11-web.md#2-sessions)) |
@@ -30,9 +33,9 @@ This is the only place where the two apps are compared. Chapters 10 and 11 descr
 | Files of the session | your own folder, no panel | **Files** panel: browse, download, upload ([section 7](11-web.md#7-files)) |
 | Notifications | — | **Notify** ([section 8](11-web.md#8-notifications)) |
 | Spend display and limits | — | `$spent / $limit` ([section 9](11-web.md#9-spend-display)) |
-| Profiles | `~/.simp-agent/settings.json`, `--profile` ([section 4](10-cli.md#4-settings-and-profiles)) | pick one for a new session, if the server has several ([section 2](11-web.md#2-sessions)) |
+| [Profiles](glossary.md#profile) | `~/.simp-agent/settings.json`, `--profile` ([section 4](10-cli.md#4-settings-and-profiles)) | pick one for a new session, if the server has several ([section 2](11-web.md#2-sessions)) |
 | Sign-in | — (one user, your own machine) | token, password or signup code ([section 1](11-web.md#1-sign-in)) |
-| Fake LLM (no key) | — | yes, see [01](01-quick-start.md#4-path-b--chat-in-the-browser) and [section 11](11-web.md#11-try-it-with-no-key) |
+| [Fake LLM](glossary.md#fake-llm) (no key) | — | yes, see [01](01-quick-start.md#4-path-b--chat-in-the-browser) and [section 11](11-web.md#11-try-it-with-no-key) |
 | Themes | terminal colours | dark / light ([section 10](11-web.md#10-themes)) |
 
 ## 2. Where sessions live
