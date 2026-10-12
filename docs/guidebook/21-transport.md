@@ -68,6 +68,52 @@ It works while the network is perfect. It breaks when:
 3. **A tab joins mid-message.** It gets the next text delta, but not the text before it. The answer on screen starts in the middle.
 4. **There is no way back in.** Nothing here takes "abort" or "allow" from the client.
 
+## Step by step: from naive to real
+
+We fix the four breaks one by one.
+
+**Step 1: number the events.** Give each saved event a `seq`, and keep a log.
+
+```python
+    def send(self, ev: dict) -> None:
+        self.seq += 1
+        ev = {**ev, "seq": self.seq}
+        self.log.append(ev)
+        ...
+```
+
+Why: now every event has a place in a line. A client can say "I saw up to N".
+
+**Step 2: replay on subscribe.** Return the missed events with the queue.
+
+```python
+    def subscribe(self, after: int):
+        q = asyncio.Queue()
+        self.subs.add(q)
+        return [e for e in self.log if e["seq"] > after], q
+```
+
+Why: a tab that comes back gets what it missed. There is no `await`, so no event can slip in between the copy and the `add`. No gaps, no duplicates.
+
+**Step 3: add a snapshot.** Add the state right now (`last_seq`, `run_state`, `in_flight`, `pending_approval`) to the end of the replay.
+
+Why: live deltas have no `seq` and are not saved. A tab that joins mid-message needs the text so far. The snapshot gives it.
+
+**Step 4: bound the queue and drop slow tabs.**
+
+```python
+        q = asyncio.Queue(QUEUE_MAX)
+        ...
+            except asyncio.QueueFull:
+                self.subs.discard(q)
+```
+
+Why: a tab that stops reading must not grow memory, and must never make the run wait. It reconnects and catches up with Step 2.
+
+**Step 5: take commands in.** Add a `POST` route and a `Run.command` method. An approval waits on a future that an `Approve` command sets.
+
+Why: the client needs a way to say "stop" or "allow". Now put it all together, in real code below.
+
 ## Real design
 
 All code is in `apps/server/src/simp_server/server.py` unless said otherwise.
@@ -96,7 +142,7 @@ Events go out with **[SSE](glossary.md#sse)** (Server-Sent Events). SSE is one l
 
 Commands come in with a normal `POST`. The body is JSON, checked by the protocol models from [20](20-server-run.md) (`p.command`). A bad body gets `422`.
 
-Why not WebSocket? SSE is one-way, and that is all we need out. Commands are rare and small, so a POST is fine. Plain HTTP works through proxies, and `EventSource` reconnects by itself. Both routes need auth (`Depends(user)`, see [22](22-store-auth.md)).
+Why not WebSocket? SSE is one-way, which is all we need out. Plain HTTP works through proxies, and `EventSource` reconnects by itself. Both routes need auth ([22](22-store-auth.md)).
 
 Each event is written by `sse` in `apps/server/src/simp_server/fake.py`:
 
@@ -308,7 +354,7 @@ What it checks:
 - The tab reconnects with the last `seq` it saw. Old part + replay = the full `run.log`, each `seq` **once**, **in order**.
 - The replay ends with a snapshot whose `last_seq` is the current `seq`.
 
-This is exactly the case the naive version failed. Other tests in the same file cover the rest of this chapter: `test_mid_delta_reconnect_snapshot` (in-flight text and `offset`), `test_approve_then_abort` (approval over the wire), `test_slow_client_dropped_never_blocks` and `test_closed_tabs_run_finishes_and_is_persisted`.
+This is the case the naive version failed. Other tests in the file: `test_mid_delta_reconnect_snapshot`, `test_approve_then_abort`, `test_slow_client_dropped_never_blocks`, `test_closed_tabs_run_finishes_and_is_persisted`.
 
 Run it:
 
@@ -319,6 +365,11 @@ uv run pytest apps/server/tests/test_server.py::test_reconnect_with_last_event_i
 ## Why this way
 
 > **One numbered log, many cheap readers.** Every saved event gets the next `seq`, and the run only puts events into small, bounded queues. A client is just "a reader at position N". Reconnect = "give me everything after N, then the state now". This makes reconnects exact, keeps slow tabs from hurting the run, and lets the run go on with no tabs at all. Live deltas are not saved; the snapshot covers them instead. SSE + POST keeps it plain HTTP. The cost: the whole log is kept in memory per run, and a dropped tab must reconnect.
+
+## Exercises
+
+1. Run the naive version, then add Step 1 and Step 2. Does the reconnecting tab now see the `tool_result`?
+2. In `subscribe`, change `e["seq"] > after` to `>=`. Which event comes twice? Run the reconnect test to see it fail.
 
 ## Recap
 
