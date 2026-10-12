@@ -68,6 +68,13 @@ The [history](#history) can also hold two kinds the model never sees directly:
 [plugin](#plugin)). Code: `packages/simp_agent/src/simp_agent/ai/__init__.py`.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
 
+## Plan mode
+A switch on a [session](#session) that makes the agent read-only: it can look at files and
+plan, but its editing and command [tools](#tool) are blocked. In the web UI it is the **Plan**
+button; the setting is saved with the session. Code: `PlanMode` in
+`packages/simp_agent/src/simp_agent/plugins`, `SetPlanMode` in `apps/server/src/simp_server/server.py`.
+Introduced in [11](11-web.md#4-plan-mode). Home: [11 The web UI](11-web.md).
+
 ## Plugin
 Code that adds behaviour to a [session](#session) without changing the core. A plugin is an
 object with optional hooks (for example `setup`, `tool_call`, `tool_result`, `context`). Through

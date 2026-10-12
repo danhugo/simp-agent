@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-12
+- Added [11 The web UI](11-web.md) (verified at `9fdc61d`). Glossary: added plan mode. Linked 11 from 10 and README.
 - Added [10 The CLI](10-cli.md) (verified at `8efbd9c`). Glossary: added follow-up, steer, tool approval; linked 10 from 00, 01, README.
 - Added [01 Quick start](01-quick-start.md) (verified at `d3d03f6`): CLI path, web path,
   no-key path with `--fake-llm`. Glossary: added access token, fake LLM, print mode, REPL.

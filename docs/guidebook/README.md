@@ -1,6 +1,6 @@
 # simp-agent guidebook
 
-Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10.
+Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11.
 Tags: [T] tutorial, [H] how-to, [R] reference, [E] explanation.
 
 ## What simp-agent is
@@ -28,7 +28,7 @@ Everyone reads Part 0. Then read only your part; parts link back to what they ne
 
 ### Part 1 — Using simp-agent (User)
 - [10 The CLI](10-cli.md) [H]: print mode, REPL, profiles, tool approval, `--yes`, where sessions are saved
-- 11 The web UI [H]: login (token or signup code), sessions, files, compact, Continue, notifications, spend
+- [11 The web UI](11-web.md) [H]: login (token or signup code), sessions, files, compact, Continue, notifications, spend
 - 12 CLI vs web feature table [R] — one place; other chapters link here
 - 13 Working well with the agent [H]: AGENTS.md / CLAUDE.md, long sessions; each tip tagged CLI/web/both
 

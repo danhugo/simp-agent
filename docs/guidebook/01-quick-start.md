@@ -284,11 +284,11 @@ so the agent behaves the same; only the outside differs.
 
 **Next:**
 - Chat in the terminal every day → [10 The CLI](10-cli.md).
-- Use the browser → 11 The web UI.
+- Use the browser → [11 The web UI](11-web.md).
 - Run the server for a team (Docker sandbox, several users, budgets) → 20 Operator tutorial.
 
 *(Only chapter 10 is written so far.)*
 
 **Back:** [00 Introduction and core ideas](00-introduction.md).
 
-**Built on by:** [10](10-cli.md) (The CLI), 11 (The web UI), 20 (Operator tutorial), 33 (Developer tutorial).
+**Built on by:** [10](10-cli.md) (The CLI), [11](11-web.md) (The web UI), 20 (Operator tutorial), 33 (Developer tutorial).
