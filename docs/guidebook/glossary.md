@@ -97,3 +97,12 @@ A project file with rules for agents. The first of `CONTEXT_FILES` (`AGENTS.over
 
 ## Prompt section
 One part of the system prompt in `AgentSession`: an id, an order and a string or `fn(ctx)`. `_build_prompt` sorts them, skips empty ones and joins them before each model call. Home: [11](11-system-prompt.md#prompt-sections-building-the-prompt-every-turn).
+
+## Eval
+A test of the real agent with a real model on fixed tasks, checked by a program. It reports pass/fail plus turns, tokens, cost and time. Runner: `evals/run.py`. Home: [12](12-evals.md).
+
+## Eval task
+One file in `evals/tasks/*.toml`: a `prompt`, a shell `check` (exit 0 = pass) and optional `[setup]` files written into a fresh temp folder. Home: [12](12-evals.md#a-task-is-a-toml-file).
+
+## Profile
+A named model setup in `settings.toml` under `[profiles.<name>]`: `api`, `model`, optional `base_url`, `api_key_env`, `price_in` / `price_out` (dollars per million tokens). `build_model` turns it into a `Model`. Used by evals in [12](12-evals.md); home: [18](18-profiles-plugins.md).
