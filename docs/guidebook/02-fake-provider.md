@@ -116,7 +116,7 @@ sequenceDiagram
     Note over L: no tool call → stop
 ```
 
-`replies` is stored as an iterator, and `next(self.replies)` takes the next one. If the code under test calls the model more times than the script has replies, `next` raises `StopIteration`. Inside an async generator Python turns that into `RuntimeError: async generator raised StopIteration`, so the test fails with a `RuntimeError`. Inside an async generator Python turns this into `RuntimeError: async generator raised StopIteration`, so the test fails with a `RuntimeError`. That is on purpose: an extra call is a bug in the code under test, and the test should fail loudly.
+`replies` is stored as an iterator, and `next(self.replies)` takes the next one. If the code under test calls the model more times than the script has replies, `next` raises `StopIteration`. Inside an async generator Python turns that into `RuntimeError: async generator raised StopIteration`, so the test fails with a `RuntimeError`. That is on purpose: an extra call is a bug in the code under test, and the test should fail loudly.
 
 ### The instance is the function
 
