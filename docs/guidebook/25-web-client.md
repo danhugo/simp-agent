@@ -14,6 +14,9 @@
 
 ## Code it covers
 
+- `apps/web/src/Files.tsx`
+- `apps/web/src/App.tsx`
+- `apps/web/src/main.tsx`
 - `apps/web/src/api.ts`
 - `apps/web/src/state.ts`
 - `apps/web/src/Chat.tsx`

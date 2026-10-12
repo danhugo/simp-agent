@@ -15,6 +15,7 @@
 
 ## Code it covers
 
+- `packages/simp_agent/src/simp_agent/plugins/__init__.py`
 - `packages/simp_agent/src/simp_agent/session/__init__.py`
 
 ## Test it will show

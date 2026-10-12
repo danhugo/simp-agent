@@ -14,6 +14,8 @@
 
 ## Code it covers
 
+- `apps/server/src/simp_server/__main__.py`
+- `apps/server/src/simp_server/__init__.py`
 - `apps/server/src/simp_server/protocol.py`
 - `apps/server/src/simp_server/server.py`
 - `apps/server/src/simp_server/gen_protocol.py`
