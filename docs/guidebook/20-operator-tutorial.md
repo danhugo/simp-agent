@@ -77,7 +77,7 @@ Why each part:
 - The key goes in `.env`, not in `settings.toml`. A key you `export` in your shell is not seen by
   a server that is started later by launchd, so use `.env`.
 
-**Home:** 21 Configuration reference (all keys), 24 Money and limits.
+**Home:** [21 Configuration reference](21-configuration.md) (all keys), 24 Money and limits.
 
 ## 4. Build the sandbox image *(not run)*
 
@@ -131,9 +131,9 @@ For the browser, start the web UI as in [01](01-quick-start.md#44-start-it), or 
 instead of `simp-server run` (it builds the image and uses Docker when Docker runs).
 
 The server listens on `127.0.0.1` only. Opening it to your network needs two settings (`host` and
-`allowed_hosts`): see chapter 21. Leave it local for now.
+`allowed_hosts`): see [chapter 21](21-configuration.md#2-top-level-keys). Leave it local for now.
 
-**Home:** 21 Configuration reference, 25 Day-to-day ops.
+**Home:** [21 Configuration reference](21-configuration.md), 25 Day-to-day ops.
 
 ## 7. Make user 2 with the signup code
 
@@ -241,10 +241,10 @@ here: running as a service, logs and upgrades (25), the security model (26), pro
 
 ---
 
-**Next:** 21 Configuration reference, then 22 Users and accounts, 23 Sandboxes, 24 Money and
+**Next:** [21 Configuration reference](21-configuration.md), then 22 Users and accounts, 23 Sandboxes, 24 Money and
 limits, 25 Day-to-day ops, 26 Security model and known gaps, 27 Troubleshooting.
 
-*(Chapters 21–27 are not written yet.)*
+*(Chapters 22–27 are not written yet.)*
 
 **Back:** [13 Working well with the agent](13-working-well.md), [01 Quick start](01-quick-start.md).
 

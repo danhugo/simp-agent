@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-12
+- Added [21 Configuration reference](21-configuration.md) (verified at `2c311ce`, from code). Linked from README.
 - Added [20 Operator tutorial](20-operator-tutorial.md) (verified at `a8615b1`; Docker steps not run, no Docker on the test machine). Linked 20 from 01 and README.
 - Added [13 Working well with the agent](13-working-well.md) (verified at `a8615b1`): AGENTS.md/CLAUDE.md, writing requests, long sessions and compaction; tips tagged CLI/web/both. Glossary: added context file, context window.
 - Added [12 CLI vs web feature table](12-cli-vs-web.md) (verified at `6f55ff0`); ch 10 and 11 now link to it instead of comparing.
