@@ -24,7 +24,7 @@ A conversation with a coding agent is a list of turns:
 3. The agent runs the tool and gets a result: "wrote 12 lines".
 4. The model reads the result and answers "Done."
 
-Every later part touches this list. Providers (ch [04](04-providers.md)) turn it into the format of one vendor API. The loop (ch [05](05-agent-loop.md)) adds to it. Sessions (ch [13](13-session.md)) save it to disk and load it back. The server (ch [20](20-server-run.md)) sends it to a browser.
+Every later part touches this list. [Providers](glossary.md#provider) (ch [04](04-providers.md)) turn it into the format of one vendor API. The loop (ch [05](05-agent-loop.md)) adds to it. Sessions (ch [13](13-session.md)) save it to disk and load it back. The server (ch [20](20-server-run.md)) sends it to a browser.
 
 So the list needs a shape that is:
 
@@ -128,7 +128,7 @@ Why each field is there:
 
 - `content` is a **list of blocks**, not a string. A model can think, write text, call a tool, write more text, call another tool — all in one answer. The list keeps that order.
 - `stop_reason` says why the model stopped: `stop`, `tool_use`, `length`, `error` or `aborted`. Note: the loop in ch [05](05-agent-loop.md) decides "run tools?" from `tool_calls()`, not from `tool_use`. It uses `stop_reason` for the special cases: `error` and `aborted` end the turn (ch [06](06-events-abort.md), [15](15-retry.md)); on `length` the tool calls are cut off, so they are not run and each gets an error result.
-- `usage` counts input and output tokens. Compaction uses it to estimate size (ch [16](16-compaction.md)).
+- `usage` ([usage](glossary.md#usage)) counts input and output tokens. Compaction uses it to estimate size (ch [16](16-compaction.md)).
 - `error` and `error_kind` hold what went wrong. A provider never raises; it returns an assistant message with `stop_reason="error"` instead (ch [04](04-providers.md)). `error_kind` of `"fatal"`, `"budget"` or `"policy"` means "do not retry" (ch [15](15-retry.md)).
 - `api`, `provider`, `model` record who wrote the message. `stream()` fills them in. They matter when you switch models mid-chat: some thinking blocks can only be sent back to the same model (ch [04](04-providers.md)).
 - `text()` and `tool_calls()` are small helpers so callers do not loop over blocks by hand.
