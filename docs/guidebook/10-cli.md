@@ -162,10 +162,10 @@ session, delete its file. The server keeps sessions in SQLite instead (see [01](
 ## 7. Limits of the CLI
 
 No sandbox: tools run on your machine. No budget limits. One user. For those, use the web UI
-([11](11-web.md)) or the server (Part 2). A full side-by-side list will be in chapter 12.
+([11](11-web.md)) or the server (Part 2). The side-by-side list is in [12](12-cli-vs-web.md).
 
 ---
 
 **Back:** [01 Quick start](01-quick-start.md).
 **Next:** [11 The web UI](11-web.md).
-**Built on by:** 12 CLI vs web feature table, 13 Working well with the agent, 21 Configuration reference.
+**Built on by:** [12 CLI vs web feature table](12-cli-vs-web.md), 13 Working well with the agent, 21 Configuration reference.

@@ -57,7 +57,7 @@ The small word next to the title (`live`, `reconnecting`) is the connection. If 
 
 ## 4. Plan mode
 
-The **Plan** button turns on [plan mode](glossary.md#plan-mode): the agent can read and plan, but cannot edit files or run commands. Press it again to turn it off. A line in the chat says "plan mode on" or "off". The state is saved with the session. The CLI has no such button; see 12 CLI vs web (not yet written).
+The **Plan** button turns on [plan mode](glossary.md#plan-mode): the agent can read and plan, but cannot edit files or run commands. Press it again to turn it off. A line in the chat says "plan mode on" or "off". The state is saved with the session. For a comparison with the CLI, see [12](12-cli-vs-web.md).
 
 ## 5. Compact
 
@@ -103,5 +103,5 @@ Tell your operator the exact message. Messages you may see: "That token was not 
 ---
 
 **Back:** [10 The CLI](10-cli.md).
-**Next:** 12 CLI vs web feature table (not yet written).
-**Built on by:** 12 CLI vs web feature table, 13 Working well with the agent, 22 Users and accounts, 24 Money and limits.
+**Next:** [12 CLI vs web feature table](12-cli-vs-web.md).
+**Built on by:** [12 CLI vs web feature table](12-cli-vs-web.md), 13 Working well with the agent, 22 Users and accounts, 24 Money and limits.
