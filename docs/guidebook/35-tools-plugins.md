@@ -207,4 +207,4 @@ These are reserved. They are **not built yet**; this section will be filled when
 
 **Back:** [34 Extending: providers](34-providers.md) · **Next:** [36 Extending: server plugins — Sandbox, Store, Auth](36-server-plugins.md)
 
-**Built on by:** [36 Extending: server plugins](36-server-plugins.md), 37 Testing and evals (not written yet).
+**Built on by:** [36 Extending: server plugins](36-server-plugins.md), [37 Testing and evals](37-testing.md).

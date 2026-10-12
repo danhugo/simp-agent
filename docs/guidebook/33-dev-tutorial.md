@@ -187,5 +187,5 @@ sequenceDiagram
 
 ---
 
-**Built on by:** [34 Extending: providers](34-providers.md), [35 Extending: tools and agent plugins](35-tools-plugins.md), 37 Testing and evals (not written yet).
+**Built on by:** [34 Extending: providers](34-providers.md), [35 Extending: tools and agent plugins](35-tools-plugins.md), [37 Testing and evals](37-testing.md).
 **Builds on:** [23](23-sandboxes.md), [30](30-architecture.md), [31](31-turn-flow.md), [32](32-server-inside.md).

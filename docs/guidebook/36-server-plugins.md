@@ -6,7 +6,7 @@
 > **Code paths covered:** `apps/server/src/simp_server/server.py` (`Sandbox`, `Store`, `Auth`, `LocalSandbox`, `StaticTokenAuth`, `DEFAULT_PLUGINS`, `load_plugin`, `load_settings`, `create_app`), `.../store.py` (`SqliteStore`), `.../sandboxes/docker.py` (`DockerSandbox`), `packages/simp_agent/src/simp_agent/agent/env.py` (`ExecutionEnv`), `packages/simp_agent/src/simp_agent/testing/env_conformance.py` (`EnvConformance`).
 > **Verified at commit:** `82ecfa7`, from code. Nothing was run for this chapter.
 
-**Back:** [35 Extending: tools and agent plugins](35-tools-plugins.md) · **Next:** 37 Testing and evals (not written yet)
+**Back:** [35 Extending: tools and agent plugins](35-tools-plugins.md) · **Next:** [37 Testing and evals](37-testing.md)
 
 ## 1. Two kinds of "plugin"
 
@@ -137,7 +137,7 @@ class TestDockerEnvConformance(EnvConformance):
         return make
 ```
 
-**Why this matters:** the tools assume these rules. If your env lets `../` escape, or a timeout leaves a child process alive, the agent still "works" but is unsafe. Passing the suite is the minimum bar. More on tests: 37 Testing and evals (not written yet).
+**Why this matters:** the tools assume these rules. If your env lets `../` escape, or a timeout leaves a child process alive, the agent still "works" but is unsafe. Passing the suite is the minimum bar. More on tests: [37 Testing and evals](37-testing.md).
 
 ## 4. The Store slot
 
@@ -194,6 +194,6 @@ Because Auth gets the store in its constructor, a new Auth can still use the sto
 - Store: the real spec is `SqliteStore`'s methods; always scope by `user_id`.
 - Auth: one method, request in, user or `None` out.
 
-**Back:** [35 Extending: tools and agent plugins](35-tools-plugins.md) · **Next:** 37 Testing and evals (not written yet)
+**Back:** [35 Extending: tools and agent plugins](35-tools-plugins.md) · **Next:** [37 Testing and evals](37-testing.md)
 
-**Built on by:** 37 Testing and evals (not written yet): `EnvConformance`, fake server.
+**Built on by:** [37 Testing and evals](37-testing.md): `EnvConformance`, fake server.
