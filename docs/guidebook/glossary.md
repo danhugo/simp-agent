@@ -110,7 +110,7 @@ and send messages. Two ship with the library: `redact_secrets` (masks secrets) a
 (blocks `write`, `edit`, `bash`). The server also has its own plugin slots — Sandbox, Store,
 Auth — set in the `[plugins]` table of `settings.toml`; those are a different kind (chapter 36).
 Code: `packages/simp_agent/src/simp_agent/session/__init__.py`, `packages/simp_agent/src/simp_agent/plugins/`.
-Introduced in [00](00-introduction.md#2-what-simp-agent-is-not). Home: 35 Extending: tools and agent plugins.
+Introduced in [00](00-introduction.md#2-what-simp-agent-is-not). First one built step by step: [33](33-dev-tutorial.md). Home: 35 Extending: tools and agent plugins.
 
 ## Print mode
 The CLI's one-shot mode: `simp-agent -p "task"` (or `simp-agent "task"`) runs one task,

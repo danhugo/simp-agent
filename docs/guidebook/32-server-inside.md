@@ -6,7 +6,7 @@
 > **Code paths covered:** `apps/server/src/simp_server/server.py` (`Run`, `SessionManager`, `create_app`), `.../store.py` (`SqliteStore`), `.../protocol.py`, `.../gen_protocol.py`, `apps/server/tests/test_protocol.py` (`test_no_ts_drift`).
 > **Verified at commit:** `b6f09f5` (read from code; not run).
 
-**Back:** [31 How one turn flows](31-turn-flow.md) · **Next:** 33 Developer tutorial (not written yet)
+**Back:** [31 How one turn flows](31-turn-flow.md) · **Next:** [33 Developer tutorial](33-dev-tutorial.md)
 
 Chapter 31 followed one prompt inside `AgentSession`. The CLI holds that object in one process for one person. The server must do more: many users, many browser tabs, tabs that drop and come back, and a process that may restart. The server is one app on top of the layers from [30](30-architecture.md). This chapter shows the small parts that do that. The exact wire format lives in [docs/protocol.md](../protocol.md); here we explain the ideas, not every field.
 
@@ -166,5 +166,5 @@ The guard is `test_no_ts_drift` in `apps/server/tests/test_protocol.py`: it gene
 
 ---
 
-**Built on by:** 33 Developer tutorial, 36 Extending: server plugins, 38 Decision records (not written yet).
+**Built on by:** [33 Developer tutorial](33-dev-tutorial.md), 36 Extending: server plugins, 38 Decision records (not written yet).
 **Builds on:** [21](21-configuration.md), [22](22-users.md), [23](23-sandboxes.md), [24](24-money.md), [25](25-ops.md), [30](30-architecture.md), [31](31-turn-flow.md).
