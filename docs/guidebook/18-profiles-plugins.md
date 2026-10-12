@@ -4,6 +4,8 @@
 
 **Builds on:** [17 Context overflow](17-overflow.md) · **Next:** [19 The CLI](19-cli.md)
 
+## Where we are
+
 ```mermaid
 flowchart LR
     ai --> agent --> coding --> session --> plugins --> testing
@@ -42,7 +44,50 @@ It works for `claude`. It breaks when:
 1. **`provider` is not set.** For `local` the API is OpenAI, but `provider` keeps its default. The wrong API key is used.
 2. **Unknown keys crash.** A profile with `plugins = [...]` passes `plugins=` to `Model` and raises `TypeError`.
 3. **A `None` hides a default.** If the app sets `base_url=None`, `Model`'s own default is lost.
-4. **No token usage from OpenAI streams.** OpenAI-style servers send usage in a stream only when asked. Without it, `estimate_tokens` ([16](16-compaction.md)) must guess.
+4. **Usage from OpenAI streams is not clear.** OpenAI-style servers send token usage in a stream only when asked (`stream_options`). The profile should say so plainly, and still let a server that does not support it turn it off. Without usage, `estimate_tokens` ([16](16-compaction.md)) must guess.
+5. **No plugins at all.** The profile can list plugin names, but nothing turns a name into a plugin object.
+
+## Step by step: from naive to real
+
+We fix the naive `model_for` one problem at a time.
+
+**Step 1 — pick `provider` from `api`.** The provider name decides which API key is used ([04](04-providers.md)). An `openai-*` API always means the `openai` provider:
+
+```python
+api = pr.get("api", "anthropic-messages")
+provider = "openai" if api.startswith("openai") else "anthropic"
+```
+
+**Step 2 — read only known keys.** We build a `kw` dict by hand. `model` becomes `id`. Other keys, like `plugins`, are never passed to `Model`, so no `TypeError`:
+
+```python
+kw = {"id": pr.get("model"), "api": api, "provider": provider,
+      "base_url": pr.get("base_url"), "api_key_env": pr.get("api_key_env")}
+kw.update({k: pr[k] for k in ("max_tokens", "context_window") if k in pr})
+```
+
+**Step 3 — drop `None`.** `pr.get(...)` gives `None` for a missing key. Passing `None` would hide `Model`'s default (for example `id="claude-sonnet-5-5"`). So we filter:
+
+```python
+return Model(**{k: v for k, v in kw.items() if v is not None})
+```
+
+**Step 4 — turn on usage for OpenAI.** We copy `compat` (so the settings dict is not changed) and set `include_usage` only if the user did not set it. An explicit `False` stays:
+
+```python
+kw["compat"] = dict(pr.get("compat", dict()))
+if api.startswith("openai"):
+    kw["compat"].setdefault("include_usage", True)
+```
+
+**Step 5 — plugins by name.** A small table maps names to classes. A typo raises at once. Each call makes new objects, because plugins keep state:
+
+```python
+known = {"redact_secrets": RedactSecrets, "plan_mode": PlanMode}
+return [known[n]() for n in names]
+```
+
+**Step 6 — two real plugins.** Now we write `RedactSecrets` and `PlanMode`. They use only the hooks from [14](14-plugins.md). The result is the real code below.
 
 ## Real design
 
@@ -234,6 +279,11 @@ uv run pytest apps/cli/tests/test_sockets.py -k "redact or plan_mode" -q
 
 > **One profile function, plugins by name, state in history.** `build_model` is shared, so the CLI and the server read a profile the same way. Plugins are picked by name, so a settings file can turn them on, and a typo fails early. The two built-in plugins use only the public sockets from [14](14-plugins.md); they are proof that the sockets are enough. Plan mode keeps its state as a `CustomEntry`, so resume needs no extra file. The cost: `RedactSecrets` only finds known shapes and known values. A secret with a new shape still gets through.
 
+## Exercises
+
+1. Call `build_model({"api": "openai-completions", "model": "qwen", "plugins": ["plan_mode"]})`. Check `provider`, `max_tokens` and `compat`. Hint: `plugins` is ignored, `max_tokens` keeps `Model`'s default `8192`, and `compat` is `{"include_usage": True}`.
+2. Make a `RedactSecrets()`, call `setup(None, {"secrets": ["my-long-password"], "env": False})`, then `mask("pw=my-long-password key=sk-" + "a" * 20)`. Both parts should become `[REDACTED]`. Then try a secret of 5 characters. Hint: values shorter than 8 are skipped on purpose.
+
 ## Recap
 
 - A profile is a plain dict; `build_model` turns it into a `Model` with the right `provider` and defaults.
@@ -250,4 +300,5 @@ uv run pytest apps/cli/tests/test_sockets.py -k "redact or plan_mode" -q
 - **build_model** — `session/profile.py`; turns a profile into a `Model`. Shared by the CLI and the server.
 - **build_plugins** — `plugins/__init__.py`; turns plugin names into new plugin objects.
 - **RedactSecrets** — built-in plugin that replaces secrets with `[REDACTED]`.
+- **include_usage** — `Model.compat` flag; asks an OpenAI-style server to send token usage in the stream. `build_model` turns it on by default.
 - **plan mode** — built-in plugin (`PlanMode`) that makes the agent read-only and asks it for a plan.
