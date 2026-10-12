@@ -53,7 +53,7 @@ Where [tools](#tool) read and write files and run commands. In code it is the `E
 protocol. The library ships one: `LocalEnv`, which uses this machine (optionally limited to
 one root folder). The server's [sandbox](#sandbox) gives each session its own environment.
 Code: `packages/simp_agent/src/simp_agent/agent/env.py`.
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [23 Sandboxes](23-sandboxes.md).
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [23 Sandboxes](23-sandboxes.md). Writing your own: [36](36-server-plugins.md#3-the-sandbox-slot).
 
 ## Fake LLM
 A scripted model built into the server, for trying the web UI or testing with no API key.
@@ -113,8 +113,8 @@ Code that adds behaviour to a [session](#session) without changing the core. A p
 object with optional hooks (for example `setup`, `tool_call`, `tool_result`, `context`). Through
 `PluginAPI` it can add or remove tools, add text to the system prompt, save data in the history,
 and send messages. Two ship with the library: `redact_secrets` (masks secrets) and `plan_mode`
-(blocks `write`, `edit`, `bash`). The server also has its own plugin slots — Sandbox, Store,
-Auth — set in the `[plugins]` table of `settings.toml`; those are a different kind ([36](36-server-plugins.md)).
+(blocks `write`, `edit`, `bash`). The server also has its own plugin slots — Sandbox, Store ([36 §4](36-server-plugins.md#4-the-store-slot)),
+Auth ([36 §5](36-server-plugins.md#5-the-auth-slot)) — set in the `[plugins]` table of `settings.toml`; those are a different kind ([36](36-server-plugins.md)).
 Code: `packages/simp_agent/src/simp_agent/session/__init__.py`, `packages/simp_agent/src/simp_agent/plugins/`.
 Introduced in [00](00-introduction.md#2-what-simp-agent-is-not). First one built step by step: [33](33-dev-tutorial.md). Home: [35 Extending: tools and agent plugins](35-tools-plugins.md).
 
