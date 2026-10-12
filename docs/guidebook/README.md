@@ -23,7 +23,7 @@ Everyone reads Part 0. Then read only your part; parts link back to what they ne
 ## Outline
 
 ### Part 0 — Start here (everyone)
-- 00 Introduction and core ideas [E]: what it is and is not, the three apps, the main terms (links to glossary), how to read this book
+- [00 Introduction and core ideas](00-introduction.md) [E]: what it is and is not, the three apps, the main terms (links to glossary), how to read this book
 - 01 Quick start [T]: two paths — CLI in 2 minutes; web via `make dev` + `seed`. No API key? use `--fake-llm`
 
 ### Part 1 — Using simp-agent (User)
