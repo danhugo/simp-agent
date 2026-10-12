@@ -60,7 +60,7 @@ If you forget the key, you get `Error: no API key for provider anthropic`. A wro
 an error with `401` and `invalid x-api-key`.
 
 > Using OpenAI or another server instead? You need a profile, or flags such as `--api`,
-> `--model` and `--context-window`. See chapter 10 (The CLI).
+> `--model` and `--context-window`. See chapter [10](10-cli.md).
 
 ### 3.2 Make a practice folder
 
@@ -110,7 +110,7 @@ Allow? [y/N/a]
 Type `y` to allow once, `a` to allow this tool for the rest of the session, or press Enter
 to deny. **Why ask?** `write`, `edit` and `bash` can change or delete things on your machine;
 approval keeps you in control. (`--yes` skips the question — only use it when you trust the
-task. Details in chapter 10.)
+task. Details in [chapter 10](10-cli.md).)
 
 ### 3.4 Chat back and forth
 
@@ -139,7 +139,7 @@ Every [session](glossary.md#session) is saved right away, one line per
 
 `<folder-name>` is the folder you started in, with `/` turned into `-` (for example
 `private-tmp-try-simp` on macOS, where `/tmp` is really `/private/tmp`). To go on with the
-latest session in this folder, add `-c`. Chapter 10 covers this.
+latest session in this folder, add `-c`. [Chapter 10](10-cli.md#6-sessions-where-they-are-saved) covers this.
 
 ## 4. Path B — chat in the browser
 
@@ -283,12 +283,12 @@ so the agent behaves the same; only the outside differs.
 ---
 
 **Next:**
-- Chat in the terminal every day → 10 The CLI.
+- Chat in the terminal every day → [10 The CLI](10-cli.md).
 - Use the browser → 11 The web UI.
 - Run the server for a team (Docker sandbox, several users, budgets) → 20 Operator tutorial.
 
-*(These chapters are not written yet.)*
+*(Only chapter 10 is written so far.)*
 
 **Back:** [00 Introduction and core ideas](00-introduction.md).
 
-**Built on by:** 10 (The CLI), 11 (The web UI), 20 (Operator tutorial), 33 (Developer tutorial).
+**Built on by:** [10](10-cli.md) (The CLI), 11 (The web UI), 20 (Operator tutorial), 33 (Developer tutorial).
