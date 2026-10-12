@@ -73,7 +73,7 @@ Rules worth knowing:
 
 ## 4. SSE + POST, `seq`, offsets, snapshot
 
-Why two channels? Commands are short requests (POST). Events flow one way, server to browser, for a long time — this is what Server-Sent Events (SSE) is made for. It works over plain HTTP and the browser reconnects by itself. (The full reasons: 38 Decision records, not written yet.)
+Why two channels? Commands are short requests (POST). Events flow one way, server to browser, for a long time — this is what Server-Sent Events (SSE) is made for. It works over plain HTTP and the browser reconnects by itself. (The full reasons: [38 Decision records](38-decisions.md#2-sse--post-not-websocket).)
 
 The server sends two kinds of events:
 
@@ -166,5 +166,5 @@ The guard is `test_no_ts_drift` in `apps/server/tests/test_protocol.py`: it gene
 
 ---
 
-**Built on by:** [33 Developer tutorial](33-dev-tutorial.md), [36 Extending: server plugins](36-server-plugins.md), 38 Decision records (not written yet).
+**Built on by:** [33 Developer tutorial](33-dev-tutorial.md), [36 Extending: server plugins](36-server-plugins.md), [38 Decision records](38-decisions.md).
 **Builds on:** [21](21-configuration.md), [22](22-users.md), [23](23-sandboxes.md), [24](24-money.md), [25](25-ops.md), [30](30-architecture.md), [31](31-turn-flow.md).

@@ -104,5 +104,5 @@ Two details:
 
 ---
 
-**Built on by:** [31 How one turn flows](31-turn-flow.md), [32 The server inside](32-server-inside.md), 34–36 Extending (not written yet).
+**Built on by:** [31 How one turn flows](31-turn-flow.md), [32 The server inside](32-server-inside.md), [34](34-providers.md), [35](35-tools-plugins.md), [36](36-server-plugins.md) Extending.
 **Builds on:** [00](00-introduction.md), [10](10-cli.md), [11](11-web.md), [20](20-operator-tutorial.md), [21](21-configuration.md), [27](27-troubleshooting.md).

@@ -1,6 +1,6 @@
 # simp-agent guidebook
 
-Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13, 20–27, 30–36.
+Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13, 20–27, 30–38.
 Tags: [T] tutorial, [H] how-to, [R] reference, [E] explanation.
 
 ## What simp-agent is
@@ -51,7 +51,7 @@ Everyone reads Part 0. Then read only your part; parts link back to what they ne
 - [35 Extending: tools and agent plugins](35-tools-plugins.md) [H] (stubs reserved for Stage 4: MCP, skills, memory, sub-agents)
 - [36 Extending: server plugins — Sandbox, Store, Auth](36-server-plugins.md) [H]
 - [37 Testing and evals](37-testing.md) [H]: FakeProvider, EnvConformance, fake server, e2e, `evals/run.py`
-- 38 Decision records [E]: SSE + POST, SQLite, Docker, small core
+- [38 Decision records](38-decisions.md) [E]: small core, SSE + POST, SQLite, Docker, one machine, soft budgets
 
 ### Appendix
 - [glossary.md](glossary.md) — every term defined once; chapters link here
