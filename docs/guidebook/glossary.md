@@ -73,6 +73,11 @@ Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31
 ## Kill switch
 The `simp-server pause` command. It makes a `PAUSED` file, and every LLM call is refused until `simp-server resume`. Home: [24 Money and limits](24-money.md#4-kill-switch).
 
+## Layer
+One folder under `packages/simp_agent/src/simp_agent/`: `ai`, `agent`, `coding`, `session`, `plugins`,
+`testing`, in that order. A layer may import only layers to its left; the library never imports an app.
+Checked by `packages/simp_agent/tests/test_layers.py`. Home: [30 Architecture](30-architecture.md).
+
 ## Message
 One item in a conversation. There are three kinds that the model sees:
 - **user message** — text from you (or from the app on your behalf);

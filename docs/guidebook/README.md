@@ -1,6 +1,6 @@
 # simp-agent guidebook
 
-Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13, 20–27.
+Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13, 20–27, 30.
 Tags: [T] tutorial, [H] how-to, [R] reference, [E] explanation.
 
 ## What simp-agent is
@@ -43,7 +43,7 @@ Everyone reads Part 0. Then read only your part; parts link back to what they ne
 - [27 Troubleshooting](27-troubleshooting.md) [H]: 401 after rotate, budget errors, Docker down, provider errors
 
 ### Part 3 — Inside simp-agent (Developer)
-- 30 Architecture [E]: the layers and why; layout details point to code and `test_layers.py`
+- [30 Architecture](30-architecture.md) [E]: the layers and why; layout details point to code and `test_layers.py`
 - 31 How one turn flows [E]: ai → agent → session (stream, loop, tools, retry, compaction home)
 - 32 The server inside [E]: runs, storage; protocol links to `docs/protocol.md`, not copied
 - 33 Developer tutorial [T]: write a tool plugin, test with `FakeProvider`, load it via `[plugins]`

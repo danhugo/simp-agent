@@ -6,7 +6,7 @@
 > **Code paths covered:** `apps/server/src/simp_server/server.py` (`over_budget`, `check_sandbox`, `host_guard`, session cap, login), `apps/server/src/simp_server/sandboxes/docker.py`, `packages/simp_agent/src/simp_agent/ai/__init__.py`.
 > **Verified at commit:** `273796c` (error texts copied from code; the errors were not all triggered by hand).
 
-**Back:** [26 Security model and known gaps](26-security.md) · **Next:** 30 Architecture (Part 3, not written yet)
+**Back:** [26 Security model and known gaps](26-security.md) · **Next:** [30 Architecture](30-architecture.md)
 
 Each entry has the same shape: **You see** → **Why** → **Fix** → **Home chapter**. First check the server log ([25](25-ops.md)); it often names the cause.
 
@@ -89,5 +89,5 @@ Each entry has the same shape: **You see** → **Why** → **Fix** → **Home ch
 
 ---
 
-**Built on by:** 30 Architecture (not written yet).
+**Built on by:** [30 Architecture](30-architecture.md).
 **Builds on:** [21](21-configuration.md), [22](22-users.md), [23](23-sandboxes.md), [24](24-money.md), [25](25-ops.md), [26](26-security.md).
