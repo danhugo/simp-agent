@@ -58,3 +58,9 @@ The dict `_PROVIDERS` in `ai` that maps a `Model.api` string (`anthropic-message
 
 ## Context overflow
 An error that says the request is bigger than the model's context window. Found by `is_context_overflow`; never retried as-is. Defined in [04](04-providers.md#error-classification-is_retryable-is_context_overflow); handled in [17](17-overflow.md).
+
+## Event
+A small dict with a `"type"` key (`agent_start`, `turn_start`, `message_update`, `message_end`, `tool_execution_start`, `turn_end`, `agent_end`, …) that the agent loop sends through `emit` so callers can watch a run. `Agent.subscribe` adds a listener. Home: [06](06-events-abort.md#events-one-stream-of-small-dicts).
+
+## Abort
+Stopping a run in the middle by setting one `asyncio.Event` (`cancel`, or `Agent.abort()`). It closes the model stream, stops tools, and ends the run with an assistant message whose `stop_reason` is `aborted`. Home: [06](06-events-abort.md#abort-one-asyncioevent).
