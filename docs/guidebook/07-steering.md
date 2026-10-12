@@ -266,6 +266,11 @@ uv run pytest packages/simp_agent/tests/test_queues_compaction.py
 >
 > **All in one run.** Queued messages extend the current run instead of starting a new one, so there is one `agent_start` and one `agent_end`, and `prompt()` stays one-at-a-time.
 
+## Exercises
+
+1. Call `agent.steer("s1")` **before** `agent.prompt("go")`, with a `FakeProvider` of two `DONE` replies. How many model calls happen? Which user messages does the first call see?
+2. Queue `agent.follow_up("later")`, then prompt with a `FakeProvider` whose first reply has `stop_reason="error"`. Is `"later"` still queued (`has_queued()`)? Prompt again and check when it is sent.
+
 ## Recap
 
 - [Steer](glossary.md#steer) = deliver soon. [Follow-up](glossary.md#follow-up) = deliver when the agent would stop.

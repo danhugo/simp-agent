@@ -268,7 +268,7 @@ The parts marked `...` are: `tool_execution_*` events and abort ([06](06-events-
 ```
 
 - The tool list is read again **every turn**.
-- `system_prompt` is typed `str`, but it may also be a string or a function. A function is called every turn, so the prompt can change between turns. (What goes in the prompt is [11](11-system-prompt.md).)
+- `system_prompt` is typed `str`, but it may also be a function (sync or async) that returns the string. A function is called every turn, so the prompt can change between turns. (What goes in the prompt is [11](11-system-prompt.md).)
 - `transform_messages` ([04](04-providers.md)) cleans the history before it is sent. The view goes through `transform_context` and `convert_to_llm` first; both do nothing by default.
 - The final message is taken from the last `done` or `error` event — the one rule of a stream function.
 - `_stream` wraps `stream_fn` so the call can be stopped in the middle; that is [06](06-events-abort.md).
@@ -341,6 +341,11 @@ uv run pytest packages/simp_agent/tests/test_core.py
 > The loop is a plain function, not a class. Its inputs are a history, new prompts and a `LoopConfig`; its output is the new messages. All state lives in `messages`, which the caller owns. This makes it easy to test (fake `stream_fn`, list of events) and easy to wrap: the `Agent` class ([06](06-events-abort.md)) and the session ([13](13-session.md)) add state on top.
 >
 > Errors are data. A tool error becomes a message the model can read and fix; a provider error becomes an assistant message the caller can retry. The loop never raises because of what the model or a tool did.
+
+## Exercises
+
+1. Give the `echo` tool a `prepare_arguments` that renames an old argument `text` to `x`. Let the model call `echo` with `{"text": "a"}`. Is the result an error? What arguments does the assistant message in history hold now?
+2. Script a reply that calls `echo(x="a")` with `stop_reason="length"`, then `DONE`. Did `echo` run? What text is in the tool result, and does the run still reach the second reply?
 
 ## Recap
 
