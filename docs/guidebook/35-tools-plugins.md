@@ -6,7 +6,7 @@
 > **Code paths covered:** `packages/simp_agent/src/simp_agent/session/__init__.py` (`PluginAPI`, `AgentSession`), `.../agent/__init__.py` (`AgentTool`, `ToolContext`), `.../coding/tools.py` (`make_tools`, `TOOLS`), `.../ai/__init__.py` (`CustomEntry`), `.../plugins/` (`build_plugins`, `redact_secrets.py`, `plan_mode.py`), `apps/server/src/simp_server/server.py` (how the server loads plugins, `SetPlanMode`).
 > **Verified at commit:** `17cae3b`, from code. Nothing was run for this chapter.
 
-**Back:** [34 Extending: providers](34-providers.md) · **Next:** 36 Extending: server plugins — Sandbox, Store, Auth (not written yet)
+**Back:** [34 Extending: providers](34-providers.md) · **Next:** [36 Extending: server plugins — Sandbox, Store, Auth](36-server-plugins.md)
 
 ## 1. The big picture
 
@@ -184,7 +184,7 @@ sequenceDiagram
 - `build_plugins(names)` in `plugins/__init__.py` maps names to classes. Known names: `redact_secrets`, `plan_mode`. An unknown name raises `ValueError`.
 - The **server** always loads `redact_secrets` and `plan_mode`, then the names in the [profile](glossary.md#profile)'s `plugins` list ([33 §3](33-dev-tutorial.md#3-register-the-name-and-turn-it-on)).
 - The **CLI** loads no plugins.
-- Note: the profile `plugins` list is not the `[plugins]` table in `settings.toml` (that one is for server plugins, 36).
+- Note: the profile `plugins` list is not the `[plugins]` table in `settings.toml` (that one is for server plugins, [36](36-server-plugins.md)).
 - There is no loading of plugins from outside the repo. To add one, add it to `known` in `build_plugins`.
 
 ## 10. Planned (Stage 4)
@@ -205,6 +205,6 @@ These are reserved. They are **not built yet**; this section will be filled when
 - Prompt sections build the system prompt; custom entries keep plugin state across restarts.
 - `RedactSecrets` and `PlanMode` are small, real models to copy.
 
-**Back:** [34 Extending: providers](34-providers.md) · **Next:** 36 Extending: server plugins — Sandbox, Store, Auth (not written yet)
+**Back:** [34 Extending: providers](34-providers.md) · **Next:** [36 Extending: server plugins — Sandbox, Store, Auth](36-server-plugins.md)
 
-**Built on by:** 36 Extending: server plugins (not written yet), 37 Testing and evals (not written yet).
+**Built on by:** [36 Extending: server plugins](36-server-plugins.md), 37 Testing and evals (not written yet).
