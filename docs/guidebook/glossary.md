@@ -106,3 +106,21 @@ One file in `evals/tasks/*.toml`: a `prompt`, a shell `check` (exit 0 = pass) an
 
 ## Profile
 A named model setup in `settings.toml` under `[profiles.<name>]`: `api`, `model`, optional `base_url`, `api_key_env`, `price_in` / `price_out` (dollars per million tokens). `build_model` turns it into a `Model`. Used by evals in [12](12-evals.md); home: [18](18-profiles-plugins.md).
+
+## Session
+One long conversation with the agent, across many prompts and restarts. Owned by `AgentSession`. Home: [13](13-session.md).
+
+## AgentSession
+The class in `session/__init__.py` that owns one `Agent` and adds saving, plugins, retry, compaction and overflow recovery. Home: [13](13-session.md).
+
+## SessionStore
+A protocol with two methods, `append(entry)` and `load()`: where a session saves its history. `append` may be sync or async. Home: [13](13-session.md).
+
+## JSONL
+A file with one JSON object per line. The CLI's `JsonlStore` saves one history entry per line. Home: [13](13-session.md#jsonlstore-the-real-store-in-the-cli).
+
+## _maybe_await
+A helper in `agent/__init__.py` that awaits a value only if it is awaitable. It lets hooks and stores be sync or async. Home: [08](08-hooks-approval.md); used in [13](13-session.md).
+
+## Append-only history
+Finished messages are never changed or removed; new entries are only added at the end. So a store can save each entry once, right away. Home: [13](13-session.md).

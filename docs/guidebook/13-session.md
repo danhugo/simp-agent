@@ -15,6 +15,12 @@ flowchart LR
 
 *This chapter starts the `session` layer (marked).*
 
+Code in this chapter (commit `2fc2776`):
+
+- `packages/simp_agent/src/simp_agent/session/__init__.py` — `SessionStore`, `AgentSession`
+- `apps/cli/src/simp_cli/__init__.py` — `JsonlStore`, `session_dir`
+- `packages/simp_agent/tests/test_session.py` — `ListStore` and the store test
+
 ## Problem
 
 At the end of Part 3 we have an `Agent` ([05](05-agent-loop.md)) with coding tools ([10](10-coding-tools.md)) and a system prompt ([11](11-system-prompt.md)). It can write `fizzbuzz.py`. But:
@@ -103,7 +109,7 @@ class SessionStore(Protocol):
 
 A **[SessionStore](glossary.md#sessionstore)** has only two methods. `append` gets one entry; `load` gives back the list. That is all the session needs. The library does not know about files or databases: that keeps the `session` layer free of IO choices (see the layer rule in [00](00-overview.md)).
 
-Why `append` and not `save(all_messages)`? Because history is **append-only**. A finished message never changes, so we write it once, right away. If the process dies, every finished message is already stored. `append` may also be `async`: the session awaits it with `_maybe_await`, so a database store can do real async IO.
+Why `append` and not `save(all_messages)`? Because history is **[append-only](glossary.md#append-only-history)**. A finished message never changes, so we write it once, right away. If the process dies, every finished message is already stored. `append` may also be `async`: the session awaits it with [`_maybe_await`](glossary.md#_maybe_await) (from `agent/__init__.py`, [08](08-hooks-approval.md)), so a database store can do real async IO.
 
 ### AgentSession: owns an Agent
 
@@ -190,7 +196,7 @@ The session also passes through `steer`, `follow_up` ([07](07-steering.md)) and 
         return entry
 ```
 
-A **[CustomEntry](glossary.md#customentry)** (in `ai/__init__.py`) is app or plugin data kept in history: `type`, `data`, `role="custom"`. It is saved and comes back on resume, but it is never sent to the model. Plan mode uses it to remember "on/off" across resume ([18](18-profiles-plugins.md)).
+A **[CustomEntry](glossary.md#custom-entry)** (in `ai/__init__.py`) is app or plugin data kept in history: `type`, `data`, `role="custom"`. It is saved and comes back on resume, but it is never sent to the model. Plan mode uses it to remember "on/off" across resume ([18](18-profiles-plugins.md)).
 
 ### JsonlStore: the real store in the CLI
 
@@ -271,13 +277,3 @@ uv run pytest packages/simp_agent/tests/test_session.py::test_store_gets_every_m
 - `JsonlStore` in the CLI is the real file store: one JSON line per entry.
 
 **Builds on:** [12 Evals](12-evals.md) · **Next:** [14 Plugins](14-plugins.md)
-
-## Terms to add to glossary
-
-- **session** — one long conversation with the agent, owned by `AgentSession`.
-- **AgentSession** — the class in `session/__init__.py` that owns an `Agent` and adds saving, plugins, retry, compaction and overflow recovery.
-- **SessionStore** — protocol with `append(entry)` and `load()`; where a session saves its history.
-- **CustomEntry** — app or plugin data in history; saved and resumed, never sent to the model.
-- **JSONL** — a file with one JSON object per line.
-- **_maybe_await** — helper that awaits a value only if it is awaitable; lets a store be sync or async.
-- **append-only history** — finished messages are never changed or removed; new entries are only added at the end.
