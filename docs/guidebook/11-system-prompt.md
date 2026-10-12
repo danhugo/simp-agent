@@ -11,7 +11,14 @@ flowchart LR
     ai --> agent --> coding["coding ★ coding/__init__.py (this chapter)"] --> session --> plugins --> testing
 ```
 
-In [10](10-coding-tools.md) we built seven tools. The model can now read, edit and run things. But the model does not know **who it is**, **which tools exist and what they are for**, **where it is**, or **what this project expects** (tabs or spaces? which test command?). The text that tells it these things is the [system prompt](glossary.md#system-prompt).
+In [10](10-coding-tools.md) we built seven tools. The model can now read, edit and run things. But the model does not know some things:
+
+- **who it is**,
+- **which tools exist and what they are for**,
+- **where it is**,
+- **what this project expects** (tabs or spaces? which test command?).
+
+ The text that tells it these things is the [system prompt](glossary.md#system-prompt).
 
 Code in this chapter (commit `2fc2776`):
 
@@ -48,7 +55,7 @@ Where it breaks:
 - **`open` skips the [execution environment](glossary.md#execution-environment).** In the Docker sandbox ([24](24-docker-sandbox.md)) the project lives inside a container, not on the host. `open` reads the wrong disk.
 - **Crash if the file is missing.** Most folders have no `AGENTS.md`.
 - **Only one file name.** Some teams use `CLAUDE.md`, some `AGENTS.md`.
-- **Built once.** If a plugin or a tool change happens later, the prompt is stale.
+- **Built once.** If a plugin or a tool change happens later, the prompt is out of date.
 
 ## Real design
 
@@ -142,7 +149,7 @@ async def load_context_file(env, cwd: str) -> tuple[str, str] | None:
 
 Why each part:
 
-- **A list in priority order; the first file found wins.** Only one file is loaded. `AGENTS.override.md` comes first, so a person can override the shared `AGENTS.md` without editing it. Upper-case `.MD` names are there for case-sensitive file systems. The order follows pi, the project simp-agent learns from.
+- **A list in priority order; the first file found wins.** Only one file is loaded. `AGENTS.override.md` comes first, so a person can override the shared `AGENTS.md` without editing it. Upper-case `.MD` names are there for case-sensitive file systems (where `AGENTS.md` and `AGENTS.MD` are two different files). The order follows pi, the project simp-agent learns from.
 - **Reads through `env.read_file`.** This is the rule from [09](09-exec-env.md): all IO goes through the env. So the same code reads from the local disk or from inside a container.
 - **Missing file is normal.** `OSError` (file not found, and so on) just means "try the next name". If none exists, it returns `None` and the prompt has no project section.
 - **Returns the path too.** The path goes into the prompt as a heading, so the model (and a human reading the log) knows where the rules came from.
@@ -150,7 +157,9 @@ Why each part:
 
 ### Prompt sections: building the prompt every turn
 
-The session does not call `system_prompt` once. It keeps a small table of **[prompt sections](glossary.md#prompt-section)**. This is a look ahead to [13](13-session.md); here we only need the part that touches the prompt.
+The session does not call `system_prompt` once. It keeps a small table of **[prompt sections](glossary.md#prompt-section)**.
+
+> **Look ahead.** This part is about the session from [13](13-session.md). Here we only need the part that touches the prompt.
 
 ```python
 # packages/simp_agent/src/simp_agent/session/__init__.py (AgentSession.__init__)
@@ -183,7 +192,7 @@ The session does not call `system_prompt` once. It keeps a small table of **[pro
 - **Empty sections are skipped.** A function can return `""` to switch itself off. Plugins can also add and remove whole sections: the plan-mode plugin ([18](18-profiles-plugins.md)) adds a `PLAN MODE` section at order 1000 and removes it when plan mode ends.
 - **Caller can replace it.** If the host passes its own `system_prompt` string, it becomes the `"base"` section, and the coding prompt and context file are not added. Our tests use this with `system_prompt="s"`.
 
-The context file is loaded in `start()`, the first time the user sends a prompt, because reading needs async env IO:
+The context file is loaded in `start()`, which runs once, before the first prompt, because reading needs async env IO:
 
 ```python
     async def start(self) -> None:
@@ -242,11 +251,16 @@ uv run pytest packages/simp_agent/tests/test_session.py -k context_file
 
 > **Plain helpers + sections.** `coding` only knows how to make text; the session decides when and in what order. Each part stays small and testable.
 >
-> **Rebuild every turn.** A prompt function costs almost nothing to call, and it is never stale when tools, plugins or modes change.
+> **Rebuild every turn.** A prompt function costs almost nothing to call, and it is never out of date when tools, plugins or modes change.
 >
 > **Read the team's file, don't invent a format.** `AGENTS.md` / `CLAUDE.md` already exist in many repos. Reading them through the env means it works in Docker too.
 >
 > **Short prompt.** A few lines of role and rules. The tools' own descriptions carry the details.
+
+## Exercises
+
+1. In `test_context_file_in_system_prompt`, rename `AGENTS.md` to `CLAUDE.md`. Does the test still pass?
+2. Now create both files with different text. Which one is in the prompt, and why?
 
 ## Recap
 

@@ -87,7 +87,7 @@ class ExecutionEnv(Protocol):
     ) -> tuple[int | None, str]: ...  # exit code is None when killed (timeout or cancel); output = what came so far
 ```
 
-Six methods. That is the whole surface a tool may use to touch the world.
+Six methods. That is everything a tool may use to touch files and run commands.
 
 - It is a `typing.Protocol`, not a base class. Any object with these six methods **is** an `ExecutionEnv`. No need to inherit.
 - Every method is `async`, so a slow disk or a slow container never blocks the loop.
@@ -318,7 +318,7 @@ The idea comes from `env-conformance.ts` in pi, the TypeScript agent that simp-a
 
 ## Test
 
-`packages/simp_agent/tests/test_env.py` has two direct tests and one line that pulls in the whole suite:
+`packages/simp_agent/tests/test_env.py` has two direct tests and a 4-line class that pulls in the whole suite:
 
 ```python
 class TestLocalEnvConformance(EnvConformance):
@@ -354,11 +354,17 @@ uv run pytest packages/simp_agent/tests/test_env.py
 >
 > **One object between tools and the world.** Tools call `ctx.env`, never `open()` or `subprocess`. To move all commands into Docker, the server swaps one object; no tool changes.
 >
-> **A Protocol, plus a test suite as the real contract.** Types say *which* methods exist. `EnvConformance` says *how* they must behave (fence, kill tree, partial output). A new env proves itself by passing it.
+> **A Protocol, plus a test suite as the real rules.** Types say *which* methods exist. `EnvConformance` says *how* they must behave (fence, kill tree, partial output). A new env proves itself by passing it.
 >
 > **Kill the group, not the process.** A coding agent runs builds, tests and servers that start children. Only a process-group kill, repeated until empty, really stops them.
 >
 > **The fence has a clear limit.** `LocalEnv`'s root stops bad file paths, not shell commands. Isolation for commands is a separate job ([24](24-docker-sandbox.md)).
+
+## Exercises
+
+1. Make a symlink `dirlink` inside the root that points to a folder outside it. Write a test that `read_file("dirlink/secret")` raises `PermissionError`.
+2. In `exec`, change the call to `run_kill` into a plain `os.kill` of the one process. Run `test_exec_timeout_kills_tree`. It fails. Explain why.
+3. Write a `ReadOnlyEnv` that wraps another env and refuses `write_file`. Which `EnvConformance` tests can it still pass?
 
 ## Recap
 

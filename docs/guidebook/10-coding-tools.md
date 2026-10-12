@@ -168,7 +168,7 @@ Step by step:
 2. `offset` is 1-based (line 1 is the first line), because the model sees 1-based numbers. Values below 1 become 1.
 3. Take at most `limit` lines (default 2000), and put the line number and a tab before each one. The numbers let the model say "line 42" and then come back with `offset=42`.
 4. Cut with `truncate_head`, so the 50 KB limit also holds.
-5. Work out where we **really** stopped: the end of the slice, the end of the file, or where the byte limit cut — whichever is first.
+5. Work out where we **really** stopped: the end of the slice, the end of the file, or where the byte limit cut — we stop at the first of these three.
 6. If lines are left, add a **continue hint**: `[N more lines; use offset=M to continue]`. This is not a generic "truncated" note; it tells the model the exact next call.
 
 ### `write`
@@ -298,7 +298,8 @@ def _search_path(args: dict) -> str:
 
 Quoting stops the shell from reading the path as code, but the **program** can still read it as an option. A path of `--pre=evil` makes `rg` run a program; `-delete` makes `find` delete files. So a path may not start with `-`.
 
-`grep` maps its arguments to flags for both programs: `ignore_case` → `-i`, `literal` → `-F` (else plain `grep` gets `-E` for extended regex, like `rg`), `context` → `-C<n>`, `glob` → `--glob` or `--include=`. The pattern goes after `-e` and the path after `--`, so neither can be read as a flag. Default limit: 100 lines.
+`grep` maps its arguments to flags for both programs.
+The mapping is: `ignore_case` → `-i`, `literal` → `-F` (else plain `grep` gets `-E` for extended regex, like `rg`), `context` → `-C<n>`, `glob` → `--glob` or `--include=`. The pattern goes after `-e` and the path after `--`, so neither can be read as a flag. Default limit: 100 lines.
 
 `find` runs `fd --glob --color=never --hidden -- <pattern> <path>`, or `find <path> -name <pattern>`. Default limit: 1000 files.
 
@@ -325,7 +326,7 @@ def make_bash(max_timeout_s: float | None = None):
     return bash
 ```
 
-`bash` is a **factory**: `make_bash` returns the tool function, closed over one setting.
+`bash` is a **factory**: `make_bash` returns the tool function, and the function remembers one setting, `max_timeout_s`.
 
 - **Timeout.** By default there is none: a long build is fine, and the user can press Stop ([06](06-events-abort.md)). The model may pass its own `timeout`; it must be a finite number above 0. The **host** (the program that runs the agent) may set `max_timeout_s`, a hard cap. Then a missing or bigger timeout becomes the cap. The model cannot raise it. At this commit the CLI reads it from the `bash_max_timeout_s` setting ([19](19-cli.md)); `None` means no cap.
 - **All the hard work is in `exec`.** Streaming, cancel, timeout and the [process-group kill](glossary.md#process-group-kill) were built in [09](09-exec-env.md#exec-run-stream-stop). `bash` just passes `ctx.cancel` and `ctx.on_update` through, so the user sees output live while it runs.
@@ -425,6 +426,12 @@ uv run pytest packages/simp_agent/tests/test_tools.py packages/simp_agent/tests/
 > **Edit is strict on purpose.** Exactly one match, all against the original, no overlaps, all or nothing. A loud error the model can fix is better than a quiet wrong edit.
 >
 > **Use the fast tool if it is there, never require it.** `rg` and `fd` when installed, `grep` and `find` when not, picked by exit code 127.
+
+## Exercises
+
+1. Call `edit` with an `old_text` that appears twice in the file. Read the error. Why does the tool refuse instead of changing the first match?
+2. Use `FakeEnv(missing=("fd",))` and run `find`. Check which command was run instead (the fallback).
+3. Run `bash` with `timeout=0.2` on `sleep 5`. Read the last line of the result.
 
 ## Recap
 
