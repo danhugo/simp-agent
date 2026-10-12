@@ -107,7 +107,7 @@ No API key? Start the web with the [fake LLM](glossary.md#fake-llm); the steps a
 
 ## 12. If something breaks
 
-Tell your operator the exact message. Messages you may see: "That token was not accepted." (wrong or old token), "budget: server paused by the admin", or a connection word stuck on `reconnecting`. Fixes are in 27 Troubleshooting (not yet written).
+Tell your operator the exact message. Messages you may see: "That token was not accepted." (wrong or old token), "budget: server paused by the admin", or a connection word stuck on `reconnecting`. Fixes are in [27 Troubleshooting](27-troubleshooting.md).
 
 ---
 
