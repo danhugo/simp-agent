@@ -6,7 +6,7 @@
 > **Code paths covered:** `packages/simp_agent/src/simp_agent/plugins/` (`build_plugins`, `plan_mode.py`, `redact_secrets.py`), `.../session/__init__.py` (`PluginAPI`, `AgentSession`), `.../agent/__init__.py` (`AgentTool`, `ToolContext`), `.../testing/__init__.py` (`FakeProvider`), `apps/server/src/simp_server/server.py` (`create_app`, `Run`).
 > **Verified at commit:** `c51fc79`. Every code block was put in the repo and run: the test passed, `build_plugins` accepted the name, `test_layers.py` passed. The files were then removed. The server itself was not started.
 
-**Back:** [32 The server inside](32-server-inside.md) · **Next:** 34 Extending: providers (not written yet)
+**Back:** [32 The server inside](32-server-inside.md) · **Next:** [34 Extending: providers](34-providers.md)
 
 We will build `word_count`: a tool that counts the words in a file. It is small on purpose, so you can see every part. There are three steps:
 
@@ -187,5 +187,5 @@ sequenceDiagram
 
 ---
 
-**Built on by:** 34 Extending: providers, 35 Extending: tools and agent plugins, 37 Testing and evals (not written yet).
+**Built on by:** [34 Extending: providers](34-providers.md), 35 Extending: tools and agent plugins, 37 Testing and evals (not written yet).
 **Builds on:** [23](23-sandboxes.md), [30](30-architecture.md), [31](31-turn-flow.md), [32](32-server-inside.md).

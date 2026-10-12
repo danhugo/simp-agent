@@ -133,7 +133,7 @@ and stream events. Built in: `anthropic-messages`, `openai-completions`, `openai
 More can be added with `register_provider()`. A provider never raises an error; failures come
 back as an assistant message with `stop_reason="error"`.
 Code: `packages/simp_agent/src/simp_agent/ai/__init__.py`, `packages/simp_agent/src/simp_agent/ai/providers/`.
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 34 Extending: providers.
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [34](34-providers.md).
 
 ## REPL
 The CLI's interactive chat ("read–eval–print loop"): run `simp-agent` with no task, type
