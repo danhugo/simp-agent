@@ -6,7 +6,7 @@
 > **Code paths covered:** `apps/server/src/simp_server/store.py` (users, tokens, scrypt), `server.py` (`main`, `signup`, `login`, `over_budget`, the event stream).
 > **Verified at commit:** `5b091ec` (read from code; not run).
 
-**Back:** [21 Configuration reference](21-configuration.md) · **Next:** 23 Sandboxes (not written yet)
+**Back:** [21 Configuration reference](21-configuration.md) · **Next:** [23 Sandboxes](23-sandboxes.md)
 
 ## 1. Two kinds of credential
 

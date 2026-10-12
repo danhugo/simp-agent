@@ -86,7 +86,7 @@ Cost = tokens × the profile prices. No prices means no cost, so no limit. The c
 
 Setting the environment variable `SIMP_SANDBOX=docker` switches `sandbox` to `DockerSandbox`; a `[plugins]` entry still wins.
 
-`[sandbox]` has options for `DockerSandbox` only (full story: 23, not written yet):
+`[sandbox]` has options for `DockerSandbox` only (full story: [23](23-sandboxes.md)):
 
 | Key | Default |
 |---|---|

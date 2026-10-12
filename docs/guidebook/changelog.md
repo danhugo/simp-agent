@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-12
+- Added [23 Sandboxes](23-sandboxes.md) (verified at `194c41e`, from code; Docker not run). Linked from 21, 22, README.
 - Added [22 Users and accounts](22-users.md) (verified at `5b091ec`, from code; not run). Glossary: access token now links to 22 and mentions rotate re-enables.
 - Added [21 Configuration reference](21-configuration.md) (verified at `2c311ce`, from code). Linked from README.
 - Added [20 Operator tutorial](20-operator-tutorial.md) (verified at `a8615b1`; Docker steps not run, no Docker on the test machine). Linked 20 from 01 and README.

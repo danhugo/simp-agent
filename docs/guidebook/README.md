@@ -36,7 +36,7 @@ Everyone reads Part 0. Then read only your part; parts link back to what they ne
 - [20 Operator tutorial](20-operator-tutorial.md) [T]: fresh Mac → DockerSandbox server, two users, a budget, a restore drill
 - [21 Configuration reference](21-configuration.md) [R]: profiles, hosts, plugins, capacity (`idle_minutes`, `max_open_sessions`)
 - [22 Users and accounts](22-users.md) [H]: tokens, one shared signup code, passwords, revoke/rotate
-- 23 Sandboxes [E] — home chapter for sandbox: Local vs Docker, why Docker for several users
+- [23 Sandboxes](23-sandboxes.md) [E] — home chapter for sandbox: Local vs Docker, why Docker for several users
 - 24 Money and limits [H]: budgets, kill switch, how limits can be exceeded
 - 25 Day-to-day ops [H]: logs, launchd (macOS only), backups (what they do not cover), upgrades
 - 26 Security model and known gaps [E]: dated list, links ROADMAP
