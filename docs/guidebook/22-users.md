@@ -88,7 +88,7 @@ What a revoked user feels:
 
 Unknown name gives "no active user named …" for `revoke` (also when already revoked) and "no user named …" for `rotate`.
 
-`rotate` is both "the user lost the token" and "let him back in". After `rotate`, the password (if any) works again, because revoke does not erase it. `rotate` does not check the sandbox rule: re-enabling a user can take you above one active user on `LocalSandbox` with no warning (see [21](21-configuration.md#2-top-level-keys), `allow_local_sandbox`). To lock someone out for good, `revoke` and keep them revoked; to remove the password too, there is no command (a known gap).
+`rotate` is both "the user lost the token" and "let them back in". After `rotate`, the password (if any) works again, because revoke does not erase it. `rotate` does not check the sandbox rule: re-enabling a user can take you above one active user on `LocalSandbox` with no warning (see [21](21-configuration.md#2-top-level-keys), `allow_local_sandbox`). To lock someone out for good, `revoke` and keep them revoked; to remove the password too, there is no command (a known gap).
 
 ## 7. Devices and sign-out
 
