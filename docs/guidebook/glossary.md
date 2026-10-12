@@ -29,6 +29,16 @@ the window (`context_window - reserve_tokens`), after a "context too long" error
 ask for it. Code: `packages/simp_agent/src/simp_agent/agent/compaction.py`, `AgentSession.compact()`.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
 
+## Context file
+A Markdown file in the working folder whose text is added to the [system prompt](#system-prompt). The agent tries `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD` in that order and uses the first one found. It looks in the working folder only and reads it once, at the first message of a session.
+Code: `load_context_file()` in `packages/simp_agent/src/simp_agent/coding/__init__.py`.
+Introduced in [13](13-working-well.md#1-give-standing-rules-with-agentsmd--both). Home: [13 Working well with the agent](13-working-well.md).
+
+## Context window
+The most text (in tokens) the model can read at one time: the [system prompt](#system-prompt) plus the [history](#history) it is sent. When the history gets close to it, the session [compacts](#compaction).
+Code: `context_window` on the model, used in `packages/simp_agent/src/simp_agent/agent/compaction.py`.
+Introduced in [13](13-working-well.md#3-long-sessions-and-compaction--both). Home: 31 How one turn flows.
+
 ## Execution environment
 Where [tools](#tool) read and write files and run commands. In code it is the `ExecutionEnv`
 protocol. The library ships one: `LocalEnv`, which uses this machine (optionally limited to

@@ -10,7 +10,7 @@ Each tip is tagged **[CLI]**, **[web]** or **[both]**. For a side-by-side of the
 
 ## 1. Give standing rules with AGENTS.md  [both]
 
-The agent knows nothing about your project at the start. A *context file* fixes that: a plain Markdown file whose text is added to the [system prompt](glossary.md#system-prompt) under "Project Context".
+The agent knows nothing about your project at the start. A [context file](glossary.md#context-file) fixes that: a plain Markdown file whose text is added to the [system prompt](glossary.md#system-prompt) under "Project Context".
 
 How it works (from the code):
 
@@ -21,7 +21,7 @@ How it works (from the code):
 
 Where the working folder is:
 
-- **[CLI]** the folder where you started `simp`. Put `AGENTS.md` there.
+- **[CLI]** the folder where you started `simp-agent`. Put `AGENTS.md` there.
 - **[web]** the session's sandbox folder, not your computer ([chapter 11, Files](11-web.md#7-files)). Use **Upload** to put an `AGENTS.md` in the root of the folder *before* your first message.
 
 Why use one? You write a rule once, and every session obeys it. Without it you repeat yourself in every chat.
@@ -37,7 +37,7 @@ What to put in it — short and concrete:
 
 Good content: how to build and test, where things are, what not to touch. Bad content: long essays. The whole file is sent on **every** turn, so a big file uses up room in the model's context window.
 
-Note: `CLAUDE.md` is read too, so a project that already has one works unchanged. If both exist, `AGENTS.md` wins.
+Note: `CLAUDE.md` is read too, so a project that already has one works unchanged. If several exist, the first in the list wins: `AGENTS.override.md` beats `AGENTS.md`, which beats `CLAUDE.md`.
 
 ## 2. Write good requests  [both]
 
@@ -61,7 +61,7 @@ Use a steer to correct a wrong direction early. It is cheaper than letting the a
 
 ## 3. Long sessions and compaction  [both]
 
-The model can only read so much at once (its *context window*). A long chat, with big file reads and command output, fills it. [Compaction](glossary.md#compaction) is the fix; its home is chapter 31 (How one turn flows). What you need to know here:
+The model can only read so much at once (its [context window](glossary.md#context-window)). A long chat, with big file reads and command output, fills it. [Compaction](glossary.md#compaction) is the fix; its home is chapter 31 (How one turn flows). What you need to know here:
 
 - It is **automatic.** The session compacts when the history is within 16,384 tokens of the window, and after a "context too long" error.
 - It **summarizes old messages** with one extra model call and keeps about the latest 20,000 tokens as they are. The [history](glossary.md#history) is not deleted; only what the model sees changes.
@@ -71,7 +71,7 @@ Tips:
 
 - **Start a new session for a new task.** This is the best habit. Old context only distracts.
 - **Compact between tasks, not in the middle of one.** **[CLI]** `/compact` (not while a run is active). **[web]** the **Compact** button (greyed out while running). The web shows "Context compacted (N → M tokens)".
-- **Watch the size.** **[CLI]** the status line shows a token estimate. **[web]** the usage display ([chapter 11](11-web.md#9-spend-display)).
+- **Watch the size.** **[CLI]** the status line shows a token estimate. **[web]** has no context-size view (the [spend display](11-web.md#9-spend-display) shows money, not tokens), so compact by habit between tasks.
 - **Repeat key facts after a compaction.** Or better, put them in `AGENTS.md`: the context file is part of the system prompt, so it is *not* summarized away.
 - **One very big turn cannot be compacted.** The cut is made only between messages, so a single huge turn stays whole. Keep tool output small ("show only the first 50 lines").
 
