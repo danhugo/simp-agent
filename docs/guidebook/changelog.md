@@ -40,3 +40,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - Review fixes: Stage 5 / replicas wording, stale README status, outline line 01 (no CLI fake mode), glossary term system prompt.
 - Review round 2: README status line now says "Written: 00, 01"; wrapped the Profile glossary line.
 - Note: links to chapters not yet written are plain text; they become links when those chapters exist.
+- v3 ch 03 The stream parser written (parse in openai_completions.py: text, tool-call assembly, stop reasons, usage); glossary: Delta, Usage.
