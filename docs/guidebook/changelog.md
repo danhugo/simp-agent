@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-12
+- Added [30 Architecture](30-architecture.md) (verified at `57cabfc`, `test_layers.py` run and passing). Glossary: added layer. Linked from 27 and README.
 - Fixed ch 25 after review: recovery happens when a session is first loaded, not at start; links and folder-name note. Replaced stale "not written yet" notes in 20, 22, 23, 24, 25.
 - Added [27 Troubleshooting](27-troubleshooting.md) (verified at `273796c`, error texts from code; not all triggered by hand). Linked from 26 and README. Glossary unchanged.
 - Added [26 Security model and known gaps](26-security.md) (verified at `ad5a9bd`, from code; nothing attacked). Dated gaps list. Linked from 25 and README. Glossary unchanged.
