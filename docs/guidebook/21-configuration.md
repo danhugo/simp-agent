@@ -10,7 +10,7 @@
 
 ## 1. Where the file is
 
-The server reads `~/.simp-server/settings.toml`. To use another folder, set the environment variable `SIMP_SERVER_HOME`. If the file does not exist, all defaults apply. Keys you leave out keep their default; there is no error for unknown keys, so check your spelling.
+The server reads `~/.simp-server/settings.toml`. To use another folder, set the environment variable `SIMP_SERVER_HOME`. If the file does not exist, all defaults apply. Keys you leave out keep their default; unknown keys are ignored, so check your spelling. One exception: a misspelled key in `[budget]` stops the server at boot (TypeError).
 
 ```mermaid
 flowchart LR
@@ -31,13 +31,14 @@ flowchart LR
 | `host` | `"127.0.0.1"` | The address the server listens on. Keep it local unless you know why not. |
 | `allowed_hosts` | `["localhost", "127.0.0.1"]` | Host names the server accepts in the `Host` header. Any other name gets **403 bad host**. This stops DNS-rebinding tricks. If users reach you by a name or LAN address, add it (without the port). |
 | `signup_code` | none | The shared invite code for the sign-up page. **Not set = sign-up is closed** (403). See 22. |
-| `default_profile` | the first profile in the file | Used when a new session names no profile. |
+| `default_profile` | the first profile in the file | Used when a new [session](glossary.md#session) names no profile. |
 | `allow_local_sandbox` | `false` | With more than one user and `LocalSandbox`, the server refuses to start or sign up (no isolation). `true` turns this check off. For tests only. |
+| `port` | not a setting | The port is not in the file. Use `simp-server run --port N` (default 8766). |
 | `files_max_bytes` | `52428800` (50 MiB) | Biggest file the file API will serve. |
 
 ## 3. `[profiles.<name>]`
 
-A [profile](glossary.md#profile) is a named model setup. Users pick one by name. You need at least one.
+A [profile](glossary.md#profile) is a named model setup. Users pick one by name. You need at least one: the server does not check at boot, but creating a session fails (400 "unknown profile") if none exists.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -49,7 +50,7 @@ A [profile](glossary.md#profile) is a named model setup. Users pick one by name.
 | `api_key_env` | `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY` for `openai-*` APIs) | **Name** of the variable that holds the key. The key itself never goes in `settings.toml`. |
 | `price_in` / `price_out` | none (counts as 0) | USD per 1M input / output tokens. The budget needs them. At start the server warns for a profile without both. |
 | `plugins` | `[]` | Extra plugin names for this profile. `redact_secrets` and `plan_mode` are always on. A wrong name stops the server at boot. |
-| `compat` | `{}` | Provider quirks (for example `reasoning_effort`). Rarely needed. |
+| `compat` | `{}` | Provider quirks (for example `reasoning_effort`). For `openai-*` APIs `include_usage` is set to `true` unless you set it. Rarely needed. |
 
 **Keys.** The server reads `<data_dir>/.env` and the process environment, then removes the keys from the environment so commands run by the agent cannot see them. An empty value counts as no key.
 
@@ -92,7 +93,7 @@ Setting the environment variable `SIMP_SANDBOX=docker` switches `sandbox` to `Do
 | `image` | the image from `build-sandbox` |
 | `network` | `"none"` (no network) |
 | `memory` | `"1g"` |
-| `cpus` | `1` |
+| `cpus` | `"1"` (read as a string) |
 | `pids_limit` | `256` |
 
 ## 6. Capacity
