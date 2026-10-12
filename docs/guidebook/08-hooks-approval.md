@@ -234,6 +234,11 @@ uv run pytest apps/cli/tests/test_cli.py apps/cli/tests/test_sockets.py
 >
 > **Approval is built on the hook, not in the loop.** The loop stays small. The hard parts of asking a human (remembering "always", racing against Stop) live in one hook in the session.
 
+## Exercises
+
+1. Pass `before_tool_call=lambda c, ctx: ""` (an empty string). Does the tool run? What is the result text? Why does the loop check `is not None` and not "truthy"?
+2. Write an `async def` `after_tool_call` that only appends `(r.is_error, r.content)` to a list and returns nothing. Use it with a `before_tool_call` that returns `"no"`. Does the after-hook run? Is the result in history changed?
+
 ## Recap
 
 - `LoopConfig` has two [tool hooks](glossary.md#tool-hook): `before_tool_call(call, ctx)` and `after_tool_call(call, result, ctx)`. Both may be sync or async (`_maybe_await`).
