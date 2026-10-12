@@ -68,7 +68,8 @@ uv run simp-server resume    # prints: resumed
 - **All users:** there is no admin report. Read the `usage` table with `sqlite3`, for example:
 
 ```sh
-sqlite3 ~/.simp-server/simp.db   # default data_dir \
+# default data_dir
+sqlite3 ~/.simp-server/simp.db \
   "select user_id, round(sum(cost),4) from usage group by user_id"
 ```
 

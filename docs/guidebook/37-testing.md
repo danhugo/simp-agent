@@ -89,7 +89,7 @@ fake = FakeProvider(
 )
 ```
 
-The first call returns a tool call; the agent runs the `read` tool; the second call returns the answer. If the agent calls the model a third time, `next()` has nothing left and the test fails with `StopIteration`. That is on purpose: an extra model call is a bug.
+The first call returns a tool call; the agent runs the `read` tool; the second call returns the answer. If the agent calls the model a third time, `next()` has nothing left and the test fails with `RuntimeError: async generator raised StopIteration`. That is on purpose: an extra model call is a bug.
 
 A reply may also be a function `(ctx) -> AssistantMessage`, when the answer depends on what the model was sent.
 

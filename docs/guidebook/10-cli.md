@@ -27,7 +27,7 @@ outside differs. In these examples, add `uv run --project <repo>` in front, as i
 
 Print mode runs one task and exits. It prints the answer line by line, and a `> tool: detail`
 line each time the agent uses a [tool](glossary.md#tool). Tool errors show as `  ! message`.
-Only the session id goes to stderr (`[session 53cbd108]`). Everything else, including tool lines and thinking, goes to stdout; use `--no-thinking` to keep pipes cleaner.
+Only the session id goes to stderr (`[session 53cbd108]`). Everything else, including tool lines and thinking, goes to stdout.
 
 The exit code is `0` on success and `1` if the run failed or was aborted. Bad flags give `2`.
 Two errors you may meet:
