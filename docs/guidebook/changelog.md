@@ -47,3 +47,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - v3 ch 04 Providers written (registry, lazy import, transform_messages and thinking replay, three providers, is_retryable / is_context_overflow); glossary: Agent loop, Provider registry, Context overflow.
 - v3 ch 05 The agent loop written (AgentTool, ToolContext, run_tool, LoopConfig, agent_loop, _llm_turn; test_core.py); glossary: Turn, Agent tool, Tool context, Execution environment.
 - v3 ch 06 Events and abort written (send/add/_emit_all events, cancel checks, _stream, partial kept on abort, Agent class; test_harden.py); glossary: Event, Abort.
+- v3 ch 07 Steering written (get_steering / get_follow_up, inner and outer loop, three steering read points, queues survive abort, Agent.steer / follow_up / _take modes; test_queues_compaction.py); glossary: Steer, Follow-up, Queue mode; ch 19 link fixed to #steer.

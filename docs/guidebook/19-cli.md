@@ -272,7 +272,7 @@ def route(line: str, running: bool) -> tuple[str, str]:
 `Repl.submit` acts on the result:
 
 - `prompt` → `self.start(self.session.prompt(text))`.
-- `steer` → `self.session.steer(text)`. A **[steer](glossary.md#steering)** message goes in at the next turn ([07](07-steering.md)).
+- `steer` → `self.session.steer(text)`. A **[steer](glossary.md#steer)** message goes in at the next turn ([07](07-steering.md)).
 - `follow_up` → `self.session.follow_up(text)`. Runs after the agent would stop.
 - `command` → `Repl.command`: `/help`, `/history`, `/new`, `/sessions`, `/compact`, `/exit`.
 
