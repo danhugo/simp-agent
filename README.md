@@ -1,5 +1,7 @@
 # simp-agent
 
+Full guide: [docs/guidebook](docs/guidebook/README.md).
+
 ## Layout
 
 The library `packages/simp_agent` (`src/simp_agent/`) is layered. Each layer imports only the layers to its left, and
