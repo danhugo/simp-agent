@@ -108,5 +108,5 @@ Each password login adds a device token. Nothing in the code expires them. **Sig
 
 ---
 
-**Built on by:** 23 Sandboxes, [24 Money and limits](24-money.md), 26 Security model, 27 Troubleshooting (all not written yet).
+**Built on by:** [23 Sandboxes](23-sandboxes.md), [24 Money and limits](24-money.md), 26 Security model, 27 Troubleshooting (not written yet).
 **Builds on:** [11 The web UI](11-web.md) (the login screen), [20 Operator tutorial](20-operator-tutorial.md), [21 Configuration reference](21-configuration.md).

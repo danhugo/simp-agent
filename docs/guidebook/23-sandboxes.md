@@ -127,5 +127,5 @@ Test before users come (steps in [20](20-operator-tutorial.md)). If Docker is no
 
 ---
 
-**Built on by:** [24 Money and limits](24-money.md), 26 Security model, 27 Troubleshooting (all not written yet).
+**Built on by:** [24 Money and limits](24-money.md), 26 Security model, 27 Troubleshooting (not written yet).
 **Builds on:** [20 Operator tutorial](20-operator-tutorial.md), [21 Configuration reference](21-configuration.md), [22 Users and accounts](22-users.md).
