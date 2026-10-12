@@ -79,13 +79,17 @@ class DockerSandbox:
         self.image, self.network = s.get("image", IMAGE), s.get("network", "none")
         self.memory, self.cpus, self.pids_limit = s.get("memory", "1g"), str(s.get("cpus", "1")), s.get("pids_limit", 256)
         self.envs: dict[str, DockerEnv] = dict()
+        self.legacy_dir = Path(settings["data_dir"]) / "sandboxes"
 
     async def open(self, session_id: str) -> DockerEnv:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", session_id):
             raise ValueError(f"bad session id: {session_id!r}")
         if session_id in self.envs:
             return self.envs[session_id]
-        root = self.workspaces_dir / session_id
+        root, old = self.workspaces_dir / session_id, self.legacy_dir / session_id
+        if old.exists() and not root.exists():  # Stage 2 LocalSandbox layout
+            self.workspaces_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(old, root)
         root.mkdir(parents=True, exist_ok=True)
         name = f"simp-{session_id}"
         await _docker("rm", "-f", name)  # leftover from a crash
@@ -108,7 +112,8 @@ class DockerSandbox:
 
     async def remove(self, session_id: str) -> None:
         if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", session_id):
-            shutil.rmtree(self.workspaces_dir / session_id, ignore_errors=True)
+            for d in (self.workspaces_dir / session_id, self.legacy_dir / session_id):
+                shutil.rmtree(d, ignore_errors=True)
 
     async def close_all(self) -> None:
         await asyncio.gather(*(self.close(s) for s in list(self.envs)))

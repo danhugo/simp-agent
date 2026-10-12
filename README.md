@@ -64,6 +64,8 @@ uv run simp-server passwd --name ann  # set or change a password
 Accounts: set `signup_code = "..."` in `settings.toml` to let people "Create account" on the web login page with that
 invite code (unset = sign-up closed). Each password sign-in gets its own token; "Sign out" ends only that one. `revoke`
 disables the user (token, password logins and password sign-in); `rotate` re-enables a revoked user.
+There is no rate limit on `/api/login` and `/api/signup`: before exposing the server through a tunnel, put one in
+front (the tunnel's or a reverse proxy's). Passwords are capped at 1024 characters and hashed off the event loop.
 Sessions are deleted from the web sidebar (`×`, click again to confirm); a running session is aborted first and its
 workspace files are deleted. `seed` warns when a second user would need DockerSandbox (the server refuses to start
 with LocalSandbox and several active users unless `allow_local_sandbox = true`).

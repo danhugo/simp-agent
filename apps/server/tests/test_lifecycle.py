@@ -86,7 +86,7 @@ async def test_lifespan_evicts_periodically(tmp_path):
 async def test_cap_evicts_lru_or_503(tmp_path):
     g = Gated(["x"])
     app, mgr, user, closed = await make(tmp_path, g, "max_open_sessions = 1\n")
-    a, b = [await mgr.store.add_session(user["id"], "test") for _ in range(2)]
+    a, b = [await mgr.store.add_session(user["id"], "test", "t") for _ in range(2)]  # titled: no title call
     ra = await mgr.get(user, a["id"])
     await mgr.get(user, b["id"])  # a is idle -> evicted to make room
     assert list(mgr.runs) == [b["id"]] and closed == [a["sandbox_ref"]]
@@ -99,3 +99,34 @@ async def test_cap_evicts_lru_or_503(tmp_path):
     await wait_for(lambda: not rb.busy and rb.task.done())
     assert (await mgr.get(user, a["id"])) is not ra
     await mgr.store.close()
+
+
+async def test_title_task_blocks_eviction_and_drop_cancels_it(tmp_path):
+    gate = asyncio.Event()
+
+    async def slow_title(model, ctx, api_key=None):
+        if ctx.system_prompt.startswith("Name this coding session"):
+            await gate.wait()
+        async for ev in FakeProvider(reply("a"))(model, ctx, api_key=api_key):
+            yield ev
+    _, mgr, user, closed = await make(tmp_path, slow_title)
+    row = await mgr.store.add_session(user["id"], "test")  # untitled -> a title call starts after the first reply
+    run = await mgr.get(user, row["id"])
+    await run.command(p.Prompt(text="hi"))
+    await wait_for(lambda: not run.busy and run.task.done() and run.title_task is not None)
+    assert not run.title_task.done() and not mgr.evictable(run)
+    await mgr.drop(row["id"], row["sandbox_ref"])
+    assert run.title_task.done()
+    gate.set()
+    await asyncio.sleep(0.05)
+    assert not [e for e in await mgr.store.entries(user["id"], row["id"]) if e["type"] == "session_title"]
+    await mgr.store.close()
+
+
+async def test_remove_deletes_legacy_sandbox_dir(tmp_path):
+    sb = LocalSandbox({"data_dir": str(tmp_path)})
+    old = tmp_path / "sandboxes" / "s9"
+    old.mkdir(parents=True)
+    (old / "a.txt").write_text("x")
+    await sb.remove("s9")  # session deleted before it was ever opened after the upgrade
+    assert not old.exists()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -64,6 +65,7 @@ class SqliteStore:
         if "password" not in cols:  # db from Stage 2
             await self._do("ALTER TABLE users ADD COLUMN password TEXT")
             await self._do("ALTER TABLE users ADD COLUMN disabled INTEGER DEFAULT 0")
+            await self._do("UPDATE users SET disabled=1 WHERE token_sha256 IS NULL")  # Stage 2 revoke = NULL token
 
     async def close(self) -> None:
         await self.db.close()
@@ -80,7 +82,7 @@ class SqliteStore:
         """Returns the static token (shown once); only its sha256 is stored. Raises sqlite3.IntegrityError on a taken name."""
         t = secrets.token_urlsafe(32) if token else None
         await self._do("INSERT INTO users(id, name, token_sha256, password) VALUES(?,?,?,?)", uuid.uuid4().hex, name,
-                       t and sha(t), password and hash_password(password))
+                       t and sha(t), password and await asyncio.to_thread(hash_password, password))
         return t
 
     async def user_by_token(self, token: str) -> dict | None:
@@ -89,13 +91,13 @@ class SqliteStore:
         return rows[0] if rows else None
 
     async def set_password(self, name: str, password: str) -> bool:
-        cur = await self.db.execute("UPDATE users SET password=? WHERE name=?", (hash_password(password), name))
+        cur = await self.db.execute("UPDATE users SET password=? WHERE name=?", (await asyncio.to_thread(hash_password, password), name))
         await self.db.commit()
         return cur.rowcount > 0
 
     async def login(self, name: str, password: str) -> str | None:
         rows = await self._all("SELECT id, password FROM users WHERE name=? AND disabled=0", name)
-        if not check_password(password, rows[0]["password"] if rows else None):
+        if not await asyncio.to_thread(check_password, password, rows[0]["password"] if rows else None):
             return None
         token = secrets.token_urlsafe(32)
         await self._do("INSERT INTO tokens VALUES(?,?,?)", sha(token), rows[0]["id"], time.time())

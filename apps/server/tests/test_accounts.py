@@ -2,6 +2,7 @@ import httpx
 from simp_agent.testing import FakeProvider
 
 from simp_server.server import create_app, load_settings
+from simp_server.store import SqliteStore
 
 
 async def accounts_app(tmp_path, extra=""):
@@ -92,3 +93,31 @@ async def test_set_password_and_hash_format(tmp_path):
         assert await s.user_by_token(await s.login("ann", "password1"))
     finally:
         await s.close()
+
+
+async def test_stage2_revoked_user_stays_revoked_after_upgrade(tmp_path):
+    import sqlite3
+    db = sqlite3.connect(tmp_path / "simp.db")
+    db.execute("CREATE TABLE users(id TEXT PRIMARY KEY, name TEXT UNIQUE, token_sha256 TEXT UNIQUE)")
+    db.execute("INSERT INTO users VALUES('1','alice','h1'), ('2','bob',NULL)")
+    db.commit()
+    db.close()
+    s = SqliteStore({"data_dir": str(tmp_path)})
+    await s.open()
+    try:
+        assert {u["name"]: u["active"] for u in await s.list_users()} == {"alice": 1, "bob": 0}
+        assert await s.count_users() == 1
+        await s.set_password("bob", "password123")
+        assert await s.login("bob", "password123") is None
+    finally:
+        await s.close()
+
+
+async def test_password_length_capped(tmp_path):
+    app, mgr = await accounts_app(tmp_path, 'signup_code = "c"\n')
+    async with client(app) as c:
+        r = await c.post("/api/signup", json={"name": "big", "password": "x" * 5000, "code": "c"})
+        assert r.status_code in (400, 422)
+        r = await c.post("/api/login", json={"name": "big", "password": "x" * 5000})
+        assert r.status_code in (401, 422)
+    await mgr.store.close()

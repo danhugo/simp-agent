@@ -359,11 +359,45 @@ async def test_restart_with_pending_approval(tmp_path):
     try:
         run2 = await mgr2.get(user, sid)
         assert run2.state == "error" and run2.pending is None
-        tail = [e["type"] for e in run2.log[-3:]]
-        assert tail == ["approval_resolved", "run_state", "notice"]
-        assert run2.log[-3]["decision"] == "aborted" and "interrupted" in run2.log[-1]["text"]
+        tail = [e["type"] for e in run2.log[-4:]]
+        assert tail == ["approval_resolved", "tool_result", "run_state", "notice"]
+        assert run2.log[-4]["decision"] == "aborted" and "interrupted" in run2.log[-1]["text"]
         await run2.command(p.Prompt(text="again"))  # usable afterwards (core repairs the dangling tool call)
         await wait_for(lambda: run2.state == "idle" and run2.task.done())
+    finally:
+        await mgr2.store.close()
+
+
+async def test_continue_after_restart_mid_approval(tmp_path):
+    (tmp_path / "settings.toml").write_text('[profiles.test]\napi = "fake"\nmodel = "m"\n')
+    settings = load_settings(tmp_path)
+    app = create_app(settings, FakeProvider(bash("c1", "echo hi")))
+    mgr = app.state.mgr
+    await mgr.store.open()
+    user = await mgr.store.user_by_token(await mgr.store.add_user("u"))
+    sid = (await mgr.store.add_session(user["id"], "test", "t"))["id"]
+    run = await mgr.get(user, sid)
+    await run.command(p.Prompt(text="go"))
+    await wait_for(lambda: run.pending is not None)
+    run.durable = lambda *a, **k: asyncio.sleep(0)
+    run.task.cancel()
+    await asyncio.gather(run.task, return_exceptions=True)
+    await mgr.store.close()
+
+    fp = FakeProvider(reply("resumed"))
+    app2 = create_app(settings, fp)
+    mgr2 = app2.state.mgr
+    await mgr2.store.open()
+    try:
+        run2 = await mgr2.get(user, sid)
+        await run2.command(p.Continue())
+        await wait_for(lambda: not run2.busy and run2.task.done())
+        assert fp.calls == 1 and run2.state == "idle"
+        results = [e for e in run2.log if e["type"] == "tool_result"]
+        assert results and results[-1]["call_id"] == "c1" and results[-1]["is_error"]
+        assert not [e for e in run2.log if e["type"] == "notice" and "Cannot continue" in e["text"]]
+        again = await mgr2.store.entries(user["id"], sid)  # the repair is durable: a later reload sees it
+        assert any(e["type"] == "msg" and e["data"].get("tool_call_id") == "c1" for e in again)
     finally:
         await mgr2.store.close()
 

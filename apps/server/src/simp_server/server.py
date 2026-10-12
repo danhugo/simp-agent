@@ -26,12 +26,13 @@ from typing import Protocol
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from simp_agent import ai
 from simp_agent.agent import api_key_opts
 from simp_agent.agent.env import ExecutionEnv, LocalEnv
-from simp_agent.ai import Context, CustomEntry, Model, ThinkingContent, UserMessage, from_dict, to_dict
+from simp_agent.ai import (Context, CustomEntry, Model, ThinkingContent, ToolResultMessage, UserMessage, from_dict,
+                           to_dict)
 from simp_agent.plugins import PlanMode, build_plugins
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
@@ -88,7 +89,8 @@ class LocalSandbox:
         pass
 
     async def remove(self, session_id: str) -> None:
-        shutil.rmtree(self.root / session_id, ignore_errors=True)
+        for d in (self.root / session_id, self.root.parent / "sandboxes" / session_id):  # + Stage 2 layout, never opened
+            shutil.rmtree(d, ignore_errors=True)
 
 
 class StaticTokenAuth:
@@ -100,9 +102,9 @@ class StaticTokenAuth:
         return await self.store.user_by_token(h[7:]) if h.startswith("Bearer ") else None
 
 
-class Account(BaseModel):
-    name: str
-    password: str
+class Account(BaseModel):  # caps keep scrypt and the db cheap whatever a client sends
+    name: str = Field(max_length=64)
+    password: str = Field(max_length=1024)
     code: str = ""
 
 
@@ -230,6 +232,15 @@ class Run:
         for e in self.log:
             if e["type"] == "approval_request" and e["call_id"] not in resolved:
                 await self.durable(p.ApprovalResolved, call_id=e["call_id"], decision="aborted")
+        msgs = self.session.agent.messages  # tool calls with no result yet: answer them so Continue has a valid history
+        done = {m.tool_call_id for m in msgs if m.role == "tool_result"}
+        last = next((m for m in reversed(msgs) if m.role == "assistant"), None)
+        for c in last.tool_calls() if last else ():
+            if c.id not in done:
+                m = ToolResultMessage(c.id, c.name, "aborted: the server restarted before this tool finished", True)
+                msgs.append(m)
+                await self.append(m)
+                await self.durable(p.ToolResult, call_id=c.id, tool=c.name, content=m.content, is_error=True)
         self.info.run_state = "error"  # any busy state -> error, bypassing check_transition on purpose
         await self.durable(p.RunState, state="error")
         await self.durable(p.Notice, level="warning", text="interrupted: the server restarted during this run")
@@ -460,7 +471,8 @@ class SessionManager:
         return self.runs[sid]
 
     def evictable(self, run: Run) -> bool:
-        return not run.busy and not run.subs and (run.task is None or run.task.done())
+        return (not run.busy and not run.subs and (run.task is None or run.task.done())
+                and (run.title_task is None or run.title_task.done()))
 
     async def evict(self, sid: str) -> None:
         """Free RAM and the container; files and log stay, the next get reloads from the store."""
@@ -487,6 +499,9 @@ class SessionManager:
         """Stop the run (if loaded), close its sandbox, and delete its workspace files."""
         run = self.runs.pop(sid, None)
         self.last_used.pop(sid, None)
+        if run and run.title_task and not run.title_task.done():  # deleted: no title call, no write to a gone session
+            run.title_task.cancel()
+            await asyncio.gather(run.title_task, return_exceptions=True)
         if run and run.task and not run.task.done():
             run.session.abort()
             run.task.cancel()
