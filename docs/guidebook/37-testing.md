@@ -6,7 +6,7 @@
 > **Code paths covered:** `pyproject.toml` (`[tool.pytest.ini_options]`), `packages/simp_agent/src/simp_agent/testing/__init__.py` (`FakeProvider`, `FakeEnv`), `.../testing/env_conformance.py` (`EnvConformance`), `apps/server/src/simp_server/fakellm.py`, `apps/server/src/simp_server/fake.py`, `Makefile` (`e2e`), `apps/web/playwright.config.ts`, `apps/web/e2e/`, `evals/run.py`, `evals/tasks/`, `evals/test_run.py`.
 > **Verified at commit:** `85f9d25`. Run on macOS without Docker: `uv run pytest -q` (190 passed, 11 skipped), `make e2e` (16 passed), `simp-server fake` (started, `GET /api/sessions` gave `[]`), `evals/run.py --help`. A real eval run was not done (it needs an API key and costs money).
 
-**Back:** [36 Extending: server plugins](36-server-plugins.md) · **Next:** 38 Decision records (not written yet)
+**Back:** [36 Extending: server plugins](36-server-plugins.md) · **Next:** [38 Decision records](38-decisions.md)
 
 ## 1. Three levels of checks
 
@@ -258,6 +258,6 @@ To add a task: drop a new `.toml` file in `evals/tasks/`, then update the name s
 - `make e2e` needs `pnpm install` and Chromium once; it uses its own `/tmp/simp-e2e`.
 - `evals/run.py` is the only thing here that costs money, and it runs shell on your host.
 
-**Back:** [36 Extending: server plugins](36-server-plugins.md) · **Next:** 38 Decision records (not written yet)
+**Back:** [36 Extending: server plugins](36-server-plugins.md) · **Next:** [38 Decision records](38-decisions.md)
 
-**Built on by:** 38 Decision records (not written yet).
+**Built on by:** [38 Decision records](38-decisions.md).

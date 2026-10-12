@@ -73,7 +73,7 @@ Rules worth knowing:
 
 ## 4. SSE + POST, `seq`, offsets, snapshot
 
-Why two channels? Commands are short requests (POST). Events flow one way, server to browser, for a long time — this is what Server-Sent Events (SSE) is made for. It works over plain HTTP and the browser reconnects by itself. (The full reasons: 38 Decision records, not written yet.)
+Why two channels? Commands are short requests (POST). Events flow one way, server to browser, for a long time — this is what Server-Sent Events (SSE) is made for. It works over plain HTTP and the browser reconnects by itself. (The full reasons: [38 Decision records](38-decisions.md#2-sse--post-not-websocket).)
 
 The server sends two kinds of events:
 
