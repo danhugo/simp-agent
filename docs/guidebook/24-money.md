@@ -16,7 +16,7 @@ After each model answer, the server saves a row in the `usage` table (in `simp.d
 cost = (input tokens × price_in + output tokens × price_out) / 1,000,000
 ```
 
-The prices come from the [profile](21-configuration.md#3-profiles) (`price_in`, `price_out`, USD per 1M tokens). Not the provider's bill: the server only knows your prices. Wrong prices mean wrong limits.
+The prices come from the [profile](21-configuration.md#3-profilesname) (`price_in`, `price_out`, USD per 1M tokens). Not the provider's bill: the server only knows your prices. Wrong prices mean wrong limits.
 
 ## 2. Two limits
 
