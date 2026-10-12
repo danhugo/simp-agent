@@ -42,3 +42,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - Note: links to chapters not yet written are plain text; they become links when those chapters exist.
 - v3 ch 03 The stream parser written (parse in openai_completions.py: text, tool-call assembly, stop reasons, usage); glossary: Delta, Usage.
 - v3 ch 04 Providers written (registry, lazy import, transform_messages and thinking replay, three providers, is_retryable / is_context_overflow); glossary: Agent loop, Provider registry, Context overflow.
+- v3 ch 05 The agent loop written (AgentTool, ToolContext, run_tool, LoopConfig, agent_loop, _llm_turn; test_core.py); glossary: Turn, Agent tool, Tool context, Execution environment.
