@@ -55,7 +55,7 @@ For the exact files in each folder, open the folder or see the root [README](../
 - `apps/server` (`simp_server`) — the team server (Part 2, from [20](20-operator-tutorial.md)). It adds users, the database, [sandboxes](glossary.md#sandbox) and [budgets](glossary.md#budget).
 - `apps/web` — the browser page ([11](11-web.md)). It talks only to the server.
 
-The server also has its **own** plugin slots — `Sandbox`, `Store`, `Auth` (Protocols in `apps/server/src/simp_server/server.py`), chosen in the `[plugins]` table ([21](21-configuration.md)). These are a different kind from the library's agent plugins; see 36. Server internals: 32.
+The server also has its **own** plugin slots — `Sandbox`, `Store`, `Auth` (Protocols in `apps/server/src/simp_server/server.py`), chosen in the `[plugins]` table ([21](21-configuration.md)). These are a different kind from the library's agent plugins; see 36. Server internals: [32](32-server-inside.md).
 
 Both Python apps work mostly through `session`'s `AgentSession`, and also import a few things from lower layers (for example message types from `ai`). The direction is always app → library. **The library never imports an app.**
 
@@ -99,10 +99,10 @@ Two details:
 ## 6. Where to go next
 
 - How a message travels through `ai` → `agent` → `session`: [31 How one turn flows](31-turn-flow.md).
-- What is inside the server: 32 The server inside.
+- What is inside the server: [32 The server inside](32-server-inside.md).
 - How to add providers, tools and plugins: 34, 35, 36 Extending.
 
 ---
 
-**Built on by:** [31 How one turn flows](31-turn-flow.md), 32 The server inside, 34–36 Extending (not written yet).
+**Built on by:** [31 How one turn flows](31-turn-flow.md), [32 The server inside](32-server-inside.md), 34–36 Extending (not written yet).
 **Builds on:** [00](00-introduction.md), [10](10-cli.md), [11](11-web.md), [20](20-operator-tutorial.md), [21](21-configuration.md), [27](27-troubleshooting.md).

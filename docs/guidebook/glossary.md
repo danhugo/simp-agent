@@ -42,6 +42,9 @@ The most text (in tokens) the model can read at one time: the [system prompt](#s
 Code: `context_window` on the model, used in `packages/simp_agent/src/simp_agent/agent/compaction.py`.
 Introduced in [13](13-working-well.md#3-long-sessions-and-compaction--both). Home: [31 How one turn flows](31-turn-flow.md#when).
 
+## Durable event
+A server event that gets a `seq` number and is saved in SQLite (user message, assistant message, tool result, approval, run state, notice…). A tab that reconnects gets the ones it missed. Compare [live event](#live-event). Code: `apps/server/src/simp_server/protocol.py`. Home: [32 The server inside](32-server-inside.md#4-sse--post-seq-offsets-snapshot).
+
 ## Execution environment
 Where [tools](#tool) read and write files and run commands. In code it is the `ExecutionEnv`
 protocol. The library ships one: `LocalEnv`, which uses this machine (optionally limited to
@@ -77,6 +80,9 @@ The `simp-server pause` command. It makes a `PAUSED` file, and every LLM call is
 One folder under `packages/simp_agent/src/simp_agent/`: `ai`, `agent`, `coding`, `session`, `plugins`,
 `testing`, in that order. A layer may import only layers to its left; the library never imports an app.
 Checked by `packages/simp_agent/tests/test_layers.py`. Home: [30 Architecture](30-architecture.md).
+
+## Live event
+A small stream piece from the server (`text_delta`, `thinking_delta`, `tool_output`). It has no `seq` and is not saved; its `offset` says where it goes in the text so far. Compare [durable event](#durable-event). Home: [32 The server inside](32-server-inside.md#4-sse--post-seq-offsets-snapshot).
 
 ## Message
 One item in a conversation. There are three kinds that the model sees:
@@ -136,7 +142,7 @@ Code: `apps/cli/src/simp_cli/repl.py`.
 Introduced in [01](01-quick-start.md#34-chat-back-and-forth). Home: [10 The CLI](10-cli.md).
 
 ## Run
-One piece of server work started by one prompt (or a compact or continue), from start until the agent stops. The run limit of the [budget](#budget) counts per run. Home: [24 Money and limits](24-money.md#2-two-limits).
+One piece of server work started by one prompt (or a compact or continue), from start until the agent stops. The run limit of the [budget](#budget) counts per run. (Not the same as the class `Run`, which holds one loaded session: [32](32-server-inside.md#2-a-run-one-loaded-session).) Home: [24 Money and limits](24-money.md#2-two-limits).
 
 ## Sandbox
 The server's way to give each [session](#session) its own [execution environment](#execution-environment),
@@ -155,6 +161,9 @@ approval, and [plugins](#plugin). The CLI saves sessions as JSONL files in
 `~/.simp-agent/sessions/`; the server saves them in SQLite.
 Code: `packages/simp_agent/src/simp_agent/session/__init__.py`.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [31 How one turn flows](31-turn-flow.md#4-session-retry-and-overflow-recovery).
+
+## Snapshot
+The one event a tab gets right after the missed [durable events](#durable-event) when it connects: last `seq`, run state, the text still streaming, pending approval, title, plan mode. Then the live stream follows. Home: [32 The server inside](32-server-inside.md#4-sse--post-seq-offsets-snapshot).
 
 ## Steer
 In the [REPL](#repl), a message typed while the agent is running. The agent reads it before

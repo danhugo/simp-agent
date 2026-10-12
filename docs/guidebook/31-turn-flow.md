@@ -6,7 +6,7 @@
 > **Code paths covered:** `packages/simp_agent/src/simp_agent/ai/__init__.py` (`stream`, `transform_messages`, `is_retryable`, `is_context_overflow`), `.../agent/__init__.py` (`agent_loop`, `_llm_turn`, `run_tool`, `Agent`), `.../agent/compaction.py`, `.../session/__init__.py` (`AgentSession`).
 > **Verified at commit:** `2c2cdc7` (read from code; not stepped through in a debugger).
 
-**Back:** [30 Architecture](30-architecture.md) · **Next:** 32 The server inside (not written yet)
+**Back:** [30 Architecture](30-architecture.md) · **Next:** [32 The server inside](32-server-inside.md)
 
 Chapter 30 gave the map. This chapter walks one road: one user prompt, from the app down to the model and back. Each layer adds one job, so we go from the outside in.
 
@@ -185,5 +185,5 @@ On every `message_end` the session calls `store.append(message)` right away. So 
 
 ---
 
-**Built on by:** 32 The server inside, 34 Extending: providers, 35 Extending: tools and agent plugins (not written yet).
+**Built on by:** [32 The server inside](32-server-inside.md), 34 Extending: providers, 35 Extending: tools and agent plugins (not written yet).
 **Builds on:** [00](00-introduction.md), [10](10-cli.md) (`/compact`), [13](13-working-well.md), [30](30-architecture.md).
