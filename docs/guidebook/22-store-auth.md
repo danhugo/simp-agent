@@ -62,7 +62,55 @@ It works for one happy demo. It breaks when:
 3. **Two users share the server.** `sessions` is not tied to a user. If Bob guesses Ann's session id, he reads her chat.
 4. **A run dies in the middle.** Nothing marks it as stopped. The client waits forever.
 
+## Step by step: from naive to real
+
+**Step 1 — put it on disk (fix 1).** Use a SQLite file instead of dicts:
+
+```python
+self.db = await aiosqlite.connect(self.path)   # <data_dir>/simp.db
+await self.db.executescript(SCHEMA)
+```
+
+Why: a file stays after the process stops.
+
+**Step 2 — store hashes, not tokens (fix 2).** Keep only the SHA-256 of a token:
+
+```python
+def sha(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+```
+
+Why: a copied database then holds nothing that can log in.
+
+**Step 3 — scope every read by user (fix 3).** Put `user_id` in each `WHERE`:
+
+```python
+"SELECT * FROM sessions WHERE id=? AND user_id=?", sid, user_id
+```
+
+Why: Bob asking for Ann's session id finds no row.
+
+**Step 4 — save events as they happen.** Write each message and event to one `entries` table, with one `seq` counter:
+
+```python
+self.seq += 1
+await self.mgr.store.add_entry(self.user_id, self.sid, self.seq, "msg", to_dict(entry))
+```
+
+Why: after a restart we can read the rows back in exact order.
+
+**Step 5 — close a dead run (fix 4).** On load, if the run was busy, answer open tool calls and set state `error`:
+
+```python
+self.info.run_state = "error"
+await self.durable(p.RunState, state="error")
+```
+
+Why: the history must be valid again. The next section shows the full code.
+
 ## Real design
+
+Put the five steps together and you get the real store. Let us go through it part by part.
 
 ### SqliteStore: one file, five tables
 
@@ -105,16 +153,9 @@ await self.db.execute("PRAGMA journal_mode=WAL")
 await self.db.executescript(SCHEMA)
 ```
 
-**[WAL](glossary.md#wal)** (write-ahead log) is a SQLite mode. Readers do not wait for a writer, and a crash does not leave a half-written database. After that, `open()` checks for old columns. A database from an older stage gets `cost`, `password` and `disabled` added with `ALTER TABLE`. So an old `simp.db` still opens. We do not need a migration tool for three columns.
+**[WAL](glossary.md#wal)** (write-ahead log) is a SQLite mode. Readers do not wait for a writer, and a crash does not leave a half-written database. After that, `open()` checks for old columns. A database from an older stage gets `cost`, `password` and `disabled` added with `ALTER TABLE`.
 
-Why SQLite and not Postgres? The server runs on one machine ([26](26-system-tests-deploy.md)). SQLite is in the Python standard library, needs no extra process, and backs up by copying one file. The server loads the store as a plugin, so you can swap it:
-
-```python
-DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_server.store:SqliteStore",
-                   "auth": "simp_server.server:StaticTokenAuth"}
-```
-
-(`apps/server/src/simp_server/server.py`.) The `Store` protocol in `server.py` only lists `open()` and says "see store.SqliteStore for the full method list".
+Why SQLite and not Postgres? The server runs on one machine ([26](26-system-tests-deploy.md)). SQLite is in the standard library, needs no extra process, and backs up by copying one file. The store is a plugin (`DEFAULT_PLUGINS` in `apps/server/src/simp_server/server.py`), so you can swap it.
 
 ### Token hashes
 
@@ -134,7 +175,7 @@ async def add_user(self, name: str, password: str | None = None, token: bool = T
 
 This fixes problem 2. If someone copies `simp.db`, they get hashes, not tokens. A hash cannot be sent back as a token. The token is shown **once** (the `seed` command prints it), then it lives only with the user.
 
-Why plain SHA-256 here, and a slow hash for passwords (below)? A token is 32 random bytes. Nobody can guess it, so a fast hash is enough. A password is chosen by a human and can be guessed, so it needs a slow hash.
+Why a fast hash here? A token is 32 random bytes. Nobody can guess it. A password can be guessed, so it gets a slow hash (below).
 
 There are two kinds of token:
 
@@ -159,8 +200,6 @@ async def authenticate(self, request: Request) -> dict | None:
     h = request.headers.get("authorization", "")
     return await self.store.user_by_token(h[7:]) if h.startswith("Bearer ") else None
 ```
-
-Every API route depends on `user()`, which raises `HTTPException(401, "bad token")` when this returns `None`.
 
 `revoke` sets `disabled=1`, clears the static token and deletes all device tokens. `rotate_token` deletes device tokens, sets a new static token and turns the user back on. In both cases every old token stops working at once.
 
@@ -204,7 +243,7 @@ async def login(self, name: str, password: str) -> str | None:
     return token
 ```
 
-The routes are in `server.py`: `/api/signup`, `/api/login`, `/api/logout`. Sign-up is closed unless `signup_code` is set in settings. The code is checked with `hmac.compare_digest`. The name must match `[a-z0-9_-]{2,32}` and the password needs at least `MIN_PASSWORD = 8` characters. The `Account` model also caps sizes (`max_length=64` for the name, `1024` for the password) "so scrypt and the db stay cheap whatever a client sends".
+The routes are in `server.py`: `/api/signup`, `/api/login`, `/api/logout`. Sign-up is closed unless `signup_code` is set in settings. The code is checked with `hmac.compare_digest`. The name must match `[a-z0-9_-]{2,32}` and the password needs at least `MIN_PASSWORD = 8` characters.
 
 ### Durable events
 
@@ -233,8 +272,6 @@ async def durable(self, cls, **kw) -> None:
     await self.mgr.store.add_entry(self.user_id, self.sid, ev["seq"], ev["type"], ev)
 ```
 
-`add_entry` also updates `sessions.updated`, so the session list sorts by last activity.
-
 When a session is loaded again, `Run.__init__` splits the rows back:
 
 ```python
@@ -243,7 +280,7 @@ self.log = [e["data"] for e in entries if e["type"] != "msg"]  # ponytail: whole
 messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
 ```
 
-The `msg` rows rebuild the `AgentSession` history (what the model sees). The other rows rebuild the protocol log (what clients see). The last `run_state` sets the state, and `self.seq` continues from the last row. Why one table and one counter? Because the order between "the model said X" and "the client saw Y" is then exact, and one `ORDER BY seq` read gives both.
+The `msg` rows rebuild the `AgentSession` history (what the model sees). The other rows rebuild the protocol log (what clients see). The last `run_state` sets the state, and `self.seq` continues from the last row.
 
 ### recover
 
@@ -303,13 +340,10 @@ async def test_revoke_rotate_delete(tmp_path):
 
 What it checks:
 
-- `opened(tmp_path)` makes a real `SqliteStore` in a temp folder. No mocks: it is a real SQLite file.
 - After `rotate_token`, the old token fails and the new one works.
 - After `revoke`, the token fails, a second `revoke` returns `False`, and the user is still listed but not counted.
 - `delete_session("someone-else", ...)` fails: the `user_id` scope works for writes too.
 - Deleting a session also deletes its entries, but usage (money spent) stays.
-
-The HTTP side is tested in `apps/server/tests/test_accounts.py` (for example `test_login_logout_revoke_rotate`).
 
 Run them:
 
@@ -320,6 +354,11 @@ uv run pytest apps/server/tests/test_store.py apps/server/tests/test_accounts.py
 ## Why this way
 
 > **One SQLite file, hashes only, every row scoped by user.** SQLite fits a one-machine server: no extra process, crash safe with WAL, backup is a file copy. Storing only hashes means a leaked database does not leak logins. Putting `user_id` in every query makes "see only your own data" the default, not a check you might forget. Events and messages share one `seq` in one table, so replay ([21](21-transport.md)) and resume ([13](13-session.md)) read the same rows. The cost: one writer at a time and the whole event log in memory per open session (marked `ponytail:` in the code). For many machines you would swap the `store` plugin.
+
+## Exercises
+
+1. Add a line to `test_revoke_rotate_delete`: after `revoke("a")`, check that `rotate_token("a")` gives a working token again. Run the test.
+2. Use `sqlite3` on a test `simp.db`: run `SELECT token_sha256 FROM users;`. Can you use the value as a Bearer token? Why not?
 
 ## Recap
 
