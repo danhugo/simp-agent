@@ -4,6 +4,8 @@
 
 **Builds on:** [12 Evals](12-evals.md) · **Next:** [14 Plugins](14-plugins.md)
 
+## Where we are
+
 ```mermaid
 flowchart LR
     ai --> agent --> coding --> session --> plugins --> testing
@@ -50,6 +52,40 @@ It works for one happy run of the fizzbuzz task. It breaks when:
 1. **The process dies mid-run.** The model wrote `fizzbuzz.py` (a real side effect) but the file of messages never got saved. On resume, the model does not know it already wrote the file.
 2. **You want to save somewhere else.** The server wants a database ([22](22-store-auth.md)), tests want a list in memory. The file path is baked in.
 3. **Each app repeats this.** The CLI and the server both need the same wiring.
+
+## Step by step: from naive to real
+
+We fix the naive version one problem at a time. Each step is small.
+
+**Step 1: save each message when it ends.** The naive code saves only at the end, so a crash loses the whole run. The agent already sends a `message_end` event for every finished message ([06](06-events-abort.md)). So we listen to it and save right there:
+
+```python
+agent.subscribe(lambda e: e["type"] == "message_end" and save(e["message"]))
+```
+
+Now a crash loses at most the message that was still streaming.
+
+**Step 2: append, do not rewrite.** A finished message never changes. So we do not need to write the whole list again. We only add one line at the end of the file (mode `"a"`). This is cheap and safe.
+
+**Step 3: hide the storage behind two methods.** The file path is baked in. The server wants a database, tests want a list. So the session only knows `append(entry)` and `load()`. This is the `SessionStore` protocol. A list in memory is now a full store:
+
+```python
+class ListStore:
+    def __init__(self, items=()):
+        self.items = list(items)
+    def append(self, entry):
+        self.items.append(entry)
+    def load(self):
+        return list(self.items)
+```
+
+**Step 4: allow an async store.** A database store needs `await`. So the session calls `await _maybe_await(self.store.append(...))`. A sync store returns `None` and works too.
+
+**Step 5: let the app load.** The app knows which session to resume (an id, the latest one). So the library does not load by itself. The app passes the list in: `AgentSession(..., messages=store.load())`.
+
+**Step 6: one class that owns the agent.** The CLI and the server must not repeat the wiring. So `AgentSession` builds the `Agent` with good defaults (tools, env, prompt), connects the store, and gives apps one place to `subscribe`, `prompt` and `continue_`.
+
+The result is the real code below.
 
 ## Real design
 
@@ -221,6 +257,11 @@ uv run pytest packages/simp_agent/tests/test_session.py::test_store_gets_every_m
 
 > **Own the agent, save on every message.** `AgentSession` wraps `Agent` instead of growing it. The loop stays small and testable ([05](05-agent-loop.md)); the session adds the "long-lived" features on top through the agent's sockets. Saving on each `message_end` with a two-method `SessionStore` makes history crash safe and lets each app pick its own storage. The cost: the app must call `store.load()` and pass `messages=` itself.
 
+## Exercises
+
+1. Write a `PrintStore` whose `append` prints `entry.role` and keeps the entry in a list. Run a session with `FakeProvider` (copy `session(...)` from `test_session.py`) and check the printed order is `user, assistant, tool_result, assistant`. Hint: reuse the `FakeProvider(...)` call from the test above.
+2. Make an async store: `async def append(self, entry)`. Does the session still save every message? Hint: look at `_maybe_await` in `agent/__init__.py`.
+
 ## Recap
 
 - `AgentSession` owns one `Agent` and connects to its hooks and events.
@@ -238,4 +279,5 @@ uv run pytest packages/simp_agent/tests/test_session.py::test_store_gets_every_m
 - **SessionStore** — protocol with `append(entry)` and `load()`; where a session saves its history.
 - **CustomEntry** — app or plugin data in history; saved and resumed, never sent to the model.
 - **JSONL** — a file with one JSON object per line.
+- **_maybe_await** — helper that awaits a value only if it is awaitable; lets a store be sync or async.
 - **append-only history** — finished messages are never changed or removed; new entries are only added at the end.
