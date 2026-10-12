@@ -37,7 +37,7 @@ chunk 3: tool_calls[0] = {index: 0,                        arguments: '"a"}'}  f
 chunk 4: (no choices)  usage = {prompt_tokens: 7, completion_tokens: 3}
 ```
 
-No single chunk holds valid JSON. The `id` and `name` come only in the first piece. Usage comes in an extra chunk at the very end, with no `choices` at all. The rest of simp-agent wants none of this. The [agent loop](glossary.md#agent-loop) (ch [05](05-agent-loop.md)) wants one `AssistantMessage` with clean `TextContent` and `ToolCall` parts, a `stop_reason`, and `usage`.
+No single chunk holds valid JSON. The `id` and `name` come only in the first piece. Usage comes in an extra chunk at the very end, with no `choices` at all. The rest of simp-agent wants none of this. The agent loop (ch [05](05-agent-loop.md)) wants one `AssistantMessage` with clean `TextContent` and `ToolCall` parts, a `stop_reason`, and `usage`.
 
 So we need two things at once:
 
@@ -212,7 +212,7 @@ Four cases:
 | nothing | `error` "Stream ended without finish_reason" | the connection was probably cut; the answer may be half |
 | nothing, but `compat["supports_finish_reason"]` is `False` | `tool_use` or `stop` | some servers never send it; trust what we got |
 
-Plus one fix: vLLM and Ollama say `stop` even when they called a tool. If we have tool calls, the stop reason becomes `tool_use`. This matters because the loop uses `stop_reason` and the tool calls to decide whether to run tools (ch [05](05-agent-loop.md)).
+Plus one fix: vLLM and Ollama say `stop` even when they called a tool. If we have tool calls, the stop reason becomes `tool_use`. This keeps `stop_reason` true for UIs, events and saved history. The loop itself runs tools from `tool_calls()`, not from `stop_reason` (ch [05](05-agent-loop.md)).
 
 The last event is `error` when the stop reason is `error`, else `done`. That keeps the [stream function](glossary.md#stream-function) contract from [02](02-fake-provider.md): the end event always holds the full message, and nothing is raised.
 
@@ -269,6 +269,8 @@ A network error or a 401 becomes an `error` event, not an exception. We split `p
 | `toolcall_end` | — | after the stream, once per call |
 | `done` / `error` | `message` | last, always exactly one |
 
+Note: `thinking_end` comes only when text follows the thinking. A UI must not wait for it.
+
 Only `start`, `done` and `error` carry a message. The loop needs only the last event; the middle ones are for people watching (ch [06](06-events-abort.md)).
 
 ## Test
@@ -304,7 +306,7 @@ Other tests in the file cover each naive failure:
 - `test_text_only` — "Hel" + "lo" gives one text "Hello".
 - `test_parallel_by_index_and_by_id` — two calls by `index`; and a server with no `index` that is matched by `id`, plus a made-up `call_` id.
 - `test_finish_reasons` — `stop` with tool calls becomes `tool_use`; `length`; unknown `content_filter` and a missing finish reason both give an `error` event.
-- `test_bad_json_gives_validation_error` — `'{"path": '` becomes `{"_raw": ...}`, and `run_tool` then returns an error result with "Invalid arguments".
+- `test_bad_json_gives_validation_error` — `'{"path": '` becomes `{"_raw": ...}`, and `run_tool` (built in ch [05](05-agent-loop.md)) then returns an error result with "Invalid arguments".
 
 Run them:
 
