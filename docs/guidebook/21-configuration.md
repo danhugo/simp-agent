@@ -30,7 +30,7 @@ flowchart LR
 | `data_dir` | the home folder (`~/.simp-server`) | Where the database, `workspaces/`, `.env` and the `PAUSED` file live. `~` is expanded. |
 | `host` | `"127.0.0.1"` | The address the server listens on. Keep it local unless you know why not. |
 | `allowed_hosts` | `["localhost", "127.0.0.1"]` | Host names the server accepts in the `Host` header. Any other name gets **403 bad host**. This stops DNS-rebinding tricks. If users reach you by a name or LAN address, add it (without the port). |
-| `signup_code` | none | The shared invite code for the sign-up page. **Not set = sign-up is closed** (403). See 22. |
+| `signup_code` | none | The shared invite code for the sign-up page. **Not set = sign-up is closed** (403). See [22 Users and accounts](22-users.md). |
 | `default_profile` | the first profile in the file | Used when a new [session](glossary.md#session) names no profile. |
 | `allow_local_sandbox` | `false` | With more than one user and `LocalSandbox`, the server refuses to start or sign up (no isolation). `true` turns this check off. For tests only. |
 | `files_max_bytes` | `52428800` (50 MiB) | Biggest file the file API will serve. |

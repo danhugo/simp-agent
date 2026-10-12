@@ -38,7 +38,7 @@ simp-server seed --name alice                # prints a token once
 simp-server seed --name alice --password     # also asks for a password
 ```
 
-With `--password` the command asks twice and wants at least 8 characters. Save the token at once; it is printed one time. Names must be unique (a taken name shows a Python error, not a friendly message). The CLI does not check the name pattern; web sign-up does. There is no command to delete a user. When you add a second active user while the sandbox is `LocalSandbox`, `seed` prints a warning (the server will refuse to start next time). See [23](#) and [21](21-configuration.md#2-top-level-keys).
+With `--password` the command asks twice and wants at least 8 characters. Save the token at once; it is printed one time. Names must be unique (a taken name shows a Python error, not a friendly message). The CLI does not check the name pattern; web sign-up does. There is no command to delete a user. When you add a second active user while the sandbox is `LocalSandbox`, `seed` prints a warning (the server will refuse to start next time). See 23 Sandboxes (not written yet) and [21](21-configuration.md#2-top-level-keys).
 
 ## 3. Self sign-up with one shared code
 
@@ -46,7 +46,10 @@ Set `signup_code = "some-long-word"` in `settings.toml` ([21](21-configuration.m
 
 - Name (400 if bad): 2–32 characters of `a-z 0-9 _ -`.
 - Password (400 if short): at least 8 characters.
-- The name must be free (else 409). With `LocalSandbox` and more than one user, sign-up is refused (409).
+- A name over 64 characters or a password over 1024 gets 422.
+- With `LocalSandbox`, sign-up is refused (409) as soon as **one** active user exists, unless `allow_local_sandbox = true`.
+- The name must be free (else 409).
+- Order of checks: code (403), name (400), password (400), sandbox (409), taken name (409). A wrong code always wins.
 - A wrong code, or no `signup_code` in the file (sign-up **closed**), gives the same 403 message: "sign-up is closed or the invite code is wrong".
 - On success the user is signed in at once (the page gets a token).
 
@@ -58,7 +61,7 @@ There is **one** code for everybody. You cannot make a code per person or expire
 simp-server passwd --name alice     # asks for the new password
 ```
 
-It asks twice and wants at least 8 characters. It also adds a password to a user made by `seed` without one. It does **not** end devices that are already signed in, and it works on a revoked user too (he stays revoked).
+On an unknown name it says "no user named …". It asks twice and wants at least 8 characters. It also adds a password to a user made by `seed` without one. It does **not** end devices that are already signed in, and it works on a revoked user too (they stay revoked).
 
 ## 5. List users: `users`
 
@@ -72,20 +75,20 @@ bob     revoked
 
 | Command | What happens |
 |---|---|
-| `revoke --name bob` | Marks bob disabled, clears his static token, deletes all his device tokens. Prints `revoked`. Fails if bob is not active. |
-| `rotate --name bob` | Makes a **new** static token (printed once), deletes his device tokens, and **re-enables** him if he was revoked. |
+| `revoke --name bob` | Marks bob disabled, clears the static token, deletes all device tokens. Prints `revoked`. Fails if bob is not active. |
+| `rotate --name bob` | Makes a **new** static token (printed once), deletes the device tokens, and **re-enables** the user if revoked. |
 
 What a revoked user feels:
 
 - Every request with an old token gets 401.
-- Password login fails (401, same message as a wrong password). In the web page he sees "That token was not accepted." ([11](11-web.md)); he is not told he is revoked, so tell him.
-- A run in progress stops at its next model call with `budget: user revoked` (see [24](#)). It is checked before each LLM call, so one call already running may finish.
+- Password login fails with 401 "Wrong username or password." (same as a wrong password). A pasted old token shows "That token was not accepted." in the web page ([11](11-web.md)). The user is not told they are revoked, so tell them.
+- A run in progress stops at its next model call with `budget: user revoked` (see 24 Money and limits, not written yet). It is checked before each LLM call, so one call already running may finish.
 - An open event stream ends at its next heartbeat check (every 15 seconds when idle).
 - His sessions and files stay on disk. Nothing is deleted.
 
 Unknown name gives "no active user named …" for `revoke` (also when already revoked) and "no user named …" for `rotate`.
 
-`rotate` is both "he lost his token" and "let him back in". After `rotate`, his password (if any) works again, because revoke does not erase it. `rotate` does not check the sandbox rule: re-enabling a user can take you above one active user on `LocalSandbox` with no warning (see [21](21-configuration.md#2-top-level-keys), `allow_local_sandbox`). To lock someone out for good, `revoke` and keep him revoked; to remove the password too, there is no command (a known gap).
+`rotate` is both "the user lost the token" and "let him back in". After `rotate`, the password (if any) works again, because revoke does not erase it. `rotate` does not check the sandbox rule: re-enabling a user can take you above one active user on `LocalSandbox` with no warning (see [21](21-configuration.md#2-top-level-keys), `allow_local_sandbox`). To lock someone out for good, `revoke` and keep them revoked; to remove the password too, there is no command (a known gap).
 
 ## 7. Devices and sign-out
 
@@ -106,4 +109,4 @@ Each password login adds a device token. Nothing in the code expires them. **Sig
 ---
 
 **Built on by:** 23 Sandboxes, 24 Money and limits, 26 Security model, 27 Troubleshooting (all not written yet).
-**Builds on:** [11 The web UI](11-web.md) (the login screen), [20](20-operator-tutorial.md), [21](21-configuration.md).
+**Builds on:** [11 The web UI](11-web.md) (the login screen), [20 Operator tutorial](20-operator-tutorial.md), [21 Configuration reference](21-configuration.md).

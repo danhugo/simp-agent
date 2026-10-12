@@ -111,7 +111,7 @@ With `LocalSandbox`, tools run on your Mac as you. That is fine for one person, 
 So the server **refuses to start** with several users and `LocalSandbox`, and sign-up is refused
 too. In this tutorial `settings.toml` already names `DockerSandbox`, so you will not see it.
 
-**Home:** 22 Users and accounts.
+**Home:** [22 Users and accounts](22-users.md).
 
 ## 6. Start the server
 
@@ -160,7 +160,7 @@ hung	active
 Give the signup code only to people you trust: anyone with it can make an account that spends
 your money.
 
-**Home:** 22 Users and accounts (passwords, `revoke`, `rotate`).
+**Home:** [22 Users and accounts](22-users.md) (passwords, `revoke`, `rotate`).
 
 ## 8. See the budget
 
@@ -241,10 +241,10 @@ here: running as a service, logs and upgrades (25), the security model (26), pro
 
 ---
 
-**Next:** [21 Configuration reference](21-configuration.md), then 22 Users and accounts, 23 Sandboxes, 24 Money and
+**Next:** [21 Configuration reference](21-configuration.md), then [22 Users and accounts](22-users.md), 23 Sandboxes, 24 Money and
 limits, 25 Day-to-day ops, 26 Security model and known gaps, 27 Troubleshooting.
 
-*(Chapters 22–27 are not written yet.)*
+*(Chapters 23–27 are not written yet.)*
 
 **Back:** [13 Working well with the agent](13-working-well.md), [01 Quick start](01-quick-start.md).
 
