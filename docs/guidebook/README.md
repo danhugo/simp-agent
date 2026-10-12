@@ -74,5 +74,3 @@ Everyone reads Part 0. Then read only your part; parts link back to what they ne
 4. Keep up to date: every project change → a book-update task. Full re-read after each part and at each new stage.
 5. Source of truth: the book. Later, the README shrinks to pitch + quick start + links (separate task, after Part 2).
 6. Later: generate reference pages (CLI help, settings keys) and add a CI drift check.
-
-Open issue for project: ROADMAP lists web plan mode in both Stage 3 and Stage 4.

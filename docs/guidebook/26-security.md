@@ -57,7 +57,13 @@ Small limits keep one client from hurting the others: at most 20 queued messages
 Markdown from the model is shown in the browser. A remote image would make your browser fetch a URL chosen by the model, which can leak data in the URL. The web UI shows an image as a plain link `[image: alt] url` and does not load it. If you click the link, it opens in a new tab: that is your choice, not automatic.
 
 ### 2.6 Secret redaction
-The `redact_secrets` plugin is always on in the server. It replaces known secrets with `[REDACTED]` in tool output and in what is sent to the LLM: the server's own keys, values of environment variables whose names contain `KEY`, `TOKEN`, `SECRET` or `PASSWORD`, and common key shapes (`sk-…`, JWT, AWS `AKIA…`, GitHub `ghp_…`). This is a net with holes: a secret in another shape, or split in pieces, is not caught. Environment values shorter than 8 characters are ignored.
+The `redact_secrets` plugin is always on in the server. It replaces known secrets with `[REDACTED]` in tool output and in what is sent to the LLM:
+
+- the server's own keys;
+- values of environment variables whose names contain `KEY`, `TOKEN`, `SECRET` or `PASSWORD`;
+- common key shapes (`sk-…`, JWT, AWS `AKIA…`, GitHub `ghp_…`).
+
+This is a net with holes: a secret in another shape, or split in pieces, is not caught. Environment values shorter than 8 characters are ignored.
 
 ### 2.7 Files stay inside the workspace
 The file API and the tools resolve every path and refuse one that leaves the session folder, including `..` and symlinks. Downloads are sent as `application/octet-stream`, so the browser saves a file instead of showing it as a web page. With `LocalSandbox` this check is the only wall.

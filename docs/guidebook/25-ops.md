@@ -136,7 +136,15 @@ Also know:
 
 ## 5. When the server restarts
 
-Stopping or crashing the server does not lose history: every event is stored in the database as it happens. But a [run](glossary.md#run) that was in progress cannot go on. Recovery does **not** happen at start. It happens the first time a session is loaded after the restart (when someone opens it or sends to it). A busy session that nobody opens stays as it was, and its log line and notice appear only then. When a session is loaded, it is **recovered**:
+Stopping or crashing the server does not lose history: every event is stored in the database as it happens.
+
+But a [run](glossary.md#run) that was in progress cannot go on.
+
+- Recovery does **not** happen at start.
+- It happens the first time a session is loaded after the restart (when someone opens it or sends to it).
+- A busy session that nobody opens stays as it was, and its log line and notice appear only then.
+
+When a session is loaded, it is **recovered**:
 
 1. The log gets the line `recovered interrupted run`.
 2. Approvals that nobody answered are closed as `aborted`.

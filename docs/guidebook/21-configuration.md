@@ -113,4 +113,9 @@ Why the cap: each loaded session may hold a Docker container, which costs memory
 
 Edit the file and restart the server. Settings are read once at start. To check a sandbox setting before users come, see the steps in [20](20-operator-tutorial.md).
 
+---
+
+**Built on by:** [22 Users and accounts](22-users.md), [23 Sandboxes](23-sandboxes.md), [24 Money and limits](24-money.md), [25 Day-to-day ops](25-ops.md), [27 Troubleshooting](27-troubleshooting.md), [34 Extending: providers](34-providers.md).
+**Builds on:** [20 Operator tutorial](20-operator-tutorial.md).
+
 **Back:** [20 Operator tutorial](20-operator-tutorial.md) · **Next:** [22 Users and accounts](22-users.md)
