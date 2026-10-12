@@ -1,21 +1,290 @@
 # 12 Part 3 · Evals
 
-> Skeleton only. Prose not written yet.
-
 **Goal:** Measure the agent on real tasks; each later Part adds a case.
 
-**Builds on:** [11-system-prompt](11-system-prompt.md) · **Next:** [13-session](13-session.md)
+**Builds on:** [11 The system prompt](11-system-prompt.md) · **Next:** [13 Sessions](13-session.md)
 
-## Planned sections
+## Where we are
 
-- evals/run.py
-- Writing an eval case
-- Host-shell warning
+```mermaid
+flowchart LR
+    ai --> agent --> coding --> session --> plugins --> testing
+    evals["evals ★ evals/run.py (this chapter)"] -.uses.-> session
+    evals -.uses.-> agent
+```
 
-## Code it covers
+After [11](11-system-prompt.md) the agent has a loop, tools and a system prompt. It can do real coding work. Now a new question: **how well?** Unit tests with the [FakeProvider](02-fake-provider.md) prove that our code does what we wrote. They cannot tell us if a real model, with our tools and our prompt, can fix a bug. For that we need an [eval](glossary.md#eval).
 
-- `evals/run.py`
+Code in this chapter (commit `2fc2776`):
 
-## Test it will show
+- `evals/run.py` — the eval harness: `load_tasks`, `run_task`, `run_all`, `main`
+- `evals/tasks/*.toml` — four [eval tasks](glossary.md#eval-task): `read_answer`, `fizzbuzz`, `fix_bug`, `refactor_rename`
+- `evals/test_run.py` — tests for the harness itself, with the FakeProvider
 
-- `evals/run.py --help (no real model in tests)`
+`evals/run.py` imports `AgentSession` and `build_model`. We build those in [13](13-session.md) and [18](18-profiles-plugins.md). Here we only use them; you can read this chapter first and come back.
+
+## Problem
+
+When you change the system prompt, a tool description, or the model, you want to know: **did the agent get better or worse?** Reading one chat by hand is not enough. The model is random; one good answer proves little.
+
+We need something that:
+
+1. Gives the agent the **same tasks** every time, in a **fresh folder**.
+2. Checks the result **by a program**, not by eye.
+3. Records **cost**: turns, tokens, dollars, seconds. A change that passes the same tasks at half the cost is a win too.
+4. Saves the numbers to a file, so you can compare runs.
+
+## Naive version
+
+```python
+import asyncio, subprocess, tempfile
+from simp_agent.agent.env import LocalEnv
+from simp_agent.session import AgentSession
+
+async def main(model):
+    with tempfile.TemporaryDirectory() as d:
+        open(f"{d}/calc.py", "w").write("def average(xs):\n    return sum(xs) / (len(xs) + 1)\n")
+        s = AgentSession(model, env=LocalEnv(d), cwd=d)
+        await s.prompt("Fix the bug in calc.py")
+        ok = subprocess.run("python -c 'from calc import average; assert average([2, 4]) == 3'",
+                            shell=True, cwd=d).returncode == 0
+        print("PASS" if ok else "FAIL")
+
+# asyncio.run(main(build_model({"model": "..."})))  # needs a real model and key
+```
+
+This works once. Where it breaks:
+
+- **One task, in code.** Adding a task means editing Python.
+- **No limits.** If the model loops forever, the script never ends and keeps spending money.
+- **No cost numbers.** You see PASS, but not 3 turns or 30.
+- **Wrong `python`.** `python` in the shell may not be the project's Python.
+- **Nothing saved.** Next week you cannot compare.
+- **Cannot be tested** without a real model and a key.
+
+## Real design
+
+```mermaid
+flowchart TD
+    A["main(): parse --profile, --home, --tasks"] --> B["load_settings + take_keys"]
+    B --> C["run_all(profile, keys, names)"]
+    C --> D["load_tasks(names) → list of dicts from tasks/*.toml"]
+    D --> E["for each task: run_task"]
+    E --> F["temp dir + setup files"]
+    F --> G["AgentSession(LocalEnv(root)).prompt(task.prompt)<br/>count turns/tokens, stop at 25 turns or 300 s"]
+    G --> H["write _answer.txt, run task.check in shell"]
+    H --> I["row: passed, turns, input, output, cost, seconds"]
+    I --> J["print one line per task + total<br/>write results/DATE-profile.json"]
+```
+
+### A task is a TOML file
+
+Each file in `evals/tasks/` is one task. The file name is the task name. It has up to three keys:
+
+- `prompt` — what we ask the agent.
+- `check` — a shell command. Exit code 0 means pass.
+- `[setup]` — optional. Each key is a file path, each value its text. These files are written into the empty folder before the agent starts.
+
+Here is `evals/tasks/fix_bug.toml` (shortened):
+
+```toml
+prompt = "The tests in test_calc.py fail. Fix the bug in calc.py (do not change the tests). Run them with: python -m pytest -q"
+check = '"$PYTHON" -m pytest -q -p no:cacheprovider test_calc.py && grep -q "assert average(\[2, 4\]) == 3" test_calc.py'
+
+[setup]
+"calc.py" = """
+def average(xs):
+    if not xs:
+        return 0
+    return sum(xs) / (len(xs) + 1)
+...
+"""
+"test_calc.py" = """..."""
+```
+
+Look at the second half of the check: `grep -q "assert average([2, 4]) == 3"`. It makes sure the agent did **not** "fix" the test by changing the test. A good check tests the goal *and* blocks the easy cheat.
+
+The four tasks grow in difficulty:
+
+| Task | What the agent must do | How the check works |
+|---|---|---|
+| `read_answer` | Read `config.ini`, say the server port | `grep -q 8473 _answer.txt` |
+| `fizzbuzz` | Write a new file from a spec | Import it and assert outputs |
+| `fix_bug` | Find and fix an off-by-one | Run pytest; test file unchanged |
+| `refactor_rename` | Rename `get_usr` to `get_user` in all files | No `get_usr` left in `*.py`; pytest passes |
+
+`load_tasks` reads them:
+
+```python
+# evals/run.py
+def load_tasks(names: list[str] | None) -> list[dict]:
+    tasks = {f.stem: {"name": f.stem, **tomllib.loads(f.read_text())} for f in sorted((HERE / "tasks").glob("*.toml"))}
+    if names is None:
+        return list(tasks.values())
+    if missing := [n for n in names if n not in tasks]:
+        raise SystemExit(f"unknown tasks: {', '.join(missing)} (have: {', '.join(tasks)})")
+    return [tasks[n] for n in names]
+```
+
+No names means all tasks, sorted by file name. A wrong name stops early with the list of real names, before any money is spent.
+
+### run_task: one task, one fresh folder
+
+```python
+# evals/run.py — run_task
+with tempfile.TemporaryDirectory(prefix=f"simp-eval-{task['name']}-") as d:
+    root = Path(d).resolve()
+    for rel, text in task.get("setup", {}).items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    s = AgentSession(model, env=LocalEnv(str(root)), cwd=str(root), stream_fn=stream_fn,
+                     get_api_key=lambda provider: key, max_retries=1)
+```
+
+Why each part:
+
+- **Temp folder.** Every task starts clean, and the folder is deleted at the end. Runs do not affect each other.
+- **`.resolve()`.** On macOS `/tmp` is a link to `/private/tmp`. Using the real path as root and cwd keeps it the same everywhere, including `LocalEnv`'s path checks ([09](09-exec-env.md)).
+- **`LocalEnv`** — the same [execution environment](glossary.md#execution-environment) the CLI uses. We measure the real tools, not a copy.
+- **`stream_fn`** — by default `ai.stream`, the real [provider](glossary.md#provider) call ([04](04-providers.md)). The test passes a FakeProvider here instead.
+- **`max_retries=1`** — retry a failed model call only once ([15](15-retry.md)). An eval should show problems, not hide them behind long waits.
+
+The key is found from the [profile](glossary.md#profile): its `api_key_env`, or else `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` by the API type.
+
+### Counting and limits through events
+
+The harness does not change the loop. It only **listens** to [events](glossary.md#event) ([06](06-events-abort.md)):
+
+```python
+# evals/run.py — inside run_task
+def on_event(e):
+    m = e.get("message")
+    if e["type"] == "message_end" and getattr(m, "role", None) == "assistant":
+        r["turns"] += 1
+        r["input"] += m.usage.get("input", 0)
+        r["output"] += m.usage.get("output", 0)
+        r["answer"] = m.text()
+        if m.error:
+            r["error"] = m.error
+        if r["turns"] >= MAX_TURNS:
+            r["error"] = f"hit {MAX_TURNS} turns"
+            s.abort()
+```
+
+Each assistant message is one [turn](glossary.md#turn). We add its [usage](glossary.md#usage) and keep the last text as the answer. Two limits stop a runaway agent:
+
+- **Turns:** when the 25th assistant message ends (`MAX_TURNS = 25`) we call `s.abort()` ([abort](glossary.md#abort)). That turn is still counted and paid for.
+- **Time:** `asyncio.wait_for(s.prompt(...), TIMEOUT_S)` with `TIMEOUT_S = 300`. On timeout we abort too.
+
+A task that hits a limit is not a crash. The row gets an `error`, and the check still runs. (It will usually fail.)
+
+### The check
+
+```python
+# evals/run.py — run_task
+(root / "_answer.txt").write_text(r.pop("answer", ""))
+chk = subprocess.run(task["check"], shell=True, cwd=root, capture_output=True, text=True,
+                     timeout=CHECK_TIMEOUT_S, env={**os.environ, "PYTHON": sys.executable})
+r["passed"], r["check_output"] = chk.returncode == 0, (chk.stdout + chk.stderr)[-2000:]
+```
+
+- The last answer goes to `_answer.txt`, so a check can test **what the agent said**, not only files. `read_answer` uses this.
+- `PYTHON` is set to the Python running the harness. Checks write `"$PYTHON" -m pytest`, so pytest runs from the harness's own Python (it must be installed there).
+- The check has its own limit, `CHECK_TIMEOUT_S = 120`. A timeout means fail.
+- Only the last 2000 characters of output are kept: enough to see why it failed.
+
+Then cost: `(input * price_in + output * price_out) / 1e6`. Prices in the profile are dollars per million tokens.
+
+### run_all: the table and the file
+
+`run_all` runs the tasks **one by one** and prints one line each, then a total:
+
+```
+read_answer     PASS     2 turns       300/30       $0.0004  1.2s
+total           1/1      2 turns       300/30       $0.0004  1.2s
+wrote evals/results/20261013-101500-sol.json
+```
+
+It then writes `evals/results/<date-time>-<profile>.json` with every row and the total. That folder is in `.gitignore`: results are yours, not the repo's. If the profile has no `price_in` / `price_out`, it warns that cost will show `$0`.
+
+### main: reuse the server's settings
+
+```python
+# evals/run.py — main
+settings = load_settings(Path(a.home).expanduser())
+...
+keys = take_keys(settings)
+asyncio.run(run_all(a.profile, settings["profiles"][a.profile], keys, a.tasks.split(",") if a.tasks else None))
+```
+
+The harness reads the same `settings.toml` as the server ([22](22-store-auth.md)), from `--home` (default `$SIMP_SERVER_HOME` or `~/.simp-server`), and keys from `<data_dir>/.env` and the process env (`data_dir` is `--home` unless settings change it). So you eval exactly the profiles you serve. Run it like this:
+
+```bash
+uv run python evals/run.py --profile sol
+uv run python evals/run.py --profile sol --tasks fix_bug,refactor_rename
+```
+
+### Writing an eval case
+
+To add a task, add one file. No Python. A good task:
+
+1. **Is small and fixed.** Put every file it needs in `[setup]`. Do not depend on the network or on your machine.
+2. **Has a check a program can run**, exit code 0 for pass.
+3. **Blocks the cheat.** If the agent could pass by editing the test or hard-coding output, check for that (like `fix_bug`'s `grep`).
+4. **Uses `"$PYTHON"`**, not `python`, and `-p no:cacheprovider` so pytest leaves no cache files.
+5. **Tests one skill.** If it fails, you should know why.
+
+That is the "each later Part adds a case" plan: when a later chapter adds a capability, add a task that needs it.
+
+### Host-shell warning
+
+> ⚠️ **Evals run on your own machine, with no sandbox.** `LocalEnv` runs the agent's `bash` tool on your host, as you ([09](09-exec-env.md)). The temp folder is only the *starting* folder; a command like `rm -rf ~` or `curl ... | sh` is not blocked. The `check` also runs with `shell=True` on your host. Only run tasks you trust, with models you trust, ideally in a throwaway VM or container. The [Docker sandbox](24-docker-sandbox.md) is not used here.
+
+Also note: `take_keys` removes the known key variables (each profile's `api_key_env`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) from `os.environ` before the agent runs. Commands the agent starts do not see those keys. Other secrets in your environment are still visible.
+
+## Test
+
+Tests must not call a real model. `evals/test_run.py` loads `run.py` as a module and passes a FakeProvider as `stream_fn`:
+
+```python
+# evals/test_run.py
+async def test_read_answer_passes_with_fake_provider(tmp_path):
+    fake = FakeProvider(
+        AssistantMessage([ToolCall("c1", "read", {"path": "config.ini"})], stop_reason="tool_use",
+                         usage={"input": 100, "output": 10}),
+        AssistantMessage([TextContent("The port is 8473.")], usage={"input": 200, "output": 20}))
+    profile = {"model": "fake", "price_in": 1.0, "price_out": 2.0}
+    rows = await run.run_all("p", profile, {}, ["read_answer"], stream_fn=fake, out_dir=tmp_path)
+    assert rows[0]["name"] == "read_answer" and rows[0]["passed"]
+    assert rows[0]["turns"] == 2 and rows[0]["input"] == 300 and rows[0]["output"] == 30
+```
+
+This runs the **whole path**: real task file, real temp folder, real `read` tool, real check (`grep` on `_answer.txt`), cost math and the JSON file. Only the model is fake. A second test, `test_tasks_load`, checks that all four task files parse.
+
+```bash
+uv run pytest -q evals            # 2 passed
+uv run python evals/run.py --help # shows --profile, --home, --tasks
+```
+
+`evals` is in `testpaths` in `pyproject.toml`, so a plain `uv run pytest` runs these too.
+
+## Why this way
+
+> **Tasks are data, checks are shell.** A new case is one TOML file. Shell checks can use pytest, grep, or anything else.
+>
+> **Listen, don't change.** Counting and limits use events and `abort()`. The agent under test is the real one.
+>
+> **Cost is a result.** Turns, tokens, dollars and seconds sit next to PASS/FAIL, because a cheaper agent is a better agent.
+>
+> **Small on purpose.** Four tasks, run in order, no scoring model. It is a quick signal after a change, not a benchmark.
+
+## Recap
+
+- An [eval](glossary.md#eval) runs the real agent with a real model on fixed tasks and checks the result with a program.
+- An [eval task](glossary.md#eval-task) is a TOML file: `prompt`, `check`, optional `[setup]` files.
+- `run_task` makes a temp folder, runs `AgentSession` with `LocalEnv`, counts turns and usage from `message_end` events, stops at 25 turns or 300 s, then runs the check with `$PYTHON` set.
+- `run_all` prints a table and saves JSON in `evals/results/`.
+- It runs on your host with no sandbox: only trusted tasks and models.
+- Tests use the FakeProvider, so no key is needed.
+
+**Builds on:** [11 The system prompt](11-system-prompt.md) · **Next:** [13 Sessions](13-session.md) — we have been using `AgentSession`; now we build it.
