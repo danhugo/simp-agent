@@ -39,7 +39,19 @@ One small piece of a streamed model answer (a bit of text, thinking, or tool-cal
 The token count of one model call, kept in `AssistantMessage.usage` as `{"input", "output", "reasoning"}`. `reasoning` is already inside `output`. Home: [03](03-stream-parser.md#usage).
 
 ## Agent loop
-The loop that calls the model, runs the tool calls it asks for, adds the results, and calls the model again until it stops asking. Built in [05](05-agent-loop.md).
+The loop that calls the model, runs the tool calls it asks for, adds the results, and calls the model again until it stops asking (`agent_loop` in `agent`). Built in [05](05-agent-loop.md#agent_loop-the-loop).
+
+## Turn
+One pass of the agent loop: one model call plus the tool calls it asked for. Starts with a `turn_start` event, ends with `turn_end`. Home: [05](05-agent-loop.md#agent_loop-the-loop).
+
+## Agent tool
+An `ai.Tool` (name, description, JSON schema) plus `execute(args, ctx) -> str` and an optional `prepare_arguments` (class `AgentTool` in `agent`). Run by `run_tool`, which turns every failure into an error tool result. Home: [05](05-agent-loop.md#tools-agenttool).
+
+## Tool context
+The object a tool gets when it runs (`ToolContext`): `cancel`, `env`, `cwd`, `on_update`. Home: [05](05-agent-loop.md#toolcontext-what-a-tool-gets).
+
+## Execution environment
+The one object (`ExecutionEnv`, default `LocalEnv`) through which tools read files and run commands. Given to tools in the tool context. Defined in [05](05-agent-loop.md#toolcontext-what-a-tool-gets); built in [09](09-exec-env.md).
 
 ## Provider registry
 The dict `_PROVIDERS` in `ai` that maps a `Model.api` string (`anthropic-messages`, `openai-completions`, `openai-responses`) to a stream function. `register_provider` adds or replaces one; `ai.stream` looks it up. Home: [04](04-providers.md#the-registry-_providers-register_provider-stream).
