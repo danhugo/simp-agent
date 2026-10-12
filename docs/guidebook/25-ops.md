@@ -160,7 +160,7 @@ launchctl load ~/Library/LaunchAgents/com.simp.server.plist     # 6 start
 
 Then check: `tail ~/.simp-server/server.log` shows `Uvicorn running on http://127.0.0.1:8766`, and you can log in. If the plist templates changed in `deploy/launchd/`, make your copies again with the `sed` command in section 2.
 
-If it goes wrong, go back: `git checkout` the old commit, `uv sync`, restore the backup (section 4), start. Ask first: read the new version's notes, because this book does not promise that an old database opens with a much newer server.
+If it goes wrong, go back: `git checkout` the old commit, `uv sync`, restore the backup (section 4), start. Read the new version's notes first: this book does not promise that an old database opens with a much newer server.
 
 ## 7. A daily checklist
 

@@ -226,7 +226,7 @@ hung	active
 Start the server again (step 6) and log in. Note: `tar` overwrites `settings.toml` and
 `workspaces/` with the backup's copy; `.env` is not touched.
 
-**Home:** 25 Day-to-day ops (daily backups with launchd, upgrades).
+**Home:** [25 Day-to-day ops](25-ops.md) (daily backups with launchd, upgrades).
 
 ## 10. What you did
 
