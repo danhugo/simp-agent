@@ -157,53 +157,13 @@ Why each part:
 
 ### Prompt sections: building the prompt every turn
 
-The session does not call `system_prompt` once. It keeps a small table of **[prompt sections](glossary.md#prompt-section)**.
+The session does not call `system_prompt` once. It keeps a small table of **[prompt sections](glossary.md#prompt-section)**: each has an id, an order, and a value (a string or a function of `ctx`). Before every model call it sorts them, skips empty ones and joins them. In short:
 
-> **Look ahead.** This part is about the session from [13](13-session.md). Here we only need the part that touches the prompt.
+- The default coding prompt is a section at order 0. Its value is a function that calls `system_prompt` with the **current** tools and cwd, so the tool list is never out of date.
+- The context file is a section at order 10, read once in `start()`, before the first prompt.
+- If the host passes its own `system_prompt` string, it replaces both. Our tests do this with `system_prompt="s"`.
 
-```python
-# packages/simp_agent/src/simp_agent/session/__init__.py (AgentSession.__init__)
-        if system_prompt is not None:
-            self.add_prompt_section("base", system_prompt, 0)
-        else:  # coding prompt; the context file section is added on start (needs env IO)
-            self.add_prompt_section("coding", lambda ctx: system_prompt_for(ctx["tools"], ctx["cwd"]), 0)
-        self._default_prompt = system_prompt is None
-```
-
-```python
-    def add_prompt_section(self, id: str, value, order: int = 100) -> None:
-        """value: str or fn(ctx) -> str (sync or async), rebuilt every turn. Sorted by (order, first add): stable."""
-        seq = self._sections[id][1] if id in self._sections else next(self._seq)
-        self._sections[id] = (order, seq, value)
-
-    async def _build_prompt(self) -> str:
-        a = self.agent
-        ctx = {"tools": a.tools, "cwd": a.cwd, "model": a.model, "messages": a.messages}
-        parts = list()
-        for _, _, v in sorted(self._sections.values(), key=lambda x: x[:2]):
-            text = await _maybe_await(v(ctx)) if callable(v) else v
-            if text:
-                parts.append(text)
-        return "\n\n".join(parts)
-```
-
-- **A section has an id, a value, and an order.** The value is a string, or a function of `ctx` (sync or async). Adding the same id again replaces the value but keeps its first place, so the order is stable.
-- **The default coding prompt is a function.** `system_prompt_for` is `coding.system_prompt`, called with the **current** tools and cwd. If the tools change, the list in the prompt changes on the next turn.
-- **Empty sections are skipped.** A function can return `""` to switch itself off. Plugins can also add and remove whole sections: the plan-mode plugin ([18](18-profiles-plugins.md)) adds a `PLAN MODE` section at order 1000 and removes it when plan mode ends.
-- **Caller can replace it.** If the host passes its own `system_prompt` string, it becomes the `"base"` section, and the coding prompt and context file are not added. Our tests use this with `system_prompt="s"`.
-
-The context file is loaded in `start()`, which runs once, before the first prompt, because reading needs async env IO:
-
-```python
-    async def start(self) -> None:
-        ...
-        if self._default_prompt and (cf := await load_context_file(self.agent.env, self.agent.cwd)):
-            self.add_prompt_section("context_file", f"# Project Context\n\n## {cf[0]}\n\n{cf[1]}", 10)
-```
-
-Order 10 puts it right after the coding text (order 0) and before plugin sections (default 100). It is read **once per session**, not every turn: editing `AGENTS.md` mid-session has no effect until a new session.
-
-Note: the `context` argument of `system_prompt` is not used by the session. The session adds the same `# Project Context` text as its own section instead, so it can come and go on its own. The argument is there for a caller who wants one string in one call.
+> **Look ahead.** How the session stores, orders and rebuilds sections (`add_prompt_section`, `_build_prompt`, `start()`) is built in [13](13-session.md). Here we only need one fact: the prompt the loop gets can be a **function**.
 
 ### The loop calls the function every turn
 
