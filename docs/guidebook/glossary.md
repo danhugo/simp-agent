@@ -55,17 +55,17 @@ same as `FakeProvider`, the library's scripted model for tests (chapter 37).
 Code: `apps/server/src/simp_server/fakellm.py`.
 Introduced in [01](01-quick-start.md#42-add-a-profile). Home: 37 Testing and evals.
 
-## History
-The full, saved list of a [session's](#session) entries: [messages](#message), compaction
-markers, and plugin data. It is append-only: entries are added, never changed or removed.
-What is sent to the model is built from it each turn (see [compaction](#compaction)).
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
-
 ## Follow-up
 In the [REPL](#repl), a message typed as `>> text` while the agent is running. It waits
 until the agent is done, then starts a new turn. Compare [steer](#steer).
 Code: `route()` in `apps/cli/src/simp_cli/__init__.py`.
 Introduced in [10](10-cli.md#3-the-repl). Home: [10 The CLI](10-cli.md).
+
+## History
+The full, saved list of a [session's](#session) entries: [messages](#message), compaction
+markers, and plugin data. It is append-only: entries are added, never changed or removed.
+What is sent to the model is built from it each turn (see [compaction](#compaction)).
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
 
 ## Message
 One item in a conversation. There are three kinds that the model sees:
