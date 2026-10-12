@@ -31,7 +31,7 @@ A record says only what the sources say. Where a source gives no reason, the rec
 ## 2. SSE + POST, not WebSocket
 
 - **Context.** The browser sends short commands (prompt, steer, abort) and receives a long stream of events.
-- **Decision.** Protocol v1: commands are HTTP POST; events come over Server-Sent Events (SSE). Durable events carry a `seq`; a client that reconnects asks from its offset and gets a snapshot if needed.
+- **Decision.** Protocol v1: commands are HTTP POST; events come over Server-Sent Events (SSE). [Durable events](glossary.md#durable-event) carry a `seq`; a client that reconnects asks from its offset and gets a [snapshot](glossary.md#snapshot) if needed.
 - **Why.** The two directions are different: commands are short requests, events flow one way for a long time. SSE is made for that, works over plain HTTP, and the browser reconnects by itself ([32](32-server-inside.md)). Stage 1 added an SSE heartbeat and bounded queues.
 - **What would change it.** ROADMAP (cross-cutting) lists more clients — IDE, mobile, Slack — "over a WebSocket or stdio transport". That would be an extra transport for those clients; nothing in the sources says SSE + POST is replaced for the web.
 - **Read more:** [32](32-server-inside.md), [`docs/protocol.md`](../protocol.md).
@@ -80,5 +80,7 @@ A record says only what the sources say. Where a source gives no reason, the rec
 - If the situation in a record changes, revisit the record before the code.
 
 **Back:** [37 Testing and evals](37-testing.md) · **Next:** [Table of contents](README.md)
+
+**Builds on:** [30](30-architecture.md), [32](32-server-inside.md), [37](37-testing.md).
 
 **Built on by:** nothing — this is the last chapter.

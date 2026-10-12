@@ -136,7 +136,7 @@ Pytest then runs every `test_...` of the class against your env. Two real users:
 - `packages/simp_agent/tests/test_env.py` — runs it for `LocalEnv`.
 - `apps/server/tests/test_docker_sandbox.py` — runs it for `DockerSandbox`.
 
-The Docker skip comes from inside the suite (that is why the skip lines point at `env_conformance.py`). Without Docker, those tests skip, they do not fail.
+The skip itself is set in `apps/server/tests/test_docker_sandbox.py` (a module-level `pytestmark = pytest.mark.skipif(...)`). The skip lines point at `env_conformance.py` only because that is where the test methods are written. Without Docker, those tests skip, they do not fail.
 
 ## 5. Two fake servers
 
@@ -259,5 +259,7 @@ To add a task: drop a new `.toml` file in `evals/tasks/`, then update the name s
 - `evals/run.py` is the only thing here that costs money, and it runs shell on your host.
 
 **Back:** [36 Extending: server plugins](36-server-plugins.md) · **Next:** [38 Decision records](38-decisions.md)
+
+**Builds on:** [33](33-dev-tutorial.md), [34](34-providers.md), [35](35-tools-plugins.md), [36](36-server-plugins.md).
 
 **Built on by:** [38 Decision records](38-decisions.md).
