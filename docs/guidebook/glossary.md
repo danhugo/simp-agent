@@ -114,7 +114,7 @@ object with optional hooks (for example `setup`, `tool_call`, `tool_result`, `co
 `PluginAPI` it can add or remove tools, add text to the system prompt, save data in the history,
 and send messages. Two ship with the library: `redact_secrets` (masks secrets) and `plan_mode`
 (blocks `write`, `edit`, `bash`). The server also has its own plugin slots — Sandbox, Store,
-Auth — set in the `[plugins]` table of `settings.toml`; those are a different kind (chapter 36).
+Auth — set in the `[plugins]` table of `settings.toml`; those are a different kind ([36](36-server-plugins.md)).
 Code: `packages/simp_agent/src/simp_agent/session/__init__.py`, `packages/simp_agent/src/simp_agent/plugins/`.
 Introduced in [00](00-introduction.md#2-what-simp-agent-is-not). First one built step by step: [33](33-dev-tutorial.md). Home: [35 Extending: tools and agent plugins](35-tools-plugins.md).
 

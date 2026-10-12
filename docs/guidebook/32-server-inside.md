@@ -27,7 +27,7 @@ flowchart LR
 - **`Run`** wraps one `AgentSession` and turns its events into protocol events.
 - **`SqliteStore`** saves everything. **`Sandbox`** gives the tools a place to run ([23](23-sandboxes.md)).
 
-Store, sandbox and auth are plugin slots; you can swap them (see 36 Extending: server plugins, not written yet).
+Store, sandbox and auth are plugin slots; you can swap them (see [36 Extending: server plugins](36-server-plugins.md)).
 
 ## 2. A `Run`: one loaded session
 
@@ -166,5 +166,5 @@ The guard is `test_no_ts_drift` in `apps/server/tests/test_protocol.py`: it gene
 
 ---
 
-**Built on by:** [33 Developer tutorial](33-dev-tutorial.md), 36 Extending: server plugins, 38 Decision records (not written yet).
+**Built on by:** [33 Developer tutorial](33-dev-tutorial.md), [36 Extending: server plugins](36-server-plugins.md), 38 Decision records (not written yet).
 **Builds on:** [21](21-configuration.md), [22](22-users.md), [23](23-sandboxes.md), [24](24-money.md), [25](25-ops.md), [30](30-architecture.md), [31](31-turn-flow.md).
