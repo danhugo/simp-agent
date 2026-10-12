@@ -116,7 +116,7 @@ sequenceDiagram
     Note over L: no tool call → stop
 ```
 
-`replies` is stored as an iterator, and `next(self.replies)` takes the next one. If the code under test calls the model more times than the script has replies, `next` raises `StopIteration`. That is on purpose: an extra call is a bug in the code under test, and the test should fail loudly.
+`replies` is stored as an iterator, and `next(self.replies)` takes the next one. If the code under test calls the model more times than the script has replies, `next` raises `StopIteration`. Inside an async generator Python turns this into `RuntimeError: async generator raised StopIteration`, so the test fails with a `RuntimeError`. That is on purpose: an extra call is a bug in the code under test, and the test should fail loudly.
 
 ### The instance is the function
 
@@ -175,7 +175,7 @@ The fake yields exactly two events:
 
 A real provider yields many small events in between (text pieces, tool-call pieces); ch [03](03-stream-parser.md) builds them up into one message. The fake skips the middle and hands over the whole message at once. The first and last events have the same shape, so the loop cannot tell the difference.
 
-The `error` rule matters. To test retry, a test writes `AssistantMessage(stop_reason="error", error="...")` as a reply, and the fake ends with an `error` event, just like a real provider that hit a network failure. It never raises, so it keeps the "must not raise" rule.
+The `error` rule matters. To test retry, a test writes `AssistantMessage(stop_reason="error", error="...")` as a reply, and the fake ends with an `error` event, just like a real provider that hit a network failure. For a scripted reply it never raises (running out of replies does raise, see above), so it keeps the "must not raise" rule.
 
 ### What the fake does *not* do
 
@@ -255,7 +255,7 @@ uv run pytest -q tests/test_core.py::test_no_tool_call_one_turn \
 > - **A script, not a smart fake.** The test lists the replies in order. It is easy to read: the whole "conversation" sits in one line of the test.
 > - **Same event shape as real providers.** The fake only yields `start` and `done`/`error`, but they are the same events a real provider ends with, so code tested on the fake works on the real thing.
 > - **Record everything.** `calls`, `messages`, `ctxs`, `api_keys`, `models` let a test check *what* was sent, not only what came back.
-> - **Cost:** the fake never streams small pieces, so it cannot test the stream parser, and running past the end of the script raises `StopIteration` instead of a clean error.
+> - **Cost:** the fake never streams small pieces, so it cannot test the stream parser, and running past the end of the script fails with a `RuntimeError` (caused by `StopIteration`) instead of a clean error.
 
 ## Recap
 
