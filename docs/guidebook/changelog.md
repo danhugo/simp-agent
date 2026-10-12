@@ -3,7 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-12
-- Added [24 Money and limits](24-money.md) (verified at `cbea25f`, from code; not run). Linked from 01, 11, 20, 22, 23, README.
+- Added [24 Money and limits](24-money.md) (verified at `cbea25f`, from code; not run). Linked from 01, 11, 20, 22, 23, README. Glossary: added budget, kill switch, run. Fixed 'Built on by' links in 22 and 23.
 - Added [23 Sandboxes](23-sandboxes.md) (verified at `194c41e`, from code; Docker not run). Linked from 21, 22, README.
 - Added [22 Users and accounts](22-users.md) (verified at `5b091ec`, from code; not run). Glossary: access token now links to 22 and mentions rotate re-enables.
 - Added [21 Configuration reference](21-configuration.md) (verified at `2c311ce`, from code). Linked from README.

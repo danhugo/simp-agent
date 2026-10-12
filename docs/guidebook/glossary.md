@@ -20,6 +20,9 @@ model's reply has no tool calls, or on an error or abort. Each pass is one [turn
 Code: `agent_loop()` in `packages/simp_agent/src/simp_agent/agent/__init__.py`.
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
 
+## Budget
+The money limits the server puts on LLM calls: a most per user per day and a most per [run](#run). Cost is tokens × the [profile](#profile) prices. The check is soft (see the box in the home chapter). Home: [24 Money and limits](24-money.md).
+
 ## Compaction
 Making a long [history](#history) fit in the model's context window. Old messages are
 summarized by one extra LLM call; a `CompactionEntry` with the summary is *added* to the
@@ -66,6 +69,9 @@ The full, saved list of a [session's](#session) entries: [messages](#message), c
 markers, and plugin data. It is append-only: entries are added, never changed or removed.
 What is sent to the model is built from it each turn (see [compaction](#compaction)).
 Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
+
+## Kill switch
+The `simp-server pause` command. It makes a `PAUSED` file, and every LLM call is refused until `simp-server resume`. Home: [24 Money and limits](24-money.md#4-kill-switch).
 
 ## Message
 One item in a conversation. There are three kinds that the model sees:
@@ -123,6 +129,9 @@ The CLI's interactive chat ("read–eval–print loop"): run `simp-agent` with n
 messages, and use slash commands such as `/help` and `/exit`. Compare [print mode](#print-mode).
 Code: `apps/cli/src/simp_cli/repl.py`.
 Introduced in [01](01-quick-start.md#34-chat-back-and-forth). Home: [10 The CLI](10-cli.md).
+
+## Run
+One piece of server work started by one prompt (or a compact or continue), from start until the agent stops. The run limit of the [budget](#budget) counts per run. Home: [24 Money and limits](24-money.md#2-two-limits).
 
 ## Sandbox
 The server's way to give each [session](#session) its own [execution environment](#execution-environment),

@@ -1,7 +1,7 @@
 # 24 — Money and limits
 
 > **Who this is for:** an operator who pays for the model calls and wants to cap them.
-> **What you need first:** [21 Configuration reference](21-configuration.md#4-budget) (the `[budget]` keys), [20 Operator tutorial](20-operator-tutorial.md#8-see-the-budget) (a first look). Words: [profile](glossary.md#profile), [session](glossary.md#session), [provider](glossary.md#provider).
+> **What you need first:** [21 Configuration reference](21-configuration.md#4-budget) (the `[budget]` keys), [20 Operator tutorial](20-operator-tutorial.md#8-see-the-budget) (a first look). Words: [budget](glossary.md#budget), [run](glossary.md#run), [kill switch](glossary.md#kill-switch), [profile](glossary.md#profile), [session](glossary.md#session), [provider](glossary.md#provider).
 > **What you will learn:** how cost is counted, how to set and change limits, how to see spend, how to stop everything at once, and exactly how limits can be exceeded.
 > **Code paths covered:** `apps/server/src/simp_server/budget.py`, `server.py` (`over_budget`, `_title`, `/api/usage`, `main`), `store.py` (`usage` table), tests in `apps/server/tests/test_budget.py`.
 > **Verified at commit:** `cbea25f` (read from code; not run).
@@ -27,7 +27,7 @@ Set in `settings.toml` (keys and defaults: [21 §4](21-configuration.md#4-budget
 | `user_day_usd` | `2.0` | everything one user spent since **local midnight of the server** |
 | `run_usd` | `0.5` | what one run spent in one session |
 
-A **run** starts when the user sends a prompt. A follow-up that was queued during the run belongs to the same run. A new prompt starts a new run, so the run limit is "per prompt", not "per session".
+A **run** starts when the user sends a prompt. A follow-up that was queued during the run belongs to the same run. A new prompt starts a new run, so the run limit is "per prompt", not "per session". `/compact` and `/continue` also start a new run, which resets the run limit.
 
 Edit `settings.toml`, then **restart the server**: limits are read once at start. A misspelled key in `[budget]` stops the server at boot.
 
@@ -68,11 +68,11 @@ uv run simp-server resume    # prints: resumed
 - **All users:** there is no admin report. Read the `usage` table with `sqlite3`, for example:
 
 ```sh
-sqlite3 ~/.simp-server/simp.db \
+sqlite3 ~/.simp-server/simp.db   # default data_dir \
   "select user_id, round(sum(cost),4) from usage group by user_id"
 ```
 
-Add `where at >= <unix time>` to limit it to a day.
+The path is the default `data_dir`; `SIMP_SERVER_HOME` moves it ([21](21-configuration.md)). Add `where at >= <unix time>` to limit it to a day.
 
 ## 6. How limits can be exceeded
 
