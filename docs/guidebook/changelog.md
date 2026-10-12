@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-12
+- Added [33 Developer tutorial](33-dev-tutorial.md) (verified at `c51fc79`; every code block run in the repo, then removed; server not started): `word_count` tool plugin, test with `FakeProvider`, register in `build_plugins`, turn on via profile `plugins`. Notes: CLI loads no plugins, no outside plugin loading, profile `plugins` vs `[plugins]` table. Glossary: plugin links to 33. Linked from 32 and README (outline line fixed: profile `plugins`, not `[plugins]`).
 - Added [32 The server inside](32-server-inside.md) (verified at `b6f09f5`, from code; not run): Run, command queues, SSE + POST with seq/offset/snapshot (links protocol.md), SQLite tables, idle release, protocol.gen.ts + drift test. Recovery points to 25, settings to 21. Glossary: added durable event, live event, snapshot; run notes the `Run` class. Linked from 30, 31, README.
 - Added [31 How one turn flows](31-turn-flow.md) (verified at `2c2cdc7`, from code; not stepped through): ai.stream, agent loop, `length` behaviour, retry/backoff, overflow recovery, compaction home. Glossary: added stop reason; 'Home: 31' entries now link. Linked from 13, 30, README.
 - Added [30 Architecture](30-architecture.md) (verified at `57cabfc`, `test_layers.py` run and passing). Glossary: added layer. Linked from 27 and README.
