@@ -1,6 +1,6 @@
 # simp-agent guidebook
 
-Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13.
+Status: **outline v2 — locked after debate (critic + wide view).** Describes Stage 3. Written: 00, 01, 10, 11, 12, 13, 20.
 Tags: [T] tutorial, [H] how-to, [R] reference, [E] explanation.
 
 ## What simp-agent is
@@ -33,7 +33,7 @@ Everyone reads Part 0. Then read only your part; parts link back to what they ne
 - [13 Working well with the agent](13-working-well.md) [H]: AGENTS.md / CLAUDE.md, long sessions; each tip tagged CLI/web/both
 
 ### Part 2 — Running the server (Operator)
-- 20 Operator tutorial [T]: fresh Mac → DockerSandbox server, two users, a budget, a restore drill
+- [20 Operator tutorial](20-operator-tutorial.md) [T]: fresh Mac → DockerSandbox server, two users, a budget, a restore drill
 - 21 Configuration reference [R]: profiles, hosts, plugins, capacity (`idle_minutes`, `max_open_sessions`)
 - 22 Users and accounts [H]: tokens, one shared signup code, passwords, revoke/rotate
 - 23 Sandboxes [E] — home chapter for sandbox: Local vs Docker, why Docker for several users

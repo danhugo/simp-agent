@@ -94,5 +94,5 @@ flowchart LR
 | New session per task; compact between tasks | both |
 | Plan mode for "look first" | web only |
 
-**Next:** Part 2 starts with chapter 20 (Operator tutorial, not yet written). **Back:** [12 CLI vs web](12-cli-vs-web.md).
+**Next:** [20 Operator tutorial](20-operator-tutorial.md) (Part 2). **Back:** [12 CLI vs web](12-cli-vs-web.md).
 **Built on by:** 31 How one turn flows (the home of compaction and the system prompt).
