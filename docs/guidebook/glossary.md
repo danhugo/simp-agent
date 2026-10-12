@@ -88,3 +88,12 @@ Asking a human before a risky tool runs. Built as one `before_tool_call` in `Age
 
 ## Truncation
 How tools keep output small (`coding/truncate.py`): keep whole lines under 2000 lines and 50 KB. `truncate_head` / `head` keep the start (read, ls, grep, find); `truncate_tail` / `tail` keep the end (bash). The wrappers add a note so the model knows it was cut. Home: [10](10-coding-tools.md#truncation-truncate_head-and-truncate_tail).
+
+## System prompt
+The first text of every model request: who the model is and how to work. Default made by `coding.system_prompt(tools, cwd)`: role, tool list, short rules, date and cwd. The session rebuilds it every turn from prompt sections. Home: [11](11-system-prompt.md#system_prompt-the-base-text).
+
+## Context file
+A project file with rules for agents. The first of `CONTEXT_FILES` (`AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD`) found in `cwd`, read through the env, added once as the "Project Context" section. Home: [11](11-system-prompt.md#context_files-and-load_context_file-the-project-file).
+
+## Prompt section
+One part of the system prompt in `AgentSession`: an id, an order and a string or `fn(ctx)`. `_build_prompt` sorts them, skips empty ones and joins them before each model call. Home: [11](11-system-prompt.md#prompt-sections-building-the-prompt-every-turn).
