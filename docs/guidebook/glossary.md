@@ -18,7 +18,7 @@ The cycle at the heart of simp-agent: send the [messages](#message) to the model
 run any [tool](#tool) calls in the reply, add the results, and go again. It stops when the
 model's reply has no tool calls, or on an error or abort. Each pass is one [turn](#turn).
 Code: `agent_loop()` in `packages/simp_agent/src/simp_agent/agent/__init__.py`.
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [31 How one turn flows](31-turn-flow.md#3-agent-the-loop).
 
 ## Budget
 The money limits the server puts on LLM calls: a most per user per day and a most per [run](#run). Cost is tokens × the [profile](#profile) prices. The check is soft (see the box in the home chapter). Home: [24 Money and limits](24-money.md).
@@ -30,7 +30,7 @@ history (nothing is deleted). Before each LLM call, the model sees the summary p
 messages only. The [session](#session) compacts automatically when the history gets close to
 the window (`context_window - reserve_tokens`), after a "context too long" error, or when you
 ask for it. Code: `packages/simp_agent/src/simp_agent/agent/compaction.py`, `AgentSession.compact()`.
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [31 How one turn flows](31-turn-flow.md#5-compaction-home).
 
 ## Context file
 A Markdown file in the working folder whose text is added to the [system prompt](#system-prompt). The agent tries `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD` in that order and uses the first one found. It looks in the working folder only and reads it once, at the first message of a session.
@@ -40,7 +40,7 @@ Introduced in [13](13-working-well.md#1-give-standing-rules-with-agentsmd--both)
 ## Context window
 The most text (in tokens) the model can read at one time: the [system prompt](#system-prompt) plus the [history](#history) it is sent. When the history gets close to it, the session [compacts](#compaction).
 Code: `context_window` on the model, used in `packages/simp_agent/src/simp_agent/agent/compaction.py`.
-Introduced in [13](13-working-well.md#3-long-sessions-and-compaction--both). Home: 31 How one turn flows.
+Introduced in [13](13-working-well.md#3-long-sessions-and-compaction--both). Home: [31 How one turn flows](31-turn-flow.md#when).
 
 ## Execution environment
 Where [tools](#tool) read and write files and run commands. In code it is the `ExecutionEnv`
@@ -68,7 +68,7 @@ Introduced in [10](10-cli.md#3-the-repl). Home: [10 The CLI](10-cli.md).
 The full, saved list of a [session's](#session) entries: [messages](#message), compaction
 markers, and plugin data. It is append-only: entries are added, never changed or removed.
 What is sent to the model is built from it each turn (see [compaction](#compaction)).
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [31 How one turn flows](31-turn-flow.md#5-compaction-home).
 
 ## Kill switch
 The `simp-server pause` command. It makes a `PAUSED` file, and every LLM call is refused until `simp-server resume`. Home: [24 Money and limits](24-money.md#4-kill-switch).
@@ -87,7 +87,7 @@ One item in a conversation. There are three kinds that the model sees:
 The [history](#history) can also hold two kinds the model never sees directly:
 `CompactionEntry` (see [compaction](#compaction)) and `CustomEntry` (data saved by an app or
 [plugin](#plugin)). Code: `packages/simp_agent/src/simp_agent/ai/__init__.py`.
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [31 How one turn flows](31-turn-flow.md#2-ai-one-model-call).
 
 ## Plan mode
 A switch on a [session](#session) that makes the agent read-only: it can look at files and
@@ -154,13 +154,17 @@ One conversation with the agent, with its saved [history](#history). In code it 
 approval, and [plugins](#plugin). The CLI saves sessions as JSONL files in
 `~/.simp-agent/sessions/`; the server saves them in SQLite.
 Code: `packages/simp_agent/src/simp_agent/session/__init__.py`.
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [31 How one turn flows](31-turn-flow.md#4-session-retry-and-overflow-recovery).
 
 ## Steer
 In the [REPL](#repl), a message typed while the agent is running. The agent reads it before
 its next step. Compare [follow-up](#follow-up).
 Code: `route()` in `apps/cli/src/simp_cli/__init__.py`.
 Introduced in [10](10-cli.md#3-the-repl). Home: [10 The CLI](10-cli.md).
+
+## Stop reason
+Why the model's reply ended, in `AssistantMessage.stop_reason`: `stop` (done), `tool_use` (wants tools), `length` (hit the output token limit; its tool calls are not run), `error`, or `aborted`. The [agent loop](#agent-loop) and the [session](#session) decide what to do next from it.
+Home: [31 How one turn flows](31-turn-flow.md#2-ai-one-model-call).
 
 ## System prompt
 The fixed instructions sent to the model before the [messages](#message) on every call. For the
@@ -169,7 +173,7 @@ coding agent it names the tools, gives the working directory and date, and inclu
 [plugins](#plugin) can add sections (`plan_mode` adds one). It is not part of the history.
 Code: `system_prompt()` in `packages/simp_agent/src/simp_agent/coding/__init__.py`,
 `AgentSession.add_prompt_section()`.
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [31 How one turn flows](31-turn-flow.md#3-agent-the-loop).
 
 ## Tool
 An action the model can ask for, such as reading a file. A tool has a name, a description, a
@@ -191,4 +195,4 @@ Introduced in [01](01-quick-start.md#33-see-tool-approval). Home: [10 The CLI](1
 ## Turn
 One pass of the [agent loop](#agent-loop): one LLM call, then running the tool calls in its
 reply. A single prompt can take many turns.
-Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: 31 How one turn flows.
+Introduced in [00](00-introduction.md#3-the-core-ideas-in-one-picture). Home: [31 How one turn flows](31-turn-flow.md#3-agent-the-loop).

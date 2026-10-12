@@ -6,7 +6,7 @@
 > **Code paths covered:** `packages/simp_agent/src/simp_agent/` (one folder per layer), `packages/simp_agent/tests/test_layers.py`, `apps/cli`, `apps/server`, `apps/web`.
 > **Verified at commit:** `57cabfc` (`test_layers.py` run and passing).
 
-**Back:** [27 Troubleshooting](27-troubleshooting.md) · **Next:** 31 How one turn flows (not written yet)
+**Back:** [27 Troubleshooting](27-troubleshooting.md) · **Next:** [31 How one turn flows](31-turn-flow.md)
 
 Part 2 showed how to run a server. Part 3 opens the box. This chapter is the map; the next chapters walk the roads.
 
@@ -98,11 +98,11 @@ Two details:
 
 ## 6. Where to go next
 
-- How a message travels through `ai` → `agent` → `session`: 31 How one turn flows.
+- How a message travels through `ai` → `agent` → `session`: [31 How one turn flows](31-turn-flow.md).
 - What is inside the server: 32 The server inside.
 - How to add providers, tools and plugins: 34, 35, 36 Extending.
 
 ---
 
-**Built on by:** 31 How one turn flows, 32 The server inside, 34–36 Extending (not written yet).
+**Built on by:** [31 How one turn flows](31-turn-flow.md), 32 The server inside, 34–36 Extending (not written yet).
 **Builds on:** [00](00-introduction.md), [10](10-cli.md), [11](11-web.md), [20](20-operator-tutorial.md), [21](21-configuration.md), [27](27-troubleshooting.md).

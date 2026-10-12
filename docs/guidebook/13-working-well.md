@@ -61,7 +61,7 @@ Use a steer to correct a wrong direction early. It is cheaper than letting the a
 
 ## 3. Long sessions and compaction  [both]
 
-The model can only read so much at once (its [context window](glossary.md#context-window)). A long chat, with big file reads and command output, fills it. [Compaction](glossary.md#compaction) is the fix; its home is chapter 31 (How one turn flows). What you need to know here:
+The model can only read so much at once (its [context window](glossary.md#context-window)). A long chat, with big file reads and command output, fills it. [Compaction](glossary.md#compaction) is the fix; its home is [31 How one turn flows](31-turn-flow.md#5-compaction-home). What you need to know here:
 
 - It is **automatic.** The session compacts when the history is within 16,384 tokens of the window, and after a "context too long" error.
 - It **summarizes old messages** with one extra model call and keeps about the latest 20,000 tokens as they are. The [history](glossary.md#history) is not deleted; only what the model sees changes.
@@ -95,4 +95,4 @@ flowchart LR
 | Plan mode for "look first" | web only |
 
 **Next:** [20 Operator tutorial](20-operator-tutorial.md) (Part 2). **Back:** [12 CLI vs web](12-cli-vs-web.md).
-**Built on by:** 31 How one turn flows (the home of compaction and the system prompt).
+**Built on by:** [31 How one turn flows](31-turn-flow.md) (the home of compaction and the system prompt).
