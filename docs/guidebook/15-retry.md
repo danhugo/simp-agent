@@ -44,6 +44,46 @@ It helps with one `429`. It breaks when:
 4. **Nobody sees it.** The UI shows nothing while waiting.
 5. **The error message is sent back to the model** on the next call, unless something removes it.
 
+## Step by step: from naive to real
+
+We fix the naive version one problem at a time.
+
+**Step 1 — only retry errors that can go away.** We add `is_retryable(error, kind)` in `ai`. It checks the error text with a regex, and it says "no" for some error kinds:
+
+```python
+elif ai.is_retryable(last.error, last.error_kind) and attempt < self.max_retries:
+```
+
+Why: "no API key" will fail every time. A retry only wastes time.
+
+**Step 2 — wait longer each time.** The fixed 2 seconds becomes a doubling wait:
+
+```python
+delay = self.retry_base_delay * 2 ** (attempt - 1)
+```
+
+Why: a busy server needs more room each time, not the same hit every 2 seconds.
+
+**Step 3 — let abort stop the wait.** `asyncio.sleep` is replaced by a wait on an event, with a time limit:
+
+```python
+await asyncio.wait_for(self._abort.wait(), delay)
+```
+
+Why: Ctrl-C must work at once, even when no model call is running.
+
+**Step 4 — tell the UI.** We emit `auto_retry_start` before each wait and `auto_retry_end` at the end.
+
+Why: the user should see "retrying", not a frozen screen.
+
+**Step 5 — hide failed replies from the model.** We do nothing new here. `transform_messages` in `ai` already drops assistant messages with `stop_reason` `"error"` or `"aborted"` ([03](03-stream-parser.md)).
+
+Why: the error stays in history (for the user and the store), but the model never sees it.
+
+**Step 6 — move it into the session.** The loop lives in `AgentSession._run`, so `prompt()` and `continue_()` both get it for free.
+
+The result is the real code below.
+
 ## Real design
 
 ### Which errors are retryable
@@ -115,7 +155,17 @@ Step by step:
 
 **Retry is `continue_()`, not a new prompt.** The error message stays in history (history is append-only, [13](13-session.md)). We do not resend the user text. `continue_()` asks the model again with the same history. Before the call, `transform_messages` in `ai` drops assistant turns with `stop_reason` `"error"` or `"aborted"` from what is sent ([03](03-stream-parser.md)). So the model never sees its own failed reply.
 
-**Events.** `auto_retry_start` carries `attempt`, `max_attempts`, `delay` and the `error`, so the CLI can show "retry 1/3 in 2s: 429 ...". `auto_retry_end` says if it worked in the end.
+**Events.** `auto_retry_start` carries `attempt`, `max_attempts`, `delay` and the `error`. `auto_retry_end` carries `success` and `attempt`. Two apps use them:
+
+- The CLI (`apps/cli/src/simp_cli/repl.py`) sets its state to `"retrying"` on `auto_retry_start`.
+- The server (`apps/server/src/simp_server/server.py`) turns them into notices ([20](20-server-run.md)):
+
+```python
+        elif t == "auto_retry_start":
+            await self.durable(p.Notice, level="warning", text=f"retry {e['attempt']}/{e['max_attempts']}: {e['error']}")
+        elif t == "auto_retry_end":
+            await self.durable(p.Notice, text=f"retry {'succeeded' if e['success'] else 'failed'}")
+```
 
 ### Abort during backoff
 
@@ -143,6 +193,26 @@ The session's `abort()` sets this event and also aborts the agent ([06](06-event
 ```
 
 Why a separate event? During backoff the agent is **not** running. There is no model call to cancel, so `agent.abort()` alone would do nothing. The session needs its own flag for its own wait. `_run` makes a fresh `asyncio.Event()` at the start of each run, so an old abort does not stop the next prompt.
+
+### Order of checks and edge cases
+
+Each time round the `while`, `_run` asks these questions, in this order:
+
+1. **Is the last message an assistant error?** If not, stop. A normal reply ends the loop. An abort during a model call gives `stop_reason="aborted"`, not `"error"`, so it also ends the loop with no retry.
+2. **Is it a context overflow, and is `auto_compact` on, and have we not compacted yet?** Then compact once and continue ([17](17-overflow.md)). This check comes **first**. `is_retryable` also says "no" for an overflow, so an overflow is never retried by the backoff path.
+3. **Is it retryable, and is `attempt < max_retries`?** Then wait and continue.
+4. **Otherwise** stop. The error stays as the last message.
+
+Some edge cases that follow from this code:
+
+- **`error_kind` wins over the text.** `AssistantMessage(stop_reason="error", error="429", error_kind="budget")` is not retried. The server's budget check (`apps/server/src/simp_server/budget.py`) uses exactly this. `"policy"` is in `NON_RETRYABLE`, but no code at `2fc2776` sets it yet; it is room for later.
+- **`max_retries=0`** turns retry off. `attempt < 0` is never true.
+- **The counter is per run.** `attempt` starts at 0 in each `_run`. The next `prompt()` gets the full 3 tries again.
+- **Overflow and retry share one loop.** After a compaction, the next call can fail with `429`. Then the retry branch runs, with its own `attempt` counter.
+- **The regex is wide.** Any text with `connection`, `network` or a 3-digit number from 500 to 599 matches. For example an error that says "connection refused" is retried. This is on purpose: retry is cheap, and the try count is small.
+- **No retry events if nothing was retried.** `auto_retry_end` is sent only `if attempt:`. A fatal error alone sends neither event.
+- **`success` is checked at the end.** If all 3 tries fail, `auto_retry_end` has `success=False`, and the last message is the last error.
+- **The wait is not jittered.** All clients wait the same 2, 4, 8 seconds. That is a known limit.
 
 ## Test
 
@@ -184,6 +254,11 @@ uv run pytest packages/simp_agent/tests/test_session.py -k "retry_429 or abort_d
 
 > **Retry in the session, decided by text plus kind.** The loop ([05](05-agent-loop.md)) stays simple: an error ends the turn. The session, which lives across turns, decides whether to try again. A regex on the error text works for every provider; `error_kind` lets our own code say "never retry this". Backoff waits on the abort event, so Ctrl-C works even while nothing is running. The cost: a new provider error text that the regex does not know is not retried until someone adds it.
 
+## Exercises
+
+1. Write a test where `FakeProvider` returns `err429()` four times, with `retry_base_delay=0.001`. Check that the model was called 4 times (1 + 3 retries) and that `auto_retry_end` has `success=False`. Hint: copy `test_retry_429_twice_then_ok` and change the asserts.
+2. Make the first reply `AssistantMessage(stop_reason="error", error="429", error_kind="fatal")`. Predict: how many model calls, and how many `auto_retry` events? Hint: look at the first line of `is_retryable` and at `if attempt:`.
+
 ## Recap
 
 - A failed model call ends as an `AssistantMessage` with `stop_reason="error"`.
@@ -200,3 +275,5 @@ uv run pytest packages/simp_agent/tests/test_session.py -k "retry_429 or abort_d
 - **backoff** — waiting longer between each retry; here the wait doubles each time.
 - **error_kind** — a field on `AssistantMessage`; `fatal`, `budget` or `policy` mean "never retry".
 - **retryable error** — an error whose text matches `_RETRYABLE` (429, 5xx, overloaded, network...) and whose kind allows retry.
+- **auto_retry_start / auto_retry_end** — session events sent before each backoff wait and once after the last retry.
+- **NON_RETRYABLE** — the set `{"fatal", "budget", "policy"}` of error kinds that `is_retryable` always rejects.
