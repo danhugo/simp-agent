@@ -142,3 +142,21 @@ The object a plugin gets in `setup`; the actions it may take on its session. Hom
 
 ## plugin_error
 The event the session emits when an isolated plugin hook raises; it names the plugin and the hook. Home: [14](14-plugins.md).
+
+## retry
+Calling the model again after a short-lived error, with `continue_()`. Home: [15](15-retry.md).
+
+## backoff
+Waiting longer between each retry; here the wait doubles each time. Home: [15](15-retry.md).
+
+## error_kind
+A field on `AssistantMessage`; `fatal`, `budget` or `policy` mean "never retry". Home: [15](15-retry.md).
+
+## retryable error
+An error whose text matches `_RETRYABLE` (429, 5xx, overloaded, network...) and whose kind allows retry. Home: [15](15-retry.md).
+
+## auto_retry_start / auto_retry_end
+Session events sent before each backoff wait and once after the last retry. Home: [15](15-retry.md).
+
+## NON_RETRYABLE
+The set `{"fatal", "budget", "policy"}` of error kinds that `is_retryable` always rejects. Home: [15](15-retry.md).
