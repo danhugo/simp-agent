@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-13
+- v3 review fixes, Part 4 (ch 13–18, checked at `2fc2776`; 7 cited test commands, 27 passed): hard words replaced in ch 13, 15, 18 ("baked in", "jittered", "fails loudly", "opaque"). Ch 14: `tool_result` also runs after a blocked or denied call.
 - v3 review fixes, Part 1 (ch 00–04, still checked at `2fc2776`): ch 01–04 each get a "Step by step: from naive to real" section and two exercises. Ch 02: standalone FakeProvider example first, loop use moved to a forward note (ch 05/07), says the fake skips `transform_messages`. Ch 01: `is_retryable` and `transform_messages` link to ch 04. Ch 03: shows the test `run()` helper. Hard words replaced ("on cue", "opaque", "in flight", "append-only"). Ran the new ch 02/04 examples.
 
 ## 2026-10-12
