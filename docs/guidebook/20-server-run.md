@@ -160,7 +160,7 @@ There are three groups of messages.
 **Server events** come in two kinds, plus a snapshot:
 
 - **[Durable event](glossary.md#durable-event)**: has a `seq`, is saved (`UserMessage`, `AssistantMessage`, `ToolResult`, `ApprovalRequest`, `ApprovalResolved`, `RunState`, `Compaction`, `Notice`, `SessionTitle`).
-- **[Live event](glossary.md#live-event)**: no `seq`, not saved (`TextDelta`, `ThinkingDelta`, `ToolOutput`). The final `AssistantMessage` already holds the full text.
+- **[Live event](glossary.md#live-event)**: no `seq`, not saved (`TextDelta`, `ThinkingDelta`, `ToolOutput`). The full text is saved later in `AssistantMessage` (text, thinking) and `ToolResult` (tool output).
 - **[Snapshot](glossary.md#snapshot)**: "where we are now" (`last_seq`, `run_state`, `in_flight`, `pending_approval`, `title`, `plan_mode`).
 
 How `seq`, replay and the snapshot work together is in [21 · Replay](21-transport.md#replay-after-then-snapshot-then-live).
