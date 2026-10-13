@@ -4,6 +4,8 @@
 
 **Builds on:** [25-web-client](25-web-client.md) · **Next:** [27-limits-choices-extend](27-limits-choices-extend.md)
 
+## Where we are
+
 ```mermaid
 flowchart LR
     ai --> agent --> coding --> session --> plugins --> testing
@@ -13,6 +15,15 @@ flowchart LR
 ```
 
 *This chapter adds the part around the apps (marked): end-to-end tests, backups and a service on one machine.*
+
+Code in this chapter (commit `2fc2776`):
+
+- `apps/server/src/simp_server/fakellm.py` — `stream` (the fake model)
+- `apps/server/src/simp_server/fake.py` — `Hub`, `create_app`, `SCRIPT` (a whole fake server)
+- `apps/web/e2e/serve.sh`, `apps/web/e2e/app.spec.ts`, `apps/web/e2e/fake_reload.py`, `apps/web/playwright.config.ts` — the end-to-end tests
+- `apps/server/src/simp_server/ops.py` — `JsonFormatter`, `setup_logging`, `backup`
+- `deploy/launchd/com.simp.server.plist`, `deploy/launchd/com.simp.backup.plist` — the macOS services
+- `apps/server/tests/test_ops.py` — the logging and backup tests
 
 ## Problem
 
@@ -55,7 +66,7 @@ except sqlite3.Error as e:
 
 It looks fine, but it breaks in two ways:
 
-1. **The database copy can be wrong.** In [WAL mode](glossary.md#wal-mode), SQLite first writes new rows to a side file (`simp.db-wal`). The main file gets them later. A plain file copy of `simp.db` alone can miss rows, or even the table. Copying the `-wal` file too is not safe either: the server may write to it in the middle of the copy.
+1. **The database copy can be wrong.** In [WAL mode](glossary.md#wal), SQLite first writes new rows to a side file (`simp.db-wal`). The main file gets them later. A plain file copy of `simp.db` alone can miss rows, or even the table. Copying the `-wal` file too is not safe either: the server may write to it in the middle of the copy.
 2. **It copies secrets.** The `.env` file with API keys goes into every backup. Backups often go to less safe places than the server.
 
 The naive way to test the whole system has the same kind of problem: point the browser at a real model and check the answer. It is slow, costs money, and fails at random. We need something that is **[deterministic](glossary.md#deterministic)**: same input, same output, every time.
@@ -346,11 +357,3 @@ Run them with `uv run pytest apps/server/tests/test_ops.py`.
 
 **Builds on:** [25-web-client](25-web-client.md) · **Next:** [27-limits-choices-extend](27-limits-choices-extend.md)
 
-## Terms to add to glossary
-
-- End-to-end test: a test that drives the whole running app from the outside, like a real user.
-- Playwright: a tool that controls a real browser from test code.
-- Deterministic: gives the same output for the same input, every time.
-- WAL mode: a SQLite mode where new writes go to a side file (`-wal`) first and move into the main file later.
-- Online backup: SQLite's built-in way to copy a database safely while it is open and in use.
-- launchd: the macOS service manager; it starts, restarts and schedules programs from `.plist` files.

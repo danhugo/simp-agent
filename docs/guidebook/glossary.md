@@ -310,3 +310,19 @@ Turning off powers a container does not need (root, network, capabilities, write
 
 ## Bind mount
 A host folder shown inside a container at a path, so both see the same files. Home: [24](24-docker-sandbox.md#dockerenv-files-on-the-host-commands-in-the-box).
+
+## End-to-end test
+A test that drives the whole running app from the outside, like a real user. Home: [26](26-system-tests-deploy.md#end-to-end-tests-with-playwright).
+
+## Playwright
+A tool that controls a real browser from test code. Home: [26](26-system-tests-deploy.md#end-to-end-tests-with-playwright).
+
+## Deterministic
+Gives the same output for the same input, every time. Home: [26](26-system-tests-deploy.md#fakellm-a-model-that-always-says-the-same-thing).
+
+## Online backup
+SQLite's built-in way to copy a database safely while it is open and in use. Home: [26](26-system-tests-deploy.md#opspy-logs-and-backup).
+
+## launchd
+The macOS service manager. It starts, restarts and schedules programs from `.plist` files. Home: [26](26-system-tests-deploy.md#launchd-run-it-as-a-service-on-a-mac).
+

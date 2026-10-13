@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-13
+- v3 ch 26 System tests and deploy finished: symbols checked at `2fc2776`; added "Where we are" and "Code in this chapter"; glossary: End-to-end test, Playwright, Deterministic, Online backup, launchd (WAL mode links to WAL); removed "Terms to add" list.
 - v3 ch 24 Docker sandbox finished: symbols checked at `2fc2776`; added "Where we are" and "Code in this chapter"; glossary: Sandbox, Container, Hardening, Bind mount (process group links to Process-group kill); removed "Terms to add" list; removed duplicate ch 23 line.
 - v3 ch 25 Web client finished: symbols checked at `2fc2776`; glossary: Reducer, Offset (SSE, Durable event, Snapshot already in glossary); removed "Terms to add" list.
 - v3 ch 23 Limits finished: symbols checked at `2fc2776`; diagram matches ch 22; fizzbuzz example; glossary: Budget guard, Run budget, Daily budget, Kill switch, Eviction, Idle release; removed "Terms to add" list.
