@@ -293,12 +293,3 @@ uv run pytest apps/cli/tests/test_sockets.py -k "redact or plan_mode" -q
 - Part 4 is done: the session is ready for the apps in Part 5.
 
 **Builds on:** [17 Context overflow](17-overflow.md) · **Next:** [19 The CLI](19-cli.md)
-
-## Terms to add to glossary
-
-- **profile** — a named settings dict that describes one model setup (`api`, `model`, `base_url`, `context_window`, `plugins`, ...).
-- **build_model** — `session/profile.py`; turns a profile into a `Model`. Shared by the CLI and the server.
-- **build_plugins** — `plugins/__init__.py`; turns plugin names into new plugin objects.
-- **RedactSecrets** — built-in plugin that replaces secrets with `[REDACTED]`.
-- **include_usage** — `Model.compat` flag; asks an OpenAI-style server to send token usage in the stream. `build_model` turns it on by default.
-- **plan mode** — built-in plugin (`PlanMode`) that makes the agent read-only and asks it for a plan.

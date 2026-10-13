@@ -190,3 +190,18 @@ In `_run`: compact once and call the model again. Home: [17](17-overflow.md).
 
 ## overflowed flag
 The per-run flag in `_run` that allows only one overflow recovery. Home: [17](17-overflow.md).
+
+## build_model
+`session/profile.py`; turns a profile into a `Model`. Shared by the CLI and the server. Home: [18](18-profiles-plugins.md).
+
+## build_plugins
+`plugins/__init__.py`; turns plugin names into new plugin objects. Home: [18](18-profiles-plugins.md).
+
+## RedactSecrets
+Built-in plugin that replaces secrets with `[REDACTED]`. Home: [18](18-profiles-plugins.md).
+
+## include_usage
+`Model.compat` flag; asks an OpenAI-style server to send token usage in the stream. `build_model` turns it on by default. Home: [18](18-profiles-plugins.md).
+
+## plan mode
+Built-in plugin (`PlanMode`) that makes the agent read-only and asks it for a plan. Home: [18](18-profiles-plugins.md).

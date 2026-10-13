@@ -61,3 +61,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - v3 polish ch 15: moved "Terms to add" list into glossary.md.
 - v3 polish ch 16: moved "Terms to add" list into glossary.md.
 - v3 polish ch 17: moved "Terms to add" list into glossary.md.
+- v3 polish ch 18: moved "Terms to add" list into glossary.md.
