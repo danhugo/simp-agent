@@ -67,7 +67,7 @@ class _M(BaseModel):
     model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 ```
 
-Why: `{"txt": "hi"}` now fails loudly. This fixes problem 3.
+Why: `{"txt": "hi"}` now fails with a clear error. This fixes problem 3.
 
 **Step 2 — one owner per conversation.** A `Run` holds the `AgentSession` and its state. Only one place can start a loop:
 
@@ -378,13 +378,3 @@ uv run pytest apps/server/tests/test_protocol.py -q
 
 **Builds on:** [19-cli](19-cli.md) · **Next:** [21-transport](21-transport.md)
 
-## Terms to add to glossary
-
-- **protocol** — the fixed set of typed messages between simp-server and the web client, defined in `protocol.py`.
-- **Run** — the server object that owns one `AgentSession`, its event log and its run state.
-- **run state** — one of `idle`, `running`, `waiting_approval`, `aborting`, `error`; changes are checked by `check_transition`.
-- **discriminator** — a field (here `type`) whose value says which model a JSON object is.
-- **durable event** — a server event with a `seq`; it is saved and can be replayed.
-- **live event** — a streaming delta with no `seq`; it is not saved and is lost on reconnect.
-- **snapshot** — the event sent after (re)connect with `last_seq`, run state, in-flight text and any pending approval.
-- **JSON Schema** — a standard JSON format that describes data shapes; used here to generate TypeScript types.

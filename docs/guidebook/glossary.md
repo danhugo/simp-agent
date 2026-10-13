@@ -217,3 +217,27 @@ An object with `render(width) -> list[str]` that draws one part of the chat (`Us
 
 ## ANSI codes
 Special characters a terminal reads as colour or style. Not wanted in files or pipes, so `LinePrinter` uses them only on a TTY. Home: [19](19-cli.md#print-mode).
+
+## Protocol
+The fixed set of typed messages between simp-server and the web client, defined in `protocol.py`. Home: [20](20-server-run.md#protocol-models).
+
+## Run
+The server object (`Run` in `server.py`) that owns one `AgentSession`, its event log and its run state. Home: [20](20-server-run.md#the-run).
+
+## Run state
+One of `idle`, `running`, `waiting_approval`, `aborting`, `error`. Every change is checked by `check_transition`. Home: [20](20-server-run.md#run-state-machine).
+
+## Discriminator
+A field (here `type`) whose value says which model a JSON object is. Home: [20](20-server-run.md#protocol-models).
+
+## Durable event
+A server event with a `seq` number. It is saved and can be sent again after a reconnect. Home: [20](20-server-run.md#protocol-models).
+
+## Live event
+A streaming piece of text with no `seq`. It is not saved and is lost on reconnect. Home: [20](20-server-run.md#protocol-models).
+
+## Snapshot
+The event sent after a (re)connect with `last_seq`, run state, in-flight text and any pending approval. Home: [20](20-server-run.md#protocol-models).
+
+## JSON Schema
+A standard JSON format that describes data shapes. Used here to generate TypeScript types. Home: [20](20-server-run.md#gen_protocol--protocolgents).
