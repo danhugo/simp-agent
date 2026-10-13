@@ -292,3 +292,9 @@ Removing an unused `Run` from memory and closing its sandbox. Files and log stay
 
 ## Idle release
 Evicting runs that were not used for `idle_minutes`. Home: [23](23-limits.md#idle-release-evict-runs-nobody-uses).
+
+## Reducer
+A pure function `(state, event) -> new state`. In the web client, `reduce()` is the only place chat state changes. Home: [25](25-web-client.md#the-reducer-statets).
+
+## Offset
+The position in the full text where a delta starts. `appendAt()` uses it to drop repeated (dup) and skipped (gap) deltas. Home: [25](25-web-client.md#appendat).

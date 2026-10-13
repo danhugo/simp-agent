@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-13
+- v3 ch 25 Web client finished: symbols checked at `2fc2776`; glossary: Reducer, Offset (SSE, Durable event, Snapshot already in glossary); removed "Terms to add" list.
 - v3 ch 23 Limits finished: symbols checked at `2fc2776`; diagram matches ch 22; fizzbuzz example; glossary: Budget guard, Run budget, Daily budget, Kill switch, Eviction, Idle release; removed "Terms to add" list.
 - v3 ch 23 Limits finished: symbols checked at `2fc2776`; diagram matches ch 22; fizzbuzz example; glossary: Budget guard, Run budget, Daily budget, Kill switch, Eviction, Idle release; removed "Terms to add" list.
 - v3 review fixes, ch 13–18 (checked at `2fc2776`): ch 18 naive profiles use `id` (old code raised `TypeError`); ch 16 Exercise 2 uses `Model()` and checks no `compaction_start`, Step 2/3 wording; ch 17 overflow guard called a safety guard; ch 14 Step 7 and prompt-section repeat cut (links ch 13), "User denied:" explained; ch 15 problem 5 dropped; transform_messages links go to ch 04; ch 13 Step 7 (prompt sections, start()); "Where we are" in ch 15, 17 and "Code in this chapter" in ch 13–18; README template lists both parts.

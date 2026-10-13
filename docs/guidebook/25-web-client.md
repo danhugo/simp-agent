@@ -379,10 +379,3 @@ The unit tests run with `cd apps/web && pnpm test`.
 
 **Builds on:** [24-docker-sandbox](24-docker-sandbox.md) · **Next:** [26-system-tests-deploy](26-system-tests-deploy.md)
 
-## Terms to add to glossary
-
-- SSE: Server-Sent Events, a one-way HTTP stream where each event is `data:` lines ended by a blank line.
-- Durable event: a server event with a `seq` number that is stored, so the client can ask again for everything after a `seq`.
-- Snapshot: an event the server sends on each connect with the full live state (run state, in-flight message, pending approval, title, plan mode).
-- Reducer: a pure function `(state, event) -> new state` that is the only place the client's chat state changes.
-- Offset: the position in the full text where a delta starts; used by `appendAt` to drop dup and gap deltas.
