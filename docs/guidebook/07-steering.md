@@ -60,6 +60,45 @@ Where it breaks:
 - **All or nothing.** Three queued messages are sent as one batch. Sometimes the user wants each one handled as its own task.
 - **Not one run.** Each delivery is a new `run`, with new `agent_start` / `agent_end` [events](glossary.md#event). A UI that shows "busy" until `agent_end` flickers off and on.
 
+## Step by step: from naive to real
+
+We fix the naive version one problem at a time.
+
+**Step 1 — two queues, not one inbox.** "Change plan" and "then write tests" need different times. So `Agent` keeps two lists, and the user picks one:
+
+```python
+    def steer(self, text: str) -> None:
+        self.steering.append(UserMessage(text))
+
+    def follow_up(self, text: str) -> None:
+        self.follow_ups.append(UserMessage(text))
+```
+
+**Step 2 — read steering after each tool batch.** The naive inbox waits for the whole run. Now the loop reads steering after every turn, when all tool results are in the history, so the message is safe to add:
+
+```python
+            has_calls, pending = bool(calls), config.get_steering()
+```
+
+**Step 3 — keep going in the same run.** The inner loop goes on while there are tool calls **or** steering. When it ends, the outer loop asks for follow-ups. So there is one `agent_start` and one `agent_end`, and the UI does not flicker:
+
+```python
+    while True:
+        while has_calls or pending:
+            ...
+        pending = config.get_follow_up()
+        if not pending:
+            break
+```
+
+**Step 4 — one message or all.** The naive version sends everything as one batch. `_take` uses a mode, so each message can get its own turn:
+
+```python
+        n = len(queue) if mode == "all" else min(1, len(queue))
+```
+
+The result is the real code below.
+
 ## Real design
 
 ### Two hooks in `LoopConfig`
@@ -256,8 +295,8 @@ Two follow-ups are queued before the prompt. In `"one-at-a-time"` mode the model
 uv run pytest packages/simp_agent/tests/test_queues_compaction.py
 ```
 
-> **Why this way**
->
+## Why this way
+
 > **Two queues, because there are two needs.** "Change what you are doing" must arrive soon; "then do this" must wait. One inbox cannot do both.
 >
 > **Deliver only at safe points.** Steering is read before a model call and after a full tool batch, never in the middle. So every tool call keeps its result and the history stays valid. It also means steer never kills work; that is abort's job ([06](06-events-abort.md)).

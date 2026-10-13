@@ -57,6 +57,52 @@ Where it breaks:
 - **Only one file name.** Some teams use `CLAUDE.md`, some `AGENTS.md`.
 - **Built once.** If a plugin or a tool change happens later, the prompt is out of date.
 
+## Step by step: from naive to real
+
+We fix the naive version one problem at a time. Each step is small.
+
+**Step 1 — build the tool list, cwd and date into the text.** The model should not guess. So the base text is made by a function from the real tools and the real folder:
+
+```python
+def system_prompt(tools: list, cwd: str, context: tuple[str, str] | None = None) -> str:
+    tool_list = "\n".join(f"- {t.name}: {t.description}" for t in tools)
+    ...
+    return out + f"Current date: {datetime.date.today()}\nCurrent working directory: {cwd}"
+```
+
+The list comes from the tools we pass in, so it can never name a tool that does not exist.
+
+**Step 2 — read through the env, not `open`.** In Docker the project is inside a container. `env.read_file` reads from the right place:
+
+```python
+path = os.path.join(cwd, name)
+return path, await env.read_file(path)
+```
+
+**Step 3 — a missing file is normal.** Most folders have no `AGENTS.md`. We catch the error and go on:
+
+```python
+except OSError:
+    continue
+```
+
+**Step 4 — more than one file name.** Teams use different names. We try a list in order, and the first file found wins:
+
+```python
+CONTEXT_FILES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]
+```
+
+**Step 5 — rebuild the prompt every turn.** Tools and plugins can change during a session. So the session stores the coding prompt as a function, and `_llm_turn` calls it before each model call:
+
+```python
+self.add_prompt_section("coding", lambda ctx: system_prompt_for(ctx["tools"], ctx["cwd"]), 0)
+...
+if callable(system_prompt):
+    system_prompt = await _maybe_await(system_prompt())
+```
+
+The result is the real code below.
+
 ## Real design
 
 The design has two layers:

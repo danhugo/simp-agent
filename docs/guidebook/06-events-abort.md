@@ -55,6 +55,53 @@ Where it breaks:
 - **One callback per kind of thing** (`on_text`, then `on_tool_start`, `on_tool_end`, …) grows forever. Every new feature changes the signature.
 - **Stop between tools** is not handled at all. If the model asked for three tools and the user stops after the first, the history has two tool calls with no result. Vendors reject that with a 400 error.
 
+## Step by step: from naive to real
+
+We fix the naive loop one problem at a time. Each step is small.
+
+**Step 1 — one `emit` for all events.** Many callbacks (`on_text`, `on_tool_start`, …) change the signature for every new feature. So the loop sends plain dicts with a `"type"` key through one function, and `add` is the only way into history:
+
+```python
+    async def add(m):
+        messages.append(m)
+        new.append(m)
+        await send({"type": "message_start", "message": m})
+```
+
+**Step 2 — one shared stop signal.** A stop flag that only the loop reads cannot reach a tool. One `asyncio.Event` is seen by the model call, the loop and every tool (`ctx.cancel`):
+
+```python
+            for call in calls:
+                if cancel.is_set():
+                    break
+```
+
+**Step 3 — wait for the event OR the stop.** The naive check waited for the next model event. `_stream` waits on both at once, so a stop is seen at once, even when the model is silent:
+
+```python
+            await asyncio.wait({nxt, stop}, return_when=asyncio.FIRST_COMPLETED)
+```
+
+**Step 4 — close the HTTP request.** Leaving the `for` loop does not close the provider. `_stream` cancels the waiting task and closes the generator, so the connection ends and we stop paying for tokens:
+
+```python
+                nxt.cancel()  # raises CancelledError inside the generator -> its `async with` closes the stream
+    ...
+        await it.aclose()
+```
+
+**Step 5 — keep the partial answer.** The screen showed some text, so the history must have it too. The loop keeps the latest `partial` and marks it `aborted`:
+
+```python
+        partial = ev.get("partial", partial)
+    ...
+        msg = partial or _aborted()
+```
+
+**Step 6 — fix missing tool results later.** A stop between tools leaves calls with no result. The loop does not patch history; `ai.transform_messages` adds `"No result provided"` in the view sent to the model, so vendors do not return a 400 error.
+
+The result is the real code below.
+
 ## Real design
 
 ### Events: one stream of small dicts
@@ -337,11 +384,13 @@ Subscribers through `Agent`: `test_raising_subscriber_ends_with_error` adds a su
 uv run pytest packages/simp_agent/tests/test_harden.py
 ```
 
-> **Why this way**
->
+## Why this way
+
 > **Events are dicts, not classes or many callbacks.** One `emit(dict)` channel means new event types (steering, compaction, retry in later chapters) need no new signature. Dicts also go straight to JSON for the server ([21](21-transport.md)).
 >
 > **Abort is one `asyncio.Event`, and its result is data.** One `set()` reaches the model call, the loop and every tool. The run ends with an `aborted` message, not an exception, so callers handle "stopped" like any other end. The history keeps the partial truth; `transform_messages` cleans only what the model sees.
+>
+> **Subscribers are awaited in order.** Events never arrive out of order and are never lost. The cost: a slow subscriber slows the whole loop, and a subscriber that raises ends the run with an `error` message.
 >
 > **`Agent` is thin.** All logic stays in `agent_loop`; `Agent` only holds state (history, subscribers, cancel event, queues). The session ([13](13-session.md)) wraps `Agent` the same way.
 

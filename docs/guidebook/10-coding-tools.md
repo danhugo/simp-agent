@@ -62,6 +62,43 @@ Where it breaks:
 - **`bash` keeps the start of the output.** For a test run, the important part (the failures, the summary) is at the **end**.
 - **`bash` hides the exit code,** so the model cannot tell pass from fail.
 
+## Step by step: from naive to real
+
+We fix the naive tools one problem at a time. Each step is small.
+
+**Step 1 — all IO goes through `ctx.env`.** `open` and `subprocess` skip the fence, Docker and Stop from [09](09-exec-env.md). So every tool asks the env instead:
+
+```python
+lines = (await ctx.env.read_file(_path(ctx, args["path"]))).splitlines()
+```
+
+**Step 2 — paths start at `ctx.cwd`.** The Python process folder is not the session folder. `_path` joins the two; an absolute path stays as is:
+
+```python
+return os.path.join(ctx.cwd, path)  # absolute paths stay as is
+```
+
+**Step 3 — `read` cuts the file and says how to go on.** A 5 MB file must not fill the context. We cut with `truncate_head` and tell the model the next call:
+
+```python
+out += f"\n[{len(lines) - end} more lines; use offset={end + 1} to continue]"
+```
+
+**Step 4 — `edit` needs exactly one match.** Zero matches or many matches are errors, not a silent "ok". The model reads the count and fixes its call:
+
+```python
+if n != 1:
+    raise ValueError(f"edits[{i}].old_text must match exactly once in {args['path']}, found {n} matches")
+```
+
+**Step 5 — `bash` keeps the end and shows the exit code.** Test failures and summaries are at the end, and the model must know pass from fail:
+
+```python
+return tail(f"{out}\n[exit code: {code}]")
+```
+
+The result is the real code below.
+
 ## Real design
 
 ### The shape of every tool
@@ -417,8 +454,8 @@ No [FakeProvider](02-fake-provider.md) here: tools do not call models. The `edit
 uv run pytest packages/simp_agent/tests/test_tools.py packages/simp_agent/tests/test_bash.py
 ```
 
-> **Why this way**
->
+## Why this way
+
 > **Small functions over one env.** Each tool is a plain `async` function that does IO only through `ctx.env`. Swap the env and every tool moves to Docker with no change.
 >
 > **Output is for a model, so every cut is announced.** Truncation keeps whole lines under a line and a byte limit, and always says what was cut and how to get more (`offset=`, "refine the pattern", `head -c`). Head for files and searches, tail for commands.

@@ -55,6 +55,42 @@ Where it breaks:
 - **Blocks forever.** `input()` waits for the human. The **Stop** button from [06](06-events-abort.md) cannot end the wait.
 - **No way to change results.** There is no place to edit a result after the tool runs.
 
+## Step by step: from naive to real
+
+We fix the naive version one problem at a time. Each step is small.
+
+**Step 1 — a deny still makes a result.** `continue` left a tool call with no answer. Now a "no" becomes a normal error result, so the history stays valid:
+
+```python
+if deny is not None:
+    result = ToolResultMessage(call.id, call.name, f"User denied: {deny}", is_error=True)
+```
+
+**Step 2 — tell the model why.** The deny text has the reason (`User denied: <reason>`). The model reads it and can choose another plan, instead of trying the same call again.
+
+**Step 3 — move policy out of the loop.** The loop must not know about `input()` or a list of dangerous tools. So it only calls a function the caller gives in `LoopConfig`:
+
+```python
+before_tool_call: Callable[[ai.ToolCall, "ToolContext"], Any] | None = None
+```
+
+A CLI, a web app or a test can each pass their own function. `_maybe_await` lets it be sync or async.
+
+**Step 4 — a place to change results.** A second hook runs after the tool (and after a deny). If it returns `None`, the old result stays:
+
+```python
+result = await _maybe_await(config.after_tool_call(call, result, ctx)) or result
+```
+
+**Step 5 — do not block forever.** The hook gets `ctx`, so the approval hook in the session can wait for the human **or** Stop, whichever comes first:
+
+```python
+stop = asyncio.ensure_future(ctx.cancel.wait())
+await asyncio.wait([ask, stop], return_when=asyncio.FIRST_COMPLETED)
+```
+
+The result is the real code below.
+
 ## Real design
 
 ### Two hooks in `LoopConfig`
@@ -224,15 +260,15 @@ Approval has its own tests in the same `test_cli.py`: `test_deny_skips_tool`, `t
 uv run pytest apps/cli/tests/test_cli.py apps/cli/tests/test_sockets.py
 ```
 
-> **Why this way**
+## Why this way
+
+> **The loop asks; the caller decides.** Like steering in [07](07-steering.md), the loop has no policy. It calls two functions. A CLI, a server, a test or a plugin system can each plug in their own. The cost: the loop cannot protect you alone. With no hook, every tool runs.
 >
-> **The loop asks; the caller decides.** Like steering in [07](07-steering.md), the loop has no policy. It calls two functions. A CLI, a server, a test or a plugin system can each plug in their own.
+> **A "no" is a tool result, not a skip.** The history stays valid, and the model learns why, so it can pick another way. The cost: a deny uses one more model turn.
 >
-> **A "no" is a tool result, not a skip.** The history stays valid, and the model learns why, so it can pick another way.
+> **A string is the whole deny API.** `None` = run, any string = deny with that reason. No enum, no exception. The cost: even `""` means deny, which can surprise you.
 >
-> **A string is the whole deny API.** `None` = run, any string = deny with that reason. No enum, no exception.
->
-> **Approval is built on the hook, not in the loop.** The loop stays small. The hard parts of asking a human (remembering "always", racing against Stop) live in one hook in the session.
+> **Approval is built on the hook, not in the loop.** The loop stays small. The hard parts of asking a human (remembering "always", racing against Stop) live in one hook in the session. The cost: `"always"` is kept per tool name, only for this session.
 
 ## Exercises
 

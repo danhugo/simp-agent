@@ -3,10 +3,35 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-13
+- v3 review fixes, Parts 2–3 (ch 05–12, checked at `2fc2776`): each chapter gets a "Step by step: from naive to real" section with real code excerpts; ch 05–10 get a "Why this way" box. Changelog: added the missing "written" lines for ch 14–18 and put all lines newest first.
 - v3 review fixes, Part 4 (ch 13–18, checked at `2fc2776`; 7 cited test commands, 27 passed): hard words replaced in ch 13, 15, 18 ("baked in", "jittered", "fails loudly", "opaque"). Ch 14: `tool_result` also runs after a blocked or denied call.
+- v3 polish ch 18: moved "Terms to add" list into glossary.md.
+- v3 polish ch 17: moved "Terms to add" list into glossary.md.
+- v3 polish ch 16: moved "Terms to add" list into glossary.md.
+- v3 polish ch 15: moved "Terms to add" list into glossary.md.
+- v3 polish ch 14: moved "Terms to add" list into glossary.md.
+- Ch 13: now owns prompt sections (add_prompt_section, _build_prompt, start()) after the ch 11 cut.
+- ch 11: cut the session detail about prompt sections down to a summary plus a link to ch 13.
+- v3 ch 13 Sessions written (SessionStore append/load, AgentSession owns Agent via hooks, save on message_end, resume with messages=store.load(), prompt/continue_, append_entry/CustomEntry, CLI JsonlStore; test_session.py store test); glossary: Session, AgentSession, SessionStore, JSONL, _maybe_await, Append-only history.
+- Review fixes ch 09-12: added Exercises sections; plain-language fixes; Look ahead box in 11.
+- v3 ch 12 Evals written (evals/run.py: TOML tasks, run_task in temp dir with LocalEnv, event counting, 25-turn / 300 s limits, $PYTHON checks, results JSON; host-shell warning; test_run.py with FakeProvider); glossary: Eval, Eval task, Profile.
+- v3 ch 11 The system prompt written (system_prompt, CONTEXT_FILES / load_context_file via env, prompt sections and _build_prompt, prompt function in _llm_turn; test_session.py context file test); glossary: System prompt, Context file, Prompt section.
+- v3 ch 10 Coding tools written (read with offset hint, write, edit exact-once/no-overlap/all-or-nothing, ls via ls -1Ap, grep/find with rg/fd and 127 fallback, bash with optional host cap and tail, truncate_head/tail; test_tools.py, test_bash.py); glossary: Truncation.
+- v3 ch 09 Execution environment written (ExecutionEnv protocol, LocalEnv with to_thread IO, path safety via resolve, exec stream/cancel/timeout, process-group kill with run_kill, EnvConformance suite; test_env.py); glossary: Path safety, Process-group kill.
+- v3 ch 08 Hooks and approval written (before_tool_call / after_tool_call, deny as error result, _maybe_await, Agent hooks, AgentSession approval with always and abort race; tests in apps/cli/tests); glossary: Tool hook, Tool approval.
+- v3 ch 07 Steering written (get_steering / get_follow_up, inner and outer loop, three steering read points, queues survive abort, Agent.steer / follow_up / _take modes; test_queues_compaction.py); glossary: Steer, Follow-up, Queue mode; ch 19 link fixed to #steer.
+- v3 ch 06 Events and abort written (send/add/_emit_all events, cancel checks, _stream, partial kept on abort, Agent class; test_harden.py); glossary: Event, Abort.
 - v3 review fixes, Part 1 (ch 00–04, still checked at `2fc2776`): ch 01–04 each get a "Step by step: from naive to real" section and two exercises. Ch 02: standalone FakeProvider example first, loop use moved to a forward note (ch 05/07), says the fake skips `transform_messages`. Ch 01: `is_retryable` and `transform_messages` link to ch 04. Ch 03: shows the test `run()` helper. Hard words replaced ("on cue", "opaque", "in flight", "append-only"). Ran the new ch 02/04 examples.
+- v3 ch 05 The agent loop written (AgentTool, ToolContext, run_tool, LoopConfig, agent_loop, _llm_turn; test_core.py); glossary: Turn, Agent tool, Tool context, Execution environment.
 
 ## 2026-10-12
+- v3: wrote [18 Profiles and built-in plugins](18-profiles-plugins.md) (checked at `2fc2776`; `test_profile.py`, `test_sockets.py -k "redact or plan_mode"`): profiles and `build_model`, `build_plugins`, RedactSecrets, PlanMode.
+- v3: wrote [17 Context overflow](17-overflow.md) (checked at `2fc2776`; `test_queues_compaction.py -k overflow`): one detector for all providers, kept out of retry, compact and retry once, stop if compaction fails.
+- v3: wrote [16 Compaction](16-compaction.md) (checked at `2fc2776`; `test_compaction_serialize.py`, `test_queues_compaction.py`): CompactionEntry and `build_view`, `estimate_tokens`/`should_compact`, `find_cut`, `serialize_conversation`, incremental `summarize`, file tracking, `compact` in the session.
+- v3: wrote [15 Retry](15-retry.md) (checked at `2fc2776`; `test_session.py -k "retry_429 or abort_during_backoff"`): retryable errors, the retry loop in `_run`, abort during backoff, order of checks.
+- v3: wrote [14 Plugins](14-plugins.md) (checked at `2fc2776`; `test_sockets.py::test_plugin_context_chain_and_error_isolated`): plugin as any object with optional hook methods, the hook list, PluginAPI, prompt sections, plugin events.
+- v3 ch 04 Providers written (registry, lazy import, transform_messages and thinking replay, three providers, is_retryable / is_context_overflow); glossary: Agent loop, Provider registry, Context overflow.
+- v3 ch 03 The stream parser written (parse in openai_completions.py: text, tool-call assembly, stop reasons, usage); glossary: Delta, Usage.
 - v3: wrote [02 A fake provider](02-fake-provider.md) (checked at `2fc2776`; ran `test_no_tool_call_one_turn` and `test_tool_call_then_second_turn`, 2 passed, and the standalone example): stream function contract, `stream_fn` injection, naive fake, FakeProvider script/records/callable replies/start+done|error, use in tests. Glossary: provider, stream function, scripted reply.
 - v3: wrote [01 Messages](01-messages.md) (checked at `2fc2776`; ran `test_from_dict_old_and_new` and `test_entry_roundtrip_and_old_format`, 2 passed): message and block types, CompactionEntry/CustomEntry, Tool/Context/Model, to_dict/from_dict. Test file corrected from skeleton (`test_core.py` has no round-trip test). Glossary: message, context, compaction entry, custom entry.
 - v3: wrote [00 Overview](00-overview.md) (checked at `2fc2776`; `test_layers.py` run, 1 passed): what simp-agent is, layer map, layer test, apps, build path, capability table, fizzbuzz running example. Glossary: coding agent, layer, tool call.
@@ -36,30 +61,8 @@ Changes to this book, newest first. Each entry names the project commit the text
 - Added [11 The web UI](11-web.md) (verified at `9fdc61d`). Glossary: added plan mode. Linked 11 from 10 and README.
 - Added [10 The CLI](10-cli.md) (verified at `8efbd9c`). Glossary: added follow-up, steer, tool approval; linked 10 from 00, 01, README.
 - Added [01 Quick start](01-quick-start.md) (verified at `d3d03f6`): CLI path, web path,
-  no-key path with `--fake-llm`. Glossary: added access token, fake LLM, print mode, REPL.
-  Linked 01 from 00 and the README outline.
 - Added [00 Introduction and core ideas](00-introduction.md) (verified at `d74b7ee`).
 - Seeded the [glossary](glossary.md): agent loop, compaction, execution environment, history,
-  message, plugin, profile, provider, sandbox, session, tool, turn.
 - Review fixes: Stage 5 / replicas wording, stale README status, outline line 01 (no CLI fake mode), glossary term system prompt.
 - Review round 2: README status line now says "Written: 00, 01"; wrapped the Profile glossary line.
 - Note: links to chapters not yet written are plain text; they become links when those chapters exist.
-- v3 ch 03 The stream parser written (parse in openai_completions.py: text, tool-call assembly, stop reasons, usage); glossary: Delta, Usage.
-- v3 ch 04 Providers written (registry, lazy import, transform_messages and thinking replay, three providers, is_retryable / is_context_overflow); glossary: Agent loop, Provider registry, Context overflow.
-- v3 ch 05 The agent loop written (AgentTool, ToolContext, run_tool, LoopConfig, agent_loop, _llm_turn; test_core.py); glossary: Turn, Agent tool, Tool context, Execution environment.
-- v3 ch 06 Events and abort written (send/add/_emit_all events, cancel checks, _stream, partial kept on abort, Agent class; test_harden.py); glossary: Event, Abort.
-- v3 ch 07 Steering written (get_steering / get_follow_up, inner and outer loop, three steering read points, queues survive abort, Agent.steer / follow_up / _take modes; test_queues_compaction.py); glossary: Steer, Follow-up, Queue mode; ch 19 link fixed to #steer.
-- v3 ch 08 Hooks and approval written (before_tool_call / after_tool_call, deny as error result, _maybe_await, Agent hooks, AgentSession approval with always and abort race; tests in apps/cli/tests); glossary: Tool hook, Tool approval.
-- v3 ch 09 Execution environment written (ExecutionEnv protocol, LocalEnv with to_thread IO, path safety via resolve, exec stream/cancel/timeout, process-group kill with run_kill, EnvConformance suite; test_env.py); glossary: Path safety, Process-group kill.
-- v3 ch 10 Coding tools written (read with offset hint, write, edit exact-once/no-overlap/all-or-nothing, ls via ls -1Ap, grep/find with rg/fd and 127 fallback, bash with optional host cap and tail, truncate_head/tail; test_tools.py, test_bash.py); glossary: Truncation.
-- v3 ch 11 The system prompt written (system_prompt, CONTEXT_FILES / load_context_file via env, prompt sections and _build_prompt, prompt function in _llm_turn; test_session.py context file test); glossary: System prompt, Context file, Prompt section.
-- v3 ch 12 Evals written (evals/run.py: TOML tasks, run_task in temp dir with LocalEnv, event counting, 25-turn / 300 s limits, $PYTHON checks, results JSON; host-shell warning; test_run.py with FakeProvider); glossary: Eval, Eval task, Profile.
-- v3 ch 13 Sessions written (SessionStore append/load, AgentSession owns Agent via hooks, save on message_end, resume with messages=store.load(), prompt/continue_, append_entry/CustomEntry, CLI JsonlStore; test_session.py store test); glossary: Session, AgentSession, SessionStore, JSONL, _maybe_await, Append-only history.
-- Review fixes ch 09-12: added Exercises sections; plain-language fixes; Look ahead box in 11.
-- ch 11: cut the session detail about prompt sections down to a summary plus a link to ch 13.
-- Ch 13: now owns prompt sections (add_prompt_section, _build_prompt, start()) after the ch 11 cut.
-- v3 polish ch 14: moved "Terms to add" list into glossary.md.
-- v3 polish ch 15: moved "Terms to add" list into glossary.md.
-- v3 polish ch 16: moved "Terms to add" list into glossary.md.
-- v3 polish ch 17: moved "Terms to add" list into glossary.md.
-- v3 polish ch 18: moved "Terms to add" list into glossary.md.
