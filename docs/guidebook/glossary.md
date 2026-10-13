@@ -241,3 +241,18 @@ The event sent after a (re)connect with `last_seq`, run state, in-flight text an
 
 ## JSON Schema
 A standard JSON format that describes data shapes. Used here to generate TypeScript types. Home: [20](20-server-run.md#gen_protocol--protocolgents).
+
+## SSE
+Server-Sent Events: one long HTTP response where the server writes events as text blocks. The browser reads them with `EventSource`. Home: [21](21-transport.md#sse-out-post-in).
+
+## seq
+A number that grows by one for each saved row of a session. Clients use it to ask for the events they missed. Home: [21](21-transport.md#seq-one-counter-for-everything).
+
+## Last-Event-ID
+The HTTP header the browser sends on an SSE reconnect, with the last `id` it saw. Home: [21](21-transport.md#replay-after-then-snapshot-then-live).
+
+## Heartbeat
+The `": ping"` comment sent every 15 seconds on an idle SSE stream, so proxies keep it open. Home: [21](21-transport.md#the-sse-loop).
+
+## Future
+An asyncio object one task waits on until another task sets its result. Home: [21](21-transport.md#approval-over-the-wire).

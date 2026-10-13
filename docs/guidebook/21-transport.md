@@ -383,13 +383,3 @@ uv run pytest apps/server/tests/test_server.py::test_reconnect_with_last_event_i
 
 **Builds on:** [20-server-run](20-server-run.md) · **Next:** [22-store-auth](22-store-auth.md)
 
-## Terms to add to glossary
-
-- **SSE** — Server-Sent Events: one long HTTP response where the server writes events as text blocks; the browser reads them with `EventSource`.
-- **seq** — a number that grows by one for each saved row of a session; clients use it to ask for missed events.
-- **durable event** — a protocol event that is saved and has a `seq` (messages, tool results, approvals, run state, notices).
-- **live event** — a small streaming piece (`text_delta`, `thinking_delta`, `tool_output`) that is sent but not saved.
-- **snapshot** — the event sent after replay that gives the current state: `last_seq`, run state, in-flight text and pending approval.
-- **Last-Event-ID** — HTTP header the browser sends on SSE reconnect with the last `id` it saw.
-- **future** — an asyncio object one task waits on until another sets its result.
-- **heartbeat** — the `": ping"` comment sent every 15 seconds on an idle SSE stream.
