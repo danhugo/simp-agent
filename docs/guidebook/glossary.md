@@ -298,3 +298,15 @@ A pure function `(state, event) -> new state`. In the web client, `reduce()` is 
 
 ## Offset
 The position in the full text where a delta starts. `appendAt()` uses it to drop repeated (dup) and skipped (gap) deltas. Home: [25](25-web-client.md#appendat).
+
+## Sandbox
+A closed place where a session's commands run, apart from the server and other users. Home: [24](24-docker-sandbox.md#the-sandbox-slot).
+
+## Container
+A process with its own files, users and limits, started from an image by Docker. Home: [24](24-docker-sandbox.md#dockersandboxopen-one-hardened-container-per-session).
+
+## Hardening
+Turning off powers a container does not need (root, network, capabilities, write access) and adding limits. Home: [24](24-docker-sandbox.md#dockersandboxopen-one-hardened-container-per-session).
+
+## Bind mount
+A host folder shown inside a container at a path, so both see the same files. Home: [24](24-docker-sandbox.md#dockerenv-files-on-the-host-commands-in-the-box).

@@ -4,6 +4,8 @@
 
 **Builds on:** [23-limits](23-limits.md) · **Next:** [25-web-client](25-web-client.md)
 
+## Where we are
+
 ```mermaid
 flowchart LR
     ai --> agent --> coding --> session --> plugins --> testing
@@ -13,6 +15,14 @@ flowchart LR
 ```
 
 *This chapter adds the Docker sandbox to the server app (marked). The library does not change.*
+
+Code in this chapter (commit `2fc2776`):
+
+- `apps/server/src/simp_server/server.py` — `Sandbox`, `LocalSandbox`, `check_sandbox`, `load_settings`
+- `apps/server/src/simp_server/sandboxes/docker.py` — `DockerSandbox`, `DockerEnv`, `build_image`
+- `apps/server/sandboxes/Dockerfile` — the sandbox image
+- `packages/simp_agent/src/simp_agent/testing/env_conformance.py` — `EnvConformance`
+- `apps/server/tests/test_docker_sandbox.py` — the Docker sandbox tests
 
 ## Problem
 
@@ -269,7 +279,7 @@ proc = await asyncio.create_subprocess_exec(
 pid = (await proc.stdout.readline()).strip().decode()
 ```
 
-- `setsid` makes the command the leader of a new **[process group](glossary.md#process-group)**.
+- `setsid` makes the command the leader of a new **[process group](glossary.md#process-group-kill)**.
 - The first line it prints is its own pid (`echo $$`). We read that line first and keep it.
 - `2>&1` is inside the container. The comment says why: Docker sends stderr as a separate stream, and it could arrive before the pid line.
 
@@ -382,10 +392,3 @@ uv run pytest apps/server/tests/test_docker_sandbox.py -q
 
 **Builds on:** [23-limits](23-limits.md) · **Next:** [25-web-client](25-web-client.md)
 
-## Terms to add to glossary
-
-- **sandbox** — a closed place where a session's commands run, apart from the server and other users.
-- **container** — a process with its own files, users and limits, started from an image by Docker.
-- **hardening** — turning off powers a container does not need (root, network, capabilities, write access) and adding limits.
-- **bind mount** — a host folder shown inside a container at a path, so both see the same files.
-- **process group** — a set of processes that can be signalled together; `kill -<pgid>` stops all of them.
