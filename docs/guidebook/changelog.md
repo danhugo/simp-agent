@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-13
+- v3 ch 22 Store and auth finished: symbols checked at `2fc2776`; glossary: Store, Auth, Token (auth), WAL, scrypt, recover; removed "Terms to add" list.
 - v3 ch 19–21: added "## Where we are" heading over the diagram and the "Code in this chapter" list (paths checked at `2fc2776`), like ch 13.
 - v3 ch 21 Transport finished: symbols checked at `2fc2776`; 5 cited server tests passed; glossary: SSE, seq, Last-Event-ID, Heartbeat, Future; removed "Terms to add" list (Durable event, Live event, Snapshot already in glossary).
 - v3 ch 20 Server protocol and Run finished: symbols checked at `2fc2776`; glossary: Protocol, Run, Run state, Discriminator, Durable event, Live event, Snapshot, JSON Schema; removed "Terms to add" list; "fails loudly" replaced.

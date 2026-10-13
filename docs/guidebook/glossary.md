@@ -256,3 +256,21 @@ The `": ping"` comment sent every 15 seconds on an idle SSE stream, so proxies k
 
 ## Future
 An asyncio object one task waits on until another task sets its result. Home: [21](21-transport.md#approval-over-the-wire).
+
+## Store
+The server plugin that saves users, sessions, events and usage. By default `SqliteStore`. Home: [22](22-store-auth.md#sqlitestore-one-file-five-tables).
+
+## Auth
+The server plugin that finds the user for a request. By default `StaticTokenAuth`. Home: [22](22-store-auth.md#token-hashes).
+
+## Token (auth)
+A long random string sent as `Authorization: Bearer <token>`. Only its SHA-256 hash is stored. Home: [22](22-store-auth.md#token-hashes).
+
+## WAL
+SQLite write-ahead log mode. Readers do not wait for the writer, and a crash does not break the file. Home: [22](22-store-auth.md#sqlitestore-one-file-five-tables).
+
+## scrypt
+A slow, salted password hash from Python's `hashlib`. It is slow on purpose, so guessing is expensive. Home: [22](22-store-auth.md#scrypt-passwords).
+
+## recover
+`Run.recover`: closes a run that was busy when the server died, and leaves a valid history. Home: [22](22-store-auth.md#recover).
