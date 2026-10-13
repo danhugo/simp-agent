@@ -130,7 +130,7 @@ Three things in a few lines:
 | `before_agent_start(info)` | before the run | `{"messages": [...]}` to add messages |
 | `context(messages)` | before each model call | a new message list (chained) |
 | `tool_call(call)` | before a tool runs | `{"block": reason}` or `{"args": {...}}` |
-| `tool_result(call, result)` | after a tool runs | a dict of fields to replace |
+| `tool_result(call, result)` | after a tool runs, or after it is blocked or denied ([ch 08](08-hooks-approval.md)) | a dict of fields to replace |
 | `tool_update(call, text)` | on streamed tool output | new text |
 | `on_event(e)` | every session event | — |
 | `session_shutdown()` | in `shutdown()` | — |
