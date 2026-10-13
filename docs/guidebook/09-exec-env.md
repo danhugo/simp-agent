@@ -65,6 +65,61 @@ Where it breaks:
 - **Output is lost.** On timeout we return `""`. The model never learns how far the command got. And nothing streams while it runs.
 - **No folders.** `write_file("src/new/a.py", ...)` fails if `src/new` does not exist.
 
+## Step by step: from naive to real
+
+We fix the naive env one problem at a time. Each step is small.
+
+**Step 1 — a real fence.** A string `root` does not stop `..` or symlinks. So every file path first goes through `_path`, which resolves it and checks it is still inside the root:
+
+```python
+        root = Path(self.root).resolve()
+        p = (root / path).resolve()
+        if not p.is_relative_to(root):
+            raise PermissionError(f"path escapes root: {path}")
+```
+
+`resolve()` removes `..` and follows symlinks, so the check sees the real place on disk.
+
+**Step 2 — file work in a thread.** `open().read()` stops the event loop. We send it to a thread, so events and Stop still work:
+
+```python
+        return await asyncio.to_thread(self._path(path).read_text)
+```
+
+**Step 3 — make folders on write.** Writing `src/new/a.py` must not fail because `src/new` is missing:
+
+```python
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(data)
+```
+
+**Step 4 — async command that keeps its output.** `communicate()` blocks and loses output on timeout. We start the command with `asyncio`, read it in 4 KB chunks, keep every chunk, and send each one to `on_output`:
+
+```python
+            while data := await proc.stdout.read(4096):
+                text = data.decode(errors="replace")
+                chunks.append(text)
+                if on_output:
+                    await on_output(text)
+```
+
+Now the UI sees output live, and after a kill we can still return `"".join(chunks)`.
+
+**Step 5 — Stop can end a command.** A timeout alone is not enough. We race the command against the `cancel` event and the timeout:
+
+```python
+        stop = asyncio.ensure_future(cancel.wait())
+        done, _ = await asyncio.wait({run, stop}, timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+```
+
+**Step 6 — kill the whole group.** `p.kill()` leaves children alive. We start the shell with `start_new_session=True`, so it gets its own process group, and then `run_kill` sends `SIGKILL` to the group until it is empty:
+
+```python
+            os.killpg(pgid, 9)
+```
+
+The result is the real code below.
+
 ## Real design
 
 ### `ExecutionEnv`: the contract
@@ -350,8 +405,8 @@ No [FakeProvider](02-fake-provider.md) here: the env has nothing to do with mode
 uv run pytest packages/simp_agent/tests/test_env.py
 ```
 
-> **Why this way**
->
+## Why this way
+
 > **One object between tools and the world.** Tools call `ctx.env`, never `open()` or `subprocess`. To move all commands into Docker, the server swaps one object; no tool changes.
 >
 > **A Protocol, plus a test suite as the real rules.** Types say *which* methods exist. `EnvConformance` says *how* they must behave (fence, kill tree, partial output). A new env proves itself by passing it.

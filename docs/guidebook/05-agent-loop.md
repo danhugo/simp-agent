@@ -65,6 +65,67 @@ It works for the happy path. Where it breaks:
 
 The real design fixes each of these.
 
+## Step by step: from naive to real
+
+We fix the naive loop one problem at a time. Each step is small.
+
+**Step 1 — find the tool safely.** A dict lookup raises `KeyError`. We search the list and return an error result if the tool is missing:
+
+```python
+tool = next((t for t in tools if t.name == call.name), None)
+if tool is None:
+    return err(f"Tool {call.name} not found")
+```
+
+The model reads "not found" and can pick a real tool. The run goes on.
+
+**Step 2 — check the arguments.** The tool already has a JSON schema in `parameters`. We use it to check what the model sent:
+
+```python
+jsonschema.validate(call.arguments, tool.parameters)
+```
+
+Bad arguments now give a clear error like `'x' is a required property`, before the tool runs.
+
+**Step 3 — catch tool errors.** We wrap `execute` in `try` and turn the exception into text:
+
+```python
+except Exception as e:
+    return err("Interrupted by the user" if ctx.cancel.is_set() else f"{type(e).__name__}: {e}")
+```
+
+`err` builds a `ToolResultMessage` with `is_error=True`. So the model learns what went wrong and can try another way.
+
+**Step 4 — check `stop_reason`.** We stop on `error` or `aborted` on purpose, and we never run cut-off calls:
+
+```python
+if msg.stop_reason in ("error", "aborted"):
+    return await _end(send, msg, new)
+...
+if msg.stop_reason == "length":  # args may be cut off: never run them
+    result = ToolResultMessage(call.id, call.name, "Tool call was truncated (max tokens); not executed", True)
+```
+
+Now the stop is by design, not by luck. And half-written arguments never reach a tool.
+
+**Step 5 — make the model call a setting.** `ai.stream` moves into `LoopConfig`:
+
+```python
+stream_fn: Callable = ai.stream  # swap for a fake in tests
+```
+
+A test passes `FakeProvider` here. No real model is needed.
+
+**Step 6 — give the tool a context.** Each tool gets one `ToolContext` object:
+
+```python
+ctx = ToolContext(cancel, config.env, config.cwd, on_update)
+```
+
+Now the tool knows the working folder, can see a stop request, and can report progress.
+
+The result is the real code below.
+
 ## Real design
 
 ### Tools: `AgentTool`
@@ -336,11 +397,15 @@ Other loop tests in the same file (the edit and real-tool tests belong to [10](1
 uv run pytest packages/simp_agent/tests/test_core.py
 ```
 
-> **Why this way**
+## Why this way
+
+> **A plain function, not a class.** `agent_loop` takes a history, new prompts and a `LoopConfig`, and returns the new messages. It is easy to test with a fake `stream_fn`. The cost: the caller must keep the state; the `Agent` class ([06](06-events-abort.md)) and the session ([13](13-session.md)) do that.
 >
-> The loop is a plain function, not a class. Its inputs are a history, new prompts and a `LoopConfig`; its output is the new messages. All state lives in `messages`, which the caller owns. This makes it easy to test (fake `stream_fn`, list of events) and easy to wrap: the `Agent` class ([06](06-events-abort.md)) and the session ([13](13-session.md)) add state on top.
+> **Errors are data.** Every tool failure becomes a `ToolResultMessage` with `is_error=True`, and a provider error is an `AssistantMessage` with `stop_reason="error"`. The model can read and fix its mistake. The cost: a broken tool does not crash loudly, so you must read the results to see it.
 >
-> Errors are data. A tool error becomes a message the model can read and fix; a provider error becomes an assistant message the caller can retry. The loop never raises because of what the model or a tool did.
+> **One schema, two jobs.** `parameters` tells the model what to send and also checks what it sent. No second check to keep in sync. The cost: a JSON schema cannot check everything (for example, "this file must exist"); the tool still checks that itself.
+>
+> **Tools run one after another.** Results keep the same order as the calls, and two tools never touch the same file at once. The cost: many slow tools in one turn take longer than they would in parallel.
 
 ## Exercises
 

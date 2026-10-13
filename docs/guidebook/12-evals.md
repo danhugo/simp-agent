@@ -62,6 +62,51 @@ This works once. Where it breaks:
 - **Nothing saved.** Next week you cannot compare.
 - **Cannot be tested** without a real model and a key.
 
+## Step by step: from naive to real
+
+We fix the naive script one problem at a time. Each step is small.
+
+**Step 1 — tasks are TOML files.** Adding a task should not mean editing Python. `load_tasks` reads every file in `evals/tasks/` and uses the file name as the task name:
+
+```python
+tasks = {f.stem: {"name": f.stem, **tomllib.loads(f.read_text())} for f in sorted((HERE / "tasks").glob("*.toml"))}
+```
+
+**Step 2 — limits on turns and time.** A model that loops forever must not run (and spend money) forever. We stop at `MAX_TURNS` turns, or after `TIMEOUT_S` seconds:
+
+```python
+if r["turns"] >= MAX_TURNS:
+    r["error"] = f"hit {MAX_TURNS} turns"
+    s.abort()
+...
+await asyncio.wait_for(s.prompt(task["prompt"]), TIMEOUT_S)
+```
+
+**Step 3 — count the cost.** PASS alone hides 3 turns vs 30. We listen to `message_end` events and add up turns and tokens. We do not change the agent:
+
+```python
+if e["type"] == "message_end" and getattr(m, "role", None) == "assistant":
+    r["turns"] += 1
+    r["input"] += m.usage.get("input", 0)
+    r["output"] += m.usage.get("output", 0)
+```
+
+**Step 4 — the right `python`.** `python` in the shell may be a different Python. The check gets `$PYTHON`, set to the Python running the harness:
+
+```python
+env={**os.environ, "PYTHON": sys.executable}
+```
+
+**Step 5 — save the numbers.** `run_all` writes one JSON file per run, so you can compare next week:
+
+```python
+f = out_dir / f"{time.strftime('%Y%m%d-%H%M%S')}-{profile_name}.json"
+```
+
+**Step 6 — the model can be swapped.** `run_all` and `run_task` take `stream_fn` (default `ai.stream`). Tests pass a FakeProvider, so no key is needed.
+
+The result is the real code below.
+
 ## Real design
 
 ```mermaid
