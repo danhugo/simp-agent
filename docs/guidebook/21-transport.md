@@ -147,11 +147,11 @@ The server uses two plain HTTP routes:
         return StreamingResponse(gen(), media_type="text/event-stream")
 ```
 
-Events go out with **[SSE](glossary.md#sse)** (Server-Sent Events). SSE is one long HTTP response with `text/event-stream` type. The server writes small text blocks into it, one per event. The browser reads them with `EventSource` ([25](25-web-client.md)).
+Events go out with **[SSE](glossary.md#sse)** (Server-Sent Events). SSE is one long HTTP response with `text/event-stream` type. The server writes small text blocks into it, one per event. The browser reads them with a small fetch-based reader (see [25](25-web-client.md#fetch-based-sse)).
 
 Commands come in with a normal `POST`. The body is JSON, checked by the protocol models from [20](20-server-run.md) (`p.command`). A bad body gets `422`.
 
-Why not WebSocket? SSE is one-way, which is all we need out. Plain HTTP works through proxies, and `EventSource` reconnects by itself. Both routes need auth ([22](22-store-auth.md)).
+Why not WebSocket? SSE is one-way, which is all we need out. Plain HTTP works through proxies, and our client reconnects by itself, with backoff. Both routes need auth ([22](22-store-auth.md)).
 
 Each event is written by `sse` in `apps/server/src/simp_server/fake.py`:
 
@@ -194,7 +194,7 @@ So core messages (`"msg"` rows, used to resume the agent) and protocol events li
 
 ### Replay: `after`, then snapshot, then live
 
-When a tab connects, it says "I have seen up to seq N". It can do this with `?after=N`, or with the [`Last-Event-ID`](glossary.md#last-event-id) header that `EventSource` sends by itself on reconnect:
+When a tab connects, it says "I have seen up to seq N". It can do this with `?after=N`, or with the [`Last-Event-ID`](glossary.md#last-event-id) header that our client sends on every connect ([25](25-web-client.md#fetch-based-sse)):
 
 ```python
         first, q = run.subscribe(after if after is not None else int(request.headers.get("last-event-id") or 0))
