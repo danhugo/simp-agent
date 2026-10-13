@@ -56,3 +56,9 @@ Changes to this book, newest first. Each entry names the project commit the text
 - v3 ch 13 Sessions written (SessionStore append/load, AgentSession owns Agent via hooks, save on message_end, resume with messages=store.load(), prompt/continue_, append_entry/CustomEntry, CLI JsonlStore; test_session.py store test); glossary: Session, AgentSession, SessionStore, JSONL, _maybe_await, Append-only history.
 - Review fixes ch 09-12: added Exercises sections; plain-language fixes; Look ahead box in 11.
 - ch 11: cut the session detail about prompt sections down to a summary plus a link to ch 13.
+- Ch 13: now owns prompt sections (add_prompt_section, _build_prompt, start()) after the ch 11 cut.
+- v3 polish ch 14: moved "Terms to add" list into glossary.md.
+- v3 polish ch 15: moved "Terms to add" list into glossary.md.
+- v3 polish ch 16: moved "Terms to add" list into glossary.md.
+- v3 polish ch 17: moved "Terms to add" list into glossary.md.
+- v3 polish ch 18: moved "Terms to add" list into glossary.md.

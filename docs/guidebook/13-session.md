@@ -131,9 +131,70 @@ class AgentSession:
 
 - `prepare_next_turn=self._prepare` — runs before each model call. Compaction lives here ([16](16-compaction.md)).
 - `before_tool_call` / `after_tool_call` — the hooks from [08](08-hooks-approval.md). The session uses them for approval and plugins ([14](14-plugins.md)).
-- `self._build_prompt` is passed where a string prompt would go. The system prompt is rebuilt every turn from **prompt sections** ([14](14-plugins.md)).
+- `self._build_prompt` is passed where a string prompt would go. The system prompt is rebuilt every turn from **prompt sections** ([below](#prompt-sections-the-system-prompt-rebuilt-every-turn)).
 
 Good defaults keep the call short. `tools=None` means the coding tools (`TOOLS`), `env=None` means `LocalEnv()` ([09](09-exec-env.md)), `system_prompt=None` means the coding prompt from [11](11-system-prompt.md). The other arguments (`max_retries`, `auto_compact`, `plugins`) belong to the next chapters.
+
+### Prompt sections: the system prompt, rebuilt every turn
+
+In [11](11-system-prompt.md) we saw that the loop can take the system prompt as a **function**. The session passes `self._build_prompt` there. Here is how it works.
+
+The session keeps a small table of **[prompt sections](glossary.md#prompt-section)**. In `__init__`:
+
+```python
+        self._sections = dict()  # id -> (order, seq, str | fn(ctx) -> str)
+        self._seq = itertools.count()
+        if system_prompt is not None:
+            self.add_prompt_section("base", system_prompt, 0)
+        else:  # coding prompt; the context file section is added on start (needs env IO)
+            self.add_prompt_section("coding", lambda ctx: system_prompt_for(ctx["tools"], ctx["cwd"]), 0)
+        self._default_prompt = system_prompt is None
+```
+
+Two methods use the table:
+
+```python
+    def add_prompt_section(self, id: str, value, order: int = 100) -> None:
+        """value: str or fn(ctx) -> str (sync or async), rebuilt every turn. Sorted by (order, first add): stable."""
+        seq = self._sections[id][1] if id in self._sections else next(self._seq)
+        self._sections[id] = (order, seq, value)
+
+    async def _build_prompt(self) -> str:
+        a = self.agent
+        ctx = {"tools": a.tools, "cwd": a.cwd, "model": a.model, "messages": a.messages}
+        parts = list()
+        for _, _, v in sorted(self._sections.values(), key=lambda x: x[:2]):
+            text = await _maybe_await(v(ctx)) if callable(v) else v
+            if text:
+                parts.append(text)
+        return "\n\n".join(parts)
+```
+
+- **A section has an id, a value and an order.** The value is a string, or a function of `ctx` (sync or async). Sections are sorted by `order`, then by when they were first added (`seq`). Adding the same id again replaces the value but keeps its first place, so the order is stable.
+- **The coding prompt is a function.** `system_prompt_for` is `coding.system_prompt` from [11](11-system-prompt.md). It is called with the **current** tools and cwd, so if the tools change, the prompt changes on the next turn.
+- **Empty sections are skipped.** A function can return `""` to switch itself off. `remove_prompt_section(id)` removes a whole section. The plan-mode plugin ([18](18-profiles-plugins.md)) adds a `PLAN MODE` section at order 1000 and removes it when plan mode ends.
+- **The caller can replace it.** If the app passes its own `system_prompt` string, it becomes the `"base"` section. Then the coding prompt and the context file are not added. Our tests do this with `system_prompt="s"`.
+
+`_build_prompt` runs before **every** model call, so plugins ([14](14-plugins.md)) can change the prompt between turns.
+
+### start(): runs once, before the first prompt
+
+```python
+    async def start(self) -> None:
+        """Load the context file, run plugin setup(api, config), then session_start. Called by the first prompt."""
+        if self._started:
+            return
+        self._started = True
+        if self._default_prompt and (cf := await load_context_file(self.agent.env, self.agent.cwd)):
+            self.add_prompt_section("context_file", f"# Project Context\n\n## {cf[0]}\n\n{cf[1]}", 10)
+        ...
+```
+
+Reading the [context file](glossary.md#context-file) (`AGENTS.md`, [11](11-system-prompt.md)) needs async env IO, and `__init__` cannot `await`. So the session reads it in `start()`, which `prompt` and `continue_` call first. The `_started` flag makes it run only once. Order 10 puts the context file right after the coding text (order 0) and before plugin sections (default 100). It is read **once per session**: if you edit `AGENTS.md` mid-session, it has no effect until a new session. The rest of `start()` sets up plugins ([14](14-plugins.md)).
+
+The `context` argument of `system_prompt` is not used by the session. The session adds the same `# Project Context` text as its own section instead, so it can come and go by itself.
+
+`test_session.py::test_context_file_in_system_prompt` checks this: it writes `AGENTS.md` with `use tabs` and checks that the first system prompt contains it.
 
 ### Saving: one listener
 
@@ -179,7 +240,7 @@ Why not load inside? Because the app decides *which* session to resume (a sessio
         return await self._run(self.agent.continue_)
 ```
 
-`prompt(text)` adds a user message and runs. `continue_()` runs again without a new message: for example after a resume where the last message was a tool result. Both go through `_run`, which adds retry ([15](15-retry.md)) and overflow recovery ([17](17-overflow.md)). `start()` runs once, on the first call: it loads the project context file (`AGENTS.md`, [11](11-system-prompt.md)) and sets up plugins ([14](14-plugins.md)).
+`prompt(text)` adds a user message and runs. `continue_()` runs again without a new message: for example after a resume where the last message was a tool result. Both go through `_run`, which adds retry ([15](15-retry.md)) and overflow recovery ([17](17-overflow.md)). Both call `start()` first ([see above](#start-runs-once-before-the-first-prompt)).
 
 The session also passes through `steer`, `follow_up` ([07](07-steering.md)) and `abort` ([06](06-events-abort.md)). `messages` is a property that returns `self.agent.messages`, so there is one list, not two copies.
 
@@ -274,6 +335,7 @@ uv run pytest packages/simp_agent/tests/test_session.py::test_store_gets_every_m
 - `SessionStore` is `append` + `load`. The session appends each finished message right away.
 - Resume = `AgentSession(..., messages=store.load())`.
 - `CustomEntry` is saved and resumed but never sent to the model.
+- The system prompt is a table of prompt sections; `_build_prompt` joins them every turn, and `start()` adds the context file once.
 - `JsonlStore` in the CLI is the real file store: one JSON line per entry.
 
 **Builds on:** [12 Evals](12-evals.md) · **Next:** [14 Plugins](14-plugins.md)

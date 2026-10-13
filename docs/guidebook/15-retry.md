@@ -268,12 +268,3 @@ uv run pytest packages/simp_agent/tests/test_session.py -k "retry_429 or abort_d
 - `auto_retry_start` / `auto_retry_end` events let the UI show what is going on.
 
 **Builds on:** [14 Plugins](14-plugins.md) · **Next:** [16 Compaction](16-compaction.md)
-
-## Terms to add to glossary
-
-- **retry** — calling the model again after a short-lived error, with `continue_()`.
-- **backoff** — waiting longer between each retry; here the wait doubles each time.
-- **error_kind** — a field on `AssistantMessage`; `fatal`, `budget` or `policy` mean "never retry".
-- **retryable error** — an error whose text matches `_RETRYABLE` (429, 5xx, overloaded, network...) and whose kind allows retry.
-- **auto_retry_start / auto_retry_end** — session events sent before each backoff wait and once after the last retry.
-- **NON_RETRYABLE** — the set `{"fatal", "budget", "policy"}` of error kinds that `is_retryable` always rejects.

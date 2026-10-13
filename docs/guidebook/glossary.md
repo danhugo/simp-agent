@@ -96,7 +96,7 @@ The first text of every model request: who the model is and how to work. Default
 A project file with rules for agents. The first of `CONTEXT_FILES` (`AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD`) found in `cwd`, read through the env, added once as the "Project Context" section. Home: [11](11-system-prompt.md#context_files-and-load_context_file-the-project-file).
 
 ## Prompt section
-One part of the system prompt in `AgentSession`: an id, an order and a string or `fn(ctx)`. `_build_prompt` sorts them, skips empty ones and joins them before each model call. Home: [11](11-system-prompt.md#prompt-sections-building-the-prompt-every-turn).
+One part of the system prompt in `AgentSession`: an id, an order and a string or `fn(ctx)`. `_build_prompt` sorts them, skips empty ones and joins them before each model call. Introduced in [11](11-system-prompt.md#prompt-sections-building-the-prompt-every-turn); home: [13](13-session.md#prompt-sections-the-system-prompt-rebuilt-every-turn).
 
 ## Eval
 A test of the real agent with a real model on fixed tasks, checked by a program. It reports pass/fail plus turns, tokens, cost and time. Runner: `evals/run.py`. Home: [12](12-evals.md).
@@ -124,3 +124,84 @@ A helper in `agent/__init__.py` that awaits a value only if it is awaitable. It 
 
 ## Append-only history
 Finished messages are never changed or removed; new entries are only added at the end. So a store can save each entry once, right away. Home: [13](13-session.md).
+
+## plugin
+Any object passed in `AgentSession(plugins=[...])`; the session calls its hook methods. Home: [14](14-plugins.md).
+
+## plugin hook
+A method name the session calls on a plugin at a fixed point (`setup`, `input`, `context`, `tool_call`, `tool_result`, `on_event`, ...). Home: [14](14-plugins.md).
+
+## hook isolation
+An error in a plugin hook becomes a `plugin_error` event instead of breaking the run. Home: [14](14-plugins.md).
+
+## fail closed
+When a safety check itself fails, treat it as "no" (block the tool). Home: [14](14-plugins.md).
+
+## PluginAPI
+The object a plugin gets in `setup`; the actions it may take on its session. Home: [14](14-plugins.md).
+
+## plugin_error
+The event the session emits when an isolated plugin hook raises; it names the plugin and the hook. Home: [14](14-plugins.md).
+
+## retry
+Calling the model again after a short-lived error, with `continue_()`. Home: [15](15-retry.md).
+
+## backoff
+Waiting longer between each retry; here the wait doubles each time. Home: [15](15-retry.md).
+
+## error_kind
+A field on `AssistantMessage`; `fatal`, `budget` or `policy` mean "never retry". Home: [15](15-retry.md).
+
+## retryable error
+An error whose text matches `_RETRYABLE` (429, 5xx, overloaded, network...) and whose kind allows retry. Home: [15](15-retry.md).
+
+## auto_retry_start / auto_retry_end
+Session events sent before each backoff wait and once after the last retry. Home: [15](15-retry.md).
+
+## NON_RETRYABLE
+The set `{"fatal", "budget", "policy"}` of error kinds that `is_retryable` always rejects. Home: [15](15-retry.md).
+
+## context window
+The most tokens a model can read in one call (`Model.context_window`). Home: [16](16-compaction.md).
+
+## compaction
+Replacing old history in the model's view with a summary. Home: [16](16-compaction.md).
+
+## CompactionEntry
+The marker appended to history: summary, `first_kept_index`, read and modified files. Home: [16](16-compaction.md).
+
+## view (LLM view)
+The message list actually sent to the model, built from history by `build_view` and the plugin `context` chain. Home: [16](16-compaction.md).
+
+## reserve_tokens
+Tokens kept free for the reply and the summary (default 16384). Home: [16](16-compaction.md).
+
+## keep_recent_tokens
+About how many recent tokens are kept word for word (default 20000). Home: [16](16-compaction.md).
+
+## incremental summary
+Updating the previous summary with only the new messages. Home: [16](16-compaction.md).
+
+## cut (first_kept_index)
+The index of the first message kept word for word; always a user or assistant message. Home: [16](16-compaction.md).
+
+## overflow recovery
+In `_run`: compact once and call the model again. Home: [17](17-overflow.md).
+
+## overflowed flag
+The per-run flag in `_run` that allows only one overflow recovery. Home: [17](17-overflow.md).
+
+## build_model
+`session/profile.py`; turns a profile into a `Model`. Shared by the CLI and the server. Home: [18](18-profiles-plugins.md).
+
+## build_plugins
+`plugins/__init__.py`; turns plugin names into new plugin objects. Home: [18](18-profiles-plugins.md).
+
+## RedactSecrets
+Built-in plugin that replaces secrets with `[REDACTED]`. Home: [18](18-profiles-plugins.md).
+
+## include_usage
+`Model.compat` flag; asks an OpenAI-style server to send token usage in the stream. `build_model` turns it on by default. Home: [18](18-profiles-plugins.md).
+
+## plan mode
+Built-in plugin (`PlanMode`) that makes the agent read-only and asks it for a plan. Home: [18](18-profiles-plugins.md).
