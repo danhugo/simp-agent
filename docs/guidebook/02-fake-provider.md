@@ -13,7 +13,9 @@ flowchart LR
 
 In [01](01-messages.md) we made the [messages](glossary.md#message). Now we need something that *returns* messages, like a model does. A real model is slow, costs money, needs an API key, and gives a different answer each time. So before we write any real [provider](glossary.md#provider), we write a fake one.
 
-It lives in the `testing` [layer](glossary.md#layer), at the far right of the map. It may import from every other layer, and no library code imports it. Code in this chapter (commit `a55fe8d`):
+It lives in the `testing` [layer](glossary.md#layer), at the far right of the map. It may import from every other layer, and no library code imports it.
+
+Code in this chapter (commit `a55fe8d`):
 
 - `packages/simp_agent/src/simp_agent/testing/__init__.py` — `FakeProvider`
 - `packages/simp_agent/tests/test_core.py` — tests that use the fake

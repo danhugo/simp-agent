@@ -15,9 +15,7 @@ flowchart LR
 
 *This chapter adds retry to the `session` layer (marked). The error checks it uses live in `ai`.*
 
-## Code in this chapter
-
-Commit `2fc2776`:
+Code in this chapter (commit `2fc2776`):
 
 - `packages/simp_agent/src/simp_agent/ai/__init__.py` — `is_retryable`, `NON_RETRYABLE`
 - `packages/simp_agent/src/simp_agent/session/__init__.py` — `AgentSession._run` (the retry loop)
