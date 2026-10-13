@@ -184,3 +184,9 @@ Updating the previous summary with only the new messages. Home: [16](16-compacti
 
 ## cut (first_kept_index)
 The index of the first message kept word for word; always a user or assistant message. Home: [16](16-compaction.md).
+
+## overflow recovery
+In `_run`: compact once and call the model again. Home: [17](17-overflow.md).
+
+## overflowed flag
+The per-run flag in `_run` that allows only one overflow recovery. Home: [17](17-overflow.md).

@@ -264,9 +264,3 @@ uv run pytest packages/simp_agent/tests/test_queues_compaction.py -k overflow -q
 - Auto compaction ([16](16-compaction.md)) prevents; overflow recovery repairs.
 
 **Builds on:** [16 Compaction](16-compaction.md) · **Next:** [18 Profiles and built-in plugins](18-profiles-plugins.md)
-
-## Terms to add to glossary
-
-- **context overflow** — the provider rejects a call because the input is bigger than the context window.
-- **overflow recovery** — in `_run`: compact once and call the model again.
-- **overflowed flag** — the per-run flag in `_run` that allows only one overflow recovery.
