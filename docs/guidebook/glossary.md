@@ -240,7 +240,7 @@ A server event with a `seq` number. It is saved and can be sent again after a re
 A streaming piece of text with no `seq`. It is not saved and is lost on reconnect. Home: [20](20-server-run.md#protocol-models).
 
 ## Snapshot
-The event sent after a (re)connect with `last_seq`, run state, in-flight text and any pending approval. Home: [20](20-server-run.md#protocol-models).
+The event sent after a (re)connect with `last_seq`, run state, in-flight text and any pending approval. Home: [20](20-server-run.md#protocol-models). How it works with replay: [21](21-transport.md#replay-after-then-snapshot-then-live).
 
 ## JSON Schema
 A standard JSON format that describes data shapes. Used here to generate TypeScript types. Home: [20](20-server-run.md#gen_protocol--protocolgents).
