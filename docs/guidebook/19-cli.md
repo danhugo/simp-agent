@@ -4,6 +4,8 @@
 
 **Builds on:** [18-profiles-plugins](18-profiles-plugins.md) · **Next:** [20-server-run](20-server-run.md)
 
+## Where we are
+
 ```mermaid
 flowchart LR
     ai --> agent --> coding --> session --> plugins --> testing
@@ -12,6 +14,13 @@ flowchart LR
 ```
 
 *This chapter builds the first app: `apps/cli` (marked). It only uses the library; the library does not know it exists.*
+
+Code in this chapter (commit `2fc2776`):
+
+- `apps/cli/src/simp_cli/__init__.py` — `JsonlStore`, `session_dir`, `LinePrinter`, `run`, `main`
+- `apps/cli/src/simp_cli/repl.py` — `Repl`
+- `apps/cli/src/simp_cli/components.py` — `UserMsg`, `AssistantMsg`, `ToolCall`, `Notice`, `Chat`
+- `apps/cli/tests/test_cli.py`, `apps/cli/tests/test_tui.py` — the CLI tests
 
 ## Problem
 

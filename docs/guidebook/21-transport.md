@@ -4,6 +4,8 @@
 
 **Builds on:** [20-server-run](20-server-run.md) · **Next:** [22-store-auth](22-store-auth.md)
 
+## Where we are
+
 ```mermaid
 flowchart LR
     ai --> agent --> coding --> session --> plugins --> testing
@@ -12,6 +14,13 @@ flowchart LR
 ```
 
 *This chapter adds the transport of the `server` app (marked): how events go out and commands come in.*
+
+Code in this chapter (commit `2fc2776`):
+
+- `apps/server/src/simp_server/server.py` — `Run.subscribe`, `Run._send`, `Run.durable`, `Run.command`, `Run.approve`, `create_app` (the SSE and POST routes)
+- `apps/server/src/simp_server/fake.py` — `sse`
+- `apps/server/src/simp_server/protocol.py` — `Snapshot`, `InFlight`, `PendingApproval`, `Approve`
+- `apps/server/tests/test_server.py` — the reconnect, approval and slow-client tests
 
 ## Problem
 

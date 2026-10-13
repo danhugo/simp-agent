@@ -4,6 +4,8 @@
 
 **Builds on:** [19-cli](19-cli.md) · **Next:** [21-transport](21-transport.md)
 
+## Where we are
+
 ```mermaid
 flowchart LR
     ai --> agent --> coding --> session --> plugins --> testing
@@ -12,6 +14,14 @@ flowchart LR
 ```
 
 *This chapter starts the `server` app (marked). It uses the `session` layer from the outside.*
+
+Code in this chapter (commit `2fc2776`):
+
+- `apps/server/src/simp_server/protocol.py` — the protocol models, `Snapshot`, `TRANSITIONS`, `check_transition`
+- `apps/server/src/simp_server/server.py` — `Run`, `SessionManager`
+- `apps/server/src/simp_server/gen_protocol.py` — writes `protocol.gen.ts`
+- `apps/server/src/simp_server/__main__.py` — `main`
+- `apps/server/tests/test_protocol.py` — the protocol tests
 
 ## Problem
 
