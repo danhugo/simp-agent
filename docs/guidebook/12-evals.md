@@ -279,7 +279,7 @@ To add a task, add one file. No Python. A good task:
 4. **Uses `"$PYTHON"`**, not `python`, and `-p no:cacheprovider` so pytest leaves no cache files.
 5. **Tests one skill.** If it fails, you should know why.
 
-The book ships only these four tasks, and they all test code edits. When you add a capability in a later chapter, you can add a task that needs it, using these five rules.
+The book ships only these four tasks: three code edits and one read-and-answer. When you add a capability in a later chapter, you can add a task that needs it, using these five rules.
 
 ### Host-shell warning
 
