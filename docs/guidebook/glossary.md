@@ -140,7 +140,7 @@ When a safety check itself fails, treat it as "no" (block the tool). Home: [14](
 ## PluginAPI
 The object a plugin gets in `setup`; the actions it may take on its session. Home: [14](14-plugins.md).
 
-## plugin_error
+## `plugin_error`
 The event the session emits when an isolated plugin hook raises; it names the plugin and the hook. Home: [14](14-plugins.md).
 
 ## Retry
@@ -149,7 +149,7 @@ Calling the model again after a short-lived error, with `continue_()`. Home: [15
 ## Backoff
 Waiting longer between each retry; here the wait doubles each time. Home: [15](15-retry.md).
 
-## error_kind
+## `error_kind`
 A field on `AssistantMessage`; `fatal`, `budget` or `policy` mean "never retry". Home: [15](15-retry.md).
 
 ## Jitter
@@ -158,7 +158,7 @@ A small random part added to a retry wait, so many clients do not retry at the s
 ## Retryable error
 An error whose text matches `_RETRYABLE` (429, 5xx, overloaded, network...) and whose kind allows retry. Home: [15](15-retry.md).
 
-## auto_retry_start / auto_retry_end
+## `auto_retry_start` / `auto_retry_end`
 Session events sent before each backoff wait and once after the last retry. Home: [15](15-retry.md).
 
 ## NON_RETRYABLE
@@ -176,10 +176,10 @@ Same as [Compaction entry](#compaction-entry).
 ## View (LLM view)
 The message list actually sent to the model, built from history by `build_view` and the plugin `context` chain. Home: [16](16-compaction.md).
 
-## reserve_tokens
+## `reserve_tokens`
 Tokens kept free for the reply and the summary (default 16384). Home: [16](16-compaction.md).
 
-## keep_recent_tokens
+## `keep_recent_tokens`
 About how many recent tokens are kept word for word (default 20000). Home: [16](16-compaction.md).
 
 ## Incremental summary
@@ -194,16 +194,16 @@ How `_run` handles a [Context overflow](#context-overflow): compact once and cal
 ## Overflowed flag
 The per-run flag in `_run` that allows only one overflow recovery. Home: [17](17-overflow.md).
 
-## build_model
+## `build_model`
 `session/profile.py`; turns a profile into a `Model`. Shared by the CLI and the server. Home: [18](18-profiles-plugins.md).
 
-## build_plugins
+## `build_plugins`
 `plugins/__init__.py`; turns plugin names into new plugin objects. Home: [18](18-profiles-plugins.md).
 
 ## RedactSecrets
 Built-in plugin that replaces secrets with `[REDACTED]`. Home: [18](18-profiles-plugins.md).
 
-## include_usage
+## `include_usage`
 `Model.compat` flag; asks an OpenAI-style server to send token usage in the stream. `build_model` turns it on by default. Home: [18](18-profiles-plugins.md).
 
 ## Plan mode
@@ -248,7 +248,7 @@ A standard JSON format that describes data shapes. Used here to generate TypeScr
 ## SSE
 Server-Sent Events: one long HTTP response where the server writes events as text blocks. Our browser client reads them with `fetch`, not `EventSource`, because `EventSource` cannot send the `Authorization` header ([25](25-web-client.md#fetch-based-sse)). Home: [21](21-transport.md#sse-out-post-in).
 
-## seq
+## `seq`
 A number that grows by one for each saved row of a session. Clients use it to ask for the events they missed. Home: [21](21-transport.md#seq-one-counter-for-everything).
 
 ## Last-Event-ID
@@ -281,7 +281,7 @@ SQLite write-ahead log mode. Readers do not wait for the writer, and a crash doe
 ## Scrypt
 A slow, salted password hash from Python's `hashlib`. It is slow on purpose, so guessing is expensive. Home: [22](22-store-auth.md#scrypt-passwords).
 
-## recover
+## `recover`
 `Run.recover`: closes a run that was busy when the server died, and leaves a valid history. Home: [22](22-store-auth.md#recover).
 
 ## Budget guard
@@ -347,7 +347,7 @@ Gives the same output for the same input, every time. Home: [26](26-system-tests
 ## Online backup
 SQLite's built-in way to copy a database safely while it is open and in use. Home: [26](26-system-tests-deploy.md#opspy-logs-and-backup).
 
-## launchd
+## `launchd`
 The macOS service manager. It starts, restarts and schedules programs from `.plist` files. Home: [26](26-system-tests-deploy.md#launchd-run-it-as-a-service-on-a-mac).
 
 ## Pi
