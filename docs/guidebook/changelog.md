@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-13
 - re-read fixes C: ch 00–03 "Code in this chapter" pins moved to `2fc2776` (from `68e4ce1`, `e097e49`, `a55fe8d`); shown code checked, no snippet changed.
+- re-read fixes B: glossary merges CompactionEntry and Overflow recovery into pointers; new entries In-flight buffer, Gap / dup delta, Bearer token, Monotonic clock (linked from 09, 10, 20, 23, 25); all glossary headings start with a capital; ch 19–27 Builds on / Next labels use the "20 The server run" form; ch 21 links Offset; ch 26 "any mode not in the server list".
 - re-read fixes: ch 26 code list adds `accounts.spec.ts` and `admin.spec.ts`; ch 20 seq and Reconnect cut to one line + link to ch 21; ch 22 "Durable events" links to Step 4; ch 25 "Why this way" keeps only the tradeoff.
 - ch 20 live events: `ToolOutput` is saved in `ToolResult` (commit `c4ea9d0`); ch 20 review fixes: deltas note, changelog, snapshot link (commit `096a193`).
 - one-line "Code in this chapter" form in ch 02, 14–18 and README (commit `8357dbe`).

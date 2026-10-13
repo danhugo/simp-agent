@@ -2,7 +2,7 @@
 
 **Goal:** Save users, sessions and events durably.
 
-**Builds on:** [21-transport](21-transport.md) · **Next:** [23-limits](23-limits.md)
+**Builds on:** [21 Transport](21-transport.md) · **Next:** [23 Limits](23-limits.md)
 
 ## Where we are
 
@@ -359,4 +359,4 @@ uv run pytest apps/server/tests/test_store.py apps/server/tests/test_accounts.py
 - `Run.append` (messages) and `Run.durable` (events) write to one `entries` table with one `seq`.
 - `Run.recover` closes a run that died while busy: aborts open approvals, answers open tool calls, sets state `error`.
 
-**Builds on:** [21-transport](21-transport.md) · **Next:** [23-limits](23-limits.md)
+**Builds on:** [21 Transport](21-transport.md) · **Next:** [23 Limits](23-limits.md)

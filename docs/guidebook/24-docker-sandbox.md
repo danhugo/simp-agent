@@ -2,7 +2,7 @@
 
 **Goal:** Run each session's tools inside a container.
 
-**Builds on:** [23-limits](23-limits.md) · **Next:** [25-web-client](25-web-client.md)
+**Builds on:** [23 Limits](23-limits.md) · **Next:** [25 Web client](25-web-client.md)
 
 ## Where we are
 
@@ -390,5 +390,5 @@ uv run pytest apps/server/tests/test_docker_sandbox.py -q
 - `setsid` + pid line lets timeout and cancel kill the whole process group inside the container.
 - `TestDockerEnvConformance` reuses `EnvConformance`; `test_hardening` proves each flag works.
 
-**Builds on:** [23-limits](23-limits.md) · **Next:** [25-web-client](25-web-client.md)
+**Builds on:** [23 Limits](23-limits.md) · **Next:** [25 Web client](25-web-client.md)
 

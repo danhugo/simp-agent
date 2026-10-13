@@ -363,6 +363,8 @@ def make_bash(max_timeout_s: float | None = None):
     return bash
 ```
 
+`start` uses a [monotonic clock](glossary.md#monotonic-clock) (a clock that only goes forward), so the time shown is right even if the system time changes.
+
 `bash` is a **factory**: `make_bash` returns the tool function, and the function remembers one setting, `max_timeout_s`.
 
 - **Timeout.** By default there is none: a long build is fine, and the user can press Stop ([06](06-events-abort.md)). The model may pass its own `timeout`; it must be a finite number above 0. The **host** (the program that runs the agent) may set `max_timeout_s`, a hard cap. Then a missing or bigger timeout becomes the cap. The model cannot raise it. At this commit the CLI reads it from the `bash_max_timeout_s` setting ([19](19-cli.md)); `None` means no cap.

@@ -2,7 +2,7 @@
 
 **Goal:** Build the browser UI on the protocol.
 
-**Builds on:** [24-docker-sandbox](24-docker-sandbox.md) · **Next:** [26-system-tests-deploy](26-system-tests-deploy.md)
+**Builds on:** [24 Docker sandbox](24-docker-sandbox.md) · **Next:** [26 System tests and deploy](26-system-tests-deploy.md)
 
 ## Where we are
 
@@ -36,7 +36,7 @@ After chapters 20 to 24, the server can run a session for a user. It sends event
 A browser client sounds easy: open a stream, print what comes in. Three facts make it hard:
 
 1. **The stream breaks.** Wi-Fi drops. The laptop sleeps. The user presses reload in the middle of a long answer. When the client connects again, it must not show a word twice, and it must not skip a word.
-2. **The stream needs a token.** Every call to the server needs an `Authorization: Bearer <token>` header ([22](22-store-auth.md)). The browser's built-in `EventSource` cannot send headers.
+2. **The stream needs a token.** Every call to the server needs an `Authorization: Bearer <token>` header ([Bearer token](glossary.md#bearer-token), [22](22-store-auth.md)). The browser's built-in `EventSource` cannot send headers.
 3. **Many event kinds change one screen.** Text deltas, finished messages, tool output, approval requests, run state, title, plan mode. If each one changes the page in its own way, the screen will drift from the truth.
 
 ## Naive version
@@ -123,7 +123,7 @@ export function appendAt(cur: string, offset: number, delta: string): string {
 }
 ```
 
-Why: a repeated delta (dup) or a skipped one (gap) does not fit the end of the text, so it is dropped.
+Why: a repeated delta (dup) or a skipped one (gap) — a [gap / dup delta](glossary.md#gap--dup-delta) — does not fit the end of the text, so it is dropped.
 
 **Step 6 — let the snapshot replace live state.** On each connect the server sends a `snapshot`:
 
@@ -362,5 +362,5 @@ These tests check the reducer alone. The full promise, "reload the page and noth
 - `Chat.tsx` reads state and sends commands. It never changes state directly.
 - `state.test.ts` checks the reducer: delta dedupe, snapshot apply, title, plan mode and Continue. The reload test in a real browser is in [26](26-system-tests-deploy.md#end-to-end-tests-with-playwright).
 
-**Builds on:** [24-docker-sandbox](24-docker-sandbox.md) · **Next:** [26-system-tests-deploy](26-system-tests-deploy.md)
+**Builds on:** [24 Docker sandbox](24-docker-sandbox.md) · **Next:** [26 System tests and deploy](26-system-tests-deploy.md)
 

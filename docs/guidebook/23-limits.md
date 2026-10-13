@@ -2,7 +2,7 @@
 
 **Goal:** Stop runaway cost and free idle resources.
 
-**Builds on:** [22-store-auth](22-store-auth.md) · **Next:** [24-docker-sandbox](24-docker-sandbox.md)
+**Builds on:** [22 Store and auth](22-store-auth.md) · **Next:** [24 Docker sandbox](24-docker-sandbox.md)
 
 ## Where we are
 
@@ -318,6 +318,8 @@ A run is safe to evict only if it is not busy, no client is subscribed to its st
                     await self.evict(sid)
 ```
 
+`now` comes from a [monotonic clock](glossary.md#monotonic-clock), a clock that only goes forward, so a change to the system time cannot evict runs early.
+
 A background task, `mgr.evict_loop(...)`, calls it every `evict_every` seconds (default 60). It logs errors, so one failed eviction does not stop it.
 
 There is also a hard cap. In `SessionManager.get`, if `max_open_sessions` runs are already loaded, the least recently used evictable run is evicted to make room. If none can be evicted, the server answers `503 "too many active sessions, try again later"`.
@@ -380,4 +382,4 @@ Other tests in the file cover the day limit (`test_day_budget_and_pause`), the k
 - The kill switch is a `PAUSED` file in the data dir. `simp-server pause` / `resume` create and delete it.
 - `SessionManager.evict_idle` frees runs that are idle, not busy and have no subscribers. A cap of `max_open_sessions` evicts the least recently used run or returns 503. Evicted runs load back from the store.
 
-**Builds on:** [22-store-auth](22-store-auth.md) · **Next:** [24-docker-sandbox](24-docker-sandbox.md)
+**Builds on:** [22 Store and auth](22-store-auth.md) · **Next:** [24 Docker sandbox](24-docker-sandbox.md)

@@ -2,7 +2,7 @@
 
 **Goal:** Wrap the session in a terminal app.
 
-**Builds on:** [18-profiles-plugins](18-profiles-plugins.md) · **Next:** [20-server-run](20-server-run.md)
+**Builds on:** [18 Profiles and built-in plugins](18-profiles-plugins.md) · **Next:** [20 The server run](20-server-run.md)
 
 ## Where we are
 
@@ -392,5 +392,5 @@ uv run pytest apps/cli/tests/test_cli.py apps/cli/tests/test_tui.py -q
 - The REPL runs the agent as a task, so you can steer, follow up and abort while it works.
 - `route` decides what a line means; `approval_answer` turns `y` / `a` / anything into allow / always / deny.
 
-**Builds on:** [18-profiles-plugins](18-profiles-plugins.md) · **Next:** [20-server-run](20-server-run.md)
+**Builds on:** [18 Profiles and built-in plugins](18-profiles-plugins.md) · **Next:** [20 The server run](20-server-run.md)
 
