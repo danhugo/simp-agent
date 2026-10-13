@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-13
+- v3 ch 19 CLI finished: symbols checked at `2fc2776`; glossary: Print mode, REPL, Component, ANSI codes; removed "Terms to add" list (Steer already in glossary).
 - v3 review fixes, Parts 2–3 (ch 05–12, checked at `2fc2776`): each chapter gets a "Step by step: from naive to real" section with real code excerpts; ch 05–10 get a "Why this way" box. Changelog: added the missing "written" lines for ch 14–18 and put all lines newest first.
 - v3 review fixes, Part 4 (ch 13–18, checked at `2fc2776`; 7 cited test commands, 27 passed): hard words replaced in ch 13, 15, 18 ("baked in", "jittered", "fails loudly", "opaque"). Ch 14: `tool_result` also runs after a blocked or denied call.
 - v3 polish ch 18: moved "Terms to add" list into glossary.md.
