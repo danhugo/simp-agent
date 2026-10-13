@@ -13,9 +13,10 @@ flowchart LR
 
 In [02](02-fake-provider.md) we fixed the shape of a model call: a [stream function](glossary.md#stream-function) yields event dicts and ends with `done` or `error` holding the final `AssistantMessage`. The fake jumps straight from `start` to `done`. A real model does not. It sends its answer in many small pieces, called **[deltas](glossary.md#delta)**. This chapter builds the code that glues those pieces back into one message.
 
-All code here is in one file:
+Code in this chapter (commit `e097e49`):
 
-`packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py`, function `parse`.
+- `packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py` — `parse`
+- `packages/simp_agent/tests/test_openai.py` — parser tests with fake chunks
 
 We use the OpenAI Chat Completions format because it is the one most servers copy (vLLM, llama.cpp, Ollama). The other two providers (`anthropic.py`, `openai_responses.py`) follow the same plan with their own input format; ch [04](04-providers.md) shows them.
 

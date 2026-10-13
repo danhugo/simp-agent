@@ -162,7 +162,7 @@ Let us look at the important ones.
         return view
 ```
 
-Each plugin gets the output of the one before. It gets a *copy* of the list (`list(view)`), and the result is only the **view** sent to the model. The saved history does not change. If a plugin fails or returns `None`, the chain keeps the previous view.
+Each plugin gets the output of the one before. It gets a *copy* of the list (`list(view)`), and the result is only the **[view](glossary.md#view-llm-view)** sent to the model. The saved history does not change. If a plugin fails or returns `None`, the chain keeps the previous view.
 
 **`tool_call` fails closed.** This one is different:
 
@@ -180,7 +180,7 @@ Each plugin gets the output of the one before. It gets a *copy* of the list (`li
         ...  # then the approval check from ch 08
 ```
 
-Here `isolate=False`. If a plugin's `tool_call` raises, the tool is **blocked**. Why? A `tool_call` hook is often a safety check. If the check crashes, running the tool anyway would be unsafe. So for this one hook, an error means "no". This is called **fail closed**. The first plugin that blocks wins. Plugins run before the user approval from [08](08-hooks-approval.md), so a blocked call never asks the user.
+Here `isolate=False`. If a plugin's `tool_call` raises, the tool is **blocked**. Why? A `tool_call` hook is often a safety check. If the check crashes, running the tool anyway would be unsafe. So for this one hook, an error means "no". This is called **[fail closed](glossary.md#fail-closed)**. The first plugin that blocks wins. Plugins run before the user approval from [08](08-hooks-approval.md), so a blocked call never asks the user.
 
 **`tool_result` merges.** Each plugin can return a few fields, and they are merged with `dataclasses.replace`:
 

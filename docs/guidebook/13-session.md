@@ -8,16 +8,12 @@
 
 ```mermaid
 flowchart LR
-    ai --> agent --> coding --> session --> plugins --> testing
-    session -.used by.-> apps["apps: cli, server (+ web)"]
-    style session fill:#ffd54f,stroke:#333,stroke-width:2px
+    ai --> agent --> coding --> session["session ★ AgentSession (this chapter)"] --> plugins --> testing
 ```
 
-*This chapter starts the `session` layer (marked).*
+This chapter starts the `session` layer.
 
-## Code in this chapter
-
-Commit `2fc2776`:
+Code in this chapter (commit `2fc2776`):
 
 - `packages/simp_agent/src/simp_agent/session/__init__.py` — `SessionStore`, `AgentSession`
 - `apps/cli/src/simp_cli/__init__.py` — `JsonlStore`, `session_dir`
@@ -25,7 +21,7 @@ Commit `2fc2776`:
 
 ## Problem
 
-At the end of Part 3 we have an `Agent` ([05](05-agent-loop.md)) with coding tools ([10](10-coding-tools.md)) and a system prompt ([11](11-system-prompt.md)). It can write `fizzbuzz.py`. But:
+At the end of Part 3 we have an `Agent` ([06](06-events-abort.md)) with coding tools ([10](10-coding-tools.md)) and a system prompt ([11](11-system-prompt.md)). It can write `fizzbuzz.py`. But:
 
 - When the program stops, the conversation is gone. You cannot say "now add tests" tomorrow.
 - Every app (CLI, server) would have to wire the agent, the tools, the prompt and the saving by itself, again and again.
@@ -65,7 +61,7 @@ It works for one happy run of the fizzbuzz task. It breaks when:
 
 We fix the naive version one problem at a time. Each step is small.
 
-**Step 1: save each message when it ends.** The naive code saves only at the end, so a crash loses the whole run. The agent already sends a `message_end` event for every finished message ([06](06-events-abort.md)). So we listen to it and save right there:
+**Step 1 — save each message when it ends.** The naive code saves only at the end, so a crash loses the whole run. The agent already sends a `message_end` event for every finished message ([06](06-events-abort.md)). So we listen to it and save right there:
 
 ```python
 agent.subscribe(lambda e: e["type"] == "message_end" and save(e["message"]))
@@ -73,9 +69,9 @@ agent.subscribe(lambda e: e["type"] == "message_end" and save(e["message"]))
 
 Now a crash loses at most the message that was still streaming.
 
-**Step 2: append, do not rewrite.** A finished message never changes. So we do not need to write the whole list again. We only add one line at the end of the file (mode `"a"`). This is cheap and safe.
+**Step 2 — append, do not rewrite.** A finished message never changes. So we do not need to write the whole list again. We only add one line at the end of the file (mode `"a"`). This is cheap and safe.
 
-**Step 3: hide the storage behind two methods.** The file path is fixed inside the code. The server wants a database, tests want a list. So the session only knows `append(entry)` and `load()`. This is the `SessionStore` protocol. A list in memory is now a full store:
+**Step 3 — hide the storage behind two methods.** The file path is fixed inside the code. The server wants a database, tests want a list. So the session only knows `append(entry)` and `load()`. This is the `SessionStore` protocol. A list in memory is now a full store:
 
 ```python
 class ListStore:
@@ -87,13 +83,13 @@ class ListStore:
         return list(self.items)
 ```
 
-**Step 4: allow an async store.** A database store needs `await`. So the session calls `await _maybe_await(self.store.append(...))`. A sync store returns `None` and works too.
+**Step 4 — allow an async store.** A database store needs `await`. So the session calls `await _maybe_await(self.store.append(...))`. A sync store returns `None` and works too.
 
-**Step 5: let the app load.** The app knows which session to resume (an id, the latest one). So the library does not load by itself. The app passes the list in: `AgentSession(..., messages=store.load())`.
+**Step 5 — let the app load.** The app knows which session to resume (an id, the latest one). So the library does not load by itself. The app passes the list in: `AgentSession(..., messages=store.load())`.
 
-**Step 6: one class that owns the agent.** The CLI and the server must not repeat the wiring. So `AgentSession` builds the `Agent` with good defaults (tools, env, prompt), connects the store, and gives apps one place to `subscribe`, `prompt` and `continue_`.
+**Step 6 — one class that owns the agent.** The CLI and the server must not repeat the wiring. So `AgentSession` builds the `Agent` with good defaults (tools, env, prompt), connects the store, and gives apps one place to `subscribe`, `prompt` and `continue_`.
 
-**Step 7: build the prompt from parts, and finish setup in `start()`.** Plugins ([14](14-plugins.md)) will want to add text to the system prompt. So the prompt is a table of ordered sections, and `_build_prompt` joins them before every model call. Reading `AGENTS.md` needs `await`, and `__init__` cannot await. So that work goes into `start()`, which `prompt` and `continue_` call first, only once.
+**Step 7 — build the prompt from parts, and finish setup in `start()`.** Plugins ([14](14-plugins.md)) will want to add text to the system prompt. So the prompt is a table of ordered sections, and `_build_prompt` joins them before every model call. Reading `AGENTS.md` needs `await`, and `__init__` cannot await. So that work goes into `start()`, which `prompt` and `continue_` call first, only once.
 
 The result is the real code below.
 

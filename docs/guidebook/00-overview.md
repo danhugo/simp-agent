@@ -4,6 +4,19 @@
 
 **Builds on:** — (start here) · **Next:** [01 Messages](01-messages.md)
 
+## Where we are
+
+```mermaid
+flowchart LR
+    ai --> agent --> coding --> session --> plugins --> testing
+```
+
+Nothing is built yet. This chapter is the map: what simp-agent is, its six layers, and the order we build them in.
+
+Code in this chapter (commit `68e4ce1`):
+
+- `packages/simp_agent/tests/test_layers.py` — `LAYERS`, `APPS`, `test_layers`
+
 ## What simp-agent is
 
 simp-agent is a small **[coding agent](glossary.md#coding-agent)**. You give it a task in plain words, like "write `fizzbuzz.py`". It asks a language model what to do. The model answers with text, or with **[tool calls](glossary.md#tool-call)** such as "read this file" or "run this command". simp-agent runs those tools, sends the results back to the model, and repeats until the model says it is done.

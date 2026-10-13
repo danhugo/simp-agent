@@ -152,6 +152,9 @@ Waiting longer between each retry; here the wait doubles each time. Home: [15](1
 ## error_kind
 A field on `AssistantMessage`; `fatal`, `budget` or `policy` mean "never retry". Home: [15](15-retry.md).
 
+## Jitter
+A small random part added to a retry wait, so many clients do not retry at the same moment. simp-agent does not use it (a known limit). Home: [15](15-retry.md).
+
 ## retryable error
 An error whose text matches `_RETRYABLE` (429, 5xx, overloaded, network...) and whose kind allows retry. Home: [15](15-retry.md).
 
@@ -266,6 +269,12 @@ The server plugin that finds the user for a request. By default `StaticTokenAuth
 ## Token (auth)
 A long random string sent as `Authorization: Bearer <token>`. Only its SHA-256 hash is stored. Home: [22](22-store-auth.md#token-hashes).
 
+## Static token
+One long-lived token per user, saved only as its sha256 in `users.token_sha256`. The admin makes it with `seed` and changes it with `rotate`. Home: [22](22-store-auth.md).
+
+## Per-device token
+A token made by each password login and saved in the `tokens` table. `logout` deletes only that row. Home: [22](22-store-auth.md).
+
 ## WAL
 SQLite write-ahead log mode. Readers do not wait for the writer, and a crash does not break the file. Home: [22](22-store-auth.md#sqlitestore-one-file-five-tables).
 
@@ -302,6 +311,9 @@ The position in the full text where a delta starts. `appendAt()` uses it to drop
 ## Sandbox
 A closed place where a session's commands run, apart from the server and other users. Home: [24](24-docker-sandbox.md#the-sandbox-slot).
 
+## Sandbox slot
+The place in the server that answers "give me an env for this session". `LocalSandbox` gives a folder; `DockerSandbox` gives a container. Home: [24](24-docker-sandbox.md).
+
 ## Container
 A process with its own files, users and limits, started from an image by Docker. Home: [24](24-docker-sandbox.md#dockersandboxopen-one-hardened-container-per-session).
 
@@ -334,3 +346,6 @@ A `typing.Protocol` class that lists methods. Any object with those methods fits
 
 ## Ponytail comment
 A `ponytail:` code comment that marks a known shortcut and names its limit and the way to fix it later. Home: [27](27-limits-choices-extend.md#part-2-known-limits).
+
+## Allow list
+A fixed list of what to include; anything not on it is left out. The backup copies only the database, `settings.toml`, `workspaces` and `sandboxes`, so `.env` never goes in. Home: [26](26-system-tests-deploy.md).

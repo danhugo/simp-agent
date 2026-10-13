@@ -20,9 +20,10 @@ flowchart LR
 
 Commit `2fc2776`:
 
-- `packages/simp_agent/src/simp_agent/agent/compaction.py` — `CompactionSettings`, `should_compact`, `find_cut`, `summarize`, `compact`, `CompactionEntry`, `build_view`
+- `packages/simp_agent/src/simp_agent/agent/compaction.py` — `CompactionSettings`, `should_compact`, `find_cut`, `serialize_conversation`, `summarize`, `file_lists`, `compact`, `build_view`
+- `packages/simp_agent/src/simp_agent/ai/__init__.py` — `CompactionEntry`
 - `packages/simp_agent/src/simp_agent/session/__init__.py` — `AgentSession._prepare`, `compact`
-- `packages/simp_agent/tests/test_queues_compaction.py` — the compaction tests
+- `packages/simp_agent/tests/test_compaction_serialize.py`, `test_queues_compaction.py` — the compaction tests
 
 ## Problem
 
@@ -223,7 +224,7 @@ async def summarize(stream_fn, model, old: list, previous: str | None, reserve_t
 ```
 
 - The first time, it uses `SUMMARIZATION_PROMPT`: a fixed format with `## User Requests (chronological)`, `## Goal`, `## Progress`, `## Next Steps` and more. The first section says "EVERY request the user made ... Never drop one". That fixes the "model forgets the task" problem.
-- The next time, it sends only the **new** old messages plus the previous summary, with `UPDATE_SUMMARIZATION_PROMPT` ("PRESERVE all existing information"). This is **incremental**: we never re-read what was already summarized.
+- The next time, it sends only the **new** old messages plus the previous summary, with `UPDATE_SUMMARIZATION_PROMPT` ("PRESERVE all existing information"). This is an **[incremental summary](glossary.md#incremental-summary)**: we never re-read what was already summarized.
 - `max_tokens` is capped at 80% of `reserve_tokens`, so the summary always fits in the room we kept.
 - A cut-off (`"length"`) or failed reply raises. A half summary is worse than none.
 
@@ -365,7 +366,7 @@ uv run pytest packages/simp_agent/tests/test_compaction_serialize.py packages/si
 
 1. **Try `find_cut` by hand.** Build a list: `UserMessage("a"*4000)`, an `AssistantMessage` with a `ToolCall`, a `ToolResultMessage` with `"b"*4000`, then `UserMessage("c"*4000)`. Call `find_cut(msgs, 0, keep)` for many `keep` values. Check the result is never the tool result index. *Hint:* copy the loop in `test_cut_never_on_tool_result` in `test_queues_compaction.py`.
 
-2. **Compaction starts only above the limit.** Write `run(n_chars)`. It makes an `AgentSession` with `Model(context_window=10000)` and sets `s.compaction.reserve_tokens = 1000`, so the limit is 9000 tokens. Set `s.agent.messages` to `[UserMessage("x" * n_chars), AssistantMessage([TextContent("y")])]`. Use `FakeProvider(AssistantMessage([TextContent("SUM")]), DONE)`, subscribe to events and call `prompt("hi")`. Return three things: was a `compaction_start` event sent, is a `CompactionEntry` in `messages`, and how many model calls were made. Try `run(400)` (about 100 tokens) and `run(40000)` (about 10000 tokens). You should get `(False, False, 1)` and `(True, True, 2)`. Why does the default `Model()` with `context_window=10000` always compact? *Hint:* the default `reserve_tokens` is 16384. See `compact_agent` and `test_below_threshold_no_compaction` in the same file.
+2. **Compaction starts only above the limit.** Write `run(n_chars)`. It makes an `AgentSession` with `Model(context_window=10000)` and sets `s.compaction.reserve_tokens = 1000`, so the limit is 9000 tokens. Set `s.agent.messages` to `[UserMessage("x" * n_chars), AssistantMessage([TextContent("y")])]`. Use `FakeProvider(AssistantMessage([TextContent("SUM")]), DONE)`, subscribe to events and call `prompt("hi")`. Return three things: was a `compaction_start` event sent, is a `CompactionEntry` in `messages`, and how many model calls were made. Try `run(400)` (about 100 tokens) and `run(40000)` (about 10000 tokens). You should get `(False, False, 1)` and `(True, True, 2)`. Why would `Model(context_window=10000)` with the default settings always compact? *Hint:* the default `reserve_tokens` is 16384. See `compact_agent` and `test_below_threshold_no_compaction` in the same file.
 
 ## Recap
 

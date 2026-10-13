@@ -4,6 +4,8 @@
 
 **Builds on:** [21-transport](21-transport.md) · **Next:** [23-limits](23-limits.md)
 
+## Where we are
+
 ```mermaid
 flowchart TB
     subgraph lib [simp_agent library]
@@ -17,6 +19,12 @@ flowchart TB
 ```
 
 *This chapter adds the server's `store` and `auth` (marked).*
+
+Code in this chapter (commit `2fc2776`):
+
+- `apps/server/src/simp_server/store.py` — `SqliteStore`, `sha`, `hash_password`, `check_password`
+- `apps/server/src/simp_server/server.py` — `Store`, `Auth`, `StaticTokenAuth`, `Run.recover`
+- `apps/server/tests/test_store.py`, `apps/server/tests/test_accounts.py` — the store and auth tests
 
 ## Problem
 
@@ -155,7 +163,7 @@ await self.db.executescript(SCHEMA)
 
 **[WAL](glossary.md#wal)** (write-ahead log) is a SQLite mode. Readers do not wait for a writer, and a crash does not leave a half-written database. After that, `open()` checks for old columns. A database from an older stage gets `cost`, `password` and `disabled` added with `ALTER TABLE`.
 
-Why SQLite and not Postgres? The server runs on one machine ([26](26-system-tests-deploy.md)). SQLite is in the standard library, needs no extra process, and backs up by copying one file. The store is a plugin (`DEFAULT_PLUGINS` in `apps/server/src/simp_server/server.py`), so you can swap it.
+Why SQLite and not Postgres? The server runs on one machine ([26](26-system-tests-deploy.md)). SQLite is in the standard library, needs no extra process, and backs up by copying one file. The store is picked by name from `DEFAULT_PLUGINS` in `apps/server/src/simp_server/server.py` (a small name-to-class map in the server settings, not the library plugins of [14](14-plugins.md)), so you can swap it.
 
 ### Token hashes
 
@@ -179,8 +187,8 @@ Why a fast hash here? A token is 32 random bytes. Nobody can guess it. A passwor
 
 There are two kinds of token:
 
-- A **static token** in `users.token_sha256`. The admin makes it with `seed` and changes it with `rotate`.
-- A **per-device token** in the `tokens` table. Each password login makes a new one. `logout` deletes only that one row.
+- A **[static token](glossary.md#static-token)** in `users.token_sha256`. The admin makes it with `seed` and changes it with `rotate`.
+- A **[per-device token](glossary.md#per-device-token)** in the `tokens` table. Each password login makes a new one. `logout` deletes only that one row.
 
 One query checks both:
 
@@ -252,25 +260,7 @@ In [21](21-transport.md) each **durable** event got a `seq` so clients can repla
 - protocol events (type = the event type, like `run_state`),
 - core messages from the session (type = `"msg"`).
 
-`Run` in `server.py` is the session's `SessionStore` ([13](13-session.md)). Its `append` writes a `msg` row:
-
-```python
-# SessionStore for AgentSession: core messages share the seq counter with protocol events
-async def append(self, entry) -> None:
-    self.seq += 1
-    await self.mgr.store.add_entry(self.user_id, self.sid, self.seq, "msg", to_dict(entry))
-```
-
-And `durable` writes a protocol event, after sending it to clients:
-
-```python
-async def durable(self, cls, **kw) -> None:
-    self.seq += 1
-    ev = cls(seq=self.seq, **kw).model_dump()
-    self.log.append(ev)
-    self._send(ev)
-    await self.mgr.store.add_entry(self.user_id, self.sid, ev["seq"], ev["type"], ev)
-```
+You saw both writers in [20](20-server-run.md): `Run.append` (the `Run` is the session's `SessionStore`, [13](13-session.md)) writes a `msg` row, and `Run.durable` writes a protocol event. Both call `store.add_entry(user_id, sid, seq, type, data)` with the same `self.seq`.
 
 When a session is loaded again, `Run.__init__` splits the rows back:
 

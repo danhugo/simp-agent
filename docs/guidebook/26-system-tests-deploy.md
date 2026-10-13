@@ -255,7 +255,7 @@ The tests are in `apps/web/e2e/`: `app.spec.ts`, `accounts.spec.ts` and `admin.s
 This fixes both naive bugs (steps 1 and 2 above):
 
 1. **Safe database copy.** `sqlite3.Connection.backup` is SQLite's own [online backup](glossary.md#online-backup). It reads a consistent copy, including rows still in the WAL file, while the server keeps the database open. We write the copy to a temp folder first, then put it in the tar.
-2. **No secrets.** It does not copy the whole folder. It copies an **allow list**: the database, `settings.toml`, `workspaces` and `sandboxes`. `.env` is not on the list, so it never goes in.
+2. **No secrets.** It does not copy the whole folder. It copies an **[allow list](glossary.md#allow-list)**: the database, `settings.toml`, `workspaces` and `sandboxes`. `.env` is not on the list, so it never goes in.
 
 Then old backups are removed:
 

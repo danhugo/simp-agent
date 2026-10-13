@@ -126,7 +126,7 @@ Why: now the server knows when to start and stop a container for each session. N
 
 The real code has two parts:
 
-- A **sandbox slot** in the server: "give me an env for this session".
+- A **[sandbox slot](glossary.md#sandbox-slot)** in the server: "give me an env for this session".
 - `DockerSandbox` in `apps/server/src/simp_server/sandboxes/docker.py`: one long-lived, hardened container per session, plus `DockerEnv`, the env the tools use.
 
 ### The sandbox slot
