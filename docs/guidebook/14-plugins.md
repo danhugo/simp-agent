@@ -15,6 +15,13 @@ flowchart LR
 
 *This chapter adds plugin support to the `session` layer (marked). The `plugins` layer itself is filled in [18](18-profiles-plugins.md).*
 
+## Code in this chapter
+
+Commit `2fc2776`:
+
+- `packages/simp_agent/src/simp_agent/session/__init__.py` — `plugin_name`, `PluginAPI`, `AgentSession._hook`, `_context`, `_before_tool_call`, `_after_tool_call`, `_emit`
+- `apps/cli/tests/test_sockets.py` — `Rec` and the plugin tests
+
 ## Problem
 
 People want many small extras: hide API keys in tool output, a read-only "plan mode", an extra tool, a line in the system prompt, a log of every event. If each extra is an `if` inside `AgentSession`, the session grows without end, and every app gets every extra.
@@ -44,7 +51,7 @@ class NoBash:
 
 It blocks `bash` for the fizzbuzz task. Problems:
 
-1. **Every plugin must define every method.** A plugin that only wants events crashes with `AttributeError`.
+1. **Every plugin must define every method.** A plugin that only wants events has no `tool_call`. The run does not crash, but it ends with an `AttributeError` error message, and the tool never runs.
 2. **One bad plugin breaks the run.** If a plugin's code raises, the whole agent run fails.
 3. **Only one hook point.** No way to change the user's text, the messages sent to the model, the system prompt or the tool list.
 4. **No access to the session.** A plugin cannot add a tool or save state.
@@ -79,8 +86,6 @@ except Exception as e:
 **Step 5 — more hook points.** One hook is not enough. We call `_hook` at more fixed places: `input` and `before_agent_start` in `prompt()`, `context` before each model call, `tool_result` after a tool, `tool_update` and `on_event` in `_emit`. This fixes problem 3.
 
 **Step 6 — give plugins a handle.** In `start()`, each plugin's `setup` gets a `PluginAPI` and its own config. With it, the plugin can add tools, prompt sections and saved entries. This fixes problem 4, without handing over the whole session.
-
-**Step 7 — a prompt made of parts.** To let plugins add text to the system prompt, the prompt becomes a dict of ordered sections. `_build_prompt` joins them every turn.
 
 The result is the real code below.
 
@@ -215,30 +220,7 @@ The full list: `register_tool`, `unregister_tool`, `add_prompt_section`, `remove
 
 ### Prompt sections
 
-The system prompt is not one string. It is a dict of **[prompt sections](glossary.md#prompt-section)**:
-
-```python
-    def add_prompt_section(self, id: str, value, order: int = 100) -> None:
-        """value: str or fn(ctx) -> str (sync or async), rebuilt every turn. Sorted by (order, first add): stable."""
-        seq = self._sections[id][1] if id in self._sections else next(self._seq)
-        self._sections[id] = (order, seq, value)
-
-    async def _build_prompt(self) -> str:
-        a = self.agent
-        ctx = {"tools": a.tools, "cwd": a.cwd, "model": a.model, "messages": a.messages}
-        parts = list()
-        for _, _, v in sorted(self._sections.values(), key=lambda x: x[:2]):
-            text = await _maybe_await(v(ctx)) if callable(v) else v
-            if text:
-                parts.append(text)
-        return "\n\n".join(parts)
-```
-
-- Each section has an `id`, an `order` and a value (a string or a function of `ctx`).
-- They are sorted by `order`, then by when they were first added. Re-adding the same `id` keeps its place.
-- `_build_prompt` runs every turn (the session passes it to `Agent` as the prompt, [13](13-session.md)). So a function section sees the current tools: if a plugin adds a tool, the coding prompt lists it next turn.
-
-The built-in sections: `coding` (order 0, the prompt from [11](11-system-prompt.md)) or `base` (order 0, when you pass `system_prompt=`), and `context_file` (order 10, `AGENTS.md`). Plan mode adds its section at order 1000, so it comes last ([18](18-profiles-plugins.md)).
+The system prompt is built every turn from ordered **[prompt sections](glossary.md#prompt-section)**. [Ch 13](13-session.md#prompt-sections-the-system-prompt-rebuilt-every-turn) shows how they work. What is new here: a plugin adds its own section with `api.add_prompt_section(id, value, order)`. The default order is 100, so it comes after `coding` (0) and `context_file` (10). Plan mode uses 1000, so it comes last ([18](18-profiles-plugins.md)).
 
 ### Plugin events
 
@@ -305,7 +287,7 @@ uv run pytest apps/cli/tests/test_sockets.py::test_plugin_context_chain_and_erro
 ## Exercises
 
 1. Write a plugin `class Upper: name = "upper"` with one hook `input(self, text)` that returns `{"text": text.upper()}`. Run a session with a `FakeProvider` and check that the first user message is in upper case. Hint: copy `session(...)` and `DONE` from `apps/cli/tests/test_sockets.py`.
-2. Write a plugin whose `tool_call` raises for the tool `bash`. Check that the tool result says `blocked by plugin` and the tool never ran. Then change the hook name to `tool_calls` (a typo). What happens now, and why? Hint: look at `getattr(p, hook, None)` in `_hook`.
+2. Write a plugin whose `tool_call` raises for the tool `bash`. Check that the tool result says `User denied: blocked by plugin ...` and the tool never ran. (The loop puts `User denied:` in front of every block reason, see [ch 08](08-hooks-approval.md).) Then change the hook name to `tool_calls` (a typo). What happens now, and why? Hint: look at `getattr(p, hook, None)` in `_hook`.
 
 ## Recap
 

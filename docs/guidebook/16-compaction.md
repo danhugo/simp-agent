@@ -16,6 +16,14 @@ flowchart LR
 
 *This chapter adds `agent/compaction.py` (pure helpers, in `agent`) and wires it into the `session` layer (both marked).*
 
+## Code in this chapter
+
+Commit `2fc2776`:
+
+- `packages/simp_agent/src/simp_agent/agent/compaction.py` — `CompactionSettings`, `should_compact`, `find_cut`, `summarize`, `compact`, `CompactionEntry`, `build_view`
+- `packages/simp_agent/src/simp_agent/session/__init__.py` — `AgentSession._prepare`, `compact`
+- `packages/simp_agent/tests/test_queues_compaction.py` — the compaction tests
+
 ## Problem
 
 Every model has a **[context window](glossary.md#context-window)**: the most tokens it can read in one call. In simp-agent it is `Model.context_window`. Each turn we send the whole history. A coding session reads files and runs commands, and tool results are big. After a while the history does not fit any more.
@@ -57,7 +65,7 @@ def estimate(m) -> int:
 
 A rough guess: 4 characters is about 1 token. Now "too big" means tokens, so 20 file reads count as big.
 
-**Step 2: decide *when* with the window.** Still problem 3.
+**Step 2: decide when, using the window.** Still problem 3.
 
 ```python
 def should_compact(tokens: int, model, settings: CompactionSettings) -> bool:
@@ -73,7 +81,7 @@ ok = [j for j in range(start + 1, len(messages)) if isinstance(messages[j], (Use
 before = [j for j in ok if j <= i]
 ```
 
-`find_cut` walks back about `keep_recent_tokens`, then moves the cut to a safe message. A tool result is never the first kept message, so it never loses its call.
+`start` is the `first_kept_index` of the last compaction (0 if there was none). `i` is where the walk back stopped: `find_cut` starts at the end and goes back until it has about `keep_recent_tokens`. Then it moves the cut to a safe message. A tool result is never the first kept message, so it never loses its call.
 
 **Step 4: summarize the old part instead of dropping it.** Fixes problem 1.
 
@@ -357,7 +365,7 @@ uv run pytest packages/simp_agent/tests/test_compaction_serialize.py packages/si
 
 1. **Try `find_cut` by hand.** Build a list: `UserMessage("a"*4000)`, an `AssistantMessage` with a `ToolCall`, a `ToolResultMessage` with `"b"*4000`, then `UserMessage("c"*4000)`. Call `find_cut(msgs, 0, keep)` for many `keep` values. Check the result is never the tool result index. *Hint:* copy the loop in `test_cut_never_on_tool_result` in `test_queues_compaction.py`.
 
-2. **No compaction below the limit.** Make an `AgentSession` with `Model(context_window=10000)` and a short history. Use `FakeProvider(DONE)` and call `prompt("hi")`. Check that no `CompactionEntry` is in `messages` and only one model call was made. *Hint:* see `small_model`, `compact_agent` and `test_below_threshold_no_compaction` in the same file.
+2. **Compaction starts only above the limit.** Write `run(n_chars)`. It makes an `AgentSession` with `Model(context_window=10000)` and sets `s.compaction.reserve_tokens = 1000`, so the limit is 9000 tokens. Set `s.agent.messages` to `[UserMessage("x" * n_chars), AssistantMessage([TextContent("y")])]`. Use `FakeProvider(AssistantMessage([TextContent("SUM")]), DONE)`, subscribe to events and call `prompt("hi")`. Return three things: was a `compaction_start` event sent, is a `CompactionEntry` in `messages`, and how many model calls were made. Try `run(400)` (about 100 tokens) and `run(40000)` (about 10000 tokens). You should get `(False, False, 1)` and `(True, True, 2)`. Why does the default `Model()` with `context_window=10000` always compact? *Hint:* the default `reserve_tokens` is 16384. See `compact_agent` and `test_below_threshold_no_compaction` in the same file.
 
 ## Recap
 

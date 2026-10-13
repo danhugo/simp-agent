@@ -16,6 +16,16 @@ flowchart LR
 
 *This chapter adds `session/profile.py` and fills the `plugins` layer (both marked).*
 
+## Code in this chapter
+
+Commit `2fc2776`:
+
+- `packages/simp_agent/src/simp_agent/session/profile.py` — `build_model`
+- `packages/simp_agent/src/simp_agent/plugins/__init__.py` — `build_plugins`
+- `packages/simp_agent/src/simp_agent/plugins/redact_secrets.py` — `RedactSecrets`
+- `packages/simp_agent/src/simp_agent/plugins/plan_mode.py` — `PlanMode`
+- `packages/simp_agent/tests/test_profile.py`, `apps/cli/tests/test_sockets.py` — the profile and plugin tests
+
 ## Problem
 
 Part 4 is almost done. The session saves, retries, compacts and runs plugins. Two gaps are left before the apps:
@@ -31,8 +41,8 @@ Profiles as a direct dict → `Model`:
 from simp_agent.ai import Model
 
 profiles = {
-    "claude": {"model": "claude-sonnet-5-5"},
-    "local": {"api": "openai-completions", "model": "qwen", "base_url": "http://localhost:8000/v1"},
+    "claude": {"id": "claude-sonnet-5-5"},
+    "local": {"api": "openai-completions", "id": "qwen", "base_url": "http://localhost:8000/v1"},
 }
 
 def model_for(name):
@@ -43,7 +53,7 @@ It works for `claude`. It breaks when:
 
 1. **`provider` is not set.** For `local` the API is OpenAI, but `provider` keeps its default. The wrong API key is used.
 2. **Unknown keys crash.** A profile with `plugins = [...]` passes `plugins=` to `Model` and raises `TypeError`.
-3. **A `None` hides a default.** If the app sets `base_url=None`, `Model`'s own default is lost.
+3. **A `None` hides a default.** Settings files say `model`, not `id`, so the app reads `pr.get("model")`. For a missing key this is `None`, and `Model(id=None)` loses `Model`'s default `id`.
 4. **Usage from OpenAI streams is not clear.** OpenAI-style servers send token usage in a stream only when asked (`stream_options`). The profile should say so plainly, and still let a server that does not support it turn it off. Without usage, `estimate_tokens` ([16](16-compaction.md)) must guess.
 5. **No plugins at all.** The profile can list plugin names, but nothing turns a name into a plugin object.
 
