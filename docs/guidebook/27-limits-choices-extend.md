@@ -4,6 +4,8 @@
 
 **Builds on:** [26-system-tests-deploy](26-system-tests-deploy.md) · **Next:** —
 
+## Where we are
+
 ```mermaid
 flowchart LR
     ai --> agent --> coding --> session --> plugins --> testing
@@ -18,6 +20,16 @@ flowchart LR
 ```
 
 *This chapter looks at the whole system (everything marked). It adds no new code.*
+
+Code in this chapter (commit `2fc2776`). This chapter adds no code; it points back to:
+
+- `packages/simp_agent/src/simp_agent/ai/__init__.py` — `register_provider`, `is_retryable`, `is_context_overflow`
+- `packages/simp_agent/src/simp_agent/agent/__init__.py` — `AgentTool`
+- `packages/simp_agent/src/simp_agent/agent/compaction.py` — the `ponytail:` notes on compaction
+- `packages/simp_agent/src/simp_agent/session/__init__.py` — `PluginAPI`
+- `packages/simp_agent/src/simp_agent/plugins/__init__.py` — `build_plugins`
+- `apps/server/src/simp_server/server.py` — `Sandbox`, `Store`, `Auth`
+- `evals/tasks/fizzbuzz.toml` — the fizzbuzz eval task
 
 ## Problem
 
@@ -314,10 +326,3 @@ For the other sockets, see the tests in their chapters: providers in [04](04-pro
 
 **Builds on:** [26-system-tests-deploy](26-system-tests-deploy.md) · **Next:** —
 
-## Terms to add to glossary
-
-- pi: Another small coding agent that simp-agent copies many ideas from; code comments like `(pi ExtensionAPI)` point to it.
-- Protocol (Python): A `typing.Protocol` class that lists methods; any object with those methods fits, with no base class needed.
-- Ponytail comment: A `ponytail:` code comment that marks a known shortcut and names its limit and the way to fix it later.
-- Plugin: Any object with a `name` and optional hook methods, passed to `AgentSession(plugins=[...])`.
-- PluginAPI: The object a plugin gets in `setup`; it can register tools, add prompt sections, append custom entries and send messages.

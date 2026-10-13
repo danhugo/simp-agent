@@ -326,3 +326,11 @@ SQLite's built-in way to copy a database safely while it is open and in use. Hom
 ## launchd
 The macOS service manager. It starts, restarts and schedules programs from `.plist` files. Home: [26](26-system-tests-deploy.md#launchd-run-it-as-a-service-on-a-mac).
 
+## pi
+Another small coding agent that simp-agent copies many ideas from. Code comments like `(pi ExtensionAPI)` point to it. Home: [27](27-limits-choices-extend.md#part-1-design-choices).
+
+## Protocol (Python)
+A `typing.Protocol` class that lists methods. Any object with those methods fits; no base class is needed. Not the same as the server [Protocol](#protocol). Home: [27](27-limits-choices-extend.md#part-1-design-choices).
+
+## Ponytail comment
+A `ponytail:` code comment that marks a known shortcut and names its limit and the way to fix it later. Home: [27](27-limits-choices-extend.md#part-2-known-limits).
