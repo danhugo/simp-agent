@@ -3,12 +3,13 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-13
-- re-read fixes C: ch 00–03 "Code in this chapter" pins moved to `2fc2776` (from `68e4ce1`, `e097e49`, `a55fe8d`); shown code checked, no snippet changed.
-- re-read fixes B: glossary merges CompactionEntry and Overflow recovery into pointers; new entries In-flight buffer, Gap / dup delta, Bearer token, Monotonic clock (linked from 09, 10, 20, 23, 25); all glossary headings start with a capital; ch 19–27 Builds on / Next labels use the "20 The server run" form; ch 21 links Offset; ch 26 "any mode not in the server list".
-- re-read fixes: ch 26 code list adds `accounts.spec.ts` and `admin.spec.ts`; ch 20 seq and Reconnect cut to one line + link to ch 21; ch 22 "Durable events" links to Step 4; ch 25 "Why this way" keeps only the tradeoff.
+- re-read fixes D: glossary code-name headings in backticks (anchors unchanged); commit hashes added to re-read fixes entries.
+- re-read fixes C: ch 00–03 "Code in this chapter" pins moved to `2fc2776` (from `68e4ce1`, `e097e49`, `a55fe8d`); shown code checked, no snippet changed. (`bd0e7b9`)
+- re-read fixes B: glossary merges CompactionEntry and Overflow recovery into pointers; new entries In-flight buffer, Gap / dup delta, Bearer token, Monotonic clock (linked from 09, 10, 20, 23, 25); all glossary headings start with a capital; ch 19–27 Builds on / Next labels use the "20 The server run" form; ch 21 links Offset; ch 26 "any mode not in the server list". (`1d3d508`)
+- re-read fixes: ch 26 code list adds `accounts.spec.ts` and `admin.spec.ts`; ch 20 seq and Reconnect cut to one line + link to ch 21; ch 22 "Durable events" links to Step 4; ch 25 "Why this way" keeps only the tradeoff. (`ee6ade4`)
 - ch 20 live events: `ToolOutput` is saved in `ToolResult` (commit `c4ea9d0`); ch 20 review fixes: deltas note, changelog, snapshot link (commit `096a193`).
 - one-line "Code in this chapter" form in ch 02, 14–18 and README (commit `8357dbe`).
-- ch 21 + glossary SSE: browser reads SSE with a fetch-based reader, not `EventSource` (lines 150, 154, 197); links to ch 25 "fetch-based SSE".
+- ch 21 + glossary SSE: browser reads SSE with a fetch-based reader, not `EventSource` (lines 150, 154, 197); links to ch 25 "fetch-based SSE". (`2e7a21c`)
 - ch 25/26 dedup: the e2e reload test (serve.sh, app.spec.ts, make e2e) now lives only in ch 26 "End-to-end tests with Playwright"; ch 25 "Test" covers only `state.test.ts` and links to 26; ch 25 Step 3 and "fetch-based SSE" link to ch 21 "Replay" for the server side.
 - ch 20–22: removed repeated seq/durable/live/snapshot text; ch 20 and 22 keep a short summary and link to ch 21 (commit `82f7715`).
 - ch 12 + README: "each later Part adds a case" reworded; the book has only 4 eval tasks (3 code edits, 1 read-and-answer), adding more is optional (commits `4694e08`, `423175a`).
