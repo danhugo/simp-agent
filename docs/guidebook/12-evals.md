@@ -1,6 +1,6 @@
 # 12 Part 3 · Evals
 
-**Goal:** Measure the agent on real tasks; each later Part adds a case.
+**Goal:** Measure the agent on real tasks; when you add a capability later, you can add a case for it.
 
 **Builds on:** [11 The system prompt](11-system-prompt.md) · **Next:** [13 Sessions](13-session.md)
 
@@ -279,7 +279,7 @@ To add a task, add one file. No Python. A good task:
 4. **Uses `"$PYTHON"`**, not `python`, and `-p no:cacheprovider` so pytest leaves no cache files.
 5. **Tests one skill.** If it fails, you should know why.
 
-That is the "each later Part adds a case" plan: when a later chapter adds a capability, add a task that needs it.
+The book ships only these four tasks, and they all test code edits. When you add a capability in a later chapter, you can add a task that needs it, using these five rules.
 
 ### Host-shell warning
 
