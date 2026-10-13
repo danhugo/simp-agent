@@ -13,7 +13,7 @@ flowchart LR
 
 We start at the far left of the [layer map](00-overview.md#the-layer-map): the `ai` layer. Before we can call a model, run a tool, or save a chat, we need one thing all of them share: the **[message](glossary.md#message)**.
 
-Code in this chapter (commit `e097e49`):
+Code in this chapter (commit `2fc2776`):
 
 - `packages/simp_agent/src/simp_agent/ai/__init__.py` — `TextContent`, `ThinkingContent`, `ToolCall`, `UserMessage`, `AssistantMessage`, `ToolResultMessage`, `to_dict`, `from_dict`
 - `packages/simp_agent/tests/test_reasoning.py`, `packages/simp_agent/tests/test_compaction_serialize.py` — round-trip tests

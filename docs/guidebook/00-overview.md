@@ -13,7 +13,7 @@ flowchart LR
 
 Nothing is built yet. This chapter is the map: what simp-agent is, its six layers, and the order we build them in.
 
-Code in this chapter (commit `68e4ce1`):
+Code in this chapter (commit `2fc2776`):
 
 - `packages/simp_agent/tests/test_layers.py` — `LAYERS`, `APPS`, `test_layers`
 
