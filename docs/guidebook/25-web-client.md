@@ -27,7 +27,7 @@ Code in this chapter (commit `2fc2776`):
 - `apps/web/src/state.ts` — `ChatState`, `reduce`, `appendAt`, `canContinue`
 - `apps/web/src/App.tsx`, `apps/web/src/Chat.tsx`, `apps/web/src/Files.tsx` — the screens
 - `apps/web/src/protocol.gen.ts` — protocol types made from the server ([20](20-server-run.md))
-- `apps/web/src/state.test.ts`, `apps/web/e2e/` — unit and browser tests
+- `apps/web/src/state.test.ts` — unit tests for the reducer
 
 ## Problem
 
@@ -102,7 +102,7 @@ Why: a network chunk can stop in the middle of an event. The buffer holds the re
 headers: { "Last-Event-ID": String(lastSeq()) }
 ```
 
-Why: the server then sends only what we missed. Wait 1 s, 2 s, 4 s ... up to 10 s between tries.
+Why: the server then sends only what we missed ([21 · Replay](21-transport.md#replay-after-then-snapshot-then-live) shows the server side). Wait 1 s, 2 s, 4 s ... up to 10 s between tries.
 
 **Step 4 — one reducer for all events.** Put every change in one pure function. Skip durable events we already have:
 
@@ -203,7 +203,7 @@ for (;;) {
 Points to notice:
 
 - **SSE framing by hand.** An SSE event ends with a blank line (`\n\n`). The code keeps a buffer, cuts at each `\n\n`, and joins the `data:` lines. A network chunk can end in the middle of an event; the buffer holds the rest until the next chunk. This is about 15 lines. No library needed.
-- **`Last-Event-ID` is the resume point.** `lastSeq` is a function, not a number. So each new connection asks the reducer for the newest **[durable event](glossary.md#durable-event)** it has applied. The server ([21](21-transport.md)) sends every durable event after that, then a **[snapshot](glossary.md#snapshot)**, then live events.
+- **`Last-Event-ID` is the resume point.** `lastSeq` is a function, not a number. So each new connection asks the reducer for the newest **[durable event](glossary.md#durable-event)** it has applied. The server answers with the missed durable events, then a **[snapshot](glossary.md#snapshot)**, then live events; how it does that is in [21 · Replay](21-transport.md#replay-after-then-snapshot-then-live).
 - **Status.** `ConnStatus` is `"connecting" | "live" | "reconnecting"`. The status becomes `live` only when the snapshot arrives, because only then is the screen up to date. `Chat.tsx` shows it in the header.
 
 When the stream ends or throws, the loop waits and tries again:
@@ -334,40 +334,15 @@ Two small details:
 
 ## Test
 
-The reducer has unit tests in `apps/web/src/state.test.ts` (vitest). But the real promise of this chapter, "reload and nothing is lost or doubled", needs a real browser and a real server. That is the Playwright test in `apps/web/e2e/app.spec.ts`. Playwright is a tool that controls a real browser from test code; [26](26-system-tests-deploy.md) explains it in full.
+The reducer has unit tests in `apps/web/src/state.test.ts` (vitest). They feed events to `reduce()` and check the state:
 
-`apps/web/e2e/serve.sh` starts a fresh server with a fake model: `simp-server run --port 8767 --fake-llm`, with `SIMP_FAKE_DELAY=0.05` so streaming is slow enough to interrupt. This fake model plays the same role as `FakeProvider` ([02](02-fake-provider.md)): deterministic answers, no API key. When asked `"slow"`, it streams the words `w0` to `w39`.
+- **delta dedupe**: `appendAt` appends only when `offset` equals the current length; a new `msg_id` starts a new bubble only at offset 0; tool output and thinking are deduped too; durable events already applied are skipped.
+- **snapshot apply**: the snapshot replaces the in-flight bubble, then live deltas continue with no gap or dup; a pending approval comes back after a reload.
+- **title, plan mode, continue**: these come from the snapshot, then from live events; Continue is offered after an interrupted notice or an error, not after a later event.
 
-`apps/web/e2e/app.spec.ts::"reload mid-stream continues with no gaps or dups; pending approval restored"`:
+Run them with `cd apps/web && pnpm test`.
 
-```ts
-test("reload mid-stream continues with no gaps or dups; pending approval restored", async ({ page }) => {
-  await login(page);
-  await say(page, "slow");
-  await expect(page.locator(".streaming .md")).toContainText("w3 ");
-  await page.reload();
-  await expect(last(page)).toHaveText(Array.from({ length: 40 }, (_, i) => `w${i}`).join(" "), { timeout: 15000 });
-  await say(page, "tool");
-  await expect(page.locator(".approval-card")).toBeVisible();
-  await page.reload();
-  await page.click(".approval-card button:text('Allow')");
-  await expect(last(page)).toContainText("Tool said: hi-from-tool");
-});
-```
-
-What it checks:
-
-- The page reloads while the answer is half streamed (after `w3`). All client state is gone. The new page connects, gets durable events and a snapshot, then live deltas.
-- The final message must be **exactly** `w0 w1 ... w39`. One duplicate word or one missing word fails the test. This is `appendAt` and the snapshot working together.
-- A pending approval survives a reload too. The snapshot carries `pending_approval`, so the **Allow** button comes back, and clicking it finishes the tool call.
-
-Run it:
-
-```sh
-make e2e        # runs: cd apps/web && pnpm e2e
-```
-
-The unit tests run with `cd apps/web && pnpm test`.
+These tests check the reducer alone. The full promise, "reload the page and nothing is lost or doubled", needs a real browser and a real server. That test is in [26 · End-to-end tests with Playwright](26-system-tests-deploy.md#end-to-end-tests-with-playwright).
 
 ## Why this way
 
@@ -385,7 +360,7 @@ The unit tests run with `cd apps/web && pnpm test`.
 - `appendAt()` appends a delta only if `offset` equals the current length. Dups and gaps are dropped.
 - The `snapshot` event replaces the in-flight bubble, live tool output, pending approval, title and plan mode.
 - `Chat.tsx` reads state and sends commands. It never changes state directly.
-- The e2e test reloads mid-stream and checks the answer has no gaps or dups.
+- `state.test.ts` checks the reducer: delta dedupe, snapshot apply, title, plan mode and Continue. The reload test in a real browser is in [26](26-system-tests-deploy.md#end-to-end-tests-with-playwright).
 
 **Builds on:** [24-docker-sandbox](24-docker-sandbox.md) · **Next:** [26-system-tests-deploy](26-system-tests-deploy.md)
 
