@@ -370,12 +370,3 @@ uv run pytest apps/server/tests/test_store.py apps/server/tests/test_accounts.py
 - `Run.recover` closes a run that died while busy: aborts open approvals, answers open tool calls, sets state `error`.
 
 **Builds on:** [21-transport](21-transport.md) · **Next:** [23-limits](23-limits.md)
-
-## Terms to add to glossary
-
-- **store**: the server plugin that saves users, sessions, events and usage; by default `SqliteStore`.
-- **auth**: the server plugin that finds the user for a request; by default `StaticTokenAuth`.
-- **token (auth)**: a long random string sent as `Authorization: Bearer <token>`; only its SHA-256 is stored.
-- **WAL**: SQLite write-ahead log mode; readers do not wait for the writer and crashes do not corrupt the file.
-- **scrypt**: a slow, salted password hash from Python's `hashlib`; slow on purpose so guessing is expensive.
-- **recover**: `Run.recover`, which closes a run that was busy when the server died and leaves a valid history.
