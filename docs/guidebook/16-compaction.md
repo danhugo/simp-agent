@@ -124,7 +124,7 @@ class CompactionEntry:
     role: Literal["compaction"] = "compaction"
 ```
 
-A **[CompactionEntry](glossary.md#compactionentry)** says: "from now on, the model sees this summary, then the messages from `first_kept_index` on". The old messages stay in history and in the store ([13](13-session.md)). Only the **view** sent to the model changes:
+A **[CompactionEntry](glossary.md#compaction-entry)** says: "from now on, the model sees this summary, then the messages from `first_kept_index` on". The old messages stay in history and in the store ([13](13-session.md)). Only the **view** sent to the model changes:
 
 ```python
 def build_view(messages: list) -> list:

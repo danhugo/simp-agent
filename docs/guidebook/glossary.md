@@ -125,16 +125,16 @@ A helper in `agent/__init__.py` that awaits a value only if it is awaitable. It 
 ## Append-only history
 Finished messages are never changed or removed; new entries are only added at the end. So a store can save each entry once, right away. Home: [13](13-session.md).
 
-## plugin
+## Plugin
 Any object passed in `AgentSession(plugins=[...])`; the session calls its hook methods. Home: [14](14-plugins.md).
 
-## plugin hook
+## Plugin hook
 A method name the session calls on a plugin at a fixed point (`setup`, `input`, `context`, `tool_call`, `tool_result`, `on_event`, ...). Home: [14](14-plugins.md).
 
-## hook isolation
+## Hook isolation
 An error in a plugin hook becomes a `plugin_error` event instead of breaking the run. Home: [14](14-plugins.md).
 
-## fail closed
+## Fail closed
 When a safety check itself fails, treat it as "no" (block the tool). Home: [14](14-plugins.md).
 
 ## PluginAPI
@@ -143,10 +143,10 @@ The object a plugin gets in `setup`; the actions it may take on its session. Hom
 ## plugin_error
 The event the session emits when an isolated plugin hook raises; it names the plugin and the hook. Home: [14](14-plugins.md).
 
-## retry
+## Retry
 Calling the model again after a short-lived error, with `continue_()`. Home: [15](15-retry.md).
 
-## backoff
+## Backoff
 Waiting longer between each retry; here the wait doubles each time. Home: [15](15-retry.md).
 
 ## error_kind
@@ -155,7 +155,7 @@ A field on `AssistantMessage`; `fatal`, `budget` or `policy` mean "never retry".
 ## Jitter
 A small random part added to a retry wait, so many clients do not retry at the same moment. simp-agent does not use it (a known limit). Home: [15](15-retry.md).
 
-## retryable error
+## Retryable error
 An error whose text matches `_RETRYABLE` (429, 5xx, overloaded, network...) and whose kind allows retry. Home: [15](15-retry.md).
 
 ## auto_retry_start / auto_retry_end
@@ -164,16 +164,16 @@ Session events sent before each backoff wait and once after the last retry. Home
 ## NON_RETRYABLE
 The set `{"fatal", "budget", "policy"}` of error kinds that `is_retryable` always rejects. Home: [15](15-retry.md).
 
-## context window
+## Context window
 The most tokens a model can read in one call (`Model.context_window`). Home: [16](16-compaction.md).
 
-## compaction
+## Compaction
 Replacing old history in the model's view with a summary. Home: [16](16-compaction.md).
 
 ## CompactionEntry
-The marker appended to history: summary, `first_kept_index`, read and modified files. Home: [16](16-compaction.md).
+Same as [Compaction entry](#compaction-entry).
 
-## view (LLM view)
+## View (LLM view)
 The message list actually sent to the model, built from history by `build_view` and the plugin `context` chain. Home: [16](16-compaction.md).
 
 ## reserve_tokens
@@ -182,16 +182,16 @@ Tokens kept free for the reply and the summary (default 16384). Home: [16](16-co
 ## keep_recent_tokens
 About how many recent tokens are kept word for word (default 20000). Home: [16](16-compaction.md).
 
-## incremental summary
+## Incremental summary
 Updating the previous summary with only the new messages. Home: [16](16-compaction.md).
 
-## cut (first_kept_index)
+## Cut (first_kept_index)
 The index of the first message kept word for word; always a user or assistant message. Home: [16](16-compaction.md).
 
-## overflow recovery
-In `_run`: compact once and call the model again. Home: [17](17-overflow.md).
+## Overflow recovery
+How `_run` handles a [Context overflow](#context-overflow): compact once and call the model again. See that entry. Home: [17](17-overflow.md).
 
-## overflowed flag
+## Overflowed flag
 The per-run flag in `_run` that allows only one overflow recovery. Home: [17](17-overflow.md).
 
 ## build_model
@@ -206,7 +206,7 @@ Built-in plugin that replaces secrets with `[REDACTED]`. Home: [18](18-profiles-
 ## include_usage
 `Model.compat` flag; asks an OpenAI-style server to send token usage in the stream. `build_model` turns it on by default. Home: [18](18-profiles-plugins.md).
 
-## plan mode
+## Plan mode
 Built-in plugin (`PlanMode`) that makes the agent read-only and asks it for a plan. Home: [18](18-profiles-plugins.md).
 
 ## Print mode
@@ -278,7 +278,7 @@ A token made by each password login and saved in the `tokens` table. `logout` de
 ## WAL
 SQLite write-ahead log mode. Readers do not wait for the writer, and a crash does not break the file. Home: [22](22-store-auth.md#sqlitestore-one-file-five-tables).
 
-## scrypt
+## Scrypt
 A slow, salted password hash from Python's `hashlib`. It is slow on purpose, so guessing is expensive. Home: [22](22-store-auth.md#scrypt-passwords).
 
 ## recover
@@ -304,6 +304,18 @@ Evicting runs that were not used for `idle_minutes`. Home: [23](23-limits.md#idl
 
 ## Reducer
 A pure function `(state, event) -> new state`. In the web client, `reduce()` is the only place chat state changes. Home: [25](25-web-client.md#the-reducer-statets).
+
+## In-flight buffer
+Text of the assistant message that is still streaming, kept by the server `Run` (`self.inflight`) so a late or reloaded tab gets it in the snapshot. Home: [20](20-server-run.md).
+
+## Gap / dup delta
+A delta that does not start at the end of the text: a skipped one (gap) or a repeated one (dup). The web client drops both; see [Offset](#offset). Home: [25](25-web-client.md#appendat).
+
+## Bearer token
+A secret sent in the header `Authorization: Bearer <token>` on every call to the server. See [Token (auth)](#token-auth). Home: [22](22-store-auth.md).
+
+## Monotonic clock
+A clock that only goes forward (`time.monotonic()`). Changing the computer's time does not move it, so it is safe for measuring how long something took. Used in [09](09-exec-env.md), [10](10-coding-tools.md) and [23](23-limits.md).
 
 ## Offset
 The position in the full text where a delta starts. `appendAt()` uses it to drop repeated (dup) and skipped (gap) deltas. Home: [25](25-web-client.md#appendat).
@@ -338,7 +350,7 @@ SQLite's built-in way to copy a database safely while it is open and in use. Hom
 ## launchd
 The macOS service manager. It starts, restarts and schedules programs from `.plist` files. Home: [26](26-system-tests-deploy.md#launchd-run-it-as-a-service-on-a-mac).
 
-## pi
+## Pi
 Another small coding agent that simp-agent copies many ideas from. Code comments like `(pi ExtensionAPI)` point to it. Home: [27](27-limits-choices-extend.md#part-1-design-choices).
 
 ## Protocol (Python)

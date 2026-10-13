@@ -2,7 +2,7 @@
 
 **Goal:** Test the whole system and run it on one machine.
 
-**Builds on:** [25-web-client](25-web-client.md) · **Next:** [27-limits-choices-extend](27-limits-choices-extend.md)
+**Builds on:** [25 Web client](25-web-client.md) · **Next:** [27 Choices, limits and extending](27-limits-choices-extend.md)
 
 ## Where we are
 
@@ -184,7 +184,7 @@ A `Hub` class holds one session: the event log, the run state, in-flight text, a
         p.server_event.validate_python(ev)  # never put an off-schema frame on the wire
 ```
 
-Why have a second server? It was built so the web client ([25](25-web-client.md)) could be written before the real server was ready. You start it with `simp-server fake` (see `apps/server/src/simp_server/__main__.py`: any mode that is not `run`, `seed`, `backup` and so on goes to `fake.main`). The script `apps/web/e2e/fake_reload.py` is a manual check against it: reload in the middle of a stream, approve after reload, upload a file.
+Why have a second server? It was built so the web client ([25](25-web-client.md)) could be written before the real server was ready. You start it with `simp-server fake` (see `apps/server/src/simp_server/__main__.py`: any mode not in the server list, like `run`, `seed` or `backup`, goes to `fake.main`). The script `apps/web/e2e/fake_reload.py` is a manual check against it: reload in the middle of a stream, approve after reload, upload a file.
 
 So we have two fakes at two levels:
 
@@ -379,5 +379,5 @@ Run them with `uv run pytest apps/server/tests/test_ops.py`.
 - `ops.setup_logging` writes one JSON object per log line.
 - Two launchd files keep the server alive and back it up every night at 03:00.
 
-**Builds on:** [25-web-client](25-web-client.md) · **Next:** [27-limits-choices-extend](27-limits-choices-extend.md)
+**Builds on:** [25 Web client](25-web-client.md) · **Next:** [27 Choices, limits and extending](27-limits-choices-extend.md)
 

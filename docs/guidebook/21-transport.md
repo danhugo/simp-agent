@@ -2,7 +2,7 @@
 
 **Goal:** Stream events to clients and take commands back.
 
-**Builds on:** [20-server-run](20-server-run.md) · **Next:** [22-store-auth](22-store-auth.md)
+**Builds on:** [20 The server run](20-server-run.md) · **Next:** [22 Store and auth](22-store-auth.md)
 
 ## Where we are
 
@@ -231,7 +231,7 @@ The snapshot fixes problem 3 of the naive version. `in_flight` (`p.InFlight`) ho
             self._send(cls(msg_id=f.msg_id, offset=off, delta=delta).model_dump())
 ```
 
-Each delta carries an `offset`: where it starts in the full text. A tab that joined late gets "Hello " in the snapshot, then a delta with `offset=6`. It can check that the pieces fit.
+Each delta carries an [`offset`](glossary.md#offset): where it starts in the full text. A tab that joined late gets "Hello " in the snapshot, then a delta with `offset=6`. It can check that the pieces fit.
 
 ### The SSE loop
 
@@ -390,5 +390,5 @@ uv run pytest apps/server/tests/test_server.py::test_reconnect_with_last_event_i
 - Busy runs queue text as steer or follow-up, up to 20.
 - Approval is a future, answered by an `Approve` command with the matching `call_id`.
 
-**Builds on:** [20-server-run](20-server-run.md) · **Next:** [22-store-auth](22-store-auth.md)
+**Builds on:** [20 The server run](20-server-run.md) · **Next:** [22 Store and auth](22-store-auth.md)
 
