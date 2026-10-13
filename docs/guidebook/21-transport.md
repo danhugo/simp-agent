@@ -81,7 +81,7 @@ It works while the network is perfect. It breaks when:
 
 We fix the four breaks one by one.
 
-**Step 1: number the events.** Give each saved event a `seq`, and keep a log.
+**Step 1: number the events.** Give each saved event a [`seq`](glossary.md#seq), and keep a log.
 
 ```python
     def send(self, ev: dict) -> None:
@@ -168,7 +168,7 @@ Note the `id:` line. It is only there when the event has a `seq`. That is the ke
 Events are of two kinds:
 
 - **[Durable events](glossary.md#durable-event)**: user message, assistant message, tool result, approval request and answer, run state, notices. They are saved and have a `seq`.
-- **Live events**: `text_delta`, `thinking_delta`, `tool_output`. They are small pieces of an unfinished message. They are **not** saved and have no `seq`.
+- **[Live events](glossary.md#live-event)**: `text_delta`, `thinking_delta`, `tool_output`. They are small pieces of an unfinished message. They are **not** saved and have no `seq`.
 
 `seq` is a number that goes up by one for each saved row. `Run.durable` makes a durable event:
 
@@ -194,7 +194,7 @@ So core messages (`"msg"` rows, used to resume the agent) and protocol events li
 
 ### Replay: `after`, then snapshot, then live
 
-When a tab connects, it says "I have seen up to seq N". It can do this with `?after=N`, or with the `Last-Event-ID` header that `EventSource` sends by itself on reconnect:
+When a tab connects, it says "I have seen up to seq N". It can do this with `?after=N`, or with the [`Last-Event-ID`](glossary.md#last-event-id) header that `EventSource` sends by itself on reconnect:
 
 ```python
         first, q = run.subscribe(after if after is not None else int(request.headers.get("last-event-id") or 0))
@@ -252,7 +252,7 @@ Each delta carries an `offset`: where it starts in the full text. A tab that joi
 ```
 
 - First it sends the replay and the snapshot.
-- Then it waits for live events. If nothing comes for `HEARTBEAT` (15 seconds), it checks two things: is the client gone, and is its token still valid? If both are fine, it sends `": ping"`. A line that starts with `:` is a comment in SSE. It keeps proxies from closing the idle connection.
+- Then it waits for live events. If nothing comes for `HEARTBEAT` (15 seconds; see [Heartbeat](glossary.md#heartbeat)), it checks two things: is the client gone, and is its token still valid? If both are fine, it sends `": ping"`. A line that starts with `:` is a comment in SSE. It keeps proxies from closing the idle connection.
 - `finally` removes the queue, so a closed tab stops getting events.
 
 ### Slow clients are dropped, never waited for
