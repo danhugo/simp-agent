@@ -4,6 +4,8 @@
 
 **Builds on:** [22-store-auth](22-store-auth.md) · **Next:** [24-docker-sandbox](24-docker-sandbox.md)
 
+## Where we are
+
 ```mermaid
 flowchart TB
     subgraph lib [simp_agent library]
@@ -18,6 +20,12 @@ flowchart TB
 ```
 
 *This chapter adds limits to the `server` app (marked): a money budget, a kill switch and idle release.*
+
+Code in this chapter (commit `2fc2776`):
+
+- `apps/server/src/simp_server/budget.py` — `Limits`, `limits`, `cost`, `day_start`, `guard`
+- `apps/server/src/simp_server/server.py` — `Run.guarded_stream`, `Run.over_budget`, `SessionManager` (`paused`, `evict_idle`, `evict_loop`), the `pause` and `resume` commands
+- `apps/server/tests/test_budget.py`, `apps/server/tests/test_lifecycle.py` — the limits tests
 
 ## Problem
 

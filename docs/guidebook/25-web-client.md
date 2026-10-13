@@ -4,6 +4,8 @@
 
 **Builds on:** [24-docker-sandbox](24-docker-sandbox.md) · **Next:** [26-system-tests-deploy](26-system-tests-deploy.md)
 
+## Where we are
+
 ```mermaid
 flowchart TB
     subgraph lib [simp_agent library]
@@ -18,6 +20,14 @@ flowchart TB
 ```
 
 *This chapter builds `apps/web` (marked).*
+
+Code in this chapter (commit `2fc2776`):
+
+- `apps/web/src/api.ts` — `api`, `subscribe`, `getToken`, `setToken`, `AuthError`
+- `apps/web/src/state.ts` — `ChatState`, `reduce`, `appendAt`, `canContinue`
+- `apps/web/src/App.tsx`, `apps/web/src/Chat.tsx`, `apps/web/src/Files.tsx` — the screens
+- `apps/web/src/protocol.gen.ts` — protocol types made from the server ([20](20-server-run.md))
+- `apps/web/src/state.test.ts`, `apps/web/e2e/` — unit and browser tests
 
 ## Problem
 
@@ -324,7 +334,7 @@ Two small details:
 
 ## Test
 
-The reducer has unit tests in `apps/web/src/state.test.ts` (vitest). But the real promise of this chapter, "reload and nothing is lost or doubled", needs a real browser and a real server. That is the Playwright test in `apps/web/e2e/app.spec.ts`.
+The reducer has unit tests in `apps/web/src/state.test.ts` (vitest). But the real promise of this chapter, "reload and nothing is lost or doubled", needs a real browser and a real server. That is the Playwright test in `apps/web/e2e/app.spec.ts`. Playwright is a tool that controls a real browser from test code; [26](26-system-tests-deploy.md) explains it in full.
 
 `apps/web/e2e/serve.sh` starts a fresh server with a fake model: `simp-server run --port 8767 --fake-llm`, with `SIMP_FAKE_DELAY=0.05` so streaming is slow enough to interrupt. This fake model plays the same role as `FakeProvider` ([02](02-fake-provider.md)): deterministic answers, no API key. When asked `"slow"`, it streams the words `w0` to `w39`.
 

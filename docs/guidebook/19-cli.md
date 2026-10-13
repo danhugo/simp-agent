@@ -337,7 +337,7 @@ It removes the Ctrl-C handler for a moment, so Ctrl-C raises `KeyboardInterrupt`
 
 The question shows in the live region. The next Enter calls `submit`, which sees `self.pending` and runs `self.pending.set_result(approval_answer(line))`. Ctrl-C while asking sets `"deny"` and then aborts.
 
-`describe_call` makes the question short: `bash: <command>`, or `write: <path>` for `write`, `edit` and `read`.
+`describe_call` makes the question short: `bash: <command>`, or `<tool>: <path>` for `write`, `edit` and `read` (for example `write: fizzbuzz.py`).
 
 ## Test
 

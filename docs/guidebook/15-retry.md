@@ -219,7 +219,7 @@ Some edge cases that follow from this code:
 - **The regex is wide.** Any text with `connection`, `network` or a 3-digit number from 500 to 599 matches. For example an error that says "connection refused" is retried. This is on purpose: retry is cheap, and the try count is small.
 - **No retry events if nothing was retried.** `auto_retry_end` is sent only `if attempt:`. A fatal error alone sends neither event.
 - **`success` is checked at the end.** If all 3 tries fail, `auto_retry_end` has `success=False`, and the last message is the last error.
-- **The wait has no random part (no "jitter").** All clients wait the same 2, 4, 8 seconds. That is a known limit.
+- **The wait has no random part (no "[jitter](glossary.md#jitter)").** All clients wait the same 2, 4, 8 seconds. That is a known limit.
 
 ## Test
 
