@@ -22,7 +22,7 @@ Chapter 00 shows the whole system. Then we start from the smallest piece and add
 - [09 Part 3 · Execution environment](09-exec-env.md) — Give tools one safe place to touch files and run commands.
 - [10 Part 3 · Coding tools](10-coding-tools.md) — Build read, write, edit, ls, grep, find and bash.
 - [11 Part 3 · The system prompt](11-system-prompt.md) — Tell the model who it is and what the project wants.
-- [12 Part 3 · Evals](12-evals.md) — Measure the agent on real tasks; each later Part adds a case.
+- [12 Part 3 · Evals](12-evals.md) — Measure the agent on real tasks; when you add a capability later, you can add a case for it.
 - [13 Part 4 · Sessions](13-session.md) — Keep a conversation across turns and save it.
 - [14 Part 4 · Plugins](14-plugins.md) — Add behaviour without changing the core.
 - [15 Part 4 · Retry](15-retry.md) — Retry failed model calls with backoff.
