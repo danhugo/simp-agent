@@ -222,7 +222,30 @@ It deletes old data, writes a small `settings.toml` (one fake profile, tiny budg
 
 `reuseExistingServer: false` is on purpose: every run starts empty.
 
-The tests are in `apps/web/e2e/`: `app.spec.ts`, `accounts.spec.ts` and `admin.spec.ts`. `app.spec.ts` has small helpers: `login` reads the token from `/tmp/simp-e2e/token`, signs in and opens a new session; `say` types a message and presses Enter.
+The tests are in `apps/web/e2e/`: `app.spec.ts`, `accounts.spec.ts` and `admin.spec.ts`. `app.spec.ts` has small helpers: `login` reads the token from `/tmp/simp-e2e/token`, signs in and opens a new session; `say` types a message and presses Enter; `last` finds the newest assistant message.
+
+The test that matters most for the web client ([25](25-web-client.md)) is the reload test. When asked `"slow"`, FakeLLM streams the words `w0` to `w39`, slowly enough to interrupt. `"reload mid-stream continues with no gaps or dups; pending approval restored"`:
+
+```ts
+test("reload mid-stream continues with no gaps or dups; pending approval restored", async ({ page }) => {
+  await login(page);
+  await say(page, "slow");
+  await expect(page.locator(".streaming .md")).toContainText("w3 ");
+  await page.reload();
+  await expect(last(page)).toHaveText(Array.from({ length: 40 }, (_, i) => `w${i}`).join(" "), { timeout: 15000 });
+  await say(page, "tool");
+  await expect(page.locator(".approval-card")).toBeVisible();
+  await page.reload();
+  await page.click(".approval-card button:text('Allow')");
+  await expect(last(page)).toContainText("Tool said: hi-from-tool");
+});
+```
+
+What it checks:
+
+- The page reloads while the answer is half streamed (after `w3`). All client state is gone. The new page connects, gets durable events and a snapshot, then live deltas.
+- The final message must be **exactly** `w0 w1 ... w39`. One duplicate word or one missing word fails the test. This is `appendAt` and the snapshot working together.
+- A pending approval survives a reload too. The snapshot carries `pending_approval`, so the **Allow** button comes back, and clicking it finishes the tool call.
 
 ### ops.py: logs and backup
 
@@ -351,6 +374,7 @@ Run them with `uv run pytest apps/server/tests/test_ops.py`.
 - `fakellm.py` is a deterministic `stream_fn`. `simp-server run --fake-llm` runs the real server with it.
 - `fake.py` is a whole fake server with the same API that replays a script. It helped build the web client early.
 - `make e2e` starts a fresh server (`serve.sh`) and the web client, then Playwright clicks through real user flows.
+- The reload test reloads mid-stream and checks the answer is exactly `w0 … w39`, and that a pending approval comes back.
 - `ops.backup` uses SQLite's online backup, copies an allow list (no `.env`), and keeps the newest N files.
 - `ops.setup_logging` writes one JSON object per log line.
 - Two launchd files keep the server alive and back it up every night at 03:00.
