@@ -15,11 +15,13 @@ flowchart LR
 
 *This chapter starts the `session` layer (marked).*
 
-Code in this chapter (commit `2fc2776`):
+## Code in this chapter
+
+Commit `2fc2776`:
 
 - `packages/simp_agent/src/simp_agent/session/__init__.py` — `SessionStore`, `AgentSession`
 - `apps/cli/src/simp_cli/__init__.py` — `JsonlStore`, `session_dir`
-- `packages/simp_agent/tests/test_session.py` — `ListStore` and the store test
+- `packages/simp_agent/tests/test_session.py` — `ListStore`, the store test and `test_context_file_in_system_prompt`
 
 ## Problem
 
@@ -90,6 +92,8 @@ class ListStore:
 **Step 5: let the app load.** The app knows which session to resume (an id, the latest one). So the library does not load by itself. The app passes the list in: `AgentSession(..., messages=store.load())`.
 
 **Step 6: one class that owns the agent.** The CLI and the server must not repeat the wiring. So `AgentSession` builds the `Agent` with good defaults (tools, env, prompt), connects the store, and gives apps one place to `subscribe`, `prompt` and `continue_`.
+
+**Step 7: build the prompt from parts, and finish setup in `start()`.** Plugins ([14](14-plugins.md)) will want to add text to the system prompt. So the prompt is a table of ordered sections, and `_build_prompt` joins them before every model call. Reading `AGENTS.md` needs `await`, and `__init__` cannot await. So that work goes into `start()`, which `prompt` and `continue_` call first, only once.
 
 The result is the real code below.
 

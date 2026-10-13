@@ -46,14 +46,35 @@ Also: [glossary](glossary.md) · [changelog](changelog.md)
 Every chapter has these parts, in this order:
 
 1. **Goal** — one sentence.
-2. **Problem** — what is missing without this part.
-3. **Naive version** — 15–30 runnable lines; show where it breaks.
-4. **Real design** — short excerpts with file path; why each part exists.
-5. **Test** — use FakeProvider where possible.
-6. **Why this way** — a short box with the main design choice.
-7. **Recap** + **Builds on / Next** links.
+2. **Where we are** — the shared architecture diagram with the new part marked, and one line in italics under it.
+3. **Code in this chapter** — the commit, then a list of code paths with the names they hold.
+4. **Problem** — what is missing without this part.
+5. **Naive version** — 15–30 runnable lines; show where it breaks.
+6. **Real design** — short excerpts with file path; why each part exists.
+7. **Test** — use FakeProvider where possible.
+8. **Why this way** — a short box with the main design choice.
+9. **Recap** + **Builds on / Next** links.
 
-One architecture diagram is repeated in every chapter, with the new part marked.
+Format for parts 2 and 3 (from [13](13-session.md)):
+
+````markdown
+## Where we are
+
+```mermaid
+flowchart LR
+    ai --> agent --> coding --> session --> plugins --> testing
+    session -.used by.-> apps["apps: cli, server (+ web)"]
+    style session fill:#ffd54f,stroke:#333,stroke-width:2px
+```
+
+*This chapter starts the `session` layer (marked).*
+
+## Code in this chapter
+
+Commit `2fc2776`:
+
+- `packages/simp_agent/src/simp_agent/session/__init__.py` — `SessionStore`, `AgentSession`
+````
 
 ## Writing rules
 

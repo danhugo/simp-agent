@@ -4,6 +4,8 @@
 
 **Builds on:** [14 Plugins](14-plugins.md) · **Next:** [16 Compaction](16-compaction.md)
 
+## Where we are
+
 ```mermaid
 flowchart LR
     ai --> agent --> coding --> session --> plugins --> testing
@@ -12,6 +14,14 @@ flowchart LR
 ```
 
 *This chapter adds retry to the `session` layer (marked). The error checks it uses live in `ai`.*
+
+## Code in this chapter
+
+Commit `2fc2776`:
+
+- `packages/simp_agent/src/simp_agent/ai/__init__.py` — `is_retryable`, `NON_RETRYABLE`
+- `packages/simp_agent/src/simp_agent/session/__init__.py` — `AgentSession._run` (the retry loop)
+- `packages/simp_agent/tests/test_session.py` — `test_retry_429_twice_then_ok`, `test_abort_during_backoff_stops`
 
 ## Problem
 
@@ -42,7 +52,6 @@ It helps with one `429`. It breaks when:
 2. **Fixed wait.** A server that is overloaded gets hit again every 2 seconds.
 3. **Abort does not work.** If the user presses Ctrl-C during `asyncio.sleep(2)`, nothing happens until the sleep ends, and then it retries anyway.
 4. **Nobody sees it.** The UI shows nothing while waiting.
-5. **The error message is sent back to the model** on the next call, unless something removes it.
 
 ## Step by step: from naive to real
 
@@ -76,11 +85,9 @@ Why: Ctrl-C must work at once, even when no model call is running.
 
 Why: the user should see "retrying", not a frozen screen.
 
-**Step 5 — hide failed replies from the model.** We do nothing new here. `transform_messages` in `ai` already drops assistant messages with `stop_reason` `"error"` or `"aborted"` ([03](03-stream-parser.md)).
+**Note — failed replies are already hidden.** We need nothing new for this. `transform_messages` in `ai` already drops assistant messages with `stop_reason` `"error"` or `"aborted"` ([04](04-providers.md)). The error stays in history (for the user and the store), but the model never sees it.
 
-Why: the error stays in history (for the user and the store), but the model never sees it.
-
-**Step 6 — move it into the session.** The loop lives in `AgentSession._run`, so `prompt()` and `continue_()` both get it for free.
+**Step 5 — move it into the session.** The loop lives in `AgentSession._run`, so `prompt()` and `continue_()` both get it for free.
 
 The result is the real code below.
 
@@ -153,7 +160,7 @@ Step by step:
 
 **Exponential [backoff](glossary.md#backoff).** `delay = retry_base_delay * 2 ** (attempt - 1)`. With the defaults (`retry_base_delay=2.0`, `max_retries=3`) the waits are 2, 4 and 8 seconds. Each wait doubles, so a busy server gets more and more room.
 
-**Retry is `continue_()`, not a new prompt.** The error message stays in history (history is append-only, [13](13-session.md)). We do not resend the user text. `continue_()` asks the model again with the same history. Before the call, `transform_messages` in `ai` drops assistant turns with `stop_reason` `"error"` or `"aborted"` from what is sent ([03](03-stream-parser.md)). So the model never sees its own failed reply.
+**Retry is `continue_()`, not a new prompt.** The error message stays in history (history is append-only, [13](13-session.md)). We do not resend the user text. `continue_()` asks the model again with the same history. Before the call, `transform_messages` in `ai` drops assistant turns with `stop_reason` `"error"` or `"aborted"` from what is sent ([04](04-providers.md)). So the model never sees its own failed reply.
 
 **Events.** `auto_retry_start` carries `attempt`, `max_attempts`, `delay` and the `error`. `auto_retry_end` carries `success` and `attempt`. Two apps use them:
 

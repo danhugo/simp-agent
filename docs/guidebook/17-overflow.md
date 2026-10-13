@@ -4,6 +4,8 @@
 
 **Builds on:** [16 Compaction](16-compaction.md) · **Next:** [18 Profiles and built-in plugins](18-profiles-plugins.md)
 
+## Where we are
+
 ```mermaid
 flowchart LR
     ai --> agent --> coding --> session --> plugins --> testing
@@ -12,6 +14,14 @@ flowchart LR
 ```
 
 *This chapter adds overflow recovery to the `session` layer (marked). The detection lives in `ai`.*
+
+## Code in this chapter
+
+Commit `2fc2776`:
+
+- `packages/simp_agent/src/simp_agent/ai/__init__.py` — `is_context_overflow`, `_OVERFLOW`, `is_retryable`
+- `packages/simp_agent/src/simp_agent/session/__init__.py` — `AgentSession._run` (the overflow branch), `compact`
+- `packages/simp_agent/tests/test_queues_compaction.py` — `test_overflow_compacts_and_retries_once`, `test_second_overflow_stops`
 
 ## Problem
 
@@ -43,7 +53,7 @@ It fixes one overflow for one provider. It breaks when:
 1. **Each provider says it differently.** Anthropic says "prompt is too long", OpenAI says "maximum context length" or "context_length_exceeded".
 2. **Endless loop.** If compaction cannot make it small enough (one huge turn, see the `find_cut` limit in [16](16-compaction.md)), it compacts and fails forever, paying for a summary each time.
 3. **Compaction fails.** If `compact()` fails, it still continues and fails again.
-4. **Retry is confused.** "too many tokens" might also match a retry pattern and be retried with backoff for nothing.
+4. **Retry and overflow may mix.** Today the retry pattern (`_RETRYABLE`, [15](15-retry.md)) does not match "too many tokens". But a future pattern, or a number like `529` inside an overflow text, could match. Then an overflow would be retried with backoff for nothing.
 
 ## Step by step: from naive to real
 
@@ -66,7 +76,7 @@ def is_context_overflow(error: str) -> bool:
     return not is_context_overflow(error) and bool(_RETRYABLE.search(error or ""))
 ```
 
-**Why:** "too many tokens" looks a bit like "too many requests". Retry with backoff ([15](15-retry.md)) sends the same big request again, so it can never work. Now an overflow is never retryable. Each error has exactly one fix.
+**Why:** this is a safety guard, not a fix for a real clash: today `_RETRYABLE` does not match any overflow text. But retry with backoff ([15](15-retry.md)) sends the same big request again, so it can never work. With this check an overflow is never retryable, even if the patterns change. Each error has exactly one fix.
 
 ### Step 3: try only once
 
@@ -156,7 +166,7 @@ Read it line by line:
 Why does `continue_()` now work? Two things:
 
 1. `compact()` appended a `CompactionEntry` ([16](16-compaction.md)). `build_view` now sends the summary plus recent messages, not the full history.
-2. The overflow error message stays in history (append-only), but `transform_messages` drops error turns from what is sent ([03](03-stream-parser.md)). So the model does not see "prompt is too long" either.
+2. The overflow error message stays in history (append-only), but `transform_messages` drops error turns from what is sent ([04](04-providers.md)). So the model does not see "prompt is too long" either.
 
 Note that `compact()` here runs with the session's normal settings. It does not try to cut harder. If the recent part alone (`keep_recent_tokens`) is still too big, the second call overflows and the run stops. That is a clear error for the user, better than a loop.
 
