@@ -346,7 +346,7 @@ These tests check the reducer alone. The full promise, "reload the page and noth
 
 ## Why this way
 
-> **Server is the truth; the client is a pure reducer.** The client never guesses. Durable events are deduped by `seq`, deltas by `offset`, and the snapshot replaces all live state on every connect. So any order of reconnects ends in the same screen. `fetch` is used instead of `EventSource` because only `fetch` can send the `Authorization` header; the cost is about 15 lines of SSE parsing and a hand-written retry loop. A dropped gap delta is not repaired at once; the screen waits for the next snapshot or the final `assistant_message`.
+> **Server is the truth; the client is a pure reducer**, so any order of reconnects ends in the same screen. `fetch` is used instead of `EventSource` because only `fetch` can send the `Authorization` header; the cost is about 15 lines of SSE parsing and a hand-written retry loop. A dropped gap delta is not repaired at once; the screen waits for the next snapshot or the final `assistant_message`.
 
 ## Exercises
 

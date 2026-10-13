@@ -3,9 +3,12 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-13
+- re-read fixes: ch 26 code list adds `accounts.spec.ts` and `admin.spec.ts`; ch 20 seq and Reconnect cut to one line + link to ch 21; ch 22 "Durable events" links to Step 4; ch 25 "Why this way" keeps only the tradeoff.
+- ch 20 live events: `ToolOutput` is saved in `ToolResult` (commit `c4ea9d0`); ch 20 review fixes: deltas note, changelog, snapshot link (commit `096a193`).
+- one-line "Code in this chapter" form in ch 02, 14–18 and README (commit `8357dbe`).
 - ch 25/26 dedup: the e2e reload test (serve.sh, app.spec.ts, make e2e) now lives only in ch 26 "End-to-end tests with Playwright"; ch 25 "Test" covers only `state.test.ts` and links to 26; ch 25 Step 3 and "fetch-based SSE" link to ch 21 "Replay" for the server side.
 - ch 20–22: removed repeated seq/durable/live/snapshot text; ch 20 and 22 keep a short summary and link to ch 21 (commit `82f7715`).
-- ch 12 + README: "each later Part adds a case" reworded; the book has only 4 eval tasks (3 code edits, 1 read-and-answer), adding more is optional.
+- ch 12 + README: "each later Part adds a case" reworded; the book has only 4 eval tasks (3 code edits, 1 read-and-answer), adding more is optional (commits `4694e08`, `423175a`).
 - v3 ch 14–27 review (checked at `2fc2776`): "Where we are" heading and "Code in this chapter" added to ch 22, 23, 25; glossary: Jitter, Sandbox slot, Static token, Per-device token, Allow list, with links from first use (also fail closed, view, incremental summary); old v2 links to removed files turned into plain text.
 - v3 ch 27 Choices, limits and extending finished: symbols checked at `2fc2776`; added "Where we are" and "Code in this chapter"; glossary: pi, Protocol (Python), Ponytail comment (Plugin, PluginAPI already in glossary); removed "Terms to add" list.
 - v3 ch 26 System tests and deploy finished: symbols checked at `2fc2776`; added "Where we are" and "Code in this chapter"; glossary: End-to-end test, Playwright, Deterministic, Online backup, launchd (WAL mode links to WAL); removed "Terms to add" list.

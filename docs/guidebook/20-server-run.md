@@ -223,7 +223,7 @@ self.session.subscribe(self.on_event)
 
 So the `Run` is a `SessionStore` ([13](13-session.md)): it has `append`. It is also the approval callback (`approve`) and an event subscriber (`on_event`). That is the whole link between the library and the server. The library does not know a server exists.
 
-**One seq counter for everything.** `Run.append` (library messages, `"msg"` rows) and `Run.durable` (protocol events) both add one to the same `self.seq` and save a row. `durable()` is the only way to emit a durable event: it builds the model (so a wrong field fails here, on the server), keeps it in `log`, sends it to open tabs, and saves it. The code and the replay are in [21 · seq](21-transport.md#seq-one-counter-for-everything); the rows on disk are in [22 · Durable events](22-store-auth.md#durable-events).
+**One seq counter for everything.** `Run.append` and `Run.durable` share one `self.seq`. `durable()` builds the model first, so a wrong field fails on the server. Details in [21 · seq](21-transport.md#seq-one-counter-for-everything).
 
 **Changing state.** Every state change goes through one method:
 
@@ -286,7 +286,7 @@ The run waits on a future. A later `Approve` command (a new HTTP request) calls 
 
 **After a restart.** If the last saved state was busy, the process died mid-run. `recover()` closes open approvals as `aborted`, adds an error `ToolResult` for each tool call with no result, then sets `error`. It writes `self.info.run_state = "error"` directly, "bypassing check_transition on purpose", because `waiting_approval -> error` is not in the table.
 
-**Reconnect.** `subscribe(after)` returns every durable event with `seq > after`, then a `Snapshot`, and gives a new queue for live events. Its docstring: "No await here, so nothing slips in between." This fixes naive problem 4. How the events reach the browser over HTTP is [21](21-transport.md).
+**Reconnect.** `subscribe(after)` sends saved events after `after`, then a `Snapshot`, then live events (this fixes naive problem 4); see [21 · Replay](21-transport.md#replay-after-then-snapshot-then-live).
 
 ### gen_protocol → protocol.gen.ts
 

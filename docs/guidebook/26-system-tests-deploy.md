@@ -20,7 +20,7 @@ Code in this chapter (commit `2fc2776`):
 
 - `apps/server/src/simp_server/fakellm.py` — `stream` (the fake model)
 - `apps/server/src/simp_server/fake.py` — `Hub`, `create_app`, `SCRIPT` (a whole fake server)
-- `apps/web/e2e/serve.sh`, `apps/web/e2e/app.spec.ts`, `apps/web/e2e/fake_reload.py`, `apps/web/playwright.config.ts` — the end-to-end tests
+- `apps/web/e2e/serve.sh`, `apps/web/e2e/app.spec.ts`, `apps/web/e2e/accounts.spec.ts`, `apps/web/e2e/admin.spec.ts`, `apps/web/e2e/fake_reload.py`, `apps/web/playwright.config.ts` — the end-to-end tests
 - `apps/server/src/simp_server/ops.py` — `JsonFormatter`, `setup_logging`, `backup`
 - `deploy/launchd/com.simp.server.plist`, `deploy/launchd/com.simp.backup.plist` — the macOS services
 - `apps/server/tests/test_ops.py` — the logging and backup tests
