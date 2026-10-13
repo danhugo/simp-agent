@@ -260,7 +260,7 @@ How `seq` and replay work is in [21 · seq](21-transport.md#seq-one-counter-for-
 - protocol events (type = the event type, like `run_state`),
 - core messages from the session (type = `"msg"`).
 
-`Run.append` writes a `msg` row and `Run.durable` writes a protocol event ([21](21-transport.md#seq-one-counter-for-everything)). Both call `store.add_entry(user_id, sid, seq, type, data)` with the same `self.seq`.
+`Run.append` writes `msg` rows ([Step 4](#step-by-step-from-naive-to-real)) and `Run.durable` writes protocol events, with the same `self.seq` ([21](21-transport.md#seq-one-counter-for-everything)).
 
 When a session is loaded again, `Run.__init__` splits the rows back:
 
