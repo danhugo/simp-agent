@@ -15,9 +15,7 @@ flowchart LR
 
 *This chapter adds overflow recovery to the `session` layer (marked). The detection lives in `ai`.*
 
-## Code in this chapter
-
-Commit `2fc2776`:
+Code in this chapter (commit `2fc2776`):
 
 - `packages/simp_agent/src/simp_agent/ai/__init__.py` — `is_context_overflow`, `_OVERFLOW`, `is_retryable`
 - `packages/simp_agent/src/simp_agent/session/__init__.py` — `AgentSession._run` (the overflow branch), `compact`

@@ -16,9 +16,7 @@ flowchart LR
 
 *This chapter adds `session/profile.py` and fills the `plugins` layer (both marked).*
 
-## Code in this chapter
-
-Commit `2fc2776`:
+Code in this chapter (commit `2fc2776`):
 
 - `packages/simp_agent/src/simp_agent/session/profile.py` — `build_model`
 - `packages/simp_agent/src/simp_agent/plugins/__init__.py` — `build_plugins`

@@ -15,9 +15,7 @@ flowchart LR
 
 *This chapter adds plugin support to the `session` layer (marked). The `plugins` layer itself is filled in [18](18-profiles-plugins.md).*
 
-## Code in this chapter
-
-Commit `2fc2776`:
+Code in this chapter (commit `2fc2776`):
 
 - `packages/simp_agent/src/simp_agent/session/__init__.py` — `plugin_name`, `PluginAPI`, `AgentSession._hook`, `_context`, `_before_tool_call`, `_after_tool_call`, `_emit`
 - `apps/cli/tests/test_sockets.py` — `Rec` and the plugin tests
