@@ -119,7 +119,7 @@ A protocol with two methods, `append(entry)` and `load()`: where a session saves
 ## JSONL
 A file with one JSON object per line. The CLI's `JsonlStore` saves one history entry per line. Home: [13](13-session.md#jsonlstore-the-real-store-in-the-cli).
 
-## _maybe_await
+## `_maybe_await`
 A helper in `agent/__init__.py` that awaits a value only if it is awaitable. It lets hooks and stores be sync or async. Home: [08](08-hooks-approval.md); used in [13](13-session.md).
 
 ## Append-only history
@@ -161,7 +161,7 @@ An error whose text matches `_RETRYABLE` (429, 5xx, overloaded, network...) and 
 ## `auto_retry_start` / `auto_retry_end`
 Session events sent before each backoff wait and once after the last retry. Home: [15](15-retry.md).
 
-## NON_RETRYABLE
+## `NON_RETRYABLE`
 The set `{"fatal", "budget", "policy"}` of error kinds that `is_retryable` always rejects. Home: [15](15-retry.md).
 
 ## Context window
@@ -185,7 +185,7 @@ About how many recent tokens are kept word for word (default 20000). Home: [16](
 ## Incremental summary
 Updating the previous summary with only the new messages. Home: [16](16-compaction.md).
 
-## Cut (first_kept_index)
+## Cut (`first_kept_index`)
 The index of the first message kept word for word; always a user or assistant message. Home: [16](16-compaction.md).
 
 ## Overflow recovery
