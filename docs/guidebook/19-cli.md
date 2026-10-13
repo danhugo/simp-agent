@@ -385,10 +385,3 @@ uv run pytest apps/cli/tests/test_cli.py apps/cli/tests/test_tui.py -q
 
 **Builds on:** [18-profiles-plugins](18-profiles-plugins.md) · **Next:** [20-server-run](20-server-run.md)
 
-## Terms to add to glossary
-
-- **print mode** — the CLI mode for one task (`simp-agent "task"` or `-p`): runs once, prints full lines, exits with 0 or 1.
-- **REPL** — "read, eval, print loop"; the interactive CLI mode where you chat for many turns.
-- **component** — an object with `render(width) -> list[str]` that draws one part of the chat (in `simp_cli/components.py`).
-- **ANSI codes** — special characters a terminal reads as colour or style; not wanted in files or pipes.
-- **steering** — a message typed while the agent runs; it is added at the next turn (defined in [07](07-steering.md)).
