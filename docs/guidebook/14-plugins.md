@@ -317,13 +317,3 @@ uv run pytest apps/cli/tests/test_sockets.py::test_plugin_context_chain_and_erro
 - The system prompt is built every turn from ordered prompt sections.
 
 **Builds on:** [13 Sessions](13-session.md) · **Next:** [15 Retry](15-retry.md)
-
-## Terms to add to glossary
-
-- **plugin** — any object passed in `AgentSession(plugins=[...])`; the session calls its hook methods.
-- **plugin hook** — a method name the session calls on a plugin at a fixed point (`setup`, `input`, `context`, `tool_call`, `tool_result`, `on_event`, ...).
-- **hook isolation** — an error in a plugin hook becomes a `plugin_error` event instead of breaking the run.
-- **fail closed** — when a safety check itself fails, treat it as "no" (block the tool).
-- **PluginAPI** — the object a plugin gets in `setup`; the actions it may take on its session.
-- **plugin_error** — the event the session emits when an isolated plugin hook raises; it names the plugin and the hook.
-- **prompt section** — one part of the system prompt, with an id and an order; rebuilt every turn.

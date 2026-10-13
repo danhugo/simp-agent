@@ -124,3 +124,21 @@ A helper in `agent/__init__.py` that awaits a value only if it is awaitable. It 
 
 ## Append-only history
 Finished messages are never changed or removed; new entries are only added at the end. So a store can save each entry once, right away. Home: [13](13-session.md).
+
+## plugin
+Any object passed in `AgentSession(plugins=[...])`; the session calls its hook methods. Home: [14](14-plugins.md).
+
+## plugin hook
+A method name the session calls on a plugin at a fixed point (`setup`, `input`, `context`, `tool_call`, `tool_result`, `on_event`, ...). Home: [14](14-plugins.md).
+
+## hook isolation
+An error in a plugin hook becomes a `plugin_error` event instead of breaking the run. Home: [14](14-plugins.md).
+
+## fail closed
+When a safety check itself fails, treat it as "no" (block the tool). Home: [14](14-plugins.md).
+
+## PluginAPI
+The object a plugin gets in `setup`; the actions it may take on its session. Home: [14](14-plugins.md).
+
+## plugin_error
+The event the session emits when an isolated plugin hook raises; it names the plugin and the hook. Home: [14](14-plugins.md).
