@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-13
+- ch 20–22: removed repeated seq/durable/live/snapshot text; ch 20 and 22 keep a short summary and link to ch 21 (commit `82f7715`).
 - ch 12 + README: "each later Part adds a case" reworded; the book has only 4 eval tasks (3 code edits, 1 read-and-answer), adding more is optional.
 - v3 ch 14–27 review (checked at `2fc2776`): "Where we are" heading and "Code in this chapter" added to ch 22, 23, 25; glossary: Jitter, Sandbox slot, Static token, Per-device token, Allow list, with links from first use (also fail closed, view, incremental summary); old v2 links to removed files turned into plain text.
 - v3 ch 27 Choices, limits and extending finished: symbols checked at `2fc2776`; added "Where we are" and "Code in this chapter"; glossary: pi, Protocol (Python), Ponytail comment (Plugin, PluginAPI already in glossary); removed "Terms to add" list.
