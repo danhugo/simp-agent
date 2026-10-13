@@ -133,7 +133,7 @@ def build_plugins(names: list[str]) -> list:
     return [known[n]() for n in names]
 ```
 
-A profile lists plugins by name. `build_plugins` turns names into fresh objects and fails loudly on a typo. The server calls it for every profile when it starts (`create_app`), so a typo stops the boot, not the first chat.
+A profile lists plugins by name. `build_plugins` turns names into fresh objects and raises a clear error on a typo. The server calls it for every profile when it starts (`create_app`), so a typo stops the boot, not the first chat.
 
 Why fresh objects? A plugin keeps state (plan mode's on/off). Each session needs its own.
 
@@ -165,7 +165,7 @@ Two ways to find a secret:
         self.secrets = sorted({v for v in values if len(v) >= 8}, key=len, reverse=True)  # longest first
 ```
 
-`config["secrets"]` lets the app pass its own keys (the server passes its provider keys). With `env` on (the default), the value of every env var whose name has `KEY`, `TOKEN`, `SECRET` or `PASSWORD` is also masked. Values shorter than 8 characters are skipped: masking `"1"` everywhere would ruin the output. Longest first, so a long secret is masked whole before a shorter one that is part of it.
+`config["secrets"]` lets the app pass its own keys (the server passes its provider keys). With `env` on (the default), the value of every env var whose name has `KEY`, `TOKEN`, `SECRET` or `PASSWORD` is also masked. Values shorter than 8 characters are skipped: masking `"1"` everywhere would break the output. Longest first, so a long secret is masked whole before a shorter one that is part of it.
 
 It uses three hooks from [14](14-plugins.md):
 
@@ -183,7 +183,7 @@ It uses three hooks from [14](14-plugins.md):
 
 - `tool_result`: if `bash` prints `cat .env`, the saved tool result is masked.
 - `tool_update`: streamed output is masked before the UI sees it.
-- `context`: every message in the model's view is masked. `deep` walks every string field of every dataclass (text, thinking, tool call arguments) and returns **copies**. It skips `id`, `signature`, `type` and `role`: these are opaque provider data, and changing them would break the next call.
+- `context`: every message in the model's view is masked. `deep` walks every string field of every dataclass (text, thinking, tool call arguments) and returns **copies**. It skips `id`, `signature`, `type` and `role`: these are provider data we must not touch, and changing them would break the next call.
 
 Why `context` and not only `tool_result`? The user may paste a key in their own message. History keeps the user's text (it is theirs), but the model never sees the key. And because the session passes the `context` chain as `redact` to `compact()` ([16](16-compaction.md)), the summary model does not see it either.
 

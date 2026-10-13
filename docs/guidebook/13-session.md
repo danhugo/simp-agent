@@ -56,7 +56,7 @@ async def run(task: str, path: str):
 It works for one happy run of the fizzbuzz task. It breaks when:
 
 1. **The process dies mid-run.** The model wrote `fizzbuzz.py` (a real side effect) but the file of messages never got saved. On resume, the model does not know it already wrote the file.
-2. **You want to save somewhere else.** The server wants a database ([22](22-store-auth.md)), tests want a list in memory. The file path is baked in.
+2. **You want to save somewhere else.** The server wants a database ([22](22-store-auth.md)), tests want a list in memory. The file path is fixed inside the code.
 3. **Each app repeats this.** The CLI and the server both need the same wiring.
 
 ## Step by step: from naive to real
@@ -73,7 +73,7 @@ Now a crash loses at most the message that was still streaming.
 
 **Step 2: append, do not rewrite.** A finished message never changes. So we do not need to write the whole list again. We only add one line at the end of the file (mode `"a"`). This is cheap and safe.
 
-**Step 3: hide the storage behind two methods.** The file path is baked in. The server wants a database, tests want a list. So the session only knows `append(entry)` and `load()`. This is the `SessionStore` protocol. A list in memory is now a full store:
+**Step 3: hide the storage behind two methods.** The file path is fixed inside the code. The server wants a database, tests want a list. So the session only knows `append(entry)` and `load()`. This is the `SessionStore` protocol. A list in memory is now a full store:
 
 ```python
 class ListStore:
