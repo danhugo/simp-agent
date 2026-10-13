@@ -2,7 +2,7 @@
 
 **Goal:** Know why it is built this way, where it stops, and how to grow it.
 
-**Builds on:** [26-system-tests-deploy](26-system-tests-deploy.md) · **Next:** —
+**Builds on:** [26 System tests and deploy](26-system-tests-deploy.md) · **Next:** —
 
 ## Where we are
 
@@ -324,5 +324,5 @@ For the other sockets, see the tests in their chapters: providers in [04](04-pro
 - To extend: `register_provider` for models, `AgentTool` for tools, a plugin with `PluginAPI` for session behaviour, and `Sandbox` / `Store` / `Auth` for the server.
 - `test_plugin_setup_events_and_api` shows a plugin adding a tool with no change to the core.
 
-**Builds on:** [26-system-tests-deploy](26-system-tests-deploy.md) · **Next:** —
+**Builds on:** [26 System tests and deploy](26-system-tests-deploy.md) · **Next:** —
 

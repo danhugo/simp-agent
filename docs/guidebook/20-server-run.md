@@ -2,7 +2,7 @@
 
 **Goal:** Run a session on a server with a typed protocol.
 
-**Builds on:** [19-cli](19-cli.md) · **Next:** [21-transport](21-transport.md)
+**Builds on:** [19 The CLI](19-cli.md) · **Next:** [21 Transport](21-transport.md)
 
 ## Where we are
 
@@ -264,7 +264,7 @@ if isinstance(c, (p.Prompt, p.FollowUp, p.Steer)):
 
 `busy` means `running`, `waiting_approval` or `aborting`. When idle, any text starts a run. When busy, it is queued as a steer or follow-up ([07](07-steering.md)), up to `MAX_QUEUED = 20`. This fixes naive problem 2: there is never a second loop. `Approve` needs a matching pending `call_id`, else 409. `Compact` and `Continue` give 409 while busy.
 
-**Events to protocol.** `on_event()` turns library events ([06](06-events-abort.md)) into protocol events. Deltas grow `self.inflight` and go out as live events with an `offset`. A finished assistant message becomes a durable `AssistantMessage`. Usage is recorded for cost limits ([23](23-limits.md)).
+**Events to protocol.** `on_event()` turns library events ([06](06-events-abort.md)) into protocol events. Deltas grow `self.inflight` (the [in-flight buffer](glossary.md#in-flight-buffer)) and go out as live events with an `offset`. A finished assistant message becomes a durable `AssistantMessage`. Usage is recorded for cost limits ([23](23-limits.md)).
 
 **Approval over the network.** `approve()` is the callback the session calls before a risky tool ([08](08-hooks-approval.md)):
 
@@ -362,5 +362,5 @@ uv run pytest apps/server/tests/test_protocol.py -q
 - `start()` runs the work in a background task. `command()` starts, queues, aborts or approves.
 - `gen_protocol.py` writes `apps/web/src/protocol.gen.ts` from the schema; `test_no_ts_drift` catches drift.
 
-**Builds on:** [19-cli](19-cli.md) · **Next:** [21-transport](21-transport.md)
+**Builds on:** [19 The CLI](19-cli.md) · **Next:** [21 Transport](21-transport.md)
 
