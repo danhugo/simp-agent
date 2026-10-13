@@ -28,7 +28,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-In [20](20-server-run.md) and [21](21-transport.md) the server runs a session and streams its events. But so far we did not say where things live. Without a real store:
+The server runs and streams sessions ([20](20-server-run.md), [21](21-transport.md)), but so far we did not say where things live. Without a real store:
 
 - When the server restarts, every user, every session and every event is gone.
 - A user cannot come back tomorrow and see the fizzbuzz chat again.
@@ -255,12 +255,12 @@ The routes are in `server.py`: `/api/signup`, `/api/login`, `/api/logout`. Sign-
 
 ### Durable events
 
-In [21](21-transport.md) each **durable** event got a `seq` so clients can replay after reconnect. Now we see where it goes. The `entries` table holds two kinds of rows, with **one** `seq` counter per session:
+How `seq` and replay work is in [21 · seq](21-transport.md#seq-one-counter-for-everything). Here we only see where the rows are stored. The `entries` table holds two kinds of rows, with **one** `seq` counter per session:
 
 - protocol events (type = the event type, like `run_state`),
 - core messages from the session (type = `"msg"`).
 
-You saw both writers in [20](20-server-run.md): `Run.append` (the `Run` is the session's `SessionStore`, [13](13-session.md)) writes a `msg` row, and `Run.durable` writes a protocol event. Both call `store.add_entry(user_id, sid, seq, type, data)` with the same `self.seq`.
+`Run.append` writes a `msg` row and `Run.durable` writes a protocol event ([21](21-transport.md#seq-one-counter-for-everything)). Both call `store.add_entry(user_id, sid, seq, type, data)` with the same `self.seq`.
 
 When a session is loaded again, `Run.__init__` splits the rows back:
 
