@@ -25,7 +25,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-In [19](19-cli.md) we wrapped an `AgentSession` ([13](13-session.md)) in a terminal app. One person, one process, one screen. Now we want the same agent in a browser. The fizzbuzz task ("write `fizzbuzz.py`") should run on a server, and a web page should show it live.
+[19](19-cli.md) runs the agent in a terminal: one person, one screen. Now we want the same agent in a browser. The fizzbuzz task ("write `fizzbuzz.py`") should run on a server, and a web page should show it live.
 
 New problems:
 
@@ -96,14 +96,7 @@ self.task = asyncio.create_task(self._run(fn))
 
 Why: the request no longer waits for the run. This fixes problem 1.
 
-**Step 4 — numbered events.** Each event gets a `seq`. Save it, and send it to every open tab:
-
-```python
-self.seq += 1
-ev = cls(seq=self.seq, **kw).model_dump()
-```
-
-Why: a tab that reconnects asks for "everything after seq N". This fixes problem 4.
+**Step 4 — numbered events.** Each saved event gets a `seq` number. Why: a tab that reconnects can ask for "everything after seq N". This fixes problem 4. The full replay story is in [21 · seq](21-transport.md#seq-one-counter-for-everything).
 
 **Step 5 — wait for the user.** The run waits on a future. A later `Approve` command sets it:
 
@@ -164,15 +157,13 @@ There are three groups of messages.
 
 **Commands** (browser to server): `Prompt`, `Steer`, `FollowUp`, `Abort`, `Approve`, `Compact`, `Continue`, `SetPlanMode`. They map one to one to session features you already know: steering and follow-up ([07](07-steering.md)), abort ([06](06-events-abort.md)), approval ([08](08-hooks-approval.md)), compaction ([16](16-compaction.md)), plan mode ([18](18-profiles-plugins.md)).
 
-**Server events** come in two kinds. The docstring of the file says it:
+**Server events** come in two kinds, plus a snapshot:
 
-> DURABLE events carry a monotonic per-session `seq` (= SSE id). LIVE events have no seq and are lost on reconnect; the snapshot that follows a (re)connect carries everything still in flight.
+- **[Durable event](glossary.md#durable-event)**: has a `seq`, is saved (`UserMessage`, `AssistantMessage`, `ToolResult`, `ApprovalRequest`, `ApprovalResolved`, `RunState`, `Compaction`, `Notice`, `SessionTitle`).
+- **[Live event](glossary.md#live-event)**: no `seq`, not saved (`TextDelta`, `ThinkingDelta`, `ToolOutput`).
+- **[Snapshot](glossary.md#snapshot)**: "where we are now" (`last_seq`, `run_state`, `in_flight`, `pending_approval`, `title`, `plan_mode`).
 
-- A **[durable event](glossary.md#durable-event)** has a `seq` number: `UserMessage`, `AssistantMessage`, `ToolResult`, `ApprovalRequest`, `ApprovalResolved`, `RunState`, `Compaction`, `Notice`, `SessionTitle`. These are saved and can be replayed.
-- A **[live event](glossary.md#live-event)** has no `seq`: `TextDelta`, `ThinkingDelta`, `ToolOutput`. These are small pieces of streaming text. They are not saved.
-- A **[snapshot](glossary.md#snapshot)** says "here is where we are now": `last_seq`, `run_state`, the `in_flight` text so far, any `pending_approval`, the `title` and `plan_mode`.
-
-Why split? The final `AssistantMessage` holds the full text, so saving every delta is waste. The snapshot fills the gap after a reconnect.
+How `seq`, replay and the snapshot work together is in [21 · Replay](21-transport.md#replay-after-then-snapshot-then-live).
 
 ### Run state machine
 
@@ -232,22 +223,7 @@ self.session.subscribe(self.on_event)
 
 So the `Run` is a `SessionStore` ([13](13-session.md)): it has `append`. It is also the approval callback (`approve`) and an event subscriber (`on_event`). That is the whole link between the library and the server. The library does not know a server exists.
 
-**One seq counter for everything.** Library messages and protocol events share `self.seq`:
-
-```python
-async def append(self, entry) -> None:
-    self.seq += 1
-    await self.mgr.store.add_entry(self.user_id, self.sid, self.seq, "msg", to_dict(entry))
-
-async def durable(self, cls, **kw) -> None:
-    self.seq += 1
-    ev = cls(seq=self.seq, **kw).model_dump()
-    self.log.append(ev)
-    self._send(ev)
-    await self.mgr.store.add_entry(self.user_id, self.sid, ev["seq"], ev["type"], ev)
-```
-
-`durable()` is the only way to emit a durable event. It builds the model (so a wrong field fails here, on the server), keeps it in the in-memory `log`, sends it to every open connection, and saves it. `_send` uses `put_nowait` and drops a client whose queue is full, so a slow tab never blocks the run.
+**One seq counter for everything.** `Run.append` (library messages, `"msg"` rows) and `Run.durable` (protocol events) both add one to the same `self.seq` and save a row. `durable()` is the only way to emit a durable event: it builds the model (so a wrong field fails here, on the server), keeps it in `log`, sends it to open tabs, and saves it. The code and the replay are in [21 · seq](21-transport.md#seq-one-counter-for-everything); the rows on disk are in [22 · Durable events](22-store-auth.md#durable-events).
 
 **Changing state.** Every state change goes through one method:
 

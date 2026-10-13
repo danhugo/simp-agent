@@ -24,7 +24,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-In [20](20-server-run.md) we built a `Run`: one `AgentSession` ([13](13-session.md)) on the server, with a typed protocol. The fizzbuzz task can now run on a server. But a browser cannot see it yet. We still need two roads:
+The `Run` from [20](20-server-run.md) runs the fizzbuzz task on the server, but a browser cannot see it yet. We still need two roads:
 
 - **Out:** every event (text deltas, tool results, approval requests) must reach every open browser tab, live.
 - **In:** the user must send commands: a prompt, "stop", "allow this bash call".
