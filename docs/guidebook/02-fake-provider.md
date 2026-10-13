@@ -15,7 +15,7 @@ In [01](01-messages.md) we made the [messages](glossary.md#message). Now we need
 
 It lives in the `testing` [layer](glossary.md#layer), at the far right of the map. It may import from every other layer, and no library code imports it.
 
-Code in this chapter (commit `a55fe8d`):
+Code in this chapter (commit `2fc2776`):
 
 - `packages/simp_agent/src/simp_agent/testing/__init__.py` — `FakeProvider`
 - `packages/simp_agent/tests/test_core.py` — tests that use the fake
