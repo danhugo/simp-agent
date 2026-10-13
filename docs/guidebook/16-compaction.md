@@ -370,14 +370,3 @@ uv run pytest packages/simp_agent/tests/test_compaction_serialize.py packages/si
 - The session compacts in `_prepare`, before every model call; failure keeps history as is.
 
 **Builds on:** [15 Retry](15-retry.md) · **Next:** [17 Context overflow](17-overflow.md)
-
-## Terms to add to glossary
-
-- **context window** — the most tokens a model can read in one call (`Model.context_window`).
-- **compaction** — replacing old history in the model's view with a summary.
-- **CompactionEntry** — the marker appended to history: summary, `first_kept_index`, read and modified files.
-- **view (LLM view)** — the message list actually sent to the model, built from history by `build_view` and the plugin `context` chain.
-- **reserve_tokens** — tokens kept free for the reply and the summary (default 16384).
-- **keep_recent_tokens** — about how many recent tokens are kept word for word (default 20000).
-- **incremental summary** — updating the previous summary with only the new messages.
-- **cut (first_kept_index)** — the index of the first message kept word for word; always a user or assistant message.

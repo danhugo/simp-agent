@@ -160,3 +160,27 @@ Session events sent before each backoff wait and once after the last retry. Home
 
 ## NON_RETRYABLE
 The set `{"fatal", "budget", "policy"}` of error kinds that `is_retryable` always rejects. Home: [15](15-retry.md).
+
+## context window
+The most tokens a model can read in one call (`Model.context_window`). Home: [16](16-compaction.md).
+
+## compaction
+Replacing old history in the model's view with a summary. Home: [16](16-compaction.md).
+
+## CompactionEntry
+The marker appended to history: summary, `first_kept_index`, read and modified files. Home: [16](16-compaction.md).
+
+## view (LLM view)
+The message list actually sent to the model, built from history by `build_view` and the plugin `context` chain. Home: [16](16-compaction.md).
+
+## reserve_tokens
+Tokens kept free for the reply and the summary (default 16384). Home: [16](16-compaction.md).
+
+## keep_recent_tokens
+About how many recent tokens are kept word for word (default 20000). Home: [16](16-compaction.md).
+
+## incremental summary
+Updating the previous summary with only the new messages. Home: [16](16-compaction.md).
+
+## cut (first_kept_index)
+The index of the first message kept word for word; always a user or assistant message. Home: [16](16-compaction.md).

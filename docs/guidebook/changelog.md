@@ -59,3 +59,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - Ch 13: now owns prompt sections (add_prompt_section, _build_prompt, start()) after the ch 11 cut.
 - v3 polish ch 14: moved "Terms to add" list into glossary.md.
 - v3 polish ch 15: moved "Terms to add" list into glossary.md.
+- v3 polish ch 16: moved "Terms to add" list into glossary.md.
