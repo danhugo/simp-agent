@@ -274,3 +274,21 @@ A slow, salted password hash from Python's `hashlib`. It is slow on purpose, so 
 
 ## recover
 `Run.recover`: closes a run that was busy when the server died, and leaves a valid history. Home: [22](22-store-auth.md#recover).
+
+## Budget guard
+`budget.guard`: a wrapper around `stream_fn` that runs a check before each model call. If a limit is reached, it refuses the call with an `error_kind="budget"` error. Home: [23](23-limits.md#the-budget-guard-wrap-the-stream).
+
+## Run budget
+The most money one run (a prompt plus its queued follow-ups) may spend; `run_usd` in settings. Home: [23](23-limits.md#the-check-itself).
+
+## Daily budget
+The most money one user may spend since local midnight; `user_day_usd` in settings. Home: [23](23-limits.md#the-check-itself).
+
+## Kill switch
+The `PAUSED` file in the data dir. While it exists, every model call on the server is refused. Home: [23](23-limits.md#kill-switch-one-file).
+
+## Eviction
+Removing an unused `Run` from memory and closing its sandbox. Files and log stay in the store and load back on the next use. Home: [23](23-limits.md#idle-release-evict-runs-nobody-uses).
+
+## Idle release
+Evicting runs that were not used for `idle_minutes`. Home: [23](23-limits.md#idle-release-evict-runs-nobody-uses).

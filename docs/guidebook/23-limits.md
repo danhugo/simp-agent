@@ -5,10 +5,16 @@
 **Builds on:** [22-store-auth](22-store-auth.md) · **Next:** [24-docker-sandbox](24-docker-sandbox.md)
 
 ```mermaid
-flowchart LR
-    ai --> agent --> coding --> session --> plugins --> testing
-    session -.used by.-> apps["apps: cli, server (+ web)"]
-    style apps fill:#ffd54f,stroke:#333,stroke-width:2px
+flowchart TB
+    subgraph lib [simp_agent library]
+      ai --> agent --> coding --> session --> plugins --> testing
+    end
+    session --> cli[apps/cli]
+    session --> server[apps/server]
+    server --> limits[limits: budget, kill switch, idle release]
+    server --> store[(store + auth: SQLite)]
+    server -->|HTTP protocol| web[apps/web]
+    style limits fill:#ffd54f,stroke:#333,stroke-width:2px
 ```
 
 *This chapter adds limits to the `server` app (marked): a money budget, a kill switch and idle release.*
@@ -17,15 +23,15 @@ flowchart LR
 
 After [22](22-store-auth.md) the server has users, sessions and a durable store. Many people can now run the agent at the same time. That brings two new risks.
 
-**Money.** Every model call costs money. The agent loop ([05](05-agent-loop.md)) calls the model again and again until the model stops asking for tools. A confused model can loop for a long time. Say the tests keep failing: the model edits, runs, edits, runs. Fifty calls later the bill is real. Nobody is watching.
+**Money.** Every model call costs money. The agent loop ([05](05-agent-loop.md)) calls the model again and again until the model stops asking for tools. A confused model can loop for a long time. Say Ann asks for `fizzbuzz.py` and the tests keep failing: the model edits, runs, edits, runs. Fifty calls later the bill is real. Nobody is watching.
 
 **Memory and containers.** Each open session on the server is a `Run` ([20](20-server-run.md)) in memory. Each `Run` also holds a sandbox: a folder now, a Docker container in [24](24-docker-sandbox.md). Users close the tab and go home. If the server keeps every `Run` forever, it fills RAM and leaves containers running.
 
 So we need three things:
 
-1. A **budget**: refuse a model call when a user or a run has spent too much.
+1. A **budget** ([daily](glossary.md#daily-budget) and per run): refuse a model call when a user or a run has spent too much.
 2. A **kill switch**: the admin can stop *all* model calls at once.
-3. **Idle release**: close runs nobody uses, and load them back later.
+3. **[Idle release](glossary.md#idle-release)**: close runs nobody uses, and load them back later.
 
 ## Naive version
 
@@ -367,12 +373,3 @@ Other tests in the file cover the day limit (`test_day_budget_and_pause`), the k
 - `SessionManager.evict_idle` frees runs that are idle, not busy and have no subscribers. A cap of `max_open_sessions` evicts the least recently used run or returns 503. Evicted runs load back from the store.
 
 **Builds on:** [22-store-auth](22-store-auth.md) · **Next:** [24-docker-sandbox](24-docker-sandbox.md)
-
-## Terms to add to glossary
-
-- **budget guard** — a wrapper around `stream_fn` that checks limits before each model call and refuses the call with an error message if a limit is reached.
-- **run budget** — the most money one run (a prompt plus its queued follow-ups) may spend; `run_usd` in settings.
-- **daily budget** — the most money one user may spend since local midnight; `user_day_usd` in settings.
-- **kill switch** — the `PAUSED` file in the data dir; while it exists every model call on the server is refused.
-- **eviction** — removing an unused `Run` from memory and closing its sandbox; files and log stay in the store and load back on the next use.
-- **idle release** — evicting runs that were not used for `idle_minutes`.
