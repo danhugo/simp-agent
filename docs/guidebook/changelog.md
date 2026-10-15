@@ -96,3 +96,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - Note: links to chapters not yet written are plain text; they become links when those chapters exist.
 - Pseudo-code: logic blocks in ch04-09 are now plain-English pseudo-code with a "Real code:" link; tests and real signatures stay as Python.
 - Pseudo-code: ch14-18 logic blocks now easy pseudo-code with a 'Real code' link; test/usage code kept.
+- Pseudo-code: ch22-24, 26, 27 logic blocks now easy pseudo-code with a 'Real code' link; tests, schemas, interfaces and extend examples kept.

@@ -41,26 +41,26 @@ So we need two things. A **[store](glossary.md#store)**: one place on disk for u
 
 The simplest idea: keep everything in Python dicts, and keep tokens as plain text.
 
-```python
-import secrets
+Naive sketch (not in the repo):
 
-users = {}      # token -> name
-sessions = {}   # session id -> list of events
+```text
+users    = empty map   // token -> name
+sessions = empty map   // session id -> list of events
 
-def add_user(name: str) -> str:
-    token = secrets.token_urlsafe(32)
-    users[token] = name           # plain token kept as-is
-    return token
+add_user(name):
+    token = new random token
+    users[token] = name          // plain token kept as-is
+    RETURN token
 
-def user_by_token(token: str):
-    return users.get(token)
+user_by_token(token):
+    RETURN users[token] or nothing
 
-def add_event(sid: str, event: dict):
-    sessions.setdefault(sid, []).append(event)
+add_event(sid, event):
+    ADD event to sessions[sid]   // not tied to any user
 
 t = add_user("ann")
-add_event("s1", {"type": "user_message", "text": "write fizzbuzz.py"})
-print(user_by_token(t), sessions)   # ann {'s1': [...]}
+add_event("s1", {type: user_message, text: "write fizzbuzz.py"})
+// prints: ann {s1: [...]}
 ```
 
 It works for one happy demo. It breaks when:
@@ -74,18 +74,22 @@ It works for one happy demo. It breaks when:
 
 **Step 1 — put it on disk (fix 1).** Use a SQLite file instead of dicts:
 
-```python
-self.db = await aiosqlite.connect(self.path)   # <data_dir>/simp.db
-await self.db.executescript(SCHEMA)
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.open`
+
+```text
+db = CONNECT to <data_dir>/simp.db
+RUN SCHEMA on db   // create tables if missing
 ```
 
 Why: a file stays after the process stops.
 
 **Step 2 — store hashes, not tokens (fix 2).** Keep only the SHA-256 of a token:
 
-```python
-def sha(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `sha`
+
+```text
+sha(token):
+    RETURN SHA-256 hex of token
 ```
 
 Why: a copied database then holds nothing that can log in.
@@ -100,18 +104,22 @@ Why: Bob asking for Ann's session id finds no row.
 
 **Step 4 — save events as they happen.** Write each message and event to one `entries` table, with one `seq` counter:
 
-```python
-self.seq += 1
-await self.mgr.store.add_entry(self.user_id, self.sid, self.seq, "msg", to_dict(entry))
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.append`
+
+```text
+seq = seq + 1
+SAVE row (user_id, sid, seq, type "msg", entry as dict) to entries
 ```
 
 Why: after a restart we can read the rows back in exact order.
 
 **Step 5 — close a dead run (fix 4).** On load, if the run was busy, answer open tool calls and set state `error`:
 
-```python
-self.info.run_state = "error"
-await self.durable(p.RunState, state="error")
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.recover`
+
+```text
+run_state = "error"
+SEND event RunState(state = "error")   // durable: saved and sent
 ```
 
 Why: the history must be valid again. The next section shows the full code.
@@ -146,19 +154,23 @@ The whole database is one file: `<data_dir>/simp.db`. Look at the first line of 
 
 This is the fix for problem 3. Every read has `user_id` in its `WHERE`:
 
-```python
-async def get_session(self, user_id: str, sid: str) -> dict | None:
-    rows = await self._all("SELECT * FROM sessions WHERE id=? AND user_id=?", sid, user_id)
-    return rows[0] if rows else None
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.get_session`
+
+```text
+get_session(user_id, sid):
+    rows = SELECT sessions WHERE id = sid AND user_id = user_id
+    RETURN first row, or nothing
 ```
 
 If Bob asks for Ann's session id, the query finds nothing and the server answers 404. There is no special "is this yours?" check to forget. It is in the SQL.
 
 `open()` creates the folder, connects, and turns on WAL:
 
-```python
-await self.db.execute("PRAGMA journal_mode=WAL")
-await self.db.executescript(SCHEMA)
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.open`
+
+```text
+SET journal_mode = WAL
+RUN SCHEMA
 ```
 
 **[WAL](glossary.md#wal)** (write-ahead log) is a SQLite mode. Readers do not wait for a writer, and a crash does not leave a half-written database. After that, `open()` checks for old columns. A database from an older stage gets `cost`, `password` and `disabled` added with `ALTER TABLE`.
@@ -169,16 +181,18 @@ Why SQLite and not Postgres? The server runs on one machine ([26](26-system-test
 
 A **[token](glossary.md#token-auth)** is a long random string. The client sends it as `Authorization: Bearer <token>`. The server never stores the token itself. It stores only its SHA-256:
 
-```python
-def sha(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `sha`, `SqliteStore.add_user`
 
-async def add_user(self, name: str, password: str | None = None, token: bool = True) -> str | None:
-    """Returns the static token (shown once); only its sha256 is stored. Raises sqlite3.IntegrityError on a taken name."""
-    t = secrets.token_urlsafe(32) if token else None
-    await self._do("INSERT INTO users(id, name, token_sha256, password) VALUES(?,?,?,?)", uuid.uuid4().hex, name,
-                   t and sha(t), password and await asyncio.to_thread(hash_password, password))
-    return t
+```text
+sha(token):
+    RETURN SHA-256 hex of token
+
+add_user(name, password = none, token = yes):
+    // returns the static token (shown once); only its sha256 is stored
+    // a taken name raises IntegrityError
+    t = new random token IF token wanted, ELSE none
+    INSERT user (new id, name, sha(t), hash_password(password) in a thread)
+    RETURN t
 ```
 
 This fixes problem 2. If someone copies `simp.db`, they get hashes, not tokens. A hash cannot be sent back as a token. The token is shown **once** (the `seed` command prints it), then it lives only with the user.
@@ -192,21 +206,29 @@ There are two kinds of token:
 
 One query checks both:
 
-```python
-async def user_by_token(self, token: str) -> dict | None:
-    rows = await self._all("SELECT id, name FROM users WHERE disabled=0 AND (token_sha256=? OR id IN "
-                           "(SELECT user_id FROM tokens WHERE token_sha256=?))", sha(token), sha(token))
-    return rows[0] if rows else None
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.user_by_token`
+
+```text
+user_by_token(token):
+    h = sha(token)
+    rows = SELECT id, name FROM users
+           WHERE disabled = 0
+             AND (token_sha256 = h  OR  id has a row in tokens with token_sha256 = h)
+    RETURN first row, or nothing
 ```
 
 Note `disabled=0`. A revoked user fails here, even with a token that is still in the table.
 
 `StaticTokenAuth` in `server.py` is the default auth plugin. It is four lines: read the header, call `user_by_token`:
 
-```python
-async def authenticate(self, request: Request) -> dict | None:
-    h = request.headers.get("authorization", "")
-    return await self.store.user_by_token(h[7:]) if h.startswith("Bearer ") else None
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `StaticTokenAuth.authenticate`
+
+```text
+authenticate(request):
+    h = request header "authorization"
+    IF h starts with "Bearer ":
+        RETURN store.user_by_token(rest of h)
+    RETURN nothing
 ```
 
 `revoke` sets `disabled=1`, clears the static token and deletes all device tokens. `rotate_token` deletes device tokens, sets a new static token and turns the user back on. In both cases every old token stops working at once.
@@ -215,22 +237,22 @@ async def authenticate(self, request: Request) -> dict | None:
 
 The web client ([25](25-web-client.md)) needs a name and a password, not a long token. Passwords use **[scrypt](glossary.md#scrypt)**, a slow hash from the standard library:
 
-```python
-def _scrypt(password: str, salt: bytes) -> bytes:
-    return hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1)
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `_scrypt`, `hash_password`, `check_password`
 
+```text
+_scrypt(password, salt):
+    RETURN scrypt(password, salt, n=2**14, r=8, p=1)
 
-def hash_password(password: str) -> str:
-    salt = secrets.token_bytes(16)
-    return f"scrypt${salt.hex()}${_scrypt(password, salt).hex()}"
+hash_password(password):
+    salt = 16 random bytes
+    RETURN "scrypt$<salt hex>$<_scrypt(password, salt) hex>"
 
-
-def check_password(password: str, stored: str | None) -> bool:
-    if not stored:
-        _scrypt(password, b"0" * 16)  # same time whether or not the user exists
-        return False
-    _, salt, h = stored.split("$")
-    return hmac.compare_digest(_scrypt(password, bytes.fromhex(salt)), bytes.fromhex(h))
+check_password(password, stored):
+    IF no stored hash:
+        _scrypt(password, dummy salt)   // same time whether or not the user exists
+        RETURN false
+    split stored into salt and h
+    RETURN constant-time compare(_scrypt(password, salt), h)
 ```
 
 Three small choices, each with a reason:
@@ -241,14 +263,16 @@ Three small choices, each with a reason:
 
 scrypt is slow on purpose, and slow code would block the event loop. So the store calls it with `asyncio.to_thread(...)`. `login` checks the password, then makes a new per-device token:
 
-```python
-async def login(self, name: str, password: str) -> str | None:
-    rows = await self._all("SELECT id, password FROM users WHERE name=? AND disabled=0", name)
-    if not await asyncio.to_thread(check_password, password, rows[0]["password"] if rows else None):
-        return None
-    token = secrets.token_urlsafe(32)
-    await self._do("INSERT INTO tokens VALUES(?,?,?)", sha(token), rows[0]["id"], time.time())
-    return token
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.login`
+
+```text
+login(name, password):
+    rows = SELECT id, password FROM users WHERE name = name AND disabled = 0
+    IF NOT check_password(password, stored hash or none)   // run in a thread
+        RETURN nothing
+    token = new random token
+    INSERT into tokens (sha(token), user id, now)
+    RETURN token
 ```
 
 The routes are in `server.py`: `/api/signup`, `/api/login`, `/api/logout`. Sign-up is closed unless `signup_code` is set in settings. The code is checked with `hmac.compare_digest`. The name must match `[a-z0-9_-]{2,32}` and the password needs at least `MIN_PASSWORD = 8` characters.
@@ -264,10 +288,13 @@ How `seq` and replay work is in [21 · seq](21-transport.md#seq-one-counter-for-
 
 When a session is loaded again, `Run.__init__` splits the rows back:
 
-```python
-self.log = [e["data"] for e in entries if e["type"] != "msg"]  # ponytail: whole log in memory
-...
-messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.__init__`
+
+```text
+FOR EACH entry in entries:
+    IF type is "msg": ADD from_dict(data) to session messages   // what the model sees
+    ELSE:             ADD data to log                           // what clients see
+// ponytail: whole log in memory
 ```
 
 The `msg` rows rebuild the `AgentSession` history (what the model sees). The other rows rebuild the protocol log (what clients see). The last `run_state` sets the state, and `self.seq` continues from the last row.
@@ -278,9 +305,11 @@ Problem 4: the server dies while the fizzbuzz run is busy. On disk the last `run
 
 `SessionManager.get` loads a session and then calls `recover()`:
 
-```python
-self.runs[sid] = Run(self, row, env, await self.store.entries(user["id"], sid))
-await self.runs[sid].recover()
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `SessionManager.get`
+
+```text
+runs[sid] = new Run(row, env, store.entries(user id, sid))
+WAIT for runs[sid].recover()
 ```
 
 `Run.recover` (in `server.py`) does nothing if the run is not busy. If it is busy, it closes the run in the log:
@@ -289,10 +318,12 @@ await self.runs[sid].recover()
 2. Every tool call in the last assistant message with no result gets a `ToolResultMessage` with `"aborted: the server restarted before this tool finished"` and `is_error=True`. It is saved with `append` and also sent as a `ToolResult` event.
 3. The state is set to `"error"`, then a `Notice`: `"interrupted: the server restarted during this run"`.
 
-```python
-self.info.run_state = "error"  # any busy state -> error, bypassing check_transition on purpose
-await self.durable(p.RunState, state="error")
-await self.durable(p.Notice, level="warning", text="interrupted: the server restarted during this run")
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.recover`
+
+```text
+run_state = "error"   // any busy state -> error, skip check_transition on purpose
+SEND event RunState(state = "error")
+SEND event Notice(level = "warning", text = "interrupted: the server restarted during this run")
 ```
 
 Step 2 matters for the model. Providers reject a history where a tool call has no result. After recover, the history is valid, so the user can press Continue.

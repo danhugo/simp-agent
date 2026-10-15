@@ -43,31 +43,24 @@ For one person on their own laptop, that is fine. For several users, it is not. 
 
 The first idea: just put `docker run` in front of every command.
 
-```python
-import asyncio
-from simp_agent.agent.env import LocalEnv
+Naive sketch (not in the repo):
 
-class NaiveDockerEnv(LocalEnv):
-    async def exec(self, command, cwd, timeout, cancel, on_output=None):
-        proc = await asyncio.create_subprocess_exec(
-            "docker", "run", "--rm",
-            "-v", f"{self.root}:/work", "-w", "/work",
-            "python:3.13-slim", "sh", "-c", command,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-        )
-        try:
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout)
-        except asyncio.TimeoutError:
-            proc.kill()                      # kills the docker CLI only
-            return None, ""
-        return proc.returncode, out.decode()
+```text
+CLASS NaiveDockerEnv extends LocalEnv:
+    FUNCTION exec(command, cwd, timeout, cancel, on_output):
+        START "docker run --rm -v <root>:/work -w /work python:3.13-slim sh -c <command>"
+        WAIT for output, at most timeout seconds
+        IF timeout:
+            kill the process          // kills the docker CLI only, not the command
+            RETURN (none, "")
+        RETURN (exit code, output)
 
-async def main():
+main:
     env = NaiveDockerEnv("/tmp/ws")
-    print(await env.exec("python fizzbuzz.py", ".", 30, asyncio.Event()))
-
-asyncio.run(main())
+    PRINT env.exec("python fizzbuzz.py", ".", 30, new cancel event)
 ```
+
+Key idea: one `docker run` per command. Limit: slow, not hardened, timeout does not stop the command.
 
 It runs `python fizzbuzz.py` and prints the output. But it breaks in many ways:
 
@@ -198,22 +191,23 @@ This calls `build_image()`, which is just `docker build -t simp-sandbox:latest a
 
 ### DockerSandbox.open: one hardened container per session
 
-```python
-async def open(self, session_id: str) -> DockerEnv:
-    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", session_id):
-        raise ValueError(f"bad session id: {session_id!r}")
-    if session_id in self.envs:
-        return self.envs[session_id]
+Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerSandbox.open`
+
+```text
+FUNCTION open(session_id):
+    IF session_id does not match [A-Za-z0-9_-]{1,64}:
+        RAISE ValueError("bad session id")
+    IF session_id already in envs:
+        RETURN envs[session_id]          // reuse: one container per session
     ...
-    name = f"simp-{session_id}"
-    await _docker("rm", "-f", name)  # leftover from a crash
-    code, out = await _docker(
-        "run", "-d", "--name", name, "--user", "1000:1000", "--network", self.network,
-        "--pids-limit", str(self.pids_limit), "--memory", self.memory, "--cpus", self.cpus,
-        "--read-only", "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m",
-        "--security-opt", "no-new-privileges", "--cap-drop", "ALL",
-        "-v", f"{root.resolve()}:/work", "-w", "/work", self.image, "sleep", "infinity",
-    )
+    name = "simp-" + session_id
+    RUN docker rm -f name                // leftover from a crash
+    RUN docker run -d --name name
+        --user 1000:1000 --network <network>
+        --pids-limit <pids_limit> --memory <memory> --cpus <cpus>
+        --read-only --tmpfs /tmp:rw,nosuid,nodev,size=64m
+        --security-opt no-new-privileges --cap-drop ALL
+        -v <root>:/work -w /work <image> sleep infinity
 ```
 
 Step by step:
@@ -236,11 +230,16 @@ Each flag closes one hole. This is called **[hardening](glossary.md#hardening)**
 
 All these values come from the `[sandbox]` table in settings, with safe defaults:
 
-```python
-s = settings.get("sandbox", dict())
-self.workspaces_dir = Path(s.get("workspaces_dir", Path(settings["data_dir"]) / "workspaces")).expanduser()
-self.image, self.network = s.get("image", IMAGE), s.get("network", "none")
-self.memory, self.cpus, self.pids_limit = s.get("memory", "1g"), str(s.get("cpus", "1")), s.get("pids_limit", 256)
+Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerSandbox.__init__`
+
+```text
+s = settings["sandbox"] or empty
+workspaces_dir = s.workspaces_dir  OR  <data_dir>/workspaces
+image   = s.image   OR IMAGE
+network = s.network OR "none"
+memory  = s.memory  OR "1g"
+cpus    = s.cpus    OR "1"
+pids_limit = s.pids_limit OR 256
 ```
 
 The session folder `workspaces_dir/<session_id>` is a **[bind mount](glossary.md#bind-mount)** at `/work`. So a file the agent writes is a normal file on the host, and also visible inside the container.
@@ -262,10 +261,12 @@ So `read`, `write`, `edit`, `ls` use the same code and the same root check as `L
 
 **Mapping `cwd`.** Tools pass a host path as `cwd`. The container only knows `/work`. `_cwd()` changes one into the other, and the root check from `_path()` still applies:
 
-```python
-def _cwd(self, cwd: str) -> str:
-    rel = self._path(cwd).relative_to(Path(self.root).resolve())  # host path (or relative) -> /work/...
-    return str(Path("/work") / rel)
+Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv._cwd`
+
+```text
+FUNCTION _cwd(cwd):
+    rel = _path(cwd) relative to root    // _path does the root check
+    RETURN "/work/" + rel
 ```
 
 **Running a command.** `exec` uses `docker exec` with a small shell trick:
@@ -285,25 +286,29 @@ pid = (await proc.stdout.readline()).strip().decode()
 
 The rest is the same pump loop as `LocalEnv.exec`: read chunks, call `on_output`, wait for done, cancel, or timeout. The difference is the kill:
 
-```python
-if run not in done:
-    if pid.isdigit():
-        await _docker("exec", self.container, "kill", "-9", "--", f"-{pid}")
-    if proc.returncode is None:
-        proc.kill()
-    await run
-    return None, "".join(chunks)
+Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv.exec`
+
+```text
+IF command did not finish (timeout or cancel):
+    IF pid is a number:
+        RUN docker exec <container> kill -9 -- -<pid>   // minus: kill the whole group in the box
+    IF host docker exec process still alive:
+        kill it
+    WAIT for the reader to end
+    RETURN (none, all output so far)
 ```
 
 `kill -9 -<pid>` (note the minus) kills the whole process group **inside** the container. This fixes problem 3 of the naive version: a timeout or a cancel really stops `sleep 30 &` and its children. Then the host `docker exec` process is killed too, if it is still alive.
 
 ### close, remove, close_all
 
-```python
-async def close(self, session_id: str) -> None:
-    env = self.envs.pop(session_id, None)
-    if env:
-        await _docker("rm", "-f", env.container)
+Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerSandbox.close`
+
+```text
+FUNCTION close(session_id):
+    env = remove session_id from envs
+    IF env exists:
+        RUN docker rm -f env.container   // folder stays on host
 ```
 
 - `close` removes the container. The folder stays. Next `open` starts a new container on the same folder, so `fizzbuzz.py` is still there.
