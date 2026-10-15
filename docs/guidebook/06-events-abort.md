@@ -35,16 +35,16 @@ The hard part is the second one. Stopping is easy; stopping **cleanly** is not.
 
 ## Naive version
 
-```python
-async def naive_loop(messages, model, ctx, on_text, stopped):
-    async for ev in ai.stream(model, ctx):
-        if stopped():                 # checked only when an event arrives
-            return messages           # nothing added to history
-        if ev["type"] == "text_delta":
-            on_text(ev["delta"])      # one callback per kind of thing
-        if ev["type"] in ("done", "error"):
-            messages.append(ev["message"])
-    return messages
+```text
+FUNCTION naive_loop(messages, model, ctx, on_text, stopped):
+    FOR EACH event ev IN ai.stream(model, ctx):
+        IF stopped():                 // checked only when an event arrives
+            RETURN messages           // nothing added to history
+        IF ev is "text_delta":
+            on_text(ev.delta)         // one callback per kind of thing
+        IF ev is "done" or "error":
+            ADD ev.message to messages
+    RETURN messages
 ```
 
 Where it breaks:
@@ -61,46 +61,44 @@ We fix the naive loop one problem at a time. Each step is small.
 
 **Step 1 — one `emit` for all events.** Many callbacks (`on_text`, `on_tool_start`, …) change the signature for every new feature. So the loop sends plain dicts with a `"type"` key through one function, and `add` is the only way into history:
 
-```python
-    async def add(m):
-        messages.append(m)
-        new.append(m)
-        await send({"type": "message_start", "message": m})
+```text
+FUNCTION add(m):
+    ADD m to messages and to new
+    SEND event {message_start, m}
 ```
 
 **Step 2 — one shared stop signal.** A stop flag that only the loop reads cannot reach a tool. One `asyncio.Event` is seen by the model call, the loop and every tool (`ctx.cancel`):
 
-```python
-            for call in calls:
-                if cancel.is_set():
-                    break
+```text
+FOR EACH call IN calls:
+    IF cancel is set: STOP the loop
 ```
 
 **Step 3 — wait for the event OR the stop.** The naive check waited for the next model event. `_stream` waits on both at once, so a stop is seen at once, even when the model is silent:
 
-```python
-            await asyncio.wait({nxt, stop}, return_when=asyncio.FIRST_COMPLETED)
+```text
+WAIT for nxt OR stop, whichever finishes first
 ```
 
 **Step 4 — close the HTTP request.** Leaving the `for` loop does not close the provider. `_stream` cancels the waiting task and closes the generator, so the connection ends and we stop paying for tokens:
 
-```python
-                nxt.cancel()  # raises CancelledError inside the generator -> its `async with` closes the stream
-    ...
-        await it.aclose()
+```text
+CANCEL nxt     // raises CancelledError inside the generator -> its `async with` closes the stream
+...
+CLOSE the generator it (aclose)
 ```
 
 **Step 5 — keep the partial answer.** The screen showed some text, so the history must have it too. The loop keeps the latest `partial` and marks it `aborted`:
 
-```python
-        partial = ev.get("partial", partial)
-    ...
-        msg = partial or _aborted()
+```text
+partial = ev.partial if it has one, else keep the old partial
+...
+msg = partial, or _aborted() if there is none
 ```
 
 **Step 6 — fix missing tool results later.** A stop between tools leaves calls with no result. The loop does not patch history; `ai.transform_messages` adds `"No result provided"` in the view sent to the model, so vendors do not return a 400 error.
 
-The result is the real code below.
+The result is the real design below.
 
 ## Real design
 
@@ -110,27 +108,31 @@ The loop has **one** output channel: `emit(event)`, where `event` is a plain dic
 
 Inside `agent_loop`, two helpers do all the sending (`packages/simp_agent/src/simp_agent/agent/__init__.py`):
 
-```python
-    async def send(e):
-        await _emit_all([emit], e)
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
 
-    async def add(m):
-        messages.append(m)
-        new.append(m)
-        await send({"type": "message_start", "message": m})
-        await send({"type": "message_end", "message": m})
+```text
+INSIDE agent_loop:
+    FUNCTION send(e):
+        _emit_all([emit], e)
+
+    FUNCTION add(m):
+        ADD m to messages and to new
+        SEND event {message_start, m}
+        SEND event {message_end, m}
 ```
 
 `add` is the **only** way a message enters the history. So every message, from any source, produces `message_start` and `message_end`. A UI that only listens to `message_end` sees the full conversation.
 
 `_emit_all` calls each subscriber and awaits it if it returned an awaitable:
 
-```python
-async def _emit_all(subs: list, e: dict) -> None:
-    for f in subs:
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_emit_all`)
+
+```text
+FUNCTION _emit_all(subs, e):
+    FOR EACH subscriber f IN subs:
         r = f(e)
-        if inspect.isawaitable(r):
-            await r
+        IF r can be awaited:
+            WAIT for r
 ```
 
 So a subscriber may be a normal function (`events.append`) or an `async def` (write to a websocket). Because the loop **awaits** each subscriber, events arrive in order, and a slow subscriber slows the loop. That is on purpose: a websocket that cannot keep up should push back, not lose events.
@@ -173,11 +175,13 @@ sequenceDiagram
 
 Every exit path ends with `turn_end` then `agent_end`. Normal end goes through the bottom of `agent_loop`; error and abort go through `_end`:
 
-```python
-async def _end(send, msg, new) -> list:
-    await send({"type": "turn_end", "message": msg})
-    await send({"type": "agent_end", "messages": new})
-    return new
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_end`)
+
+```text
+FUNCTION _end(send, msg, new):
+    SEND event {turn_end, msg}
+    SEND event {agent_end, new}
+    RETURN new
 ```
 
 So a UI can reset its "busy" state on `agent_end` (or when `prompt()` returns, which also covers a crashed subscriber, below).
@@ -191,11 +195,13 @@ So a UI can reset its "busy" state on `agent_end` (or when `prompt()` returns, w
 3. **Inside a tool** — the same event is `ctx.cancel` in [`ToolContext`](glossary.md#tool-context). A long tool (like `bash` in [10](10-coding-tools.md)) waits on it and kills its process. If the tool then raises, `run_tool` turns it into the text `"Interrupted by the user"` (not the exception text), because `ctx.cancel.is_set()`.
 4. **After the tool batch** — the loop adds an aborted message and ends:
 
-```python
-            if cancel.is_set():
-                msg = _aborted()
-                await add(msg)
-                return await _end(send, msg, new)
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
+
+```text
+IF cancel is set:                // after the tool batch
+    msg = _aborted()
+    add(msg)
+    RETURN _end(send, msg, new)
 ```
 
 `_aborted()` is just `AssistantMessage(stop_reason="aborted", error="aborted")`. Abort is **data**, like errors in [05](05-agent-loop.md): the caller reads `new[-1].stop_reason == "aborted"`. The loop never raises because of an abort.
@@ -212,26 +218,27 @@ The loop does not fix that itself. `_llm_turn` runs `ai.transform_messages` on t
 
 The naive version only saw the stop flag when the next event came. `_stream` wraps the provider's stream and waits on **two** things at once:
 
-```python
-async def _stream(stream_fn, model, ctx, cancel: asyncio.Event, opts: dict):
-    """Yield provider events; on cancel, close the provider stream (ends the HTTP request) and stop."""
-    it = stream_fn(model, ctx, **opts).__aiter__()
-    stop = asyncio.ensure_future(cancel.wait())
-    try:
-        while True:
-            nxt = asyncio.ensure_future(it.__anext__())
-            await asyncio.wait({nxt, stop}, return_when=asyncio.FIRST_COMPLETED)
-            if not nxt.done():
-                nxt.cancel()  # raises CancelledError inside the generator -> its `async with` closes the stream
-                await asyncio.gather(nxt, return_exceptions=True)
-                return
-            try:
-                yield nxt.result()
-            except StopAsyncIteration:
-                return
-    finally:
-        stop.cancel()
-        await it.aclose()
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_stream`)
+
+```text
+FUNCTION _stream(stream_fn, model, ctx, cancel, opts):
+    // yield provider events; on cancel, close the provider stream (ends the HTTP request) and stop
+    it = start stream_fn(model, ctx, opts)
+    stop = a task that waits for cancel
+    TRY:
+        REPEAT:
+            nxt = a task that gets the next event from it
+            WAIT for nxt OR stop, whichever finishes first
+            IF nxt is not done:          // stop won
+                CANCEL nxt               // raises CancelledError inside the generator -> its `async with` closes the stream
+                WAIT for nxt to finish
+                RETURN
+            IF the provider has ended (StopAsyncIteration):
+                RETURN
+            YIELD the event from nxt
+    FINALLY:
+        CANCEL stop
+        CLOSE the generator it (aclose)
 ```
 
 Step by step:
@@ -248,16 +255,18 @@ If the event came first, we yield it. When the provider ends, `nxt.result()` rai
 
 Back in `_llm_turn`, the loop reads the events from `_stream`:
 
-```python
-    async for ev in _stream(config.stream_fn, config.model, Context(system_prompt, llm_msgs, tools), cancel, opts):
-        await send({"type": "message_update", "event": ev})
-        partial = ev.get("partial", partial)
-        if ev["type"] in ("done", "error"):
-            msg = ev["message"]
-    if msg is None:  # aborted mid-stream: keep partial content
-        msg = partial or _aborted()
-        msg.stop_reason, msg.error = "aborted", "aborted"
-    return msg
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_llm_turn`)
+
+```text
+FOR EACH event ev IN _stream(config.stream_fn, config.model, Context(system_prompt, llm_msgs, tools), cancel, opts):
+    SEND event {message_update, ev}
+    partial = ev.partial if it has one, else keep the old partial
+    IF ev is "done" or "error":
+        msg = ev.message
+IF msg is None:                  // aborted mid-stream: keep partial content
+    msg = partial, or _aborted() if there is none
+    SET msg.stop_reason and msg.error to "aborted"
+RETURN msg
 ```
 
 Every provider event may carry `partial`, the message built so far ([03](03-stream-parser.md)). The loop keeps the latest one. If the stream ended without `done` or `error`, it is treated as aborted (normally because `cancel` was set): the partial message becomes the answer, marked `aborted`. Now the history has the same text the user saw on screen. `agent_loop` then sees `stop_reason == "aborted"` and ends through `_end`.
@@ -266,25 +275,25 @@ Every provider event may carry `partial`, the message built so far ([03](03-stre
 
 `agent_loop` is a plain function: the caller must keep the history, the subscribers and the cancel event. `Agent` does that for you:
 
-```python
-class Agent:
-    def __init__(self, system_prompt: str, model: Model, tools: list, stream_fn: Callable = ai.stream, ...):
-        ...
-        self.messages = list(messages or [])  # saved history (CompactionEntry markers included)
-        self.is_streaming = False
-        self._subs = list()
-        self._cancel = asyncio.Event()
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`Agent`)
 
-    def subscribe(self, fn: Callable[[dict], Any]) -> Callable[[], None]:
-        self._subs.append(fn)
-        return lambda: self._subs.remove(fn)
+```text
+CLASS Agent(system_prompt, model, tools, stream_fn = ai.stream, ...):
+    messages = copy of the given messages   // saved history (CompactionEntry markers included)
+    is_streaming = False
+    _subs = empty list
+    _cancel = new asyncio.Event
 
-    def abort(self) -> None:
-        self._cancel.set()
+    FUNCTION subscribe(fn):
+        ADD fn to _subs
+        RETURN a function that removes fn from _subs
 
-    async def prompt(self, text: str, extra: list = ()) -> list:
-        """extra: more messages sent with the prompt (e.g. from a plugin)."""
-        return await self._run([UserMessage(text), *extra])
+    FUNCTION abort():
+        SET _cancel
+
+    FUNCTION prompt(text, extra = ()):
+        // extra: more messages sent with the prompt (e.g. from a plugin)
+        RETURN _run([UserMessage(text), *extra])
 ```
 
 (`...` hides other settings: API key, env, hooks, queues; see [07](07-steering.md) and [08](08-hooks-approval.md).)
@@ -295,26 +304,28 @@ class Agent:
 
 All runs go through `_run`:
 
-```python
-    async def _run(self, prompts: list) -> list:
-        if self.is_streaming:
-            raise RuntimeError("Agent is already processing a prompt; wait for it or call abort() first")
-        self._cancel = asyncio.Event()
-        self.is_streaming = True
-        start = len(self.messages)
-        try:
-            cfg = LoopConfig(self.model, get_tools=lambda: self.tools, ...)
-            emit = lambda e: _emit_all(self._subs, e)  # noqa: E731
-            try:
-                return await agent_loop(self.system_prompt, self.messages, prompts, cfg, emit, self._cancel)
-            finally:
-                self.declared_tools = cfg.declared_tools
-        except Exception as e:  # e.g. a subscriber raised: end the run cleanly with an error message
-            self.messages.append(AssistantMessage(stop_reason="error", error=f"{type(e).__name__}: {e}"))
-            return self.messages[start:]
-        finally:
-            self.is_streaming = False
+```text
+FUNCTION Agent._run(prompts):
+    IF is_streaming:
+        RAISE RuntimeError("Agent is already processing a prompt; wait for it or call abort() first")
+    _cancel = new asyncio.Event
+    is_streaming = True
+    start = length of messages
+    TRY:
+        cfg = LoopConfig(model, get_tools = current tools, ...)
+        emit = a function that calls _emit_all(_subs, e)
+        TRY:
+            RETURN agent_loop(system_prompt, messages, prompts, cfg, emit, _cancel)
+        FINALLY:
+            declared_tools = cfg.declared_tools
+    IF any error happens:        // e.g. a subscriber raised: end the run cleanly with an error message
+        ADD AssistantMessage(stop_reason="error", error="<type>: <text>") to messages
+        RETURN messages from start
+    FINALLY:
+        is_streaming = False
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`Agent._run`)
 
 Four details matter:
 
