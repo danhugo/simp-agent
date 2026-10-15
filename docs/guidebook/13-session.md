@@ -33,22 +33,15 @@ We need one object that owns the agent for a whole conversation and saves each m
 
 The simplest idea: run the agent, then dump all messages to a file at the end.
 
-```python
-import json
-from simp_agent.agent import Agent
-from simp_agent.ai import Model, to_dict, from_dict
-from simp_agent.coding import TOOLS
-
-async def run(task: str, path: str):
-    try:
-        old = [from_dict(json.loads(l)) for l in open(path)]
-    except FileNotFoundError:
-        old = []
-    agent = Agent("You are a coding agent.", Model(), list(TOOLS), messages=old)
-    await agent.prompt(task)
-    with open(path, "w") as f:            # save everything at the end
-        for m in agent.messages:
-            f.write(json.dumps(to_dict(m)) + "\n")
+```text
+FUNCTION run(task, path):
+    IF the file at path exists:
+        old = each line of the file, read back as a message
+    ELSE:
+        old = empty list
+    agent = a new Agent with the coding tools and messages = old
+    WAIT for agent.prompt(task)
+    REWRITE the file: one JSON line per message    // save everything at the end
 ```
 
 It works for one happy run of the fizzbuzz task. It breaks when:
@@ -63,9 +56,11 @@ We fix the naive version one problem at a time. Each step is small.
 
 **Step 1 — save each message when it ends.** The naive code saves only at the end, so a crash loses the whole run. The agent already sends a `message_end` event for every finished message ([06](06-events-abort.md)). So we listen to it and save right there:
 
-```python
-agent.subscribe(lambda e: e["type"] == "message_end" and save(e["message"]))
+```text
+ON each agent event e:
+    IF e is "message_end": save(e.message)    // save right away, not at the end
 ```
+Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._on_agent_event`
 
 Now a crash loses at most the message that was still streaming.
 
@@ -73,15 +68,13 @@ Now a crash loses at most the message that was still streaming.
 
 **Step 3 — hide the storage behind two methods.** The file path is fixed inside the code. The server wants a database, tests want a list. So the session only knows `append(entry)` and `load()`. This is the `SessionStore` protocol. A list in memory is now a full store:
 
-```python
-class ListStore:
-    def __init__(self, items=()):
-        self.items = list(items)
-    def append(self, entry):
-        self.items.append(entry)
-    def load(self):
-        return list(self.items)
+```text
+CLASS ListStore:
+    items = a list (empty, or the given items)
+    FUNCTION append(entry): add entry to the end of items
+    FUNCTION load(): RETURN a copy of items
 ```
+Real code: [tests/test_session.py](../../packages/simp_agent/tests/test_session.py) — `ListStore`
 
 **Step 4 — allow an async store.** A database store needs `await`. So the session calls `await _maybe_await(self.store.append(...))`. A sync store returns `None` and works too.
 

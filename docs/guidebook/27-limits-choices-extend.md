@@ -86,20 +86,23 @@ The fix is not a bigger core. It is to use the sockets the core already has.
 
 **Step 1: wrap the tool in a plugin.** A plugin is any object with a `name` and a `setup` method. `setup` gets a `PluginAPI` and registers the tool there, not in each app.
 
-```python
-class CountLines:
+```text
+CLASS CountLines:
     name = "count_lines"
-    def setup(self, api, config):
-        api.register_tool(tools[0])
+    FUNCTION setup(api, config):
+        api.register_tool(count_lines tool)   // one place, not each app
 ```
+Real code: none yet — this is a sketch
 
 Why: the tool now lives in one place. The session is built with `plugins=[CountLines()]`.
 
 **Step 2: let the plugin change the prompt.** `PluginAPI` can add a section to the system prompt.
 
-```python
-        api.add_prompt_section("count_lines", "Use count_lines for file sizes.")
+```text
+// inside setup:
+api.add_prompt_section("count_lines", "Use count_lines for file sizes.")
 ```
+Real code: none yet — this is a sketch
 
 Why: a plain function cannot do this. A plugin can, and the section is rebuilt every turn.
 
@@ -109,9 +112,10 @@ Why: the plugin keeps its state after a restart. `PlanMode` does exactly this fo
 
 **Step 4: turn it on by name.** Add the class to `known` in `build_plugins`.
 
-```python
-known = {"redact_secrets": RedactSecrets, "plan_mode": PlanMode}
+```text
+known = map of name -> plugin class    // "redact_secrets", "plan_mode", add "count_lines"
 ```
+Real code: [plugins/__init__.py](../../packages/simp_agent/src/simp_agent/plugins/__init__.py) — `build_plugins`
 
 Why: a profile can now list the name, and the CLI and the server both get it. No copy in each app.
 
@@ -229,37 +233,38 @@ There are four sockets. Pick the lowest one that does the job.
 
 **A new provider.** In `packages/simp_agent/src/simp_agent/ai/__init__.py`:
 
-```python
-def register_provider(api: str, stream_fn) -> None:
-    """stream_fn(model, context, api_key=None) -> async iterator of events. Must not raise."""
+```text
+FUNCTION register_provider(api, stream_fn):
+    // stream_fn yields events and must never raise
     _PROVIDERS[api] = stream_fn
 ```
+Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `register_provider`
 
 Write one async generator that yields the same events as the built-in ones ([04](04-providers.md)). It must not raise. Then set `api` in a profile to your new name.
 
 **A plugin.** This is the fix from the steps above. A **[plugin](glossary.md#plugin)** ([14](14-plugins.md)) is any object with a `name` and some optional hook methods. In `setup` it gets a **[PluginAPI](glossary.md#pluginapi)**. From `packages/simp_agent/src/simp_agent/session/__init__.py`:
 
-```python
-class PluginAPI:
-    """What a plugin can do with its session (pi ExtensionAPI)."""
-
-    def register_tool(self, tool) -> None:
-        self.unregister_tool(tool.name)
-        self._s.agent.tools.append(tool)
-    ...
-    def add_prompt_section(self, id: str, value, order: int = 100) -> None:
-    ...
-    async def append_entry(self, type: str, data: dict) -> CustomEntry:
+```text
+CLASS PluginAPI:      // what a plugin can do with its session
+    FUNCTION register_tool(tool):
+        remove any tool with the same name
+        ADD tool to the agent's tools
+    FUNCTION add_prompt_section(id, value, order = 100)   // rebuilt each turn
+    FUNCTION append_entry(type, data)                     // saved state, not sent to model
 ```
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `PluginAPI`
 
 So a `count_lines` plugin can register its tool, add a prompt line, and save its own state as a [custom entry](glossary.md#custom-entry). `PlanMode` in `plugins/plan_mode.py` is a full example: it adds a prompt section, blocks `write`, `edit` and `bash`, and keeps its on/off state in a custom entry, so it survives a resume.
 
 To turn a plugin on by name, add it to `build_plugins` in `packages/simp_agent/src/simp_agent/plugins/__init__.py`:
 
-```python
-def build_plugins(names: list[str]) -> list:
-    known = {"redact_secrets": RedactSecrets, "plan_mode": PlanMode}
+```text
+FUNCTION build_plugins(names):
+    known = map of name -> plugin class    // add your plugin here
+    IF a name is not in known: RAISE ValueError
+    RETURN a new plugin for each name
 ```
+Real code: [plugins/__init__.py](../../packages/simp_agent/src/simp_agent/plugins/__init__.py) — `build_plugins`
 
 Then both the CLI and the server can switch it on through a profile ([18](18-profiles-plugins.md)). No copy in each app.
 
@@ -327,7 +332,7 @@ For the other sockets, see the tests in their chapters: providers in [04](04-pro
 
 ## Exercises
 
-1. Copy the plugin from Step 1 and Step 2. Run it with `FakeProvider`, as in the naive version. Print `model.ctxs[0].system_prompt`: is your prompt line there? (The code in this chapter was run at `2fc2776` and printed `fizzbuzz.py has 15 lines`.)
+1. Write the plugin from the Step 1 and Step 2 pseudo-code in Python. Run it with `FakeProvider`, as in the naive version. Print `model.ctxs[0].system_prompt`: is your prompt line there? (The code in this chapter was run at `2fc2776` and printed `fizzbuzz.py has 15 lines`.)
 2. Pick one limit from Part 2 (for example, tools run one by one). Say which layer you would change, and which socket (if any) could do it without a core change.
 
 ## Recap

@@ -36,21 +36,16 @@ We need something that:
 
 ## Naive version
 
-```python
-import asyncio, subprocess, tempfile
-from simp_agent.agent.env import LocalEnv
-from simp_agent.session import AgentSession
+```text
+FUNCTION main(model):
+    d = a new temp folder
+    WRITE calc.py into d                  // average() with a bug: divides by len + 1
+    s = a new AgentSession on d           // LocalEnv(d)
+    WAIT for s.prompt("Fix the bug in calc.py")
+    ok = RUN "python -c '... assert average([2, 4]) == 3'" in d, exit code is 0
+    PRINT "PASS" IF ok ELSE "FAIL"
 
-async def main(model):
-    with tempfile.TemporaryDirectory() as d:
-        open(f"{d}/calc.py", "w").write("def average(xs):\n    return sum(xs) / (len(xs) + 1)\n")
-        s = AgentSession(model, env=LocalEnv(d), cwd=d)
-        await s.prompt("Fix the bug in calc.py")
-        ok = subprocess.run("python -c 'from calc import average; assert average([2, 4]) == 3'",
-                            shell=True, cwd=d).returncode == 0
-        print("PASS" if ok else "FAIL")
-
-# asyncio.run(main(build_model({"model": "..."})))  # needs a real model and key
+// needs a real model and key
 ```
 
 This works once. Where it breaks:
@@ -68,28 +63,32 @@ We fix the naive script one problem at a time. Each step is small.
 
 **Step 1 — tasks are TOML files.** Adding a task should not mean editing Python. `load_tasks` reads every file in `evals/tasks/` and uses the file name as the task name:
 
-```python
-tasks = {f.stem: {"name": f.stem, **tomllib.loads(f.read_text())} for f in sorted((HERE / "tasks").glob("*.toml"))}
+```text
+FOR each file f in evals/tasks/*.toml, sorted:
+    tasks[f.stem] = { name: f.stem } + the TOML fields of f   // file name = task name
 ```
+Real code: [evals/run.py](../../evals/run.py) — `load_tasks`
 
 **Step 2 — limits on turns and time.** A model that loops forever must not run (and spend money) forever. We stop at `MAX_TURNS` turns, or after `TIMEOUT_S` seconds:
 
-```python
-if r["turns"] >= MAX_TURNS:
-    r["error"] = f"hit {MAX_TURNS} turns"
-    s.abort()
+```text
+IF turns >= MAX_TURNS:
+    error = "hit MAX_TURNS turns"
+    ABORT the session                     // stop the loop
 ...
-await asyncio.wait_for(s.prompt(task["prompt"]), TIMEOUT_S)
+WAIT for s.prompt(task.prompt), at most TIMEOUT_S seconds
 ```
+Real code: [evals/run.py](../../evals/run.py) — `run_task`
 
 **Step 3 — count the cost.** PASS alone hides 3 turns vs 30. We listen to `message_end` events and add up turns and tokens. We do not change the agent:
 
-```python
-if e["type"] == "message_end" and getattr(m, "role", None) == "assistant":
-    r["turns"] += 1
-    r["input"] += m.usage.get("input", 0)
-    r["output"] += m.usage.get("output", 0)
+```text
+IF event is "message_end" AND its message is from the assistant:
+    turns  = turns + 1
+    input  = input + message input tokens     // 0 if missing
+    output = output + message output tokens   // 0 if missing
 ```
+Real code: [evals/run.py](../../evals/run.py) — `run_task` (inner `on_event`)
 
 **Step 4 — the right `python`.** `python` in the shell may be a different Python. The check gets `$PYTHON`, set to the Python running the harness:
 

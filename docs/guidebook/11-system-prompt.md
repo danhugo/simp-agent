@@ -40,14 +40,16 @@ And one more need: the prompt must be able to **change during a session**. A plu
 
 ## Naive version
 
-```python
+```text
+// naive: one fixed string, built once
 SYSTEM = "You are a helpful assistant."
 
-async def main():
-    rules = open("AGENTS.md").read()
-    prompt = SYSTEM + "\n\n" + rules
-    await agent_loop(prompt, messages, [UserMessage("fix the test")], cfg, emit, cancel)
+FUNCTION main():
+    rules = the whole AGENTS.md, opened directly   // crash if missing
+    prompt = SYSTEM + rules
+    RUN the agent loop with prompt and the user message "fix the test"
 ```
+Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `system_prompt`, `load_context_file` (the fixed versions)
 
 Where it breaks:
 
@@ -63,28 +65,31 @@ We fix the naive version one problem at a time. Each step is small.
 
 **Step 1 — build the tool list, cwd and date into the text.** The model should not guess. So the base text is made by a function from the real tools and the real folder:
 
-```python
-def system_prompt(tools: list, cwd: str, context: tuple[str, str] | None = None) -> str:
-    tool_list = "\n".join(f"- {t.name}: {t.description}" for t in tools)
+```text
+FUNCTION system_prompt(tools, cwd, context):
+    tool_list = one line "- name: description" FOR EACH tool
     ...
-    return out + f"Current date: {datetime.date.today()}\nCurrent working directory: {cwd}"
+    RETURN out + "Current date: TODAY" + "Current working directory: CWD"
 ```
+Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `system_prompt`
 
 The list comes from the tools we pass in, so it can never name a tool that does not exist.
 
 **Step 2 — read through the env, not `open`.** In Docker the project is inside a container. `env.read_file` reads from the right place:
 
-```python
-path = os.path.join(cwd, name)
-return path, await env.read_file(path)
+```text
+path = cwd joined with name
+RETURN path, ASK env to read the file at path   // not open()
 ```
+Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `load_context_file`
 
 **Step 3 — a missing file is normal.** Most folders have no `AGENTS.md`. We catch the error and go on:
 
-```python
-except OSError:
-    continue
+```text
+IF reading fails (file missing):
+    SKIP to the next file name
 ```
+Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `load_context_file`
 
 **Step 4 — more than one file name.** Teams use different names. We try a list in order, and the first file found wins:
 
@@ -94,12 +99,15 @@ CONTEXT_FILES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "C
 
 **Step 5 — rebuild the prompt every turn.** Tools and plugins can change during a session. So the session stores the coding prompt as a function, and `_llm_turn` calls it before each model call:
 
-```python
-self.add_prompt_section("coding", lambda ctx: system_prompt_for(ctx["tools"], ctx["cwd"]), 0)
+```text
+// in the session: store the prompt as a function, not a string
+ADD prompt section "coding" = FUNCTION(ctx): system_prompt(ctx.tools, ctx.cwd)
 ...
-if callable(system_prompt):
-    system_prompt = await _maybe_await(system_prompt())
+// in _llm_turn, before each model call:
+IF system_prompt is a function:
+    system_prompt = CALL it now          // fresh text every turn
 ```
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.__init__`; [agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `_llm_turn`
 
 The result is the real code below.
 
