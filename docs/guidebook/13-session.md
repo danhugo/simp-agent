@@ -113,19 +113,25 @@ Why `append` and not `save(all_messages)`? Because history is **[append-only](gl
 
 ### AgentSession: owns an Agent
 
-```python
-class AgentSession:
-    def __init__(self, model: Model, tools: list | None = None, store: SessionStore | None = None,
-                 env: ExecutionEnv | None = None, cwd: str | None = None, get_api_key: Callable[[str], Any] | None = None,
-                 system_prompt: str | None = None, stream_fn: Callable = ai.stream, auto_compact: bool = True,
-                 max_retries: int = 3, retry_base_delay: float = 2.0, approve: Callable[[ai.ToolCall], Any] | None = None,
-                 messages: list | None = None, plugins: list = (), plugin_config: dict | None = None):
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.__init__`
+
+```text
+CLASS AgentSession:
+    FUNCTION __init__(model, tools, store, env, cwd, get_api_key, system_prompt, stream_fn,
+                      auto_compact, max_retries, retry_base_delay, approve, messages,
+                      plugins, plugin_config):
         ...
-        self.agent = Agent(self._build_prompt, model, list(TOOLS if tools is None else tools), stream_fn,
-                           get_api_key=get_api_key, env=env or LocalEnv(), cwd=cwd or os.getcwd(), messages=messages,
-                           prepare_next_turn=self._prepare, before_tool_call=self._before_tool_call,
-                           after_tool_call=self._after_tool_call)
+        self.agent = NEW Agent(
+            prompt   = self._build_prompt,          // a function, rebuilt every turn
+            tools    = TOOLS if tools is None, else tools,
+            env      = env or LocalEnv(),  cwd = cwd or the current folder,
+            messages = messages,                    // the app passes loaded history
+            prepare_next_turn = self._prepare,      // compaction goes here
+            before_tool_call  = self._before_tool_call,
+            after_tool_call   = self._after_tool_call)
 ```
+
+Key idea: the session owns one Agent and plugs into its hooks; it does not copy the loop.
 
 **[AgentSession](glossary.md#agentsession)** does not copy the loop. It *owns* one `Agent` and plugs into its sockets:
 
@@ -141,33 +147,35 @@ In [11](11-system-prompt.md) we saw that the loop can take the system prompt as 
 
 The session keeps a small table of **[prompt sections](glossary.md#prompt-section)**. In `__init__`:
 
-```python
-        self._sections = dict()  # id -> (order, seq, str | fn(ctx) -> str)
-        self._seq = itertools.count()
-        if system_prompt is not None:
-            self.add_prompt_section("base", system_prompt, 0)
-        else:  # coding prompt; the context file section is added on start (needs env IO)
-            self.add_prompt_section("coding", lambda ctx: system_prompt_for(ctx["tools"], ctx["cwd"]), 0)
-        self._default_prompt = system_prompt is None
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.__init__`
+
+```text
+self._sections = empty table     // id -> (order, seq, text or fn(ctx))
+self._seq = a counter
+IF system_prompt is given:
+    add_prompt_section("base", system_prompt, 0)
+ELSE:                             // context file is added later, in start() (needs env IO)
+    add_prompt_section("coding", fn(ctx) -> system_prompt_for(ctx.tools, ctx.cwd), 0)
+self._default_prompt = (system_prompt is None)
 ```
 
 Two methods use the table:
 
-```python
-    def add_prompt_section(self, id: str, value, order: int = 100) -> None:
-        """value: str or fn(ctx) -> str (sync or async), rebuilt every turn. Sorted by (order, first add): stable."""
-        seq = self._sections[id][1] if id in self._sections else next(self._seq)
-        self._sections[id] = (order, seq, value)
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `add_prompt_section`, `_build_prompt`
 
-    async def _build_prompt(self) -> str:
-        a = self.agent
-        ctx = {"tools": a.tools, "cwd": a.cwd, "model": a.model, "messages": a.messages}
-        parts = list()
-        for _, _, v in sorted(self._sections.values(), key=lambda x: x[:2]):
-            text = await _maybe_await(v(ctx)) if callable(v) else v
-            if text:
-                parts.append(text)
-        return "\n\n".join(parts)
+```text
+FUNCTION add_prompt_section(id, value, order = 100):
+    seq = old seq IF id is already there, ELSE next counter value   // keep first place
+    self._sections[id] = (order, seq, value)
+
+FUNCTION _build_prompt():
+    ctx = {tools, cwd, model, messages} of the agent
+    parts = []
+    FOR EACH section, sorted by (order, seq):
+        text = WAIT for value(ctx) IF value is a function, ELSE value
+        IF text is not empty:
+            ADD text to parts
+    RETURN parts joined with a blank line
 ```
 
 - **A section has an id, a value and an order.** The value is a string, or a function of `ctx` (sync or async). Sections are sorted by `order`, then by when they were first added (`seq`). Adding the same id again replaces the value but keeps its first place, so the order is stable.
@@ -179,15 +187,15 @@ Two methods use the table:
 
 ### start(): runs once, before the first prompt
 
-```python
-    async def start(self) -> None:
-        """Load the context file, run plugin setup(api, config), then session_start. Called by the first prompt."""
-        if self._started:
-            return
-        self._started = True
-        if self._default_prompt and (cf := await load_context_file(self.agent.env, self.agent.cwd)):
-            self.add_prompt_section("context_file", f"# Project Context\n\n## {cf[0]}\n\n{cf[1]}", 10)
-        ...
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `start`
+
+```text
+FUNCTION start():
+    IF already started: RETURN           // runs only once
+    mark as started
+    IF default prompt AND (cf = WAIT for load_context_file(env, cwd)) is found:
+        add_prompt_section("context_file", "# Project Context ## <path> <text>", 10)
+    ...                                  // plugin setup, see ch 14
 ```
 
 Reading the [context file](glossary.md#context-file) (`AGENTS.md`, [11](11-system-prompt.md)) needs async env IO, and `__init__` cannot `await`. So the session reads it in `start()`, which `prompt` and `continue_` call first. The `_started` flag makes it run only once. Order 10 puts the context file right after the coding text (order 0) and before plugin sections (default 100). It is read **once per session**: if you edit `AGENTS.md` mid-session, it has no effect until a new session. The rest of `start()` sets up plugins ([14](14-plugins.md)).
@@ -198,23 +206,27 @@ The `context` argument of `system_prompt` is not used by the session. The sessio
 
 ### Saving: one listener
 
-```python
-        self.agent.subscribe(self._on_agent_event)
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `_on_agent_event`
+
+```text
+self.agent.subscribe(self._on_agent_event)
 ...
-    async def _on_agent_event(self, e: dict) -> None:
-        if e["type"] == "message_end" and self.store:
-            await _maybe_await(self.store.append(e["message"]))
-        await self._emit(e)
+FUNCTION _on_agent_event(e):
+    IF e is message_end AND there is a store:
+        WAIT for store.append(e.message)   // save right away: crash safe
+    WAIT for self._emit(e)                 // pass it on to the session's subscribers
 ```
 
 The session subscribes to the agent's events ([06](06-events-abort.md)). On every `message_end` it appends the message to the store. `message_end` fires once per finished message: the user message, each assistant reply, each tool result. Streaming deltas are not saved; only final messages are.
 
 Then it forwards the event to its own subscribers with `_emit`. Apps subscribe to the **session**, not to the agent:
 
-```python
-    def subscribe(self, fn: Callable[[dict], Any]) -> Callable[[], None]:
-        self._subs.append(fn)
-        return lambda: self._subs.remove(fn)
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `subscribe`
+
+```text
+FUNCTION subscribe(fn):
+    ADD fn to self._subs
+    RETURN a function that removes fn    // call it to unsubscribe
 ```
 
 ### Resume: load, then pass `messages=`
@@ -229,15 +241,17 @@ Why not load inside? Because the app decides *which* session to resume (a sessio
 
 ### prompt and continue_
 
-```python
-    async def prompt(self, text: str) -> list:
-        await self.start()
-        ...
-        return await self._run(functools.partial(self.agent.prompt, text, extra))
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `prompt`, `continue_`
 
-    async def continue_(self) -> list:
-        await self.start()
-        return await self._run(self.agent.continue_)
+```text
+FUNCTION prompt(text):
+    WAIT for start()
+    ...
+    RETURN WAIT for _run(agent.prompt with text)    // _run adds retry + overflow recovery
+
+FUNCTION continue_():
+    WAIT for start()
+    RETURN WAIT for _run(agent.continue_)            // run again, no new message
 ```
 
 `prompt(text)` adds a user message and runs. `continue_()` runs again without a new message: for example after a resume where the last message was a tool result. Both go through `_run`, which adds retry ([15](15-retry.md)) and overflow recovery ([17](17-overflow.md)). Both call `start()` first ([see above](#start-runs-once-before-the-first-prompt)).
@@ -246,15 +260,16 @@ The session also passes through `steer`, `follow_up` ([07](07-steering.md)) and 
 
 ### CustomEntry: data that is saved but not sent
 
-```python
-    async def append_entry(self, type: str, data: dict) -> CustomEntry:
-        """Persisted + replayed on resume, never sent to the LLM."""
-        entry = CustomEntry(type, data)
-        self.agent.messages.append(entry)
-        if self.store:
-            await _maybe_await(self.store.append(entry))
-        await self._emit({"type": "message_end", "message": entry})
-        return entry
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `append_entry`
+
+```text
+FUNCTION append_entry(type, data):        // saved + replayed on resume, never sent to the LLM
+    entry = NEW CustomEntry(type, data)
+    ADD entry to agent.messages
+    IF there is a store:
+        WAIT for store.append(entry)
+    WAIT for _emit(message_end event with entry)
+    RETURN entry
 ```
 
 A **[CustomEntry](glossary.md#custom-entry)** (in `ai/__init__.py`) is app or plugin data kept in history: `type`, `data`, `role="custom"`. It is saved and comes back on resume, but it is never sent to the model. Plan mode uses it to remember "on/off" across resume ([18](18-profiles-plugins.md)).
@@ -263,23 +278,20 @@ A **[CustomEntry](glossary.md#custom-entry)** (in `ai/__init__.py`) is app or pl
 
 The library has no file store. The CLI has one, in `apps/cli/src/simp_cli/__init__.py`:
 
-```python
-class JsonlStore:
-    """SessionStore on a JSONL file: one finished message (or CompactionEntry) per line."""
+Real code: [simp_cli/__init__.py](../../apps/cli/src/simp_cli/__init__.py) — `JsonlStore`
 
-    def __init__(self, path: Path):
-        self.path = path
-
-    def append(self, entry) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a") as f:  # close = flush, so every entry is on disk right away
-            f.write(json.dumps(to_dict(entry)) + "\n")
-
-    def load(self) -> list:
-        if not self.path.exists():
-            return []
-        return [from_dict(json.loads(line)) for line in self.path.read_text().splitlines() if line.strip()]
+```text
+CLASS JsonlStore:                         // one finished message per line
+    FUNCTION append(entry):
+        make the parent folder
+        OPEN the file in "a" mode, WRITE json of to_dict(entry) + newline, CLOSE
+                                          // close = flush: on disk right away
+    FUNCTION load():
+        IF no file: RETURN []
+        RETURN from_dict(json of line) FOR EACH non-empty line
 ```
+
+Key idea: append one line per message. Limit: a crash can lose only the line being written.
 
 **[JSONL](glossary.md#jsonl)** means one JSON object per line. Appending a line is cheap and safe: open in `"a"` mode, write, close. A crash can lose at most the line being written. `to_dict` / `from_dict` (from [01](01-messages.md)) turn messages into plain dicts and back. Files live at `~/.simp-agent/sessions/<cwd-slug>/<id>.jsonl` (see `session_dir`). The server has its own store on a database ([22](22-store-auth.md)); both follow the same two-method protocol.
 
