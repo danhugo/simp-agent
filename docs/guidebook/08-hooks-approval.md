@@ -35,16 +35,16 @@ And one rule from [01](01-messages.md) still holds: every tool call must get a t
 
 ## Naive version
 
-```python
-DANGEROUS = {"bash", "write", "edit"}
+```text
+DANGEROUS = {bash, write, edit}
 
-async def run_calls(calls, tools, history):
-    for call in calls:
-        if call.name in DANGEROUS:
-            answer = input(f"Run {call.name} {call.arguments}? [y/n] ")
-            if answer != "y":
-                continue                      # skip it
-        history.append(await run_tool(tools, call))
+FUNCTION run_calls(calls, tools, history):
+    FOR EACH call IN calls:
+        IF call.name IN DANGEROUS:
+            answer = ASK the human "Run {call.name} {call.arguments}? [y/n]"
+            IF answer is not "y":
+                SKIP this call                // no result is added
+        ADD (run_tool(tools, call)) to history
 ```
 
 Where it breaks:
@@ -61,9 +61,9 @@ We fix the naive version one problem at a time. Each step is small.
 
 **Step 1 — a deny still makes a result.** `continue` left a tool call with no answer. Now a "no" becomes a normal error result, so the history stays valid:
 
-```python
-if deny is not None:
-    result = ToolResultMessage(call.id, call.name, f"User denied: {deny}", is_error=True)
+```text
+IF deny is not None:
+    result = ToolResultMessage(call.id, call.name, "User denied: {deny}", is_error=True)
 ```
 
 **Step 2 — tell the model why.** The deny text has the reason (`User denied: <reason>`). The model reads it and can choose another plan, instead of trying the same call again.
@@ -78,18 +78,19 @@ A CLI, a web app or a test can each pass their own function. `_maybe_await` lets
 
 **Step 4 — a place to change results.** A second hook runs after the tool (and after a deny). If it returns `None`, the old result stays:
 
-```python
-result = await _maybe_await(config.after_tool_call(call, result, ctx)) or result
+```text
+new = WAIT for config.after_tool_call(call, result, ctx)
+IF new is not None: result = new        // None = keep the old result
 ```
 
 **Step 5 — do not block forever.** The hook gets `ctx`, so the approval hook in the session can wait for the human **or** Stop, whichever comes first:
 
-```python
-stop = asyncio.ensure_future(ctx.cancel.wait())
-await asyncio.wait([ask, stop], return_when=asyncio.FIRST_COMPLETED)
+```text
+stop = START waiting for ctx.cancel
+WAIT for the first one of (ask, stop) to finish
 ```
 
-The result is the real code below.
+The result is the real design below.
 
 ## Real design
 
@@ -111,10 +112,13 @@ Both get the [tool context](glossary.md#tool-context) `ctx` ([05](05-agent-loop.
 
 "Sync or async" means a hook can be a plain function or an `async def`. The loop handles both with one small helper:
 
-```python
-async def _maybe_await(r):
-    return await r if inspect.isawaitable(r) else r
+```text
+FUNCTION _maybe_await(r):
+    IF r can be awaited: RETURN (WAIT for r)    // async hook
+    RETURN r                                    // plain hook
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_maybe_await`)
 
 A test can pass a `lambda`; a real app can pass an `async` function that waits for a click.
 
@@ -122,26 +126,28 @@ A test can pass a `lambda`; a real app can pass an `async` function that waits f
 
 Here is the tool step of `agent_loop` (same file; the rest of the loop is in [05](05-agent-loop.md) and [07](07-steering.md)):
 
-```python
-            for call in calls:
-                if cancel.is_set():
-                    break
-                if msg.stop_reason == "length":  # args may be cut off: never run them
-                    result = ToolResultMessage(call.id, call.name, "Tool call was truncated (max tokens); not executed", True)
-                else:
-                    await send({"type": "tool_execution_start", "call": call})
-                    on_update = functools.partial(lambda c, text: send({"type": "tool_execution_update", "call": c, "text": text}), call)
-                    ctx = ToolContext(cancel, config.env, config.cwd, on_update)
-                    deny = await _maybe_await(config.before_tool_call(call, ctx)) if config.before_tool_call else None
-                    if deny is not None:
-                        result = ToolResultMessage(call.id, call.name, f"User denied: {deny}", is_error=True)
-                    else:
-                        result = await run_tool(_tools(config), call, ctx)
-                    if config.after_tool_call:
-                        result = await _maybe_await(config.after_tool_call(call, result, ctx)) or result
-                    await send({"type": "tool_execution_end", "call": call, "result": result})
-                await add(result)
+```text
+FOR EACH call IN calls:
+    IF cancel is set: STOP the loop
+    IF msg.stop_reason == "length":           // args may be cut off: never run them
+        result = error result "Tool call was truncated (max tokens); not executed"
+    ELSE:
+        SEND event {tool_execution_start, call}
+        on_update = (text) -> SEND event {tool_execution_update, call, text}
+        ctx = ToolContext(cancel, config.env, config.cwd, on_update)
+        deny = None
+        IF config.before_tool_call: deny = WAIT for _maybe_await(before_tool_call(call, ctx))
+        IF deny is not None:
+            result = ToolResultMessage(call.id, call.name, "User denied: {deny}", is_error=True)
+        ELSE:
+            result = WAIT for run_tool(_tools(config), call, ctx)
+        IF config.after_tool_call:
+            result = WAIT for _maybe_await(after_tool_call(call, result, ctx)), OR keep result if None
+        SEND event {tool_execution_end, call, result}
+    ADD result to history
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
 
 ```mermaid
 flowchart TD
@@ -171,14 +177,11 @@ Why is the deny check `is not None` and not just "truthy"? Because the reason is
 
 The `Agent` class from [06](06-events-abort.md) takes both hooks in its constructor and passes them into each `LoopConfig`:
 
-```python
-                 before_tool_call: Callable | None = None, after_tool_call: Callable | None = None):
+```text
+Agent(..., before_tool_call = None, after_tool_call = None)   // stored, then passed to each LoopConfig
 ```
 
-```python
-                before_tool_call=self.before_tool_call,
-                after_tool_call=self.after_tool_call,
-```
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`Agent`)
 
 So a caller that uses `Agent` instead of `agent_loop` gets the same gate.
 
@@ -186,31 +189,35 @@ So a caller that uses `Agent` instead of `agent_loop` gets the same gate.
 
 [Tool approval](glossary.md#tool-approval) is **not** a feature of the loop. It is just one `before_tool_call`. The real one lives in `AgentSession` ([13](13-session.md)), which passes `before_tool_call=self._before_tool_call` to its `Agent`. We look at it now because it shows how to write a good hook (`packages/simp_agent/src/simp_agent/session/__init__.py`):
 
-```python
-        # approval policy: approve(call) -> "allow" | "deny" | "always" (sync or async). None = allow everything.
-        self.approve, self.needs_approval, self.always_allowed = approve, {"bash", "write", "edit"}, set()
+```text
+approve = approve; needs_approval = {"bash", "write", "edit"}; always_allowed = {}   // approve None = allow all
 ```
 
-```python
-        if self.approve is None or call.name not in self.needs_approval or call.name in self.always_allowed:
-            return None
-        ask = asyncio.ensure_future(_maybe_await(self.approve(call)))
-        stop = asyncio.ensure_future(ctx.cancel.wait())
-        await asyncio.wait([ask, stop], return_when=asyncio.FIRST_COMPLETED)
-        stop.cancel()
-        if not ask.done():  # aborted: a browser approval may never answer
-            ask.cancel()
-            await asyncio.wait([ask])  # let its cleanup (e.g. an "aborted" event) finish before the run ends
-            return "aborted"
-        answer = ask.result()
-        if answer == "always":
-            self.always_allowed.add(call.name)
-        elif answer != "allow" or ctx.cancel.is_set():
-            return "aborted" if ctx.cancel.is_set() else "denied"
-        return None
+Real code: [packages/simp_agent/src/simp_agent/session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) (`AgentSession`)
+
+```text
+FUNCTION _before_tool_call(call, ctx):          // (approval part)
+    IF approve is None OR call.name NOT IN needs_approval OR call.name IN always_allowed:
+        RETURN None                              // run it, no question
+    ask  = START approve(call)
+    stop = START waiting for ctx.cancel
+    WAIT for the first one of (ask, stop) to finish
+    CANCEL stop
+    IF ask is not done:                          // aborted: a browser approval may never answer
+        CANCEL ask
+        WAIT for ask to finish its cleanup       // e.g. an "aborted" event, before the run ends
+        RETURN "aborted"
+    answer = result of ask
+    IF answer == "always":
+        ADD call.name to always_allowed
+    ELSE IF answer != "allow" OR ctx.cancel is set:
+        RETURN "aborted" if ctx.cancel is set, else "denied"
+    RETURN None
 ```
 
-(The part of this method before these lines runs plugin `tool_call` hooks first; that is [14](14-plugins.md).)
+Real code: [packages/simp_agent/src/simp_agent/session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) (`AgentSession._before_tool_call`)
+
+(The part of this method before the approval part runs plugin `tool_call` hooks first; that is [14](14-plugins.md).)
 
 What it does:
 

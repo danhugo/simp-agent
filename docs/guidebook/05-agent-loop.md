@@ -35,22 +35,19 @@ Each step can go wrong. The model can ask for a tool that does not exist. It can
 
 ## Naive version
 
-```python
-async def naive_loop(system_prompt, messages, tools, model):
-    while True:
+```text
+FUNCTION naive_loop(system_prompt, messages, tools, model):
+    REPEAT forever:
         ctx = Context(system_prompt, messages, tools)
-        msg = None
-        async for ev in ai.stream(model, ctx):
-            if ev["type"] in ("done", "error"):
-                msg = ev["message"]
-        messages.append(msg)
-        calls = msg.tool_calls()
-        if not calls:
-            return messages
-        for call in calls:
-            tool = {t.name: t for t in tools}[call.name]      # KeyError if unknown
-            text = await tool.execute(call.arguments)          # may raise
-            messages.append(ToolResultMessage(call.id, call.name, text))
+        FOR EACH event from ai.stream(model, ctx):
+            IF event type is "done" or "error": msg = event message
+        ADD msg to messages
+        calls = the tool calls in msg
+        IF no calls: RETURN messages
+        FOR EACH call in calls:
+            tool = look up tools by call.name      // crashes if the name is unknown
+            text = WAIT for tool.execute(call.arguments)   // may crash
+            ADD ToolResultMessage(call.id, call.name, text) to messages
 ```
 
 It works for the happy path. Where it breaks:
@@ -71,60 +68,62 @@ We fix the naive loop one problem at a time. Each step is small.
 
 **Step 1 — find the tool safely.** A dict lookup raises `KeyError`. We search the list and return an error result if the tool is missing:
 
-```python
-tool = next((t for t in tools if t.name == call.name), None)
-if tool is None:
-    return err(f"Tool {call.name} not found")
+```text
+tool = FIND the tool in tools whose name is call.name, or nothing
+IF tool is nothing:
+    RETURN err("Tool <call.name> not found")
 ```
 
 The model reads "not found" and can pick a real tool. The run goes on.
 
 **Step 2 — check the arguments.** The tool already has a JSON schema in `parameters`. We use it to check what the model sent:
 
-```python
-jsonschema.validate(call.arguments, tool.parameters)
+```text
+CHECK call.arguments against tool.parameters (JSON schema)   // jsonschema.validate
 ```
 
 Bad arguments now give a clear error like `'x' is a required property`, before the tool runs.
 
 **Step 3 — catch tool errors.** We wrap `execute` in `try` and turn the exception into text:
 
-```python
-except Exception as e:
-    return err("Interrupted by the user" if ctx.cancel.is_set() else f"{type(e).__name__}: {e}")
+```text
+IF tool.execute raised an error e:
+    IF ctx.cancel is set: RETURN err("Interrupted by the user")
+    ELSE: RETURN err("<error type>: <e>")
 ```
 
 `err` builds a `ToolResultMessage` with `is_error=True`. So the model learns what went wrong and can try another way.
 
 **Step 4 — check `stop_reason`.** We stop on `error` or `aborted` on purpose, and we never run cut-off calls:
 
-```python
-if msg.stop_reason in ("error", "aborted"):
-    return await _end(send, msg, new)
+```text
+IF msg.stop_reason is "error" or "aborted":
+    RETURN end the run                                   // _end(send, msg, new)
 ...
-if msg.stop_reason == "length":  # args may be cut off: never run them
-    result = ToolResultMessage(call.id, call.name, "Tool call was truncated (max tokens); not executed", True)
+IF msg.stop_reason is "length":     // args may be cut off: never run them
+    result = error ToolResultMessage(call.id, call.name,
+             "Tool call was truncated (max tokens); not executed")
 ```
 
 Now the stop is by design, not by luck. And half-written arguments never reach a tool.
 
 **Step 5 — make the model call a setting.** `ai.stream` moves into `LoopConfig`:
 
-```python
-stream_fn: Callable = ai.stream  # swap for a fake in tests
+```text
+LoopConfig.stream_fn = ai.stream    // swap for a fake in tests
 ```
 
 A test passes `FakeProvider` here. No real model is needed.
 
 **Step 6 — give the tool a context.** Each tool gets one `ToolContext` object:
 
-```python
+```text
 ctx = ToolContext(cancel, config.env, config.cwd, on_update)
 ```
 
 Now the tool knows the working folder, can see a stop request, and can report progress.
 
-The result is the real code below.
+The result is the real design below.
 
 ## Real design
 
@@ -132,11 +131,13 @@ The result is the real code below.
 
 From [01](01-messages.md), `ai.Tool` is only a description for the model: `name`, `description`, `parameters` (a JSON schema). The `ai` layer never runs tools. The `agent` layer adds the code:
 
-```python
-@dataclass
-class AgentTool(ai.Tool):
-    execute: Callable[[dict, "ToolContext"], Awaitable[str]] | None = None  # (args, ctx) -> text
-    prepare_arguments: Callable[[dict], dict] | None = None  # raw args -> args, before validation (pi prepareArguments)
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`AgentTool`)
+
+```text
+CLASS AgentTool(ai.Tool):          // name, description, parameters + the code
+    execute = FUNCTION (args, ctx) -> text, or nothing
+    prepare_arguments = FUNCTION (raw args) -> args, or nothing
+                        // runs before validation (pi prepareArguments)
 ```
 
 - `execute(args, ctx)` is an async function. It returns **text**. The text goes back to the model as the tool result.
@@ -146,13 +147,14 @@ Because `AgentTool` **is** an `ai.Tool`, we can pass the same list to the model 
 
 ### `ToolContext`: what a tool gets
 
-```python
-@dataclass
-class ToolContext:
-    cancel: asyncio.Event
-    env: ExecutionEnv
-    cwd: str
-    on_update: Callable[[str], Awaitable[None]]  # emits tool_execution_update (progress for the UI)
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`ToolContext`)
+
+```text
+CLASS ToolContext:
+    cancel       // an asyncio.Event
+    env          // the ExecutionEnv
+    cwd          // the working folder
+    on_update    // FUNCTION (text): SEND event tool_execution_update (progress for the UI)
 ```
 
 A tool should not reach for globals. Everything it needs comes in this one object — the [tool context](glossary.md#tool-context):
@@ -168,26 +170,25 @@ Why one object and not four arguments? We can add a field later without changing
 
 ### `run_tool`: one call, never raises
 
-```python
-async def run_tool(tools: list, call: ai.ToolCall, ctx: ToolContext) -> ToolResultMessage:
-    def err(text):
-        return ToolResultMessage(call.id, call.name, text, is_error=True)
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`run_tool`)
 
-    tool = next((t for t in tools if t.name == call.name), None)
-    if tool is None:
-        return err(f"Tool {call.name} not found")
-    try:
-        if tool.prepare_arguments:
-            call.arguments = tool.prepare_arguments(call.arguments)
-        jsonschema.validate(call.arguments, tool.parameters)
-    except jsonschema.ValidationError as e:
-        return err(f"Invalid arguments for {call.name}: {e.message}")
-    except Exception as e:
-        return err(f"prepare_arguments failed: {type(e).__name__}: {e}")
-    try:
-        return ToolResultMessage(call.id, call.name, await tool.execute(call.arguments, ctx))
-    except Exception as e:
-        return err("Interrupted by the user" if ctx.cancel.is_set() else f"{type(e).__name__}: {e}")
+```text
+FUNCTION run_tool(tools, call, ctx) -> ToolResultMessage:
+    err(text) = ToolResultMessage(call.id, call.name, text, is_error = yes)
+
+    tool = FIND the tool in tools whose name is call.name
+    IF no tool: RETURN err("Tool <call.name> not found")
+    TRY:
+        IF tool.prepare_arguments: call.arguments = tool.prepare_arguments(call.arguments)
+        CHECK call.arguments against tool.parameters    // jsonschema.validate
+    IF the check fails: RETURN err("Invalid arguments for <call.name>: <message>")
+    IF prepare_arguments raised e: RETURN err("prepare_arguments failed: <type>: <e>")
+    TRY:
+        text = WAIT for tool.execute(call.arguments, ctx)
+        RETURN ToolResultMessage(call.id, call.name, text)
+    IF it raised e:
+        IF ctx.cancel is set: RETURN err("Interrupted by the user")
+        ELSE: RETURN err("<type>: <e>")
 ```
 
 This is the most important rule of the chapter: **every failure becomes a `ToolResultMessage` with `is_error=True`**. Nothing raises out of `run_tool`.
@@ -215,18 +216,19 @@ Three more details:
 
 `agent_loop` takes many settings. They live in one dataclass, `LoopConfig`. Here are the ones this chapter uses:
 
-```python
-@dataclass
-class LoopConfig:
-    model: Model
-    tools: list = field(default_factory=list)
-    get_tools: Callable[[], list] | None = None  # re-read every turn (wins over tools); changes are told to the model
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`LoopConfig`)
+
+```text
+CLASS LoopConfig:
+    model
+    tools = empty list
+    get_tools = nothing    // re-read every turn (wins over tools); changes are told to the model
     ...
-    stream_fn: Callable = ai.stream  # swap for a fake in tests
+    stream_fn = ai.stream  // swap for a fake in tests
     ...
-    get_api_key: Callable[[str], Any] | None = None
-    env: ExecutionEnv = field(default_factory=LocalEnv)
-    cwd: str = field(default_factory=os.getcwd)
+    get_api_key = nothing
+    env = a new LocalEnv
+    cwd = the current folder
 ```
 
 - `stream_fn` defaults to `ai.stream`. A test passes `FakeProvider(...)` instead. This is the [stream function](glossary.md#stream-function) shape from [02](02-fake-provider.md) paying off: the loop cannot tell the difference.
@@ -240,42 +242,42 @@ The other fields (`get_steering`, `get_follow_up`, `prepare_next_turn`, `before_
 
 Here is the shape, with the steering and follow-up parts ([07](07-steering.md)) left as they are:
 
-```python
-async def agent_loop(system_prompt, messages, prompts, config, emit=lambda e: None, cancel=None) -> list:
-    """Run until the assistant stops calling tools. Mutates `messages`, returns the new ones."""
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
+
+```text
+FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> new messages:
+    // Run until the assistant stops calling tools. Changes `messages`, returns the new ones.
     ...
-    await send({"type": "agent_start"})
-    for p in prompts:
-        await add(p)
-    pending, has_calls, msg = config.get_steering(), True, None
-    while True:
-        while has_calls or pending:
-            await send({"type": "turn_start"})
+    SEND event agent_start
+    FOR EACH p in prompts: add(p)
+    pending = config.get_steering(); has_calls = yes; msg = nothing
+    REPEAT:
+        WHILE has_calls or pending:
+            SEND event turn_start
             ...
-            msg = await _llm_turn(system_prompt, messages, config, cancel, send, add)
-            await add(msg)
-            calls = msg.tool_calls()
-            if msg.stop_reason in ("error", "aborted"):
-                return await _end(send, msg, new)
-            for call in calls:
+            msg = WAIT for _llm_turn(system_prompt, messages, config, cancel, send, add)
+            add(msg)
+            calls = the tool calls in msg
+            IF msg.stop_reason is "error" or "aborted":
+                RETURN _end(send, msg, new)
+            FOR EACH call in calls:
                 ...
-                if msg.stop_reason == "length":  # args may be cut off: never run them
-                    result = ToolResultMessage(call.id, call.name, "Tool call was truncated (max tokens); not executed", True)
-                else:
+                IF msg.stop_reason is "length":   // args may be cut off: never run them
+                    result = error ToolResultMessage "Tool call was truncated (max tokens); not executed"
+                ELSE:
                     ...
                     ctx = ToolContext(cancel, config.env, config.cwd, on_update)
                     ...
-                        result = await run_tool(_tools(config), call, ctx)
+                    result = WAIT for run_tool(_tools(config), call, ctx)
                     ...
-                await add(result)
+                add(result)
             ...
-            await send({"type": "turn_end", "message": msg})
-            has_calls, pending = bool(calls), config.get_steering()
+            SEND event {turn_end, msg}
+            has_calls = (calls is not empty); pending = config.get_steering()
         pending = config.get_follow_up()
-        if not pending:
-            break
-    await send({"type": "agent_end", "messages": new})
-    return new
+        IF no pending: STOP repeating
+    SEND event {agent_end, new}
+    RETURN new
 ```
 
 Read it as the four steps from the Problem section:
@@ -313,19 +315,21 @@ The parts marked `...` are: `tool_execution_*` events and abort ([06](06-events-
 
 `_llm_turn` builds the request and streams one answer. Its core:
 
-```python
-    tools = list(_tools(config))
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_llm_turn`)
+
+```text
+// inside FUNCTION _llm_turn(system_prompt, messages, config, cancel, send, add):
+    tools = _tools(config)                  // read again every turn
     ...
-    if callable(system_prompt):
-        system_prompt = await _maybe_await(system_prompt())
+    IF system_prompt is a function: system_prompt = WAIT for system_prompt()
     llm_msgs = ai.transform_messages(config.convert_to_llm(config.transform_context(view)))
-    msg = partial = None
-    opts = await api_key_opts(config.get_api_key, config.model)
-    async for ev in _stream(config.stream_fn, config.model, Context(system_prompt, llm_msgs, tools), cancel, opts):
-        await send({"type": "message_update", "event": ev})
-        partial = ev.get("partial", partial)
-        if ev["type"] in ("done", "error"):
-            msg = ev["message"]
+    msg = nothing; partial = nothing
+    opts = WAIT for api_key_opts(config.get_api_key, config.model)
+    FOR EACH event from _stream(config.stream_fn, config.model,
+                                Context(system_prompt, llm_msgs, tools), cancel, opts):
+        SEND event {message_update, event}
+        partial = event.partial, if it has one
+        IF event type is "done" or "error": msg = event message
 ```
 
 - The tool list is read again **every turn**.

@@ -32,28 +32,20 @@ A coding agent must touch the disk and run shell commands. If each tool does thi
 
 ## Naive version
 
-```python
-import subprocess
-
-class NaiveEnv:
-    def __init__(self, root):
-        self.root = root
-
-    def read_file(self, path):
-        return open(f"{self.root}/{path}").read()     # blocks the loop
-
-    def write_file(self, path, text):
-        open(f"{self.root}/{path}", "w").write(text)  # fails if the folder is missing
-
-    def exec(self, command, cwd, timeout):
-        p = subprocess.Popen(command, shell=True, cwd=cwd,
-                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        try:
-            out, _ = p.communicate(timeout=timeout)   # blocks the loop
-            return p.returncode, out.decode()
-        except subprocess.TimeoutExpired:
-            p.kill()                                  # kills the shell only
-            return None, ""                           # output so far is lost
+```text
+CLASS NaiveEnv(root):
+    FUNCTION read_file(path):
+        RETURN open root + "/" + path and read it      // blocks the loop
+    FUNCTION write_file(path, text):
+        open root + "/" + path and write text          // fails if the folder is missing
+    FUNCTION exec(command, cwd, timeout):
+        p = START command in a shell
+        TRY:
+            WAIT for p to end, at most timeout          // blocks the loop
+        IF timeout passed:
+            KILL p                                      // kills the shell only
+            RETURN (None, "")                           // output so far is lost
+        RETURN (exit code, output)
 ```
 
 Where it breaks:
@@ -71,76 +63,82 @@ We fix the naive env one problem at a time. Each step is small.
 
 **Step 1 — a real fence.** A string `root` does not stop `..` or symlinks. So every file path first goes through `_path`, which resolves it and checks it is still inside the root:
 
-```python
-        root = Path(self.root).resolve()
-        p = (root / path).resolve()
-        if not p.is_relative_to(root):
-            raise PermissionError(f"path escapes root: {path}")
+```text
+root = the real, full path of the root
+p = the real, full path of root + path      // removes "..", follows symlinks
+IF p is not inside root:
+    RAISE PermissionError "path escapes root"
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`LocalEnv._path`)
 
 `resolve()` removes `..` and follows symlinks, so the check sees the real place on disk.
 
 **Step 2 — file work in a thread.** `open().read()` stops the event loop. We send it to a thread, so events and Stop still work:
 
-```python
-        return await asyncio.to_thread(self._path(path).read_text)
+```text
+RETURN WAIT for (read the file text) in a thread
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`LocalEnv.read_file`)
 
 **Step 3 — make folders on write.** Writing `src/new/a.py` must not fail because `src/new` is missing:
 
-```python
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_bytes(data)
+```text
+MAKE all missing parent folders of p
+WRITE data to p
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`LocalEnv.write_bytes`)
 
 **Step 4 — async command that keeps its output.** `communicate()` blocks and loses output on timeout. We start the command with `asyncio`, read it in 4 KB chunks, keep every chunk, and send each one to `on_output`:
 
-```python
-            while data := await proc.stdout.read(4096):
-                text = data.decode(errors="replace")
-                chunks.append(text)
-                if on_output:
-                    await on_output(text)
+```text
+WHILE data = read next 4096 bytes of output:
+    text = decode data      // bad bytes become a mark, no error
+    ADD text to chunks
+    IF on_output is given:
+        WAIT for on_output(text)
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`LocalEnv.exec`)
 
 Now the UI sees output live, and after a kill we can still return `"".join(chunks)`.
 
 **Step 5 — Stop can end a command.** A timeout alone is not enough. We race the command against the `cancel` event and the timeout:
 
-```python
-        stop = asyncio.ensure_future(cancel.wait())
-        done, _ = await asyncio.wait({run, stop}, timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+```text
+stop = a task that WAITS for cancel to be set
+WAIT for the first of (run, stop), at most timeout
 ```
 
 **Step 6 — kill the whole group.** `p.kill()` leaves children alive. We start the shell with `start_new_session=True`, so it gets its own process group, and then `run_kill` sends `SIGKILL` to the group until it is empty:
 
-```python
-            os.killpg(pgid, 9)
+```text
+SEND SIGKILL to the whole process group pgid
 ```
 
-The result is the real code below.
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`run_kill`)
+
+The result is the real design below.
 
 ## Real design
 
 ### `ExecutionEnv`: the contract
 
-```python
-class ExecutionEnv(Protocol):
-    async def read_file(self, path: str) -> str: ...
-
-    async def write_file(self, path: str, text: str) -> None: ...
-
-    async def list(self, path: str) -> list[dict]: ...  # [{name, is_dir, size}]
-
-    async def read_bytes(self, path: str) -> bytes: ...
-
-    async def write_bytes(self, path: str, data: bytes) -> None: ...
-
-    async def exec(
-        self, command: str, cwd: str, timeout: float | None, cancel: asyncio.Event,
-        on_output: Callable[[str], Awaitable[None]] | None = None,
-    ) -> tuple[int | None, str]: ...  # exit code is None when killed (timeout or cancel); output = what came so far
+```text
+CLASS ExecutionEnv (a Protocol: any object with these methods counts):
+    read_file(path)    -> text
+    write_file(path, text)
+    list(path)         -> list of {name, is_dir, size}
+    read_bytes(path)   -> bytes
+    write_bytes(path, data)
+    exec(command, cwd, timeout, cancel, on_output = none) -> (exit_code, output)
+        // exit_code is None when killed (timeout or cancel); output = what came so far
+    // every method is async
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`ExecutionEnv`)
 
 Six methods. That is everything a tool may use to touch files and run commands.
 
@@ -152,15 +150,20 @@ Six methods. That is everything a tool may use to touch files and run commands.
 
 Where does the env come from? `LoopConfig` has a field with a default:
 
-```python
-    env: ExecutionEnv = field(default_factory=LocalEnv)
+```text
+LoopConfig.env = a new LocalEnv() unless the host gives one
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`LoopConfig`)
 
 and the loop puts it into each tool's context (`packages/simp_agent/src/simp_agent/agent/__init__.py`):
 
-```python
-                    ctx = ToolContext(cancel, config.env, config.cwd, on_update)
+```text
+FOR EACH tool call:
+    ctx = ToolContext(cancel, config.env, config.cwd, on_update)
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
 
 So a tool never builds its own env. It uses `ctx.env`. The host (CLI, server, eval runner) picks which env to pass.
 
@@ -177,37 +180,34 @@ flowchart LR
 
 `LocalEnv` is the only env in the core library. It works on the machine where Python runs.
 
-```python
-class LocalEnv:
-    """This machine. File IO runs in a thread so the loop never blocks.
-    With a root, file paths are relative to it and may not escape it (via .. or symlinks)."""
-
-    root: str | None = None
-
-    def __init__(self, root: str | None = None):
-        self.root = root
+```text
+CLASS LocalEnv(root = none):
+    // this machine; file IO runs in a thread so the loop never blocks
+    // with a root, file paths are relative to it and may not escape it
+    keep root
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`LocalEnv`)
 
 `root` is optional. With no root (the default in `LoopConfig`), paths are used as they are. With a root, every file path is checked (next section).
 
 File methods are thin. Each one sends the real work to a thread with `asyncio.to_thread`:
 
-```python
-    async def read_file(self, path: str) -> str:
-        return await asyncio.to_thread(self._path(path).read_text)
+```text
+FUNCTION read_file(path):
+    RETURN WAIT for (read text of _path(path)) in a thread
 
-    async def write_file(self, path: str, text: str) -> None:
-        await self.write_bytes(path, text.encode())
+FUNCTION write_file(path, text):
+    WAIT for write_bytes(path, text as bytes)     // one write path, one fence check
 
-    async def write_bytes(self, path: str, data: bytes) -> None:
-        p = self._path(path)
-
-        def w():
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_bytes(data)
-
-        await asyncio.to_thread(w)
+FUNCTION write_bytes(path, data):
+    p = _path(path)
+    IN a thread:
+        MAKE all missing parent folders of p
+        WRITE data to p
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`read_file, write_file, write_bytes`)
 
 Three small choices here:
 
@@ -217,32 +217,33 @@ Three small choices here:
 
 `list` sorts by name, so the output is the same every time (good for tests and for the model):
 
-```python
-    async def list(self, path: str) -> list[dict]:
-        def ls():
-            out = []
-            for e in sorted(os.scandir(self._path(path)), key=lambda e: e.name):
-                is_dir = e.is_dir()
-                out.append({"name": e.name, "is_dir": is_dir, "size": 0 if is_dir else e.stat().st_size})
-            return out
-
-        return await asyncio.to_thread(ls)
+```text
+FUNCTION list(path):
+    IN a thread:
+        out = empty list
+        FOR EACH entry in folder _path(path), sorted by name:
+            ADD {name, is_dir, size} to out     // size is 0 for a folder
+        RETURN out
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`list`)
 
 ### Path safety
 
 [Path safety](glossary.md#path-safety) means a file path can never point outside the root. Every file method starts with `self._path(path)`:
 
-```python
-    def _path(self, path: str) -> Path:
-        if self.root is None:
-            return Path(path)
-        root = Path(self.root).resolve()
-        p = (root / path).resolve()
-        if not p.is_relative_to(root):
-            raise PermissionError(f"path escapes root: {path}")
-        return p
+```text
+FUNCTION _path(path):
+    IF there is no root:
+        RETURN path as it is                    // no fence
+    root = the real, full path of root
+    p = the real, full path of root + path     // removes "..", follows symlinks
+    IF p is not inside root:
+        RAISE PermissionError "path escapes root: <path>"
+    RETURN p
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`_path`)
 
 The trick is `resolve()`. It turns a path into its real, absolute form: it removes `..` **and** follows symlinks. Only after that do we ask "is this still inside the root?".
 
@@ -264,31 +265,33 @@ Two limits to know:
 
 ### `exec`: run, stream, stop
 
-```python
-    async def exec(self, command, cwd, timeout, cancel, on_output=None) -> tuple[int | None, str]:
-        proc = await asyncio.create_subprocess_shell(
-            command, cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, start_new_session=True
-        )
-        chunks = list()
+```text
+FUNCTION exec(command, cwd, timeout, cancel, on_output = none):
+    proc = START command in a shell, in cwd,
+           stderr merged into stdout,
+           in a NEW process group                  // so we can kill all children later
+    chunks = empty list
 
-        async def pump():
-            while data := await proc.stdout.read(4096):
-                text = data.decode(errors="replace")
-                chunks.append(text)
-                if on_output:
-                    await on_output(text)
-            await proc.wait()
+    FUNCTION pump():
+        WHILE data = read next 4096 bytes of output:
+            text = decode data                     // bad bytes become a mark, no error
+            ADD text to chunks
+            IF on_output is given:
+                WAIT for on_output(text)
+        WAIT for proc to exit
 
-        run = asyncio.ensure_future(pump())
-        stop = asyncio.ensure_future(cancel.wait())
-        done, _ = await asyncio.wait({run, stop}, timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
-        stop.cancel()
-        if run not in done:
-            await run_kill(proc.pid)
-            await run
-            return None, "".join(chunks)
-        return proc.returncode, "".join(chunks)
+    run  = START pump() as a task
+    stop = START a task that WAITS for cancel to be set
+    WAIT for the first of (run, stop), at most timeout
+    STOP the stop task
+    IF run is not done:                           // timeout or cancel
+        WAIT for run_kill(proc.pid)
+        WAIT for run                              // read the last bytes
+        RETURN (None, all chunks joined)
+    RETURN (proc exit code, all chunks joined)
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`exec`)
 
 Step by step:
 
@@ -323,17 +326,17 @@ A [process-group kill](glossary.md#process-group-kill) stops a command **and** e
 
 With `start_new_session=True`, the shell and every child it starts share one **process group**, and its id is the shell's PID. Then one call kills them all:
 
-```python
-async def run_kill(pgid: int) -> None:
-    """SIGKILL the whole process group (start_new_session) until it is empty: a child forked while the first
-    signal is delivered can miss it."""
-    for _ in range(100):
-        try:
-            os.killpg(pgid, 9)
-        except (ProcessLookupError, PermissionError):  # group empty (macOS: EPERM once only zombies are left)
-            return
-        await asyncio.sleep(0.02)
+```text
+FUNCTION run_kill(pgid):
+    // a child forked while the first signal goes out can miss it, so repeat
+    REPEAT at most 100 times:
+        TRY SEND SIGKILL (9) to process group pgid
+        IF it fails with ProcessLookupError or PermissionError:
+            RETURN      // group empty (macOS: EPERM once only zombies are left)
+        WAIT 0.02 seconds
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`run_kill`)
 
 - `os.killpg(pgid, 9)` sends `SIGKILL` (signal 9) to the whole group. `SIGKILL` cannot be caught or ignored.
 - **Why a loop?** A child may be forked at the very moment the first signal goes out, and miss it. So we send again every 20 ms, until the group is empty.
@@ -346,15 +349,17 @@ async def run_kill(pgid: int) -> None:
 
 We write the rules down **once**, as a test class, in the `testing` [layer](glossary.md#layer) (so apps can import it):
 
-```python
-class EnvConformance:
-    @pytest.fixture
-    async def env(self, make_env, tmp_path):
-        self.root = tmp_path / f"root-{uuid.uuid4().hex[:8]}"  # unique: Docker names containers after it
-        self.root.mkdir()
-        env = make_env(self.root)
-        return await env if inspect.isawaitable(env) else env
+```text
+CLASS EnvConformance:
+    FIXTURE env(make_env, tmp_path):
+        root = tmp_path / "root-<random 8 chars>"   // unique: Docker names containers after it
+        MAKE folder root
+        env = make_env(root)
+        IF env must be awaited: WAIT for it         // Docker env starts async
+        RETURN env
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/testing/env_conformance.py](../../packages/simp_agent/src/simp_agent/testing/env_conformance.py) (`EnvConformance`)
 
 An env joins the suite by subclassing it and giving one fixture, `make_env(root) -> env`. The fixture may be sync or async (Docker needs to start a container). Then every `test_*` method in the class runs against that env:
 
@@ -375,27 +380,31 @@ The idea comes from `env-conformance.ts` in pi, the TypeScript agent that simp-a
 
 `packages/simp_agent/tests/test_env.py` has two direct tests and a 4-line class that pulls in the whole suite:
 
-```python
-class TestLocalEnvConformance(EnvConformance):
-    @pytest.fixture
-    def make_env(self):
-        return lambda root: LocalEnv(str(root))
+```text
+CLASS TestLocalEnvConformance(EnvConformance):
+    FIXTURE make_env:
+        RETURN a function: root -> LocalEnv(root)
 ```
+
+Real code: [packages/simp_agent/tests/test_env.py](../../packages/simp_agent/tests/test_env.py) (`TestLocalEnvConformance`)
 
 That is all `LocalEnv` needs to run the eight checks above. The server does the same for Docker in `apps/server/tests/test_docker_sandbox.py` (`TestDockerEnvConformance`).
 
 The most interesting check is the process-group kill:
 
-```python
-    async def test_exec_timeout_kills_tree(self, env):
-        t = time.monotonic()
-        code, text = await self.run(env, "echo start; (sleep 6; sleep 1; echo late > late.txt) & sleep 30", timeout=2)
-        assert code is None and "start" in text
-        assert time.monotonic() - t < 10
-        while time.monotonic() < t + 8:  # slack for a loaded event loop
-            assert not (self.root / "late.txt").exists()  # background child was killed too
-            await asyncio.sleep(0.1)
+```text
+TEST test_exec_timeout_kills_tree(env):
+    t = now (monotonic clock)
+    (code, text) = run in env, timeout 2 s:
+        "echo start; (sleep 6; sleep 1; echo late > late.txt) & sleep 30"
+    CHECK code is None AND "start" is in text
+    CHECK less than 10 s passed
+    UNTIL 8 s after t:                          // slack for a loaded event loop
+        CHECK late.txt does not exist           // background child was killed too
+        WAIT 0.1 s
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/testing/env_conformance.py](../../packages/simp_agent/src/simp_agent/testing/env_conformance.py) (`test_exec_timeout_kills_tree`)
 
 (`self.run` is a small helper in the suite: it calls `env.exec` with the root as `cwd` and a fresh cancel event.) The command starts a background child that would write `late.txt` after 7 seconds, then sleeps 30. The timeout is 2 seconds. `time.monotonic()` is a [monotonic clock](glossary.md#monotonic-clock): a clock that only goes forward. The test checks: we got `None` and the early output `start`, we returned quickly, and for 8 seconds `late.txt` never appears. With the naive `p.kill()`, the background child would live and write the file.
 

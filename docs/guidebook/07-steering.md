@@ -33,24 +33,24 @@ What is a safe point? The history must stay valid. The model asked for tools; ea
 
 ## Naive version
 
-```python
-class NaiveAgent:
-    def __init__(self, loop_fn):
-        self.loop_fn, self.running, self.inbox = loop_fn, False, []
+```text
+CLASS NaiveAgent(loop_fn):
+    running = false
+    inbox = empty list
 
-    def say(self, text):
-        if self.running:
-            self.inbox.append(UserMessage(text))   # keep it for later
-            return
-        asyncio.create_task(self.run([UserMessage(text)]))
+    FUNCTION say(text):
+        IF running:
+            ADD UserMessage(text) to inbox      // keep it for later
+            RETURN
+        START run([UserMessage(text)]) in the background
 
-    async def run(self, prompts):
-        self.running = True
-        await self.loop_fn(prompts)                # runs until the model stops
-        self.running = False
-        if self.inbox:                             # deliver at the very end
-            msgs, self.inbox = self.inbox, []
-            await self.run(msgs)
+    FUNCTION run(prompts):
+        running = true
+        WAIT for loop_fn(prompts)               // runs until the model stops
+        running = false
+        IF inbox is not empty:                  // deliver at the very end
+            msgs = TAKE everything from inbox
+            WAIT for run(msgs)
 ```
 
 Where it breaks:
@@ -66,38 +66,39 @@ We fix the naive version one problem at a time.
 
 **Step 1 — two queues, not one inbox.** "Change plan" and "then write tests" need different times. So `Agent` keeps two lists, and the user picks one:
 
-```python
-    def steer(self, text: str) -> None:
-        self.steering.append(UserMessage(text))
+```text
+FUNCTION steer(text):
+    ADD UserMessage(text) to steering
 
-    def follow_up(self, text: str) -> None:
-        self.follow_ups.append(UserMessage(text))
+FUNCTION follow_up(text):
+    ADD UserMessage(text) to follow_ups
 ```
 
 **Step 2 — read steering after each tool batch.** The naive inbox waits for the whole run. Now the loop reads steering after every turn, when all tool results are in the history, so the message is safe to add:
 
-```python
-            has_calls, pending = bool(calls), config.get_steering()
+```text
+// at the end of each turn, inside the inner loop
+has_calls = (the model asked for tools)
+pending = config.get_steering()
 ```
 
 **Step 3 — keep going in the same run.** The inner loop goes on while there are tool calls **or** steering. When it ends, the outer loop asks for follow-ups. So there is one `agent_start` and one `agent_end`, and the UI does not flicker:
 
-```python
-    while True:
-        while has_calls or pending:
-            ...
-        pending = config.get_follow_up()
-        if not pending:
-            break
+```text
+FOREVER:
+    WHILE has_calls OR pending:
+        ...                          // one turn
+    pending = config.get_follow_up()
+    IF pending is empty: STOP
 ```
 
 **Step 4 — one message or all.** The naive version sends everything as one batch. `_take` uses a mode, so each message can get its own turn:
 
-```python
-        n = len(queue) if mode == "all" else min(1, len(queue))
+```text
+n = IF mode is "all": length of queue, ELSE: at most 1
 ```
 
-The result is the real code below.
+The result is the real design below.
 
 ## Real design
 
@@ -105,10 +106,14 @@ The result is the real code below.
 
 `agent_loop` itself has no queue. It only asks the caller, through two functions in `LoopConfig`:
 
-```python
-    get_steering: Callable[[], list] = lambda: []  # messages typed while working; read after each tool batch
-    get_follow_up: Callable[[], list] = lambda: []  # read only when the loop would otherwise stop
+```text
+get_steering  = a function that returns a list, default: empty list
+                // messages typed while working; read after each tool batch
+get_follow_up = a function that returns a list, default: empty list
+                // read only when the loop would otherwise stop
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`LoopConfig`)
 
 Each one returns a list of messages (often empty). (The comment on `get_steering` says "after each tool batch", but as we see below it is read at three points.) The loop calls them at fixed points and adds what they return to the history with `add` ([06](06-events-abort.md#events-one-stream-of-small-dicts)), so each message also gives `message_start` / `message_end` events.
 
@@ -118,27 +123,28 @@ Why functions and not lists? The loop does not care where the messages come from
 
 Here is the core of `agent_loop` again, now with the queue parts (`packages/simp_agent/src/simp_agent/agent/__init__.py`; the tool batch is cut, see [05](05-agent-loop.md)):
 
-```python
-    await send({"type": "agent_start"})
-    for p in prompts:
-        await add(p)
-    pending, has_calls, msg = config.get_steering(), True, None
-    while True:
-        while has_calls or pending:
-            await send({"type": "turn_start"})
-            for p in pending:
-                await add(p)
-            pending = []
-            msg = await _llm_turn(system_prompt, messages, config, cancel, send, add)
-            await add(msg)
-            ...                                   # error / abort exit, then the tool batch
-            await send({"type": "turn_end", "message": msg})
-            has_calls, pending = bool(calls), config.get_steering()
-        pending = config.get_follow_up()
-        if not pending:
-            break
-    await send({"type": "agent_end", "messages": new})
-    return new
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
+
+```text
+SEND event {agent_start}
+FOR EACH p in prompts: add(p)
+pending = config.get_steering()          // read point 1
+has_calls = true
+FOREVER:                                 // outer loop: follow-ups
+    WHILE has_calls OR pending:          // inner loop: one pass = one turn
+        SEND event {turn_start}
+        FOR EACH p in pending: add(p)
+        pending = empty
+        msg = WAIT for _llm_turn(...)    // model call (read point 2 is inside)
+        add(msg)
+        ...                              // error / abort exit, then the tool batch
+        SEND event {turn_end, msg}
+        has_calls = (msg asked for tools)
+        pending = config.get_steering()  // read point 3
+    pending = config.get_follow_up()
+    IF pending is empty: STOP
+SEND event {agent_end, new messages}
+RETURN new messages
 ```
 
 Read it as two loops:
@@ -170,13 +176,16 @@ flowchart TD
 1. **Before the first turn.** `pending = config.get_steering()` right after the prompts. A steer that arrived just before the run starts is sent with the prompt. (Point 2 also runs on the first turn.)
 2. **Inside `_llm_turn`, just before the model call.** This is the latest possible moment:
 
-   ```python
-       view = await config.prepare_next_turn(messages)
-       view = list(messages if view is None else view)
-       for p in config.get_steering():
-           await add(p)
-           view.append(p)
+   ```text
+   // inside _llm_turn, before the model call
+   view = WAIT for config.prepare_next_turn(messages)
+   view = copy of (messages IF view is none ELSE view)   // always a copy
+   FOR EACH p in config.get_steering():     // read point 2
+       add(p)                               // into the history
+       ADD p to view                        // and into this turn's view
    ```
+
+   Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_llm_turn`)
 
    `prepare_next_turn` may be slow: it is where compaction runs ([16](16-compaction.md)), and when compaction runs, that is one more model call. A message typed during it goes into this turn, not the next. The docstring says it: "prepare_next_turn hook -> steering poll (the hook may be slow) -> …". The message is added to the history **and** to `view`, because `view` was built before the poll.
 3. **After the tool batch** (`has_calls, pending = bool(calls), config.get_steering()`). This is the main point. All tool results are in the history now, so a user message is safe here.
@@ -197,38 +206,33 @@ This is on purpose. The user pressed Stop, not "throw away what I typed". The ne
 
 `Agent` owns the real queues:
 
-```python
-        self.steering, self.follow_ups = list(), list()
-        self.steering_mode = self.follow_up_mode = "one-at-a-time"  # or "all"
+```text
+CLASS Agent:
+    steering = empty list
+    follow_ups = empty list
+    steering_mode = follow_up_mode = "one-at-a-time"   // or "all"
+
+    FUNCTION steer(text):        ADD UserMessage(text) to steering
+    FUNCTION follow_up(text):    ADD UserMessage(text) to follow_ups
+    FUNCTION clear_queues():     EMPTY steering and follow_ups
+    FUNCTION has_queued():       RETURN true IF either list is not empty
 ```
 
-```python
-    def steer(self, text: str) -> None:
-        self.steering.append(UserMessage(text))
-
-    def follow_up(self, text: str) -> None:
-        self.follow_ups.append(UserMessage(text))
-
-    def clear_queues(self) -> None:
-        self.steering.clear()
-        self.follow_ups.clear()
-
-    def has_queued(self) -> bool:
-        return bool(self.steering or self.follow_ups)
-```
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`Agent.steer / follow_up / clear_queues / has_queued`)
 
 `steer` and `follow_up` are plain sync methods, like `abort`. They only append to a list; they never wait for the loop. A key handler can call them at any time, during a run or not. `has_queued` lets a UI show "2 messages waiting".
 
 The [mode](glossary.md#queue-mode) decides how many messages one read takes:
 
-```python
-    @staticmethod
-    def _take(queue: list, mode: str) -> list:
-        n = len(queue) if mode == "all" else min(1, len(queue))
-        out = queue[:n]
-        del queue[:n]
-        return out
+```text
+FUNCTION _take(queue, mode):
+    n = IF mode is "all": length of queue, ELSE: at most 1
+    out = the first n messages of queue
+    REMOVE those n messages from queue    // so a message is never sent twice
+    RETURN out
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`Agent._take`)
 
 - `"one-at-a-time"` (default): take the oldest message only. Each queued message gets its own turn, and the model answers each one.
 - `"all"`: take everything. The model sees all waiting messages together in one turn.
@@ -237,10 +241,13 @@ The [mode](glossary.md#queue-mode) decides how many messages one read takes:
 
 Finally `_run` connects the lists to the loop:
 
-```python
-                get_steering=lambda: self._take(self.steering, self.steering_mode),
-                get_follow_up=lambda: self._take(self.follow_ups, self.follow_up_mode),
+```text
+// inside _run, when building LoopConfig
+get_steering  = WHEN called: RETURN _take(steering, steering_mode)
+get_follow_up = WHEN called: RETURN _take(follow_ups, follow_up_mode)
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`Agent._run`)
 
 The lambdas read `self.steering` at call time, not when `_run` starts. So a `steer()` called in the middle of the run is seen at the next read point.
 
@@ -252,40 +259,40 @@ The tests are in `test_queues_compaction.py`. They use [FakeProvider](02-fake-pr
 
 Steer during a tool:
 
-```python
-async def test_steer_delivered_after_tool_batch():
-    agent = None
-
-    async def t(args, cancel):
-        agent.steer("change plan")  # typed while the tool runs
-        return "r"
-
-    stream = FakeProvider(call(1), DONE)
-    seen = stream.messages
-    agent = Agent("s", Model(), [AgentTool("t", "", {"type": "object"}, t)], stream)
-    await agent.prompt("go")
-    assert "change plan" not in texts(seen[0])
-    assert texts(seen[1])[-1] == "change plan" and isinstance(seen[1][-2], ToolResultMessage)
-    assert not agent.has_queued()
+```text
+TEST steer is delivered after the tool batch:
+    tool t = WHEN run:
+        agent.steer("change plan")         // typed while the tool runs
+        RETURN "r"
+    provider = FakeProvider(reply that calls t, then DONE)
+    agent = Agent with tool t and provider
+    WAIT for agent.prompt("go")
+    CHECK model call 1 did NOT see "change plan"
+    CHECK model call 2 ends with "change plan", right after a ToolResultMessage
+    CHECK nothing is queued
 ```
+
+Real code: [packages/simp_agent/tests/test_queues_compaction.py](../../packages/simp_agent/tests/test_queues_compaction.py) (`test_steer_delivered_after_tool_batch`)
 
 The tool itself calls `steer`, as a user typing during the tool would. The checks: the first model call did not see it (it was typed later); the second call has it as the last user message, **right after the tool result**, so the history is valid; and the queue is empty after.
 
 Follow-ups in both modes:
 
-```python
-async def test_follow_up_one_at_a_time_and_all():
-    for mode, calls in (("one-at-a-time", 3), ("all", 2)):
-        stream = FakeProvider(DONE, DONE, DONE)
-        seen = stream.messages
-        a = Agent("s", Model(), [], stream)
-        a.follow_up_mode = mode
-        a.follow_up("f1")
-        a.follow_up("f2")
-        await a.prompt("go")
-        assert len(seen) == calls
-        assert texts(seen[-1])[-2:] == ["f1", "f2"] and not a.has_queued()
+```text
+TEST follow-ups in both modes:
+    FOR EACH (mode, expected calls) in ("one-at-a-time", 3), ("all", 2):
+        provider = FakeProvider(DONE, DONE, DONE)
+        agent = Agent with no tools and provider
+        agent.follow_up_mode = mode
+        agent.follow_up("f1")
+        agent.follow_up("f2")
+        WAIT for agent.prompt("go")
+        CHECK number of model calls == expected calls
+        CHECK the last call ends with "f1", "f2"
+        CHECK nothing is queued
 ```
+
+Real code: [packages/simp_agent/tests/test_queues_compaction.py](../../packages/simp_agent/tests/test_queues_compaction.py) (`test_follow_up_one_at_a_time_and_all`)
 
 Two follow-ups are queued before the prompt. In `"one-at-a-time"` mode the model is called three times: for `go`, then `f1`, then `f2`. In `"all"` mode it is called twice: for `go`, then `f1` and `f2` together. In both cases the last call has both messages in history, and nothing is left in the queue. Note that the follow-ups did **not** go with the prompt: they waited until the model answered `go`.
 
