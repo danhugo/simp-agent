@@ -82,10 +82,12 @@ It works for "Hello" and for one tool call. Then it breaks:
 
 **Step 1 — skip chunks with no choices.** Fixes the `IndexError`:
 
-```python
-        if not chunk.choices:
-            continue
+```text
+FOR each chunk:
+    IF chunk has no choices: SKIP it
 ```
+
+Real code: [openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) — `parse`
 
 **Step 2 — one entry per tool call.** Keep a list `calls` and find the entry for each piece by `index` (then by `id`). Each call gets its own argument string, so the arguments of two calls are never mixed.
 
@@ -198,9 +200,14 @@ Empty arguments (`""`) count as `{}`, because some servers send nothing for a to
 
 The server says *why* it stopped in `finish_reason`. Each server uses its own words. We map them to our five words (`stop | tool_use | length | error | aborted`, from `AssistantMessage` in [01](01-messages.md)):
 
-```python
-_STOP = {"stop": "stop", "end": "stop", "length": "length", "tool_calls": "tool_use", "function_call": "tool_use"}
+```text
+stop reason map (server word -> our word):
+    stop, end             -> stop
+    length                -> length
+    tool_calls, function_call -> tool_use
 ```
+
+Real code: [openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) — `_STOP`
 
 At the end of `parse`:
 

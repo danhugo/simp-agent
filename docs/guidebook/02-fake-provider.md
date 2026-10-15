@@ -50,9 +50,11 @@ So a stream function:
 
 The loop does not call a provider by name. It takes the function as a setting. In `agent/__init__.py`:
 
-```python
-stream_fn: Callable = ai.stream  # swap for a fake in tests
+```text
+LoopConfig.stream_fn = ai.stream   // tests put a fake here
 ```
+
+Real code: [agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `LoopConfig.stream_fn`
 
 That one line is why a fake is easy. The default is the real `ai.stream`; a test passes something else.
 
@@ -173,14 +175,16 @@ assert fp.calls == 2  # $1 + $1 > $1.5 -> third call refused before reaching the
 
 A reply may be a message *or* a callable `(ctx) -> message`:
 
-```python
-msg = msg(ctx) if callable(msg) else msg
+```text
+IF reply is a function: reply = reply(ctx)
 ```
+
+Real code: [testing/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/testing/__init__.py) — `FakeProvider.__call__`
 
 This lets a reply look at the context, or do something at the exact moment the model is "thinking". A tiny example: a reply that repeats the last user text.
 
-```python
-echo_back = lambda ctx: AssistantMessage([TextContent(ctx.messages[-1].content)])
+```text
+echo_back(ctx) = assistant message with the text of the last message in ctx
 fp = FakeProvider(echo_back)
 ```
 
@@ -211,27 +215,22 @@ The same file also has `FakeEnv`, a fake for running shell commands. It needs th
 
 First, the fake alone. Only `FakeProvider` and the types from [01](01-messages.md); no loop:
 
-```python
-import asyncio
-from simp_agent.ai import AssistantMessage, Context, Model, TextContent, UserMessage
-from simp_agent.testing import FakeProvider
+```text
+fp  = FakeProvider(reply "hello", then error reply "boom")
+ctx = Context("sys", [user "hi"])
+REPEAT 2 times:
+    FOR each event from fp(model, ctx): PRINT event type
+PRINT fp.calls, first text fp saw
 
-async def main():
-    fp = FakeProvider(AssistantMessage([TextContent("hello")]),
-                      AssistantMessage(stop_reason="error", error="boom"))
-    ctx = Context("sys", [UserMessage("hi")])
-    for _ in range(2):
-        async for ev in fp(Model(), ctx):
-            print(ev["type"])
-    print(fp.calls, fp.messages[0][0].content)
-
-asyncio.run(main())
-# start
-# done
-# start
-# error
-# 2 hi
+// output:
+// start
+// done
+// start
+// error
+// 2 hi
 ```
+
+Real code: [testing/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/testing/__init__.py) — `FakeProvider`
 
 The first reply ends with `done`, the second with `error`, and `fp.messages` kept what was sent.
 
