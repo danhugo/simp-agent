@@ -132,20 +132,21 @@ flowchart TB
 
 ### `system_prompt`: the base text
 
-```python
-# packages/simp_agent/src/simp_agent/coding/__init__.py
-def system_prompt(tools: list, cwd: str, context: tuple[str, str] | None = None) -> str:
-    tool_list = "\n".join(f"- {t.name}: {t.description}" for t in tools)
-    out = (
-        "You are an expert coding assistant. You help the user by reading files, running commands, "
-        "editing code, and writing new files.\n\n"
-        f"Available tools:\n{tool_list}\n\n"
-        "Be concise. Use read before edit. Paths are relative to the working directory.\n\n"
-    )
-    if context:
-        out += f"# Project Context\n\n## {context[0]}\n\n{context[1]}\n\n"
-    return out + f"Current date: {datetime.date.today()}\nCurrent working directory: {cwd}"
+Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `system_prompt`
+
+```text
+FUNCTION system_prompt(tools, cwd, context):
+    tool_list = one line "- name: description" FOR EACH tool
+    out = role sentence ("You are an expert coding assistant ...")
+    ADD "Available tools:" + tool_list
+    ADD the three rules ("Be concise. Use read before edit. Paths are relative ...")
+    IF context is given:                 // (path, text) of the project file
+        ADD "# Project Context", then "## <path>", then the text
+    ADD "Current date: <today>" and "Current working directory: <cwd>"
+    RETURN out
 ```
+
+Key idea: the tool list is built from the real tools, so it is never wrong.
 
 Read it top to bottom; each line has a job:
 
@@ -176,22 +177,22 @@ Current working directory: /work/app
 
 A [context file](glossary.md#context-file) is a Markdown file in the project that holds the team's rules for agents.
 
-```python
-# packages/simp_agent/src/simp_agent/coding/__init__.py
-CONTEXT_FILES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]  # pi resource-loader.ts
+Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `CONTEXT_FILES`, `load_context_file`
 
+```text
+CONTEXT_FILES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]
 
-async def load_context_file(env, cwd: str) -> tuple[str, str] | None:
-    """First context file found in cwd -> (path, text). Reads through env, so it works on any ExecutionEnv.
-    ponytail: cwd only, no parent dirs or ~/.pi-style global file."""
-    for name in CONTEXT_FILES:
-        path = os.path.join(cwd, name)
-        try:
-            return path, await env.read_file(path)
-        except OSError:
-            continue
-    return None
+FUNCTION load_context_file(env, cwd):
+    FOR EACH name in CONTEXT_FILES (in order):
+        path = cwd joined with name
+        TRY:
+            RETURN path, WAIT for env.read_file(path)   // first file found wins
+        IF OSError:
+            go on to the next name        // missing file is normal
+    RETURN None
 ```
+
+Key idea: read through the env, first match wins. Limit: only `cwd`, no parent folders.
 
 Why each part:
 
@@ -215,12 +216,15 @@ The session does not call `system_prompt` once. It keeps a small table of **[pro
 
 How does a function reach the model? In [05](05-agent-loop.md) `agent_loop` took `system_prompt` as a string. At this commit `_llm_turn` also accepts a function:
 
-```python
-# packages/simp_agent/src/simp_agent/agent/__init__.py (_llm_turn)
-    if callable(system_prompt):
-        system_prompt = await _maybe_await(system_prompt())
+Real code: [agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `_llm_turn`
+
+```text
+INSIDE _llm_turn:
+    IF system_prompt is a function:
+        system_prompt = WAIT for system_prompt()    // rebuilt before every model call
     ...
-    async for ev in _stream(config.stream_fn, config.model, Context(system_prompt, llm_msgs, tools), cancel, opts):
+    FOR EACH event from _stream(..., Context(system_prompt, llm_msgs, tools), ...):
+        ...
 ```
 
 The session passes `self._build_prompt` to `Agent(...)`. So before **every** model call, the sections are rebuilt. The loop does not know about sections; it only sees "a string, or a thing that gives a string". Each provider then puts that string where its API wants it ([04](04-providers.md)): `system=` for Anthropic, a `system` (or `developer`) message for OpenAI.
