@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-15
+- ch 19–21: python blocks that explain logic are now plain-English pseudo-code, each with a "Real code:" link (file + function). Shell commands, tests and the ch 21 naive version and Steps 1–4 (used by Exercise 1) stay real code. (checked at `2fc2776`)
 - ch 03: tool-call chunk example now uses the real Chat Completions shape (`type`, `function`, own `finish_reason` chunk, `choices: []` + usage). ch 04: real Responses and Anthropic SSE examples for the same tool call, each event mapped to its code line. (checked at `8c3b8b5`)
 
 ## 2026-10-13

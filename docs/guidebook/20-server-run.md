@@ -40,25 +40,20 @@ We need two things. A **[protocol](glossary.md#protocol)**: the fixed list of me
 
 The simplest idea: one dict of sessions, and an endpoint that runs the prompt and returns the messages.
 
-```python
-from fastapi import FastAPI
-from simp_agent.ai import Model, to_dict
-from simp_agent.session import AgentSession
+```text
+sessions = empty map: id -> AgentSession
 
-app = FastAPI()
-sessions: dict[str, AgentSession] = {}
+ON POST /sessions/{sid}:
+    sessions[sid] = new AgentSession(Model())
+    RETURN {id: sid}
 
-@app.post("/sessions/{sid}")
-def new(sid: str):
-    sessions[sid] = AgentSession(Model())
-    return {"id": sid}
-
-@app.post("/sessions/{sid}/prompt")
-async def prompt(sid: str, body: dict):
+ON POST /sessions/{sid}/prompt with body:
     s = sessions[sid]
-    await s.prompt(body["text"])          # waits for the whole run
-    return [to_dict(m) for m in s.messages]
+    run s.prompt(body["text"]) and WAIT     // waits for the whole run
+    RETURN all messages of s as dicts
 ```
+
+This is a sketch, not code from the repo.
 
 It works for one happy fizzbuzz run. It breaks when:
 
@@ -72,26 +67,27 @@ It works for one happy fizzbuzz run. It breaks when:
 
 **Step 1 — one fixed list of messages.** Give every message a model with a `type` field, and forbid unknown fields:
 
-```python
-class _M(BaseModel):
-    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+```text
+BASE MODEL _M for every message:
+    unknown field     -> error           // extra="forbid"
+    fields with a default -> "required" in the schema
 ```
 
 Why: `{"txt": "hi"}` now fails with a clear error. This fixes problem 3.
 
 **Step 2 — one owner per conversation.** A `Run` holds the `AgentSession` and its state. Only one place can start a loop:
 
-```python
-if not self.busy:
-    await self.start(c.text)
+```text
+IF the run is not busy:
+    start a run with c.text
 ```
 
 Why: a second prompt cannot start a second loop. This fixes problem 2.
 
 **Step 3 — run in the background.** `start()` makes a task and returns at once:
 
-```python
-self.task = asyncio.create_task(self._run(fn))
+```text
+start _run(fn) as a background task       // do not wait for it
 ```
 
 Why: the request no longer waits for the run. This fixes problem 1.
@@ -100,8 +96,8 @@ Why: the request no longer waits for the run. This fixes problem 1.
 
 **Step 5 — wait for the user.** The run waits on a future. A later `Approve` command sets it:
 
-```python
-decision = await self.answer
+```text
+decision = WAIT for the answer future
 ```
 
 Why: the run is not blocked inside one HTTP request. This fixes problem 5.
@@ -116,16 +112,17 @@ The server lives in `apps/server/src/simp_server/`. This chapter covers three pa
 
 `apps/server/src/simp_server/__main__.py` is small. It looks at the first word and picks a mode:
 
-```python
-def main():
-    if sys.argv[1:] == ["build-sandbox"]:
-        sys.exit(build_image())
-    if sys.argv[1:2] in (["run"], ["seed"], ["passwd"], ["users"], ["revoke"], ["rotate"], ["backup"], ["pause"], ["resume"]):
-        from .server import main as server_main
-        return server_main()
-    from .fake import main as fake_main  # `simp-server fake ...`
-    fake_main()
+```text
+FUNCTION main():
+    IF the args are exactly "build-sandbox":
+        build the sandbox image and EXIT
+    IF the first arg is one of: run, seed, passwd, users, revoke,
+                                rotate, backup, pause, resume:
+        RETURN server.main()                  // the real server
+    fake.main()                               // `simp-server fake ...`
 ```
+
+Real code: [apps/server/src/simp_server/__main__.py](../../apps/server/src/simp_server/__main__.py), function `main`.
 
 `simp-server run` starts the real server in `server.py`. Anything else falls to a fake server (`fake.py`) that plays a scripted run with no model.
 
@@ -133,21 +130,27 @@ def main():
 
 `apps/server/src/simp_server/protocol.py` is the single source of truth for the wire. Every message is a Pydantic model. They all share one base:
 
-```python
-class _M(BaseModel):
-    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+```text
+BASE MODEL _M for every message:
+    unknown field     -> error           // extra="forbid"
+    fields with a default -> "required" in the schema
 ```
+
+Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_server/protocol.py), class `_M`.
 
 `extra="forbid"` means an unknown field is an error, not a silent drop. The second option marks default fields as "required" in the schema, so TypeScript can trust they exist.
 
 Every model has a `type` field with a fixed `Literal` value, like `type: Literal["prompt"] = "prompt"`. That field is the **[discriminator](glossary.md#discriminator)**: one field whose value says which model the JSON is. The union types use it:
 
-```python
-Command = Annotated[Union[Prompt, Steer, FollowUp, Abort, Approve, Compact, Continue, SetPlanMode], Field(discriminator="type")]
-...
-server_event = TypeAdapter(ServerEvent)
-command = TypeAdapter(Command)
+```text
+Command = ONE OF Prompt, Steer, FollowUp, Abort, Approve,
+                 Compact, Continue, SetPlanMode
+          (pick which one by the "type" field)
+server_event = a parser for ServerEvent
+command      = a parser for Command
 ```
+
+Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_server/protocol.py), `Command`, `server_event`, `command`.
 
 Pydantic reads `type` first and checks only that one model.
 
@@ -169,26 +172,26 @@ How `seq`, replay and the snapshot work together is in [21 · Replay](21-transpo
 
 The run state is one of five names:
 
-```python
-RunStateName = Literal["idle", "running", "waiting_approval", "aborting", "error"]
+```text
+RunStateName = ONE OF "idle", "running", "waiting_approval", "aborting", "error"
 ```
 
 And the legal moves live in one table, next to the models:
 
-```python
-TRANSITIONS: dict[str, set[str]] = {
-    "idle": {"running"},
-    "running": {"waiting_approval", "aborting", "idle", "error"},
-    "waiting_approval": {"running", "aborting"},
-    "aborting": {"idle", "error"},
-    "error": {"running", "idle"},
-}
+```text
+TRANSITIONS (from -> allowed next states):
+    idle             -> running
+    running          -> waiting_approval, aborting, idle, error
+    waiting_approval -> running, aborting
+    aborting         -> idle, error
+    error            -> running, idle
 
-
-def check_transition(old: str, new: str) -> None:
-    if new not in TRANSITIONS[old]:
-        raise ValueError(f"bad run_state transition {old} -> {new}")
+FUNCTION check_transition(old, new):
+    IF new is not in TRANSITIONS[old]:
+        RAISE error "bad run_state transition old -> new"
 ```
+
+Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_server/protocol.py), `TRANSITIONS` and function `check_transition`.
 
 ```mermaid
 stateDiagram-v2
@@ -213,13 +216,18 @@ Why a table? With a table, a wrong move like `idle -> waiting_approval` raises a
 
 The constructor builds an `AgentSession` and passes **itself** as the store:
 
-```python
-self.session = AgentSession(
-    self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=self.guarded_stream,
-    get_api_key=mgr.api_key_for(self.model), approve=self.approve,
-    ...)
-self.session.subscribe(self.on_event)
+```text
+session = new AgentSession(model,
+              store    = this Run,             // Run has append()
+              env      = env,
+              stream_fn = guarded_stream,
+              get_api_key = the manager's key for this model,
+              approve  = this Run's approve,
+              ...)
+session sends each event to this Run's on_event
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.__init__`.
 
 So the `Run` is a `SessionStore` ([13](13-session.md)): it has `append`. It is also the approval callback (`approve`) and an event subscriber (`on_event`). That is the whole link between the library and the server. The library does not know a server exists.
 
@@ -227,40 +235,47 @@ So the `Run` is a `SessionStore` ([13](13-session.md)): it has `append`. It is a
 
 **Changing state.** Every state change goes through one method:
 
-```python
-async def set_state(self, s: str) -> None:
-    p.check_transition(self.state, s)
-    self.info.run_state = s
-    await self.durable(p.RunState, state=s)
+```text
+FUNCTION set_state(s):
+    check_transition(current state, s)      // raises on a bad move
+    run_state = s
+    SEND durable event RunState(state = s)  // saved, with a seq
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.set_state`.
 
 So every change is checked, and every change is a durable `RunState` event. A tab that reconnects can read the state from the log.
 
 **Starting a run.** `start()` sets `running` and puts the work in a background task:
 
-```python
-await self.set_state("running")
-self.run_id = uuid.uuid4().hex[:8]
+```text
+set_state("running")
+run_id = 8 random hex chars
 ...
-fn = text if callable(text) else functools.partial(self.session.prompt, text)
-self.task = asyncio.create_task(self._run(fn))
+IF text is a function: fn = text           // continue, compact
+ELSE:                  fn = "session.prompt(text)"
+start _run(fn) as a background task, and RETURN at once
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.start`.
 
 This fixes naive problem 1: the HTTP request returns at once, and the run goes on without it. `_turn()` runs `fn`, then sets `idle`, or `error` if the last assistant message has `stop_reason == "error"`. `_run()` has a `finally` that moves a stuck busy run to `error`, so a session is never stuck "running" after a crash.
 
 **Routing commands.** `Run.command()` decides what each command means now:
 
-```python
-if isinstance(c, (p.Prompt, p.FollowUp, p.Steer)):
-    if not self.busy:
-        await self.start(c.text)
-    elif len(self.session.agent.steering) + len(self.session.agent.follow_ups) >= MAX_QUEUED:
-        raise HTTPException(429, f"{MAX_QUEUED} messages already queued")
-    elif isinstance(c, p.Steer):
-        self.session.steer(c.text)
-    else:
-        self.session.follow_up(c.text)
+```text
+IF c is Prompt, FollowUp or Steer:
+    IF not busy:
+        start a run with c.text
+    ELSE IF steer queue + follow-up queue >= MAX_QUEUED:
+        FAIL with HTTP 429 "messages already queued"
+    ELSE IF c is Steer:
+        session.steer(c.text)
+    ELSE:
+        session.follow_up(c.text)
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.command`.
 
 `busy` means `running`, `waiting_approval` or `aborting`. When idle, any text starts a run. When busy, it is queued as a steer or follow-up ([07](07-steering.md)), up to `MAX_QUEUED = 20`. This fixes naive problem 2: there is never a second loop. `Approve` needs a matching pending `call_id`, else 409. `Compact` and `Continue` give 409 while busy.
 
@@ -268,19 +283,20 @@ if isinstance(c, (p.Prompt, p.FollowUp, p.Steer)):
 
 **Approval over the network.** `approve()` is the callback the session calls before a risky tool ([08](08-hooks-approval.md)):
 
-```python
-self.answer = asyncio.get_running_loop().create_future()
-self.pending = p.PendingApproval(call_id=call.id, tool=call.name, args=call.arguments)
-try:
-    await self.durable(p.ApprovalRequest, call_id=call.id, tool=call.name, args=call.arguments)
-    if self.state == "running":
-        await self.set_state("waiting_approval")
-    decision = await self.answer
-except asyncio.CancelledError:
-    self.pending = None
-    await self.durable(p.ApprovalResolved, call_id=call.id, decision="aborted")
-    raise
+```text
+answer  = a new empty future
+pending = PendingApproval(call_id, tool, args)
+TRY:
+    SEND durable event ApprovalRequest(call_id, tool, args)
+    IF state is "running": set_state("waiting_approval")
+    decision = WAIT for answer          // a later Approve command fills it
+IF the wait is cancelled (abort):
+    pending = none
+    SEND durable event ApprovalResolved(call_id, decision = "aborted")
+    stop here (pass the cancel on)
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.approve`.
 
 The run waits on a future. A later `Approve` command (a new HTTP request) calls `self.answer.set_result(...)`. This fixes naive problem 5. If the user aborts, the wait is cancelled and the log still gets a closing `ApprovalResolved` with `"aborted"`. Every request in the log has an answer.
 
@@ -294,28 +310,31 @@ The browser needs the same types in TypeScript. We generate them, so they cannot
 
 `protocol.py` has a root model only for this job:
 
-```python
-class Protocol(_M):
-    """Root used only for schema generation: pulls every wire type into one document."""
-
-    hello: Hello
+```text
+MODEL Protocol:      // used only to make the schema; pulls every wire type into one document
+    hello:       Hello
     hello_error: HelloError
-    event: ServerEvent
-    command: Command
-    session: SessionInfo
+    event:       ServerEvent
+    command:     Command
+    session:     SessionInfo
 ```
+
+Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_server/protocol.py), class `Protocol`.
 
 `json_schema()` turns it into one **[JSON Schema](glossary.md#json-schema)** document. A helper `_untitle` drops per-field titles, so the TS output has plain inline types.
 
 `apps/server/src/simp_server/gen_protocol.py` pipes that schema into the `json-schema-to-typescript` tool through `npx`:
 
-```python
-def generate() -> str:
-    cmd = ["npx", "--yes", "json-schema-to-typescript@15", "--bannerComment",
-           "/* Generated from apps/server/src/simp_server/protocol.py. Do not edit; run gen_protocol. */",
-           "--unreachableDefinitions"]
-    return subprocess.run(cmd, input=json_schema(), capture_output=True, text=True, check=True).stdout
+```text
+FUNCTION generate():
+    cmd = npx json-schema-to-typescript@15
+              with a banner comment "Generated from ... protocol.py. Do not edit"
+              and --unreachableDefinitions
+    RUN cmd, with json_schema() as its input
+    RETURN what it prints (the TypeScript text)    // fails if the tool fails
 ```
+
+Real code: [apps/server/src/simp_server/gen_protocol.py](../../apps/server/src/simp_server/gen_protocol.py), function `generate`.
 
 Run as a script, it writes `apps/web/src/protocol.gen.ts`. With `--check`, it only compares and exits with an error if the file is stale. The output file starts with the banner comment and an `interface Protocol` that lists every event and command.
 
