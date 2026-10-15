@@ -70,8 +70,8 @@ IF deny is not None:
 
 **Step 3 — move policy out of the loop.** The loop must not know about `input()` or a list of dangerous tools. So it only calls a function the caller gives in `LoopConfig`:
 
-```python
-before_tool_call: Callable[[ai.ToolCall, "ToolContext"], Any] | None = None
+```text
+before_tool_call(call, ctx) -> none, or a deny reason
 ```
 
 A CLI, a web app or a test can each pass their own function. `_maybe_await` lets it be sync or async.
@@ -98,12 +98,15 @@ The result is the real design below.
 
 Like `get_steering` in [07](07-steering.md), the loop only **asks** the caller. `LoopConfig` has two optional functions (`packages/simp_agent/src/simp_agent/agent/__init__.py`):
 
-```python
-    # (call, ctx) -> None to run the tool, or a deny reason string (pi beforeToolCall). Sync or async.
-    before_tool_call: Callable[[ai.ToolCall, "ToolContext"], Any] | None = None
-    # (call, result, ctx) -> new ToolResultMessage or None to keep it (pi afterToolCall). Also runs after a deny.
-    after_tool_call: Callable[[ai.ToolCall, ToolResultMessage, "ToolContext"], Any] | None = None
+```text
+LoopConfig:
+    before_tool_call(call, ctx)         -> none = run the tool; a string = deny with this reason
+                                           (sync or async; like pi beforeToolCall)
+    after_tool_call(call, result, ctx)  -> a new ToolResultMessage, or none = keep result
+                                           (also runs after a deny; like pi afterToolCall)
 ```
+
+Real code: [agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `LoopConfig`
 
 - `before_tool_call(call, ctx)` returns `None` ("go on") or a **string**: the reason to deny.
 - `after_tool_call(call, result, ctx)` returns a new `ToolResultMessage`, or `None` to keep the old one.

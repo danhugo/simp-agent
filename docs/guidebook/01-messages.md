@@ -39,20 +39,15 @@ So the list needs a shape that is:
 
 The quick way is plain dicts, like most vendor examples:
 
-```python
-history = [
-    {"role": "user", "content": "write fizzbuzz.py"},
-    {"role": "assistant", "content": "Sure.",
-     "tool_calls": [{"id": "c1", "name": "write", "args": {"path": "fizzbuzz.py"}}]},
-    {"role": "tool", "id": "c1", "content": "wrote 12 lines"},
-]
+```text
+history = list of plain dicts:
+    {role "user",      content "write fizzbuzz.py"}
+    {role "assistant", content "Sure.", tool_calls [{id "c1", name "write", args {...}}]}
+    {role "tool",      id "c1", content "wrote 12 lines"}
 
-def tool_calls(msg):
-    return msg.get("tool_calls", [])
-
-for m in history:
-    for call in tool_calls(m):
-        print(call["name"], call["arguments"])   # KeyError: 'arguments'
+FOR each message m in history:
+    FOR each call in m.tool_calls (or empty):
+        PRINT call.name, call.arguments   // crash: the key is "args", not "arguments"
 ```
 
 It saves to JSON for free, but it breaks fast:
@@ -68,15 +63,13 @@ We fix the dict version one problem at a time. Each step is small.
 
 **Step 1 — a class per kind of message.** Typos like `args`/`arguments` must fail early. A dataclass checks field names when the object is built:
 
-```python
-@dataclass
-class ToolCall:
-    id: str
-    name: str
-    arguments: dict
+```text
+ToolCall = record with fields: id, name, arguments
 
-ToolCall("c1", "write", args={})   # TypeError right here, not later
+ToolCall("c1", "write", args = {})   // error right here: no field "args"
 ```
+
+Real code: [ai/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `ToolCall`
 
 **Step 2 — content is a list of blocks.** One string cannot keep "think, text, tool call, more text" in order. So `AssistantMessage.content` becomes a list of `TextContent | ThinkingContent | ToolCall`.
 
@@ -133,25 +126,20 @@ class ToolResultMessage:
 
 **Assistant message** — what the model said. This is the rich one:
 
-```python
-@dataclass
-class AssistantMessage:
-    content: list = field(default_factory=list)  # TextContent | ThinkingContent | ToolCall
-    stop_reason: str = "stop"  # stop | tool_use | length | error | aborted
-    usage: dict = field(default_factory=lambda: {"input": 0, "output": 0})
-    error: str | None = None
-    error_kind: str | None = None  # "fatal" | "budget" | "policy" = never retried (see is_retryable)
-    api: str = ""  # set by stream(): who produced it, decides what can be replayed
-    provider: str = ""
-    model: str = ""
-    role: Literal["assistant"] = "assistant"
+```text
+AssistantMessage = record:
+    content     = list of TextContent | ThinkingContent | ToolCall, in model order
+    stop_reason = stop | tool_use | length | error | aborted   (default stop)
+    usage       = {input 0, output 0}
+    error, error_kind = none     // error_kind fatal | budget | policy = never retried
+    api, provider, model = ""    // set by stream(): who produced this message
+    role = "assistant"
 
-    def text(self) -> str:
-        return "".join(c.text for c in self.content if isinstance(c, TextContent))
-
-    def tool_calls(self) -> list[ToolCall]:
-        return [c for c in self.content if isinstance(c, ToolCall)]
+text():       JOIN the text of every TextContent block
+tool_calls(): RETURN only the ToolCall blocks
 ```
+
+Real code: [ai/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `AssistantMessage`
 
 Why each field is there:
 
