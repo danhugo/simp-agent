@@ -2,6 +2,9 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-10-15
+- ch 03: tool-call chunk example now uses the real Chat Completions shape (`type`, `function`, own `finish_reason` chunk, `choices: []` + usage). ch 04: real Responses and Anthropic SSE examples for the same tool call, each event mapped to its code line. (checked at `8c3b8b5`)
+
 ## 2026-10-13
 - re-read fixes D: glossary code-name headings in backticks (anchors unchanged); commit hashes added to re-read fixes entries.
 - re-read fixes C: ch 00–03 "Code in this chapter" pins moved to `2fc2776` (from `68e4ce1`, `e097e49`, `a55fe8d`); shown code checked, no snippet changed. (`bd0e7b9`)

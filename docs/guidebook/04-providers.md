@@ -253,7 +253,35 @@ Some servers want `max_completion_tokens`, some fail on `stream_options`. `compa
         kw["include"] = ["reasoning.encrypted_content"]
 ```
 
-`parse` here works like the one in ch 03, but on Responses events (`response.output_item.added`, `...delta`, `response.output_item.done`, `response.completed`).
+`parse` here works like the one in ch 03, but on Responses [SSE](glossary.md#sse) events. Here is the same tool call as in ch 03 (`read` with `{"path": "a"}`), cut to the events and fields we use:
+
+```text
+event: response.output_item.added
+data: {"output_index": 0, "item": {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "read", "arguments": ""}}
+
+event: response.function_call_arguments.delta
+data: {"item_id": "fc_1", "output_index": 0, "delta": "{\"pa"}
+
+event: response.function_call_arguments.delta
+data: {"item_id": "fc_1", "output_index": 0, "delta": "th\": \"a\"}"}
+
+event: response.output_item.done
+data: {"output_index": 0, "item": {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "read", "arguments": "{\"path\": \"a\"}"}}
+
+event: response.completed
+data: {"response": {"status": "completed", "usage": {"input_tokens": 7, "output_tokens": 3, ...}}}
+```
+
+Where each event is handled in `openai_responses.py`:
+
+| Event | Line | What `parse` does |
+|---|---|---|
+| `response.output_item.added` | 79-88 | new `ToolCall` with id `call_id\|id` and `name`; emits `toolcall_start` |
+| `response.function_call_arguments.delta` | 105-108 | adds `delta` to a buffer; emits `toolcall_delta` |
+| `response.output_item.done` | 109, 119-121 | parses the full `arguments` (falls back to the buffer); emits `toolcall_end` |
+| `response.completed` | 123-131 | reads `usage`; stop reason is `tool_use` because the message has a `ToolCall` |
+
+Unlike Chat Completions, the `.done` event carries the whole arguments string, so we do not have to trust the string we built from the pieces.
 
 **Anthropic Messages** (`anthropic.py`). `_to_anthropic` sends a tool result as a `tool_result` block in a **user** turn. Anthropic needs user and assistant turns to alternate, so the last step merges turns next to each other with the same role:
 
@@ -266,7 +294,43 @@ Some servers want `max_completion_tokens`, some fail on `stream_options`. `compa
             merged.append(t)
 ```
 
-So three tool results become one user turn. Thinking is turned on by `thinking_params(model)`: `compat.thinking_budget` gives a fixed token budget (older models); `compat.reasoning_effort` gives adaptive thinking with an effort level. During streaming, `parse` keeps partial text on `msg` (useful if the run is aborted). At the end, the provider rebuilds `msg.content` from the SDK's `get_final_message()`, which has the complete, signed blocks.
+So three tool results become one user turn. Thinking is turned on by `thinking_params(model)`: `compat.thinking_budget` gives a fixed token budget (older models); `compat.reasoning_effort` gives adaptive thinking with an effort level. The same tool call from Anthropic looks like this (cut to the fields we use):
+
+```text
+event: message_start
+data: {"type": "message_start", "message": {"id": "msg_1", "role": "assistant", "content": [], "usage": {"input_tokens": 7, "output_tokens": 1}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "toolu_1", "name": "read", "input": {}}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "{\"pa"}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "th\": \"a\"}"}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 3}}
+
+event: message_stop
+data: {"type": "message_stop"}
+```
+
+We do not read these raw events one by one. `client.messages.stream(...)` from the `anthropic` SDK reads them, builds the message for us, and also gives extra helper events: for each `input_json_delta` it gives an `input_json` event with `partial_json`, and for each `text_delta` a `text` event. Where each one is handled in `anthropic.py`:
+
+| Event | Line | What we do |
+|---|---|---|
+| `message_start` | (SDK) | SDK keeps `usage.input_tokens` |
+| `content_block_start` (`tool_use`) | 71-79 | emits `toolcall_start` with `name` |
+| `content_block_delta` (`input_json_delta`) | 88-89 | via the SDK's `input_json` event: emits `toolcall_delta` with `partial_json` |
+| `content_block_stop` | 90-92 | emits `toolcall_end` (the SDK adds the finished block as `ev.content_block`) |
+| `message_delta` | (SDK) | SDK keeps `stop_reason` and `usage.output_tokens` |
+| `message_stop` | (SDK), 116-119 | stream ends; `get_final_message()` gives `stop_reason` (`tool_use`) and `usage` |
+
+During streaming, `parse` keeps partial text on `msg` (useful if the run is aborted). At the end, the provider rebuilds `msg.content` from the SDK's `get_final_message()`, which has the complete, signed blocks.
 
 ### Error classification: `is_retryable`, `is_context_overflow`
 
