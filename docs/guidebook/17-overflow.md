@@ -35,15 +35,15 @@ This is a **[context overflow](glossary.md#context-overflow)**.
 
 ## Naive version
 
-```python
-async def run(session, text):
-    await session.prompt(text)
-    while session.messages[-1].stop_reason == "error":
-        if "too long" in session.messages[-1].error:
-            await session.compact()
-            await session.agent.continue_()
-        else:
-            break
+```text
+FUNCTION run(session, text):
+    WAIT for session.prompt(text)
+    WHILE the last message is an error:
+        IF its error text has "too long":
+            WAIT for session.compact()
+            WAIT for the agent to continue
+        ELSE:
+            STOP
 ```
 
 It fixes one overflow for one provider. It breaks when:
@@ -61,38 +61,43 @@ We start from the naive loop and fix one problem per step.
 
 Replace `"too long" in ...` with one regex in `ai`:
 
-```python
-def is_context_overflow(error: str) -> bool:
-    return bool(_OVERFLOW.search(error or ""))
+```text
+FUNCTION is_context_overflow(error):
+    RETURN true IF the _OVERFLOW pattern is found in error (empty if missing)
 ```
+Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `is_context_overflow`
 
 **Why:** each provider has its own wording. One function in `ai` hides that. The session does not need to know which provider it talks to. `error or ""` handles a missing error text.
 
 ### Step 2: keep overflow out of retry
 
-```python
-    return not is_context_overflow(error) and bool(_RETRYABLE.search(error or ""))
+```text
+// inside is_retryable(error):
+RETURN NOT is_context_overflow(error) AND the _RETRYABLE pattern is found in error
 ```
+Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `is_retryable`
 
 **Why:** this is a safety guard, not a fix for a real clash: today `_RETRYABLE` does not match any overflow text. But retry with backoff ([15](15-retry.md)) sends the same big request again, so it can never work. With this check an overflow is never retryable, even if the patterns change. Each error has exactly one fix.
 
 ### Step 3: try only once
 
-```python
-        overflowed, attempt = False, 0
-        ...
-            if self.auto_compact and not overflowed and ai.is_context_overflow(last.error):
-                overflowed = True
+```text
+overflowed = false, attempt = 0
+...
+IF auto_compact is on AND NOT overflowed AND is_context_overflow(last.error):
+    overflowed = true                     // never compact twice in one run
 ```
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `Session._run`
 
 **Why:** if one compaction is not enough, a second one with the same settings will not help. The flag stops the endless loop and the repeated cost of summary calls.
 
 ### Step 4: stop if compaction fails
 
-```python
-                if not await self.compact():
-                    break
+```text
+IF WAIT for compact() returns false:
+    STOP                                  // same view would overflow again
 ```
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `Session._run`
 
 **Why:** `compact()` returns `False` on any failure. Calling the model again with the same view would only give the same overflow.
 

@@ -56,45 +56,51 @@ We fix the four problems one at a time. Each step is small.
 
 **Step 1: count tokens, not messages.** Fixes problem 3.
 
-```python
-def estimate(m) -> int:
-    ...
-    return n // 4
+```text
+FUNCTION estimate(message):
+    n = number of characters in the message
+    RETURN n / 4                          // about 4 characters per token
 ```
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `estimate`
 
 A rough guess: 4 characters is about 1 token. Now "too big" means tokens, so 20 file reads count as big.
 
 **Step 2: decide when, using the window.** Still problem 3.
 
-```python
-def should_compact(tokens: int, model, settings: CompactionSettings) -> bool:
-    return settings.enabled and tokens > model.context_window - settings.reserve_tokens
+```text
+FUNCTION should_compact(tokens, model, settings):
+    RETURN settings.enabled
+       AND tokens > model.context_window - settings.reserve_tokens
 ```
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `should_compact`
 
 We act before the limit, not at it. `reserve_tokens` leaves room for the reply and the summary.
 
 **Step 3: cut only on a user or assistant message.** Fixes problem 2.
 
-```python
-ok = [j for j in range(start + 1, len(messages)) if isinstance(messages[j], (UserMessage, AssistantMessage))]
-before = [j for j in ok if j <= i]
+```text
+ok = every index j after start WHERE messages[j] is a user or assistant message
+before = the indexes in ok that are at or before i    // safe cut points
 ```
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `find_cut`
 
 `start` is the `first_kept_index` of the last compaction (0 if there was none). `i` is where the walk back stopped: `find_cut` starts at the end and goes back until it has about `keep_recent_tokens`. Then it moves the cut to a safe message. A tool result is never the first kept message, so it never loses its call.
 
 **Step 4: summarize the old part instead of dropping it.** Fixes problem 1.
 
-```python
-summary = await summarize(stream_fn, model, old, previous, settings.reserve_tokens)
+```text
+summary = WAIT for summarize(old messages, previous summary)   // a model call
 ```
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `summarize`
 
 The model writes a summary in a fixed format. The first section lists every user request, so the task is not lost.
 
 **Step 5: append a marker, do not cut history.** Fixes problem 4.
 
-```python
-return CompactionEntry(summary + format_files(read, mod), cut, read, mod)
+```text
+RETURN CompactionEntry(summary + list of read and modified files, cut, read, mod)
 ```
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `compact`
 
 `compact` returns a `CompactionEntry`. The session appends it. `build_view` uses it to make the smaller list for the model. Full history stays in memory and in the store.
 
