@@ -74,29 +74,31 @@ This rule is not just a promise. A test checks it on every run.
 
 `packages/simp_agent/tests/test_layers.py` reads every `.py` file in the library, finds its imports with Python's `ast` module, and fails if a file imports a layer to its right, or an app (`simp_cli`, `simp_server`):
 
-```python
-LAYERS = ["ai", "agent", "coding", "session", "plugins", "testing"]
-APPS = ("simp_cli", "simp_server")
-...
-def test_layers():
-    bad = []
-    for path in PKG.rglob("*.py"):
-        src = layer_of(list(path.relative_to(PKG).parts))
-        for target in imports(path):
-            if target[0].startswith("APP:"):
-                bad.append(f"{path.relative_to(PKG)} imports app {target[0][4:]}")
-                continue
-            dst = layer_of(target)
-            if dst is None or src == dst:
-                continue
-            if src is None or LAYERS.index(dst) > LAYERS.index(src):
-                bad.append(f"{path.relative_to(PKG)} imports {dst}")
-    assert not bad, bad
+```text
+LAYERS = ai, agent, coding, session, plugins, testing    // left to right
+APPS   = simp_cli, simp_server
+
+FUNCTION test_layers():
+    bad = empty list
+    FOR EACH .py file in the library:
+        src = the layer this file sits in (or none)
+        FOR EACH import in the file:
+            IF it imports an app:
+                ADD "imports app ..." to bad
+                go to next import
+            dst = the layer it imports (or none)
+            IF dst is none OR src == dst:
+                go to next import                   // same layer, or not ours: fine
+            IF src is none OR dst is to the RIGHT of src:
+                ADD "imports dst" to bad            // forbidden direction
+    FAIL the test if bad is not empty
 ```
+
+Real code: [packages/simp_agent/tests/test_layers.py](../../packages/simp_agent/tests/test_layers.py) (`test_layers`)
 
 Note two details:
 
-- `LAYERS.index(dst) > LAYERS.index(src)` means "the target is to the right". That is the forbidden case.
+- "dst is to the RIGHT of src" (in the code: `LAYERS.index(dst) > LAYERS.index(src)`) is the forbidden case.
 - A file that sits in no layer (`src is None`, for example the package's top `__init__.py`) may not import any layer at all.
 
 Run it:

@@ -52,25 +52,22 @@ So we need two things at once:
 
 The first idea: add up text, add up arguments, parse at the end.
 
-```python
-import json
-from simp_agent.ai import AssistantMessage, TextContent, ToolCall
-
-async def parse(chunks):
-    text, args, call_id, name = "", "", None, None
-    async for chunk in chunks:
-        d = chunk.choices[0].delta
-        if d.content:
-            text += d.content
-            yield {"type": "text_delta", "delta": d.content}
-        for tc in d.tool_calls or []:
-            call_id = call_id or tc.id
-            name = name or tc.function.name
-            args += tc.function.arguments or ""
-    msg = AssistantMessage([TextContent(text)])
-    if call_id:
-        msg.content.append(ToolCall(call_id, name, json.loads(args)))
-    yield {"type": "done", "message": msg}
+```text
+FUNCTION parse(chunks):
+    text = "", args = "", call_id = none, name = none
+    FOR EACH chunk (wait for each one):
+        d = the new part of the chunk
+        IF d has text:
+            ADD it to text
+            SEND event {text_delta, the new text}     // UI shows it now
+        FOR EACH tool-call piece in d:
+            keep the first id and the first name
+            ADD the piece's arguments to args          // JSON comes in pieces
+    msg = assistant message with text
+    IF there was a call_id:
+        turn args from JSON text into an object
+        ADD ToolCall(call_id, name, object) to msg
+    SEND event {done, msg}
 ```
 
 It works for "Hello" and for one tool call. Then it breaks:
@@ -104,12 +101,15 @@ The real `parse` is these five steps together. We walk through it in four parts:
 
 The whole function has one job: read chunks, keep a growing message, yield events. The start:
 
-```python
-async def parse(chunks, compat: dict) -> AsyncIterator[dict]:
-    """Turn ChatCompletionChunk objects into events. Last event is 'done' or 'error'."""
-    msg, calls, finish = AssistantMessage(), list(), None  # calls: [{index, id, name, args}]
-    yield {"type": "start", "partial": msg}
+```text
+FUNCTION parse(chunks, compat):
+    msg = new empty AssistantMessage
+    calls = empty list          // tool calls still being built: {index, id, name, args}
+    finish = none               // last finish_reason seen
+    SEND event {start, partial = msg}
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) (`parse`)
 
 `msg` is the message we build. `start` hands it out at once as `partial`, the same object that will be in `done` later. `calls` holds tool calls that are still being built. `finish` remembers the last finish reason seen. `compat` is a dict of small switches per server; it comes from the `Model` (see ch [04](04-providers.md)).
 
@@ -127,28 +127,27 @@ flowchart TD
 
 ### Text deltas
 
-```python
-        if d.content:
-            if not (msg.content and isinstance(msg.content[-1], TextContent)):
-                if msg.content:
-                    yield {"type": "thinking_end"}
-                msg.content.append(TextContent(""))
-            msg.content[-1].text += d.content
-            yield {"type": "text_delta", "delta": d.content}
+```text
+IF d has text:
+    IF the last part of msg is not a TextContent:
+        IF msg has parts: SEND event {thinking_end}    // thinking is over
+        ADD a new empty TextContent to msg
+    ADD the text to the last part
+    SEND event {text_delta, the text}
 ```
 
 The rule is: **add to the last part if it is the same kind; else start a new part.** So "Hel" + "lo" becomes one `TextContent("Hello")`, not two. We also yield the small piece as a `text_delta`, so a UI can print it now.
 
 Thinking works the same way, just before it. The server may name the field `reasoning_content`, `reasoning` or `reasoning_text`, so the code tries all three:
 
-```python
-        r = next((v for k in ("reasoning_content", "reasoning", "reasoning_text") if isinstance(v := getattr(d, k, None), str) and v), None)
-        if r:
-            if not (msg.content and isinstance(msg.content[-1], ThinkingContent)):
-                msg.content.append(ThinkingContent(""))
-                yield {"type": "thinking_start"}
-            msg.content[-1].thinking += r
-            yield {"type": "thinking_delta", "delta": r}
+```text
+r = the first non-empty of d.reasoning_content, d.reasoning, d.reasoning_text
+IF r:
+    IF the last part of msg is not a ThinkingContent:
+        ADD a new empty ThinkingContent to msg
+        SEND event {thinking_start}
+    ADD r to the last part
+    SEND event {thinking_delta, r}
 ```
 
 When the first text arrives after thinking, the text branch yields `thinking_end`. The message keeps the parts in order: thinking first, then text. ([01](01-messages.md) defines `ThinkingContent`.)
@@ -157,20 +156,19 @@ When the first text arrives after thinking, the text branch yields `thinking_end
 
 This is the hard part. A tool call arrives in pieces, and the pieces of several calls can arrive mixed together, before any of them is finished. Each piece must be matched to the right call.
 
-```python
-        for tc in d.tool_calls or []:
-            idx, tid = getattr(tc, "index", None), tc.id
-            cur = next((c for c in calls if idx is not None and c["index"] == idx), None)
-            cur = cur or next((c for c in calls if tid and c["id"] == tid), None)
-            if cur is None:
-                cur = {"index": idx, "id": tid or f"call_{uuid.uuid4().hex[:12]}", "name": "", "args": ""}
-                calls.append(cur)
-                yield {"type": "toolcall_start", "name": tc.function.name if tc.function else ""}
-            if tc.function:
-                cur["name"] = cur["name"] or tc.function.name or ""
-                if tc.function.arguments:
-                    cur["args"] += tc.function.arguments
-                    yield {"type": "toolcall_delta", "delta": tc.function.arguments}
+```text
+FOR EACH tool-call piece tc in d:
+    cur = the entry in calls with the same index
+    IF none: cur = the entry in calls with the same id
+    IF still none:                                   // a new call
+        cur = {index, id (or make "call_" + 12 hex), name = "", args = ""}
+        ADD cur to calls
+        SEND event {toolcall_start, name}
+    IF tc has a function part:
+        keep the first name seen
+        IF it has arguments:
+            ADD them to cur.args                     // only add up, never parse here
+            SEND event {toolcall_delta, the arguments}
 ```
 
 How a piece finds its call:
@@ -183,16 +181,13 @@ The `name` is kept from the first piece that has one. The argument text is only 
 
 After the last chunk, each call is parsed once:
 
-```python
-    for c in calls:
-        try:
-            args = json.loads(c["args"] or "{}")
-            if not isinstance(args, dict):
-                raise ValueError
-        except ValueError:
-            args = {"_raw": c["args"]}  # fails schema validation -> model gets an error result
-        msg.content.append(ToolCall(c["id"], c["name"], args))
-        yield {"type": "toolcall_end"}
+```text
+FOR EACH c in calls:                       // after the last chunk
+    TRY: args = JSON object from c.args (empty text -> {})
+    IF that fails, or it is not an object:
+        args = {"_raw": c.args}            // schema check fails later -> model gets an error result
+    ADD ToolCall(c.id, c.name, args) to msg
+    SEND event {toolcall_end}
 ```
 
 Note what happens with bad JSON. We do **not** throw the call away and we do **not** raise. We keep the raw text as `{"_raw": ...}`. Later, when the loop runs the tool, the arguments fail the tool's schema check, and the model gets an error result saying "Invalid arguments" (ch [05](05-agent-loop.md)). The model sees its mistake and can try again. `json.JSONDecodeError` is a `ValueError`, so one `except` covers both broken JSON and JSON that is not an object (like `[1, 2]`).
@@ -209,19 +204,19 @@ _STOP = {"stop": "stop", "end": "stop", "length": "length", "tool_calls": "tool_
 
 At the end of `parse`:
 
-```python
-    if finish is None:
-        if compat.get("supports_finish_reason", True):
-            msg.stop_reason, msg.error = "error", "Stream ended without finish_reason"
-        else:
-            msg.stop_reason = "tool_use" if calls else "stop"
-    elif finish in _STOP:
-        msg.stop_reason = _STOP[finish]
-    else:
-        msg.stop_reason, msg.error = "error", f"Provider finish_reason: {finish}"
-    if msg.stop_reason == "stop" and calls:  # vLLM/Ollama send "stop" with tool calls
-        msg.stop_reason = "tool_use"
-    yield {"type": "error" if msg.stop_reason == "error" else "done", "message": msg}
+```text
+IF finish is none:
+    IF compat.supports_finish_reason (default yes):
+        stop_reason = error, error = "Stream ended without finish_reason"
+    ELSE:
+        stop_reason = tool_use IF there are calls ELSE stop
+ELSE IF finish is in _STOP:
+    stop_reason = _STOP[finish]
+ELSE:
+    stop_reason = error, error = "Provider finish_reason: " + finish
+IF stop_reason is stop AND there are calls:      // vLLM/Ollama send "stop" with tool calls
+    stop_reason = tool_use
+SEND event {error IF stop_reason is error ELSE done, msg}
 ```
 
 Four cases:
@@ -241,40 +236,47 @@ The last event is `error` when the stop reason is `error`, else `done`. That kee
 
 **[Usage](glossary.md#usage)** is the token count for one call. It is needed for cost limits (ch [23](23-limits.md)) and for knowing when to compact (ch [16](16-compaction.md)).
 
-```python
-def _usage(u) -> dict:
-    details = getattr(u, "completion_tokens_details", None)  # completion_tokens already include reasoning
-    return {"input": u.prompt_tokens or 0, "output": u.completion_tokens or 0,
-            "reasoning": getattr(details, "reasoning_tokens", None) or 0}
+```text
+FUNCTION _usage(u):
+    RETURN {input = u.prompt_tokens or 0,
+            output = u.completion_tokens or 0,
+            reasoning = u.completion_tokens_details.reasoning_tokens or 0}
+            // reasoning is already inside output
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) (`_usage`)
 
 `reasoning` is for information only: it is already inside `output`, so do not add it twice.
 
 Usage can come in two places, so `parse` checks both:
 
-```python
-        usage = getattr(chunk, "usage", None)
-        if not chunk.choices:
-            if usage:
-                msg.usage = _usage(usage)
-            continue
-        choice = chunk.choices[0]
-        usage = usage or getattr(choice, "usage", None)
+```text
+usage = chunk.usage
+IF the chunk has no choices:
+    IF usage: msg.usage = _usage(usage)
+    go to next chunk                     // the last, usage-only chunk
+choice = the first choice
+IF no usage yet: usage = choice.usage
+IF usage: msg.usage = _usage(usage)
+finish = choice.finish_reason, or keep the old one
+d = choice.delta; IF d is none: go to next chunk
 ```
 
-The `if not chunk.choices: continue` line is also the fix for the naive `IndexError`: the final usage-only chunk has no choices. The server only sends that chunk when asked; `stream` asks with `stream_options={"include_usage": True}` unless `compat["include_usage"]` is `False`.
+The "no choices → go to next chunk" step is also the fix for the naive `IndexError`: the final usage-only chunk has no choices. The server only sends that chunk when asked; `stream` asks with `stream_options={"include_usage": True}` unless `compat["include_usage"]` is `False`.
 
 ### The wrapper: `stream`
 
 `parse` only reads chunks. The `stream` function in the same file makes the HTTP request and calls `parse`:
 
-```python
-        chunks = await client.chat.completions.create(**kw)
-        async for ev in parse(chunks, compat):
-            yield ev
-    except Exception as e:
-        yield {"type": "error", "message": AssistantMessage(stop_reason="error", error=str(e))}
+```text
+TRY:
+    chunks = WAIT for client.chat.completions.create(...)
+    FOR EACH event from parse(chunks, compat): SEND it on
+IF any exception:
+    SEND event {error, AssistantMessage(stop_reason = error, error = the text of the exception)}
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) (`stream`)
 
 A network error or a 401 becomes an `error` event, not an exception. We split `parse` out of `stream` so tests can feed it plain objects with no network and no `openai` client. Ch [04](04-providers.md) covers the request side.
 
