@@ -61,39 +61,68 @@ We fix the naive `model_for` one problem at a time.
 
 **Step 1 — pick `provider` from `api`.** The provider name decides which API key is used ([04](04-providers.md)). An `openai-*` API always means the `openai` provider:
 
-```python
-api = pr.get("api", "anthropic-messages")
-provider = "openai" if api.startswith("openai") else "anthropic"
+Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
+
+```text
+api = profile "api", or "anthropic-messages"
+IF api starts with "openai": provider = "openai"
+ELSE: provider = "anthropic"
 ```
+
+Key idea: the API name picks the provider, so the right key is used.
 
 **Step 2 — read only known keys.** We build a `kw` dict by hand. `model` becomes `id`. Other keys, like `plugins`, are never passed to `Model`, so no `TypeError`:
 
-```python
-kw = {"id": pr.get("model"), "api": api, "provider": provider,
-      "base_url": pr.get("base_url"), "api_key_env": pr.get("api_key_env")}
-kw.update({k: pr[k] for k in ("max_tokens", "context_window") if k in pr})
+Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
+
+```text
+kw = {id: profile "model", api, provider, base_url, api_key_env}
+FOR EACH key in (max_tokens, context_window):
+    IF key is in profile: ADD it to kw
+// other keys (like plugins) are never read
 ```
+
+Key idea: only known keys go to `Model`, so no `TypeError`.
 
 **Step 3 — drop `None`.** `pr.get(...)` gives `None` for a missing key. Passing `None` would hide `Model`'s default (for example `id="claude-sonnet-5-5"`). So we filter:
 
-```python
-return Model(**{k: v for k, v in kw.items() if v is not None})
+Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
+
+```text
+RETURN Model(kw without any None values)   // None would hide Model's default
 ```
+
+Key idea: a missing key keeps `Model`'s default.
 
 **Step 4 — turn on usage for OpenAI.** We copy `compat` (so the settings dict is not changed) and set `include_usage` only if the user did not set it. An explicit `False` stays:
 
-```python
-kw["compat"] = dict(pr.get("compat", dict()))
-if api.startswith("openai"):
-    kw["compat"].setdefault("include_usage", True)
+Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
+
+```text
+kw.compat = a COPY of profile "compat" (or empty)   // never change the settings dict
+IF api starts with "openai":
+    IF include_usage is not set: include_usage = True   // an explicit False stays
+```
+```text
+// A settings profile (plain dict from TOML) -> Model. Shared by the CLI and the server.
+build_model(pr):
+  api = pr "api", default "anthropic-messages"
+  kw:
+    id          = pr "model"
+    api         = api
+    provider    = "openai" IF api starts with "openai" ELSE "anthropic"
+    base_url    = pr "base_url"
+    api_key_env = pr "api_key_env"
+    compat      = a COPY of pr "compat" (empty if missing)
+  IF pr has max_tokens or context_window: ADD them to kw
+  IF api starts with "openai":
+    SET compat include_usage = true, ONLY IF not set yet
+  DROP every kw value that is None      // None -> Model's default
+  RETURN Model(kw)
 ```
 
-**Step 5 — plugins by name.** A small table maps names to classes. A typo raises at once. Each call makes new objects, because plugins keep state:
-
-```python
-known = {"redact_secrets": RedactSecrets, "plan_mode": PlanMode}
-return [known[n]() for n in names]
-```
+Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
+Key idea: a name table; a typo fails at once.
 
 **Step 6 — two real plugins.** Now we write `RedactSecrets` and `PlanMode`. They use only the hooks from [14](14-plugins.md). The result is the real code below.
 
@@ -103,18 +132,25 @@ return [known[n]() for n in names]
 
 A **[profile](glossary.md#profile)** is a plain dict (from a settings file) that describes one model setup. `packages/simp_agent/src/simp_agent/session/profile.py`:
 
-```python
-"""A settings profile (plain dict from TOML) -> Model. Shared by the CLI and the server."""
+Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
 
-def build_model(pr: dict) -> Model:
-    api = pr.get("api", "anthropic-messages")
-    kw = {"id": pr.get("model"), "api": api, "provider": "openai" if api.startswith("openai") else "anthropic",
-          "base_url": pr.get("base_url"), "api_key_env": pr.get("api_key_env"), "compat": dict(pr.get("compat", dict()))}
-    kw.update({k: pr[k] for k in ("max_tokens", "context_window") if k in pr})
-    if api.startswith("openai"):
-        kw["compat"].setdefault("include_usage", True)
-    return Model(**{k: v for k, v in kw.items() if v is not None})  # None -> Model's default
+```text
+// A settings profile (plain dict) -> Model. Shared by the CLI and the server.
+FUNCTION build_model(pr):
+    api = pr "api", or "anthropic-messages"
+    provider = "openai" IF api starts with "openai", ELSE "anthropic"
+```text
+build_plugins(names):
+  known = "redact_secrets" -> RedactSecrets, "plan_mode" -> PlanMode
+  IF any name is not in known:
+    RAISE error "unknown plugin ...; have [list]"
+  FOR EACH name, in order: MAKE a NEW object of its class
+  RETURN the list
 ```
+
+Real code: [plugins/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/plugins/__init__.py) — `build_plugins`
+
+Key idea: one function, so a profile means the same model in the CLI and the server.
 
 Each line fixes one naive problem:
 
@@ -132,32 +168,41 @@ Note: keys are never in the profile. Only `api_key_env`, the **name** of an env 
 
 `packages/simp_agent/src/simp_agent/plugins/__init__.py`:
 
-```python
-def build_plugins(names: list[str]) -> list:
+Real code: [plugins/__init__.py](../../packages/simp_agent/src/simp_agent/plugins/__init__.py) — `build_plugins`
+
+```text
+FUNCTION build_plugins(names):
     known = {"redact_secrets": RedactSecrets, "plan_mode": PlanMode}
-    unknown = [n for n in names if n not in known]
-    if unknown:
-        raise ValueError(f"unknown plugin {unknown[0]!r}; have {sorted(known)}")
-    return [known[n]() for n in names]
+    IF any name is not in known:
+```text
+setup(api, config):
+  values = config "secrets" (empty list if missing)
+  IF config "env" is on (default on):
+    FOR EACH env var whose name has KEY / TOKEN / SECRET / PASSWORD:
+      ADD its value to values
+  secrets = values with length >= 8, no repeats, LONGEST FIRST
 ```
 
-A profile lists plugins by name. `build_plugins` turns names into fresh objects and raises a clear error on a typo. The server calls it for every profile when it starts (`create_app`), so a typo stops the boot, not the first chat.
+Real code: [plugins/redact_secrets.py](../../packages/simp_agent/src/simp_agent/plugins/redact_secrets.py) — `RedactSecrets.setup`
 
 Why fresh objects? A plugin keeps state (plan mode's on/off). Each session needs its own.
 
 ### RedactSecrets
 
-**[RedactSecrets](glossary.md#redactsecrets)** (`plugins/redact_secrets.py`) masks secrets in tool output and in everything sent to the model.
+```text
+tool_result(call, result):
+  masked = mask(result content)
+  IF masked is different: REPLACE the content with masked
+  ELSE: do nothing
 
-```python
-PATTERNS = re.compile(
-    r"sk-[A-Za-z0-9_-]{16,}"  # OpenAI / Anthropic style keys
-    r"|eyJ[\w-]+\.[\w-]+\.[\w-]+"  # JWT
-    r"|AKIA[0-9A-Z]{16}"  # AWS access key id
-    r"|gh[pousr]_[A-Za-z0-9]{30,}"  # GitHub tokens
-)
-SECRET_ENV = re.compile(r"KEY|TOKEN|SECRET|PASSWORD", re.I)
-MASK = "[REDACTED]"
+tool_update(call, text):
+  RETURN mask(text)              // streamed output
+
+context(messages):
+  RETURN a masked COPY of each message   // history keeps the original
+```
+
+Real code: [plugins/redact_secrets.py](../../packages/simp_agent/src/simp_agent/plugins/redact_secrets.py) — `RedactSecrets.tool_result`, `tool_update`, `context`
 ```
 
 Two ways to find a secret:
@@ -165,31 +210,38 @@ Two ways to find a secret:
 1. **Known shapes** (`PATTERNS`): API keys, JWTs, AWS and GitHub tokens.
 2. **Known values**, collected in `setup`:
 
-```python
-    def setup(self, api, config: dict) -> None:
-        values = list(config.get("secrets", []))
-        if config.get("env", True):
-            values += [v for k, v in os.environ.items() if SECRET_ENV.search(k)]
-        self.secrets = sorted({v for v in values if len(v) >= 8}, key=len, reverse=True)  # longest first
+Real code: [plugins/redact_secrets.py](../../packages/simp_agent/src/simp_agent/plugins/redact_secrets.py) — `setup`
+
+```text
+FUNCTION setup(api, config):
+```text
+BLOCKED = write, edit, bash
+PROMPT  = "PLAN MODE is on: plan only. ... Do not change files or run commands."
+
+PlanMode (name "plan_mode"):
+  start: enabled = off
+
+  setup(api, config):
+    FIND the LAST CustomEntry of type "plan_mode" in history
+    IF found: turn on/off from its data      // resume keeps the old state
+    ELSE:     turn on/off from config "enabled" (default off)
+
+  _apply(on):
+    SET enabled = on
+    IF on: ADD prompt section "plan_mode" with PROMPT, order 1000   // last section
+    ELSE:  REMOVE prompt section "plan_mode"
+
+  set_enabled(on):
+    _apply(on)
+    SAVE CustomEntry "plan_mode" with enabled = on   // saved, not sent to the model
+
+  tool_call(call):
+    IF enabled AND call name is in BLOCKED:
+      BLOCK with "plan mode is on (read-only)"
+    ELSE: do nothing
 ```
 
-`config["secrets"]` lets the app pass its own keys (the server passes its provider keys). With `env` on (the default), the value of every env var whose name has `KEY`, `TOKEN`, `SECRET` or `PASSWORD` is also masked. Values shorter than 8 characters are skipped: masking `"1"` everywhere would break the output. Longest first, so a long secret is masked whole before a shorter one that is part of it.
-
-It uses three hooks from [14](14-plugins.md):
-
-```python
-    def tool_result(self, call, result):
-        masked = self.mask(result.content)
-        return {"content": masked} if masked != result.content else None
-
-    def tool_update(self, call, text: str) -> str:
-        return self.mask(text)
-    ...
-    def context(self, messages: list) -> list:  # copies only: history keeps the original
-        return [self.deep(m) for m in messages]
-```
-
-- `tool_result`: if `bash` prints `cat .env`, the saved tool result is masked.
+Real code: [plugins/plan_mode.py](../../packages/simp_agent/src/simp_agent/plugins/plan_mode.py) — `PlanMode` (`setup`, `_apply`, `set_enabled`, `tool_call`)
 - `tool_update`: streamed output is masked before the UI sees it.
 - `context`: every message in the model's view is masked. `deep` walks every string field of every dataclass (text, thinking, tool call arguments) and returns **copies**. It skips `id`, `signature`, `type` and `role`: these are provider data we must not touch, and changing them would break the next call.
 
@@ -199,38 +251,37 @@ Why `context` and not only `tool_result`? The user may paste a key in their own 
 
 **[Plan mode](glossary.md#plan-mode)** (`plugins/plan_mode.py`) makes the agent read-only: it may read and explore, then describe a plan.
 
-```python
-BLOCKED = {"write", "edit", "bash"}
-PROMPT = "PLAN MODE is on: plan only. Read and explore, then describe the plan. Do not change files or run commands."
+Real code: [plugins/plan_mode.py](../../packages/simp_agent/src/simp_agent/plugins/plan_mode.py) — `PlanMode`
 
+```text
+BLOCKED = {write, edit, bash}
+PROMPT = "PLAN MODE is on: plan only. Read and explore, then describe the plan. ..."
 
-class PlanMode:
-    name = "plan_mode"
+CLASS PlanMode (name "plan_mode"):
+    start: enabled = False, api = none
 
-    def __init__(self):
-        self.enabled, self.api = False, None
+    FUNCTION setup(api, config):
+        keep api
+        last = the LAST CustomEntry in history with type "plan_mode"
+        IF last exists: _apply(last.data enabled)
+        ELSE: _apply(config "enabled", default False)   // start value for a new session
 
-    def setup(self, api, config: dict) -> None:
-        self.api = api
-        last = next((m for m in reversed(api.get_messages()) if isinstance(m, CustomEntry) and m.type == self.name), None)
-        self._apply(last.data["enabled"] if last else bool(config.get("enabled", False)))
+    FUNCTION _apply(on):
+        enabled = on
+        IF on: ADD prompt section "plan_mode" = PROMPT, order 1000   // last
+        ELSE: remove prompt section "plan_mode"
 
-    def _apply(self, on: bool) -> None:
-        self.enabled = on
-        if on:
-            self.api.add_prompt_section(self.name, PROMPT, 1000)
-        else:
-            self.api.remove_prompt_section(self.name)
+    FUNCTION set_enabled(on):
+        _apply(on)
+        WAIT for api.append_entry("plan_mode", {enabled: on})   // saved, not sent to model
 
-    async def set_enabled(self, on: bool) -> None:
-        self._apply(on)
-        await self.api.append_entry(self.name, {"enabled": on})
-
-    def tool_call(self, call):
-        if self.enabled and call.name in BLOCKED:
-            return {"block": "plan mode is on (read-only)"}
-        return None
+    FUNCTION tool_call(call):
+        IF enabled AND call.name is in BLOCKED:
+            RETURN {block: "plan mode is on (read-only)"}
+        RETURN nothing
 ```
+
+Key idea: the prompt asks, the hook enforces. State lives in history, so resume works.
 
 It uses every main socket from [14](14-plugins.md):
 

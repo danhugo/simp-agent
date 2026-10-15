@@ -108,25 +108,34 @@ Put the overflow branch first inside the same `while` as retry, with one `contin
 
 In `packages/simp_agent/src/simp_agent/ai/__init__.py`:
 
-```python
-_OVERFLOW = re.compile(
-    r"prompt (is )?too long|request_too_large|exceeds the context window|maximum context length"
-    r"|context[_ ]length[_ ]exceeded|too many tokens|token limit exceeded",
-    re.I,
-)
+Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `_OVERFLOW`, `is_context_overflow`
 
+```text
+_OVERFLOW = one regex, ignore case, any of:
+    "prompt (is) too long", "request_too_large", "exceeds the context window",
+    "maximum context length", "context_length_exceeded", "too many tokens",
+    "token limit exceeded"
 
-def is_context_overflow(error: str) -> bool:
-    return bool(_OVERFLOW.search(error or ""))
+FUNCTION is_context_overflow(error):
+    RETURN true IF _OVERFLOW is found in (error or "")   // no text -> false
 ```
+
+Key idea: one regex hides each provider's wording. Limit: a new wording from a provider needs a new pattern.
 
 Same idea as `is_retryable` in [15](15-retry.md): one regex over the error text covers the known wordings of all providers. `error or ""` makes it safe when there is no text.
 
 And `is_retryable` excludes it on purpose:
 
-```python
-    return not is_context_overflow(error) and bool(_RETRYABLE.search(error or ""))
+Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `is_retryable`
+
+```text
+FUNCTION is_retryable(error, kind):
+    ...
+    IF is_context_overflow(error): RETURN false   // overflow has its own fix
+    RETURN true IF _RETRYABLE is found in (error or "")
 ```
+
+Key idea: an error is overflow or retryable, never both.
 
 So an error is either an overflow or a retryable error, never both. Each has its own fix.
 
@@ -134,25 +143,29 @@ So an error is either an overflow or a retryable error, never both. Each has its
 
 In `packages/simp_agent/src/simp_agent/session/__init__.py`, the first branch of the loop in `_run` (we saw the retry branch in [15](15-retry.md)):
 
-```python
-    async def _run(self, start) -> list:
-        a = self.agent
-        self._abort = asyncio.Event()
-        new = await start()
-        overflowed, attempt = False, 0
-        while (last := a.messages[-1]).role == "assistant" and last.stop_reason == "error":
-            if self.auto_compact and not overflowed and ai.is_context_overflow(last.error):
-                # overflow: compact once and continue (error stays in history; the LLM view drops it)
-                overflowed = True
-                if not await self.compact():
-                    break
-            elif ai.is_retryable(last.error, last.error_kind) and attempt < self.max_retries:
-                ...  # retry with backoff, chapter 15
-            else:
-                break
-            new += await a.continue_()
-        ...
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `_run`
+
+```text
+FUNCTION _run(start):
+    a = self.agent
+    self._abort = new abort event
+    new = WAIT for start()
+    overflowed = false, attempt = 0
+    WHILE last message is an assistant error:
+        IF self.auto_compact AND NOT overflowed AND is_context_overflow(last.error):
+            // overflow: compact once and continue
+            // (error stays in history; the LLM view drops it)
+            overflowed = true
+            IF NOT (WAIT for self.compact()): STOP loop
+        ELSE IF is_retryable(last.error, last.error_kind) AND attempt < self.max_retries:
+            ...   // retry with backoff, chapter 15
+        ELSE:
+            STOP loop
+        ADD (WAIT for a.continue_()) to new
+    ...
 ```
+
+Key idea: one loop handles every error turn; overflow gets one compaction only. Limit: compaction uses normal settings, so if the recent part alone is too big, the run stops with the error.
 
 Read it line by line:
 
@@ -189,17 +202,21 @@ Edge cases that follow from this order:
 
 `AgentSession.compact()` is the same method used by the `/compact` command and by auto compaction:
 
-```python
-    async def compact(self) -> bool:
-        ...
-        try:
-            stream_fn = functools.partial(a.stream_fn, **await api_key_opts(a.get_api_key, a.model))
-            entry = await compact(a.messages, a.model, stream_fn, self.compaction, self._context)
-        except Exception as e:
-            await self._emit({"type": "compaction_end", "error": str(e), "tokens_before": before, "tokens_after": before})
-            return False
-        a.messages.append(entry)
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `compact`
+
+```text
+FUNCTION compact():
+    ...
+    TRY:
+        stream_fn = a.stream_fn with the API key options
+        entry = WAIT for compact(a.messages, a.model, stream_fn, self.compaction, self._context)
+    IF any error:
+        SEND event compaction_end with the error (tokens_after = tokens_before)
+        RETURN false            // caller stops, no new model call
+    ADD entry to a.messages
 ```
+
+Key idea: every failure becomes `False`, so the overflow branch has one simple exit.
 
 The pure `compact` in `packages/simp_agent/src/simp_agent/agent/compaction.py` raises `RuntimeError("nothing to compact")` when `find_cut` returns `None`. The method turns any exception into `False`. So "nothing to cut" and "summary call failed" both end the overflow branch with `break`.
 
