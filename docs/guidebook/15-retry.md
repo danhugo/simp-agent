@@ -31,17 +31,14 @@ But not every error should be retried. A missing API key or a spent budget will 
 
 ## Naive version
 
-```python
-import asyncio
-
-async def prompt_with_retry(agent, text, tries=3):
-    await agent.prompt(text)
-    for _ in range(tries):
-        last = agent.messages[-1]
-        if last.role != "assistant" or last.stop_reason != "error":
-            return
-        await asyncio.sleep(2)            # wait, then try again
-        await agent.continue_()
+```text
+FUNCTION prompt_with_retry(agent, text, tries=3):
+    RUN agent.prompt(text)
+    REPEAT tries times:
+        last = the last message
+        IF last is not an assistant error: RETURN
+        SLEEP 2 seconds                  // wait, then try again
+        RUN agent.continue_()
 ```
 
 It helps with one `429`. It breaks when:
@@ -57,132 +54,160 @@ We fix the naive version one problem at a time.
 
 **Step 1 — only retry errors that can go away.** We add `is_retryable(error, kind)` in `ai`. It checks the error text with a regex, and it says "no" for some error kinds:
 
-```python
-elif ai.is_retryable(last.error, last.error_kind) and attempt < self.max_retries:
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `_run`
+
+```text
+ELSE IF ai.is_retryable(last.error, last.error_kind) AND attempt < max_retries:
+    // retry this one
 ```
+
+Key idea: only retry errors that can go away.
 
 Why: "no API key" will fail every time. A retry only wastes time.
 
 **Step 2 — wait longer each time.** The fixed 2 seconds becomes a doubling wait:
 
-```python
-delay = self.retry_base_delay * 2 ** (attempt - 1)
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `_run`
+
+```text
+delay = retry_base_delay * 2 ^ (attempt - 1)     // 2, 4, 8 ...
 ```
+
+Key idea: each wait is double the last one.
 
 Why: a busy server needs more room each time, not the same hit every 2 seconds.
 
 **Step 3 — let abort stop the wait.** `asyncio.sleep` is replaced by a wait on an event, with a time limit:
 
-```python
-await asyncio.wait_for(self._abort.wait(), delay)
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `_run`
+
+```text
+WAIT for the abort event, but at most delay seconds
 ```
+
+Key idea: abort ends the wait at once.
 
 Why: Ctrl-C must work at once, even when no model call is running.
 
 **Step 4 — tell the UI.** We emit `auto_retry_start` before each wait and `auto_retry_end` at the end.
 
 Why: the user should see "retrying", not a frozen screen.
+Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `_RETRYABLE`, `NON_RETRYABLE`, `is_retryable`
 
-**Note — failed replies are already hidden.** We need nothing new for this. `transform_messages` in `ai` already drops assistant messages with `stop_reason` `"error"` or `"aborted"` ([04](04-providers.md)). The error stays in history (for the user and the store), but the model never sees it.
+```text
+_RETRYABLE = a regex, case-insensitive, that matches any of:
+    429 or 5xx codes, overloaded, rate limit, bad gateway, too many requests,
+    service unavailable, internal server error, connection, network,
+    timed out, econnreset, stream ended
 
-**Step 5 — move it into the session.** The loop lives in `AgentSession._run`, so `prompt()` and `continue_()` both get it for free.
-
-The result is the real code below.
-
-## Real design
-
-### Which errors are retryable
-
-In `packages/simp_agent/src/simp_agent/ai/__init__.py`:
-
-```python
-_RETRYABLE = re.compile(
-    r"\b(429|5\d\d)\b|overloaded|rate.?limit|bad gateway|too many requests|service unavailable|internal server error"
-    r"|connection|network|timed? ?out|econnreset|stream ended",
-    re.I,
-)
-...
 NON_RETRYABLE = {"fatal", "budget", "policy"}
 
-
-def is_retryable(error: str, kind: str | None = None) -> bool:
-    if kind in NON_RETRYABLE:
-        return False
-    return not is_context_overflow(error) and bool(_RETRYABLE.search(error or ""))
+FUNCTION is_retryable(error, kind):
+    IF kind is in NON_RETRYABLE: RETURN no     // our own code said "never"
+    IF is_context_overflow(error): RETURN no   // same big request fails again
+    RETURN yes IF _RETRYABLE matches the error text
 ```
+```text
+_RETRYABLE = regex, ignore case, matches:
+    429 or any 5xx code, "overloaded", "rate limit", "bad gateway",
+    "too many requests", "service unavailable", "internal server error",
+    "connection", "network", "timed out" / "timeout", "econnreset", "stream ended"
 
-Two inputs decide:
+NON_RETRYABLE = {"fatal", "budget", "policy"}
 
-- **The error text.** Providers do not agree on error types, but the text almost always has `429`, a `5xx` code, "overloaded" or "timed out". A regex over the text works for all providers ([04](04-providers.md)) with no per-provider code.
-- **The error kind.** `AssistantMessage.error_kind` can be `"fatal"`, `"budget"` or `"policy"`. These are **never** retried, even if the text looks retryable. For example, `stream()` sets `error_kind="fatal"` when there is no API key. The server sets `"budget"` when a user is over their limit ([23](23-limits.md)). The text alone cannot tell "the provider rate-limits you" from "our own budget stops you".
+FUNCTION is_retryable(error, kind):
+    IF kind is in NON_RETRYABLE:
+        RETURN no                          // our own code said "never retry"
+    IF error is a context overflow:
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._run`
 
-A context overflow is also not retryable here: the same too-big request would fail again. It has its own path ([17](17-overflow.md)).
-
-### The retry loop in `_run`
-
-In `packages/simp_agent/src/simp_agent/session/__init__.py`, `prompt()` and `continue_()` both call `_run` ([13](13-session.md)):
-
-```python
-    async def _run(self, start) -> list:
-        a = self.agent
-        self._abort = asyncio.Event()
-        new = await start()
-        overflowed, attempt = False, 0
-        while (last := a.messages[-1]).role == "assistant" and last.stop_reason == "error":
-            if self.auto_compact and not overflowed and ai.is_context_overflow(last.error):
-                ...  # chapter 17
-            elif ai.is_retryable(last.error, last.error_kind) and attempt < self.max_retries:
-                attempt += 1
-                delay = self.retry_base_delay * 2 ** (attempt - 1)
-                await self._emit({"type": "auto_retry_start", "attempt": attempt, "max_attempts": self.max_retries,
-                                  "delay": delay, "error": last.error})
-                try:
-                    await asyncio.wait_for(self._abort.wait(), delay)
-                    break  # aborted during backoff
-                except TimeoutError:
-                    pass
-            else:
-                break
-            new += await a.continue_()
-        if attempt:
-            ok = not (a.messages[-1].role == "assistant" and a.messages[-1].stop_reason == "error")
-            await self._emit({"type": "auto_retry_end", "success": ok, "attempt": attempt})
-        return new
+```text
+FUNCTION _run(start):
+    a = the agent
+    self._abort = a NEW event            // fresh each run: an old abort does not stop this one
+    new = RUN start()                    // prompt() or continue_()
+    overflowed = false, attempt = 0
+    WHILE the last message is an assistant message with stop_reason "error":
+        IF auto_compact AND not overflowed AND is_context_overflow(error):
+            ...                          // chapter 17
+        ELSE IF is_retryable(error, error_kind) AND attempt < max_retries:
+            attempt = attempt + 1
+            delay = retry_base_delay * 2 ** (attempt - 1)   // 2, 4, 8 seconds
+            SEND event auto_retry_start {attempt, max_attempts, delay, error}
+            WAIT for self._abort, but at most `delay` seconds
+            IF abort came first: STOP the loop              // aborted during backoff
+            // else the time ran out: go on
+        ELSE:
+            STOP the loop
+        ADD to new: RUN a.continue_()    // ask again with the same history
+    IF attempt > 0:
+        ok = the last message is NOT an assistant error
+        SEND event auto_retry_end {success: ok, attempt}
+    RETURN new
 ```
+            ...                            // chapter 17
+        ELSE IF is_retryable(last.error, last.error_kind) AND attempt < max_retries:
+            attempt = attempt + 1
+            delay = retry_base_delay * 2 ^ (attempt - 1)
+            SEND event auto_retry_start {attempt, max_attempts, delay, error}
+            WAIT for abort event, at most delay seconds
+            IF abort came first:
+                STOP loop                  // aborted during backoff
+            // time ran out: normal case, go on
+        ELSE:
+            STOP loop
+        ADD WAIT for a.continue_() to new   // same history, no new user text
+    IF attempt > 0:
+        ok = last message is not an assistant error
+        SEND event auto_retry_end {success: ok, attempt}
+    RETURN new
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `on_event`
 
-Step by step:
-
+```text
+IF event type is "auto_retry_start":
+    SEND a durable warning Notice "retry {attempt}/{max_attempts}: {error}"
+IF event type is "auto_retry_end":
+    SEND a durable Notice "retry succeeded" or "retry failed"   // from success
+```
 1. Run once (`start()`).
 2. While the last message is an assistant error: if it is retryable and we have tries left, wait, then call `a.continue_()`. Otherwise stop.
 3. At the end, if we retried at all, send `auto_retry_end` with `success`.
 
 **Exponential [backoff](glossary.md#backoff).** `delay = retry_base_delay * 2 ** (attempt - 1)`. With the defaults (`retry_base_delay=2.0`, `max_retries=3`) the waits are 2, 4 and 8 seconds. Each wait doubles, so a busy server gets more and more room.
-
-**Retry is `continue_()`, not a new prompt.** The error message stays in history (history is append-only, [13](13-session.md)). We do not resend the user text. `continue_()` asks the model again with the same history. Before the call, `transform_messages` in `ai` drops assistant turns with `stop_reason` `"error"` or `"aborted"` from what is sent ([04](04-providers.md)). So the model never sees its own failed reply.
-
-**Events.** `auto_retry_start` carries `attempt`, `max_attempts`, `delay` and the `error`. `auto_retry_end` carries `success` and `attempt`. Two apps use them:
-
-- The CLI (`apps/cli/src/simp_cli/repl.py`) sets its state to `"retrying"` on `auto_retry_start`.
-- The server (`apps/server/src/simp_server/server.py`) turns them into notices ([20](20-server-run.md)):
-
-```python
-        elif t == "auto_retry_start":
-            await self.durable(p.Notice, level="warning", text=f"retry {e['attempt']}/{e['max_attempts']}: {e['error']}")
-        elif t == "auto_retry_end":
-            await self.durable(p.Notice, text=f"retry {'succeeded' if e['success'] else 'failed'}")
+```text
+TRY:
+    WAIT for the abort event, but at most `delay` seconds
+    STOP the loop                // abort came first: no retry
+IF the time ran out (TimeoutError):
+    do nothing                   // normal case: go on and retry
 ```
+
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `on_event`
+
+```text
+IF event type is auto_retry_start:
+    SAVE notice (warning): "retry {attempt}/{max_attempts}: {error}"
+ELSE IF event type is auto_retry_end:
+    SAVE notice: "retry succeeded" or "retry failed"
+```
+
+Key idea: retry events become durable notices for the web UI.
 
 ### Abort during backoff
 
 The wait is not `asyncio.sleep`. It is:
 
-```python
-                try:
-                    await asyncio.wait_for(self._abort.wait(), delay)
-                    break  # aborted during backoff
-                except TimeoutError:
-                    pass
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `_run`
+
+```text
+WAIT for abort event, at most delay seconds
+IF abort came first:
+    STOP loop                              // aborted during backoff
+IF time ran out (TimeoutError):
+    go on                                  // normal case: retry
 ```
+
+Key idea: the wait is a timed wait on the abort event, not a sleep.
 
 `self._abort` is an `asyncio.Event`. `wait_for` waits for it, but at most `delay` seconds:
 
@@ -223,22 +248,15 @@ Some edge cases that follow from this code:
 
 `packages/simp_agent/tests/test_session.py::test_retry_429_twice_then_ok`:
 
-```python
-def err429():
-    return AssistantMessage(stop_reason="error", error="Error code: 429 rate_limit_error")
-...
-async def test_retry_429_twice_then_ok():
-    stream = FakeProvider(err429(), err429(), DONE)
-    seen = stream.messages
-    s = session(stream, retry_base_delay=0.001)
-    events = []
-    s.subscribe(lambda e: e["type"].startswith("auto_retry") and events.append(e))
-    await s.prompt("hi")
-    assert len(seen) == 3 and s.messages[-1] is DONE
-    assert [e["type"] for e in events] == ["auto_retry_start", "auto_retry_start", "auto_retry_end"]
-    assert events[1]["delay"] == 0.002 and events[-1]["success"]
-    assert all(m.role != "assistant" or m.stop_reason != "error" for m in seen[2])  # LLM view drops the errors
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.abort`
+
+```text
+FUNCTION abort():
+    SET self._abort                        // stops a backoff wait
+    self.agent.abort()                     // stops a running model call
 ```
+
+Key idea: two flags, because during backoff no model call is running.
 
 What it checks:
 

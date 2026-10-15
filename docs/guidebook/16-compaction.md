@@ -126,16 +126,19 @@ class CompactionEntry:
 
 A **[CompactionEntry](glossary.md#compaction-entry)** says: "from now on, the model sees this summary, then the messages from `first_kept_index` on". The old messages stay in history and in the store ([13](13-session.md)). Only the **view** sent to the model changes:
 
-```python
-def build_view(messages: list) -> list:
-    """[summary user message] + messages from first_kept_index on (markers and custom entries dropped)."""
-    k = _last_entry(messages)
-    if k is None:
-        return [m for m in messages if not isinstance(m, CustomEntry)]
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `build_view`
+
+```text
+FUNCTION build_view(messages):
+    k = _last_entry(messages)                // index of the last CompactionEntry
+    IF k is none:
+        RETURN messages without CustomEntry items
     e = messages[k]
-    kept = [m for m in messages[e.first_kept_index :] if not isinstance(m, (CompactionEntry, CustomEntry))]
-    return [UserMessage(f"{SUMMARY_PREFIX}{e.summary}\n</summary>")] + kept
+    kept = messages from e.first_kept_index on, without CompactionEntry and CustomEntry
+    RETURN [UserMessage(SUMMARY_PREFIX + e.summary + "</summary>")] + kept
 ```
+
+Key idea: only the last entry counts; the model sees one summary message plus the recent messages.
 
 The summary becomes one `UserMessage` that starts with `SUMMARY_PREFIX` ("The conversation history before this point was compacted into the following summary: ..."). `CustomEntry` items ([13](13-session.md)) are always dropped from the view.
 
@@ -143,25 +146,26 @@ Why append-only? The saved file is never rewritten, so a crash during compaction
 
 ### estimate_tokens and should_compact: when
 
-```python
-def estimate(m) -> int:
-    ...
-    return n // 4
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `estimate`, `estimate_tokens`, `should_compact`
 
-def estimate_tokens(messages: list) -> int:
-    """Tokens of the LLM view of full history: last valid assistant usage after the last CompactionEntry + chars/4 after it.
-    No such usage -> chars/4 of the view. Error, aborted and all-zero usage are ignored."""
+```text
+FUNCTION estimate(m):
+    n = number of characters in m           // text, thinking, tool name + args, or summary
+    RETURN n / 4                            // rough guess: 4 chars ~ 1 token
+
+FUNCTION estimate_tokens(messages):
     k = _last_entry(messages)
-    for i in range(len(messages) - 1, -1 if k is None else k, -1):
-        m = messages[i]
-        if isinstance(m, AssistantMessage) and m.stop_reason not in ("error", "aborted") and any(m.usage.values()):
-            return m.usage["input"] + m.usage["output"] + sum(estimate(x) for x in messages[i + 1 :])
-    return sum(estimate(x) for x in build_view(messages))
+    FOR EACH message m from the end back to just after k:
+        IF m is an AssistantMessage AND not error/aborted AND usage is not all zero:
+            RETURN usage.input + usage.output + estimate of each message after m
+    // no good usage found
+    RETURN estimate of each message in build_view(messages)
 
-
-def should_compact(tokens: int, model, settings: CompactionSettings) -> bool:
-    return settings.enabled and tokens > model.context_window - settings.reserve_tokens
+FUNCTION should_compact(tokens, model, settings):
+    RETURN settings.enabled AND tokens > model.context_window - settings.reserve_tokens
 ```
+
+Key idea: use the real token count from the provider when we have it; guess only the rest. Limit: chars/4 is only a rough guess.
 
 - `estimate` is a rough guess: 4 characters ≈ 1 token.
 - `estimate_tokens` prefers the real number. The last good assistant reply has `usage` from the provider ([04](04-providers.md)): input + output tokens of that call. Add the guess only for messages after it. It looks only **after** the last `CompactionEntry`, because usage from before was measured on the old, bigger view.
@@ -171,55 +175,67 @@ def should_compact(tokens: int, model, settings: CompactionSettings) -> bool:
 
 ### find_cut: where
 
-```python
-def find_cut(messages: list, start: int, keep_tokens: int) -> int | None:
-    """First kept index in (start, len). Only a user or assistant message: never a tool_result, so pairs stay together.
-    ponytail: no split-turn cut (pi isSplitTurn); one huge turn cannot be compacted."""
-    total, i = 0, len(messages)
-    while i > start and total < keep_tokens:
-        i -= 1
-        total += estimate(messages[i])
-    ok = [j for j in range(start + 1, len(messages)) if isinstance(messages[j], (UserMessage, AssistantMessage))]
-    before = [j for j in ok if j <= i]
-    return before[-1] if before else (ok[0] if ok else None)
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `find_cut`
+
+```text
+FUNCTION find_cut(messages, start, keep_tokens):
+    total = 0, i = end of list
+    WHILE i > start AND total < keep_tokens:   // walk back from the end
+        i = i - 1
+        ADD estimate(messages[i]) to total
+    ok = indexes after start that hold a UserMessage or AssistantMessage
+    before = indexes in ok that are <= i
+    IF before is not empty: RETURN last of before
+    IF ok is not empty: RETURN first of ok
+    RETURN none                                // nothing safe to cut
 ```
+
+Key idea: the cut is always on a user or assistant message, so a tool call and its result stay together. Limit: one huge turn cannot be cut.
 
 Walk back from the end until about `keep_tokens` are kept. Then move the cut to a user or assistant message at or before that point. A cut **never** lands on a tool result, so a tool call and its result stay together. `start` is the previous entry's `first_kept_index`, so a new cut is always after the old one. The `ponytail:` comment names a known limit: one single huge turn cannot be cut.
 
 ### serialize_conversation: what the summarizer reads
 
-```python
-def serialize_conversation(messages: list) -> str:
-    """Messages -> one text, so the summarizer reads it instead of continuing the chat (pi serializeConversation)."""
-    parts = []
-    for m in ai.transform_messages(messages):
-        if isinstance(m, UserMessage) and m.content:
-            parts.append(f"[User]: {m.content}")
-        elif isinstance(m, AssistantMessage):  # thinking skipped: big, the text + tool calls carry the result
-            ...
-                parts.append(f"[Assistant tool calls]: {'; '.join(calls)}")
-        elif isinstance(m, ToolResultMessage) and m.content:
-            parts.append(f"[Tool result]: {_cut(m.content, TOOL_RESULT_MAX)}")
-    return "\n\n".join(parts)
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `serialize_conversation`
+
+```text
+FUNCTION serialize_conversation(messages):
+    parts = empty list
+    FOR EACH m in transform_messages(messages):
+        IF m is a UserMessage with content:
+            ADD "[User]: " + content
+        ELSE IF m is an AssistantMessage:      // thinking skipped: big, text + tool calls carry the result
+            IF it has text: ADD "[Assistant]: " + text
+            IF it has tool calls:
+                ADD "[Assistant tool calls]: " + each call as name(arg=value), each value cut to ARG_MAX
+        ELSE IF m is a ToolResultMessage with content:
+            ADD "[Tool result]: " + content cut to TOOL_RESULT_MAX
+    RETURN parts joined with blank lines
 ```
+
+Key idea: one plain text block, not a chat, so the model summarizes instead of answering.
 
 Why one text and not the real messages? If you send the chat as chat, the model tends to **continue** it ("Sure, I will add tests now"). As one block of text inside `<conversation>` tags, with a system prompt that says "Do NOT continue the conversation", it summarizes. Tool results are cut to `TOOL_RESULT_MAX = 2000` characters and tool arguments to `ARG_MAX = 500`: the summary needs what happened, not every byte of a file. Thinking is skipped.
 
 ### summarize: incremental
 
-```python
-async def summarize(stream_fn, model, old: list, previous: str | None, reserve_tokens: int = 16384) -> str:
-    text = f"<conversation>\n{serialize_conversation(old)}\n</conversation>\n\n"
-    if previous:
-        text += f"<previous-summary>\n{previous}\n</previous-summary>\n\n{UPDATE_SUMMARIZATION_PROMPT}"
-    else:
-        text += SUMMARIZATION_PROMPT
-    model = dataclasses.replace(model, max_tokens=min(int(0.8 * reserve_tokens), model.max_tokens))
-    ...
-    if msg is None or msg.stop_reason in ("error", "length", "aborted"):
-        raise RuntimeError(f"summary failed: {msg.error if msg else 'no response'}")
-    return msg.text()
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `summarize`
+
+```text
+FUNCTION summarize(stream_fn, model, old, previous, reserve_tokens):
+    text = "<conversation>" + serialize_conversation(old) + "</conversation>"
+    IF previous summary exists:
+        ADD "<previous-summary>" + previous + "</previous-summary>" + UPDATE_SUMMARIZATION_PROMPT
+    ELSE:
+        ADD SUMMARIZATION_PROMPT
+    model.max_tokens = min(80% of reserve_tokens, model.max_tokens)   // summary must fit the room we kept
+    msg = last "done" or "error" event of stream_fn(model, SYSTEM_PROMPT, [UserMessage(text)])
+    IF no msg OR stop_reason is error, length or aborted:
+        RAISE "summary failed"                 // a half summary is worse than none
+    RETURN msg text
 ```
+
+Key idea: first time a full summary, later only new messages plus the old summary.
 
 - The first time, it uses `SUMMARIZATION_PROMPT`: a fixed format with `## User Requests (chronological)`, `## Goal`, `## Progress`, `## Next Steps` and more. The first section says "EVERY request the user made ... Never drop one". That fixes the "model forgets the task" problem.
 - The next time, it sends only the **new** old messages plus the previous summary, with `UPDATE_SUMMARIZATION_PROMPT` ("PRESERVE all existing information"). This is an **[incremental summary](glossary.md#incremental-summary)**: we never re-read what was already summarized.
@@ -228,31 +244,39 @@ async def summarize(stream_fn, model, old: list, previous: str | None, reserve_t
 
 ### File tracking
 
-```python
-def file_lists(messages: list, prev: CompactionEntry | None) -> tuple[list, list]:
-    """(read_only, modified) paths from read/write/edit calls, merged with the previous entry's lists."""
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `file_lists`
+
+```text
+FUNCTION file_lists(messages, prev):
+    read, mod = file sets from prev (empty if no prev)
+    FOR EACH tool call in assistant messages with a string "path" argument:
+        IF name is "read": ADD path to read
+        IF name is "write" or "edit": ADD path to mod
+    RETURN sorted(read minus mod), sorted(mod)   // a changed file is not listed as read-only
 ```
+
+Key idea: file lists come from code, not from the model, so they are exact.
 
 From the `path` argument of `read`, `write` and `edit` calls ([10](10-coding-tools.md)), the code builds two lists: files only read, and files changed. They merge with the previous entry's lists. `format_files` appends them to the summary as `<read-files>` and `<modified-files>` blocks. The model may lose details in a summary, but it will always know that `fizzbuzz.py` was modified. This is done in code, not by the model, so it is exact.
 
 ### compact: putting it together
 
-```python
-async def compact(messages: list, model, stream_fn, settings: CompactionSettings, redact=None) -> CompactionEntry:
-    """Pure: summarize full history up to a cut into a new CompactionEntry. Raises if nothing to do or on failure."""
-    k = _last_entry(messages)
-    prev = messages[k] if k is not None else None
-    start, previous = (prev.first_kept_index, prev.summary) if prev else (0, None)
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `compact`
+
+```text
+FUNCTION compact(messages, model, stream_fn, settings, redact):
+    prev = last CompactionEntry (or none)
+    start, previous = prev.first_kept_index, prev.summary   // or 0, none
     cut = find_cut(messages, start, settings.keep_recent_tokens)
-    if cut is None:
-        raise RuntimeError("nothing to compact")
-    old = [m for m in messages[start:cut] if not isinstance(m, (CompactionEntry, CustomEntry))]
+    IF cut is none: RAISE "nothing to compact"
+    old = messages[start:cut] without CompactionEntry and CustomEntry
     read, mod = file_lists(old, prev)
-    if redact:  # e.g. the plugin context chain: secrets must not reach the summary model
-        old = await redact(old)
-    summary = await summarize(stream_fn, model, old, previous, settings.reserve_tokens)
-    return CompactionEntry(summary + format_files(read, mod), cut, read, mod)
+    IF redact: old = WAIT for redact(old)     // secrets must not reach the summary model
+    summary = WAIT for summarize(stream_fn, model, old, previous, settings.reserve_tokens)
+    RETURN CompactionEntry(summary + format_files(read, mod), cut, read, mod)
 ```
+
+Key idea: pure function; it returns a new entry and never changes `messages`.
 
 `compact` returns an entry; it does not change `messages`. The `redact` argument lets the session pass the plugin `context` chain ([14](14-plugins.md)), so a secret masked for the model is also masked for the summary model.
 
@@ -260,33 +284,39 @@ async def compact(messages: list, model, stream_fn, settings: CompactionSettings
 
 In `session/__init__.py`, `_prepare` is the agent's `prepare_next_turn` socket ([13](13-session.md)). It runs before **every** model call:
 
-```python
-    async def _prepare(self, messages: list) -> list:
-        if self.auto_compact and should_compact(estimate_tokens(messages), self.agent.model, self.compaction):
-            await self.compact()
-        return await self._context(build_view(messages))
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._prepare`
+
+```text
+FUNCTION _prepare(messages):            // runs before every model call
+    IF auto_compact AND should_compact(estimate_tokens(messages), model, settings):
+        WAIT for compact()
+    RETURN WAIT for _context(build_view(messages))
 ```
+
+Key idea: the session only decides *when*; the view is always built from full history.
 
 And `compact()`:
 
-```python
-    async def compact(self) -> bool:
-        """Manual compaction. Summarize old history and append a CompactionEntry. Failure keeps history as is."""
-        a = self.agent
-        before = estimate_tokens(a.messages)
-        await self._emit({"type": "compaction_start", "tokens_before": before})
-        try:
-            stream_fn = functools.partial(a.stream_fn, **await api_key_opts(a.get_api_key, a.model))
-            entry = await compact(a.messages, a.model, stream_fn, self.compaction, self._context)
-        except Exception as e:
-            await self._emit({"type": "compaction_end", "error": str(e), "tokens_before": before, "tokens_after": before})
-            return False
-        a.messages.append(entry)
-        if self.store:
-            await _maybe_await(self.store.append(entry))
-        ...
-        return True
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.compact`
+
+```text
+FUNCTION compact():
+    before = estimate_tokens(messages)
+    SEND event compaction_start(tokens_before)
+    TRY:
+        stream_fn = agent.stream_fn with the same API key
+        entry = WAIT for compact(messages, model, stream_fn, settings, _context)
+    ON ERROR e:
+        SEND event compaction_end(error e, tokens_after = before)
+        RETURN false                           // history stays as is
+    ADD entry to messages
+    IF store: WAIT for store.append(entry)
+    SEND event message_end(entry)
+    SEND event compaction_end(no error, tokens_after)
+    RETURN true
 ```
+
+Key idea: failure never breaks the turn; success appends and saves the entry like any message.
 
 - It uses the same model and the same API key as the chat.
 - On failure it emits `compaction_end` with the `error` and returns `False`. History is unchanged and the turn goes on. The model call may then overflow, and [17](17-overflow.md) handles that.
