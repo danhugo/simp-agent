@@ -75,11 +75,12 @@ It runs `python fizzbuzz.py` and prints the output. But it breaks in many ways:
 
 **Step 1 — start the container once.** Run `sleep infinity` in a named container, then send each command with `docker exec`:
 
-```python
-await _docker("run", "-d", "--name", name, image, "sleep", "infinity")
-# later, per command:
-# docker exec <name> sh -c "<command>"
+```text
+RUN docker run -d --name <name> <image> sleep infinity   // once per session
+// later, for each command:
+RUN docker exec <name> sh -c "<command>"
 ```
+Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerSandbox.open`
 
 Why: one start per session, not per command. This fixes "slow".
 
@@ -94,20 +95,23 @@ Why: each flag closes one hole (root, network, fork bomb, memory, writes, extra 
 
 **Step 3 — map `cwd`.** Turn the host path into a path under `/work`:
 
-```python
-rel = self._path(cwd).relative_to(Path(self.root).resolve())
-return str(Path("/work") / rel)
+```text
+rel = _path(cwd) relative to root    // _path does the root check
+RETURN "/work/" + rel
 ```
+Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv._cwd`
 
 Why: the container only knows `/work`. The root check from `LocalEnv` still applies.
 
 **Step 4 — kill the whole group.** Start the command with `setsid`, print its pid first, and kill `-<pid>` inside the container:
 
-```python
-"setsid", "-w", "sh", "-c", 'echo $$; exec sh -c "$0" 2>&1', command,
+```text
+RUN docker exec <container> setsid sh -c "echo $$; <command>"   // first line = group pid
 ...
-await _docker("exec", self.container, "kill", "-9", "--", f"-{pid}")
+IF timeout or cancel:
+    RUN docker exec <container> kill -9 -- -<pid>   // minus: kill the whole group
 ```
+Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv.exec`
 
 Why: killing the host `docker` program does not stop the command in the box. This fixes timeout and cancel. We also read output in chunks and call `on_output`, as `LocalEnv.exec` does.
 
@@ -248,12 +252,13 @@ The session folder `workspaces_dir/<session_id>` is a **[bind mount](glossary.md
 
 `DockerEnv` is a subclass of `LocalEnv`:
 
-```python
-class DockerEnv(LocalEnv):
-    def __init__(self, root: str, container: str):
-        super().__init__(root)
-        self.container = container
+```text
+CLASS DockerEnv extends LocalEnv:
+    FUNCTION init(root, container):
+        set up LocalEnv with root      // file tools stay on the host
+        remember container name        // only exec uses it
 ```
+Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv`
 
 The module docstring explains the split: "File ops run on the host (LocalEnv with root containment) on a dir bind-mounted at /work; only exec goes through `docker exec`."
 
@@ -271,14 +276,12 @@ FUNCTION _cwd(cwd):
 
 **Running a command.** `exec` uses `docker exec` with a small shell trick:
 
-```python
-proc = await asyncio.create_subprocess_exec(
-    "docker", "exec", "-w", self._cwd(cwd), self.container,
-    "setsid", "-w", "sh", "-c", 'echo $$; exec sh -c "$0" 2>&1', command,
-    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-)
-pid = (await proc.stdout.readline()).strip().decode()
+```text
+proc = START docker exec -w _cwd(cwd) <container>
+           setsid -w sh -c "echo $$; exec sh -c <command> 2>&1"
+pid = first line of proc output     // the group leader's pid
 ```
+Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv.exec`
 
 - `setsid` makes the command the leader of a new **[process group](glossary.md#process-group-kill)**.
 - The first line it prints is its own pid (`echo $$`). We read that line first and keep it.

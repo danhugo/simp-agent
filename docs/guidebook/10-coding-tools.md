@@ -32,26 +32,26 @@ Each tool also has a hidden enemy: **size**. A model has a limited [context](glo
 
 ## Naive version
 
-```python
-import subprocess
+```text
+// naive: no env, no limits, no checks
+FUNCTION read(args):
+    RETURN the whole file at args.path            // opened directly, no ctx.env
 
-async def read(args, ctx):
-    return open(args["path"]).read()
+FUNCTION write(args):
+    WRITE args.content to args.path
+    RETURN "ok"
 
-async def write(args, ctx):
-    open(args["path"], "w").write(args["content"])
-    return "ok"
+FUNCTION edit(args):
+    text = the whole file at args.path
+    REPLACE every old_text in text with new_text  // 0 or many matches still "ok"
+    WRITE text back
+    RETURN "ok"
 
-async def edit(args, ctx):
-    text = open(args["path"]).read()
-    text = text.replace(args["old_text"], args["new_text"])
-    open(args["path"], "w").write(text)
-    return "ok"
-
-async def bash(args, ctx):
-    p = subprocess.run(args["command"], shell=True, capture_output=True, text=True)
-    return p.stdout + p.stderr
+FUNCTION bash(args):
+    RUN args.command in a shell, wait for it
+    RETURN stdout + stderr                        // no exit code, no cut
 ```
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `read`, `write`, `edit`, `make_bash` (the fixed versions)
 
 Where it breaks:
 
@@ -68,34 +68,39 @@ We fix the naive tools one problem at a time. Each step is small.
 
 **Step 1 — all IO goes through `ctx.env`.** `open` and `subprocess` skip the fence, Docker and Stop from [09](09-exec-env.md). So every tool asks the env instead:
 
-```python
-lines = (await ctx.env.read_file(_path(ctx, args["path"]))).splitlines()
+```text
+lines = ASK ctx.env to read the file at the full path, split into lines
 ```
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `read`
 
 **Step 2 — paths start at `ctx.cwd`.** The Python process folder is not the session folder. `_path` joins the two; an absolute path stays as is:
 
-```python
-return os.path.join(ctx.cwd, path)  # absolute paths stay as is
+```text
+RETURN ctx.cwd joined with path      // an absolute path stays as is
 ```
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `_path`
 
 **Step 3 — `read` cuts the file and says how to go on.** A 5 MB file must not fill the context. We cut with `truncate_head` and tell the model the next call:
 
-```python
-out += f"\n[{len(lines) - end} more lines; use offset={end + 1} to continue]"
+```text
+ADD to out: "[N more lines; use offset=END+1 to continue]"
 ```
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `read`
 
 **Step 4 — `edit` needs exactly one match.** Zero matches or many matches are errors, not a silent "ok". The model reads the count and fixes its call:
 
-```python
-if n != 1:
-    raise ValueError(f"edits[{i}].old_text must match exactly once in {args['path']}, found {n} matches")
+```text
+IF n is not exactly 1:
+    FAIL with "edits[i].old_text must match exactly once in PATH, found n matches"
 ```
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `edit`
 
 **Step 5 — `bash` keeps the end and shows the exit code.** Test failures and summaries are at the end, and the model must know pass from fail:
 
-```python
-return tail(f"{out}\n[exit code: {code}]")
+```text
+RETURN tail(output + "[exit code: CODE]")    // keep the end, show pass/fail
 ```
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `make_bash`
 
 The result is the real code below.
 
