@@ -45,29 +45,33 @@ So we need three things:
 
 The simplest idea: after each run ends, add up the cost and stop the user if it is too high.
 
-```python
-PRICE_IN, PRICE_OUT = 3.0, 15.0        # USD per 1M tokens
+Naive sketch (not in the repo):
+
+```text
+PRICE_IN = 3.0, PRICE_OUT = 15.0   // USD per 1M tokens
 DAY_LIMIT = 2.0
-spent = {"u1": 0.0}
+spent = {u1: 0}
 
-def cost(usage):
-    return (usage["input"] * PRICE_IN + usage["output"] * PRICE_OUT) / 1e6
+FUNCTION cost(usage):
+    RETURN (usage.input * PRICE_IN + usage.output * PRICE_OUT) / 1,000,000
 
-def fake_model_call(i):
-    return {"input": 200_000, "output": 5_000}   # a long context: costs $0.675
+FUNCTION fake_model_call(i):
+    RETURN {input: 200,000, output: 5,000}   // a long context: costs $0.675
 
-def run(user, max_calls=50):
-    if spent[user] >= DAY_LIMIT:              # check once, at the start
-        return "refused"
-    total = 0.0
-    for i in range(max_calls):                # the agent loop: model wants more tools
-        total += cost(fake_model_call(i))
-    spent[user] += total                      # count only at the end
-    return f"spent ${total:.2f}"
+FUNCTION run(user, max_calls = 50):
+    IF spent[user] >= DAY_LIMIT:            // check once, at the start
+        RETURN "refused"
+    total = 0
+    FOR EACH i in 0..max_calls:             // the agent loop: model wants more tools
+        ADD cost(fake_model_call(i)) to total
+    ADD total to spent[user]                // count only at the end
+    RETURN "spent $total"
 
-print(run("u1"))   # spent $33.75   <- limit was $2
-print(run("u1"))   # refused        <- too late
+run("u1")   // spent $33.75   <- limit was $2
+run("u1")   // refused        <- too late
 ```
+
+Key idea: check once, count once. Limit: one run can spend far past the limit.
 
 It breaks in three ways:
 
@@ -81,36 +85,44 @@ The fix for 1 and 2: record cost after **every** model call, in the store, and c
 
 **Step 1 — check before every call, not once.** Move the check inside the loop:
 
-```python
-for i in range(max_calls):
-    if spent[user] >= DAY_LIMIT:
-        return "refused"
-    spent[user] += cost(fake_model_call(i))   # count after every call
+Naive sketch (not in the repo):
+
+```text
+FOR EACH i in 0..max_calls:
+    IF spent[user] >= DAY_LIMIT:
+        RETURN "refused"
+    ADD cost(fake_model_call(i)) to spent[user]   // count after every call
 ```
 
 Why: now the run stops soon after the limit. Fix for break 1.
 
 **Step 2 — keep the count in the store.** Write one row per call, and sum rows to know the spend:
 
-```python
-await store.add_usage(user_id, sid, model_id, input=..., output=..., cost=c)
-await store.spent(user_id, since)             # SUM(cost) since a time
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `add_usage, spent`
+
+```text
+WAIT for store.add_usage(user_id, sid, model_id, input, output, cost = c)
+WAIT for store.spent(user_id, since)        // SUM(cost) since a time
 ```
 
 Why: a dict in memory dies with the process. A database row survives a crash. Fix for break 2.
 
 **Step 3 — put the check in one door.** Wrap `stream_fn` so no call can skip it:
 
-```python
-stream_fn = budget.guard(stream_fn, check)    # check() returns None, or a reason
+Real code: [budget.py](../../apps/server/src/simp_server/budget.py) — `guard`
+
+```text
+stream_fn = budget.guard(stream_fn, check)   // check() returns nothing, or a reason
 ```
 
 Why: the agent, retries and the title call all use `stream_fn`. One wrapper covers all. The refusal is a normal `error` message, so the loop needs no new code.
 
 **Step 4 — add the kill switch to the check.** One more reason to refuse:
 
-```python
-if self.mgr.paused():                         # PAUSED file exists
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.over_budget`
+
+```text
+IF manager.paused():                         // PAUSED file exists
     msg = "budget: server paused by the admin"
 ```
 
@@ -118,9 +130,11 @@ Why: the admin can stop every loop at its next model call. Fix for break 3.
 
 **Step 5 — free idle runs.** Pop a run from memory and close its sandbox, but only if nobody uses it:
 
-```python
-if self.evictable(run) and now - self.last_used.get(sid, 0) >= self.idle_s:
-    await self.evict(sid)
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `SessionManager.evict_idle`
+
+```text
+IF run is evictable AND now - last_used[sid] >= idle_s:
+    WAIT for evict(sid)
 ```
 
 Why: the store can rebuild the run later, so freeing it loses nothing. Now the real code.
@@ -129,50 +143,55 @@ Why: the store can rebuild the run later, so freeing it loses nothing. Now the r
 
 ### Cost from profile prices
 
-`apps/server/src/simp_server/budget.py`:
+Real code: [budget.py](../../apps/server/src/simp_server/budget.py) — `Limits, limits, cost`
 
-```python
-@dataclass
-class Limits:
-    user_day_usd: float = 2.0
-    run_usd: float = 0.5
+```text
+CLASS Limits:
+    user_day_usd = 2.0
+    run_usd = 0.5
 
+FUNCTION limits(settings):
+    RETURN Limits built from settings["budget"] (or defaults)
 
-def limits(settings: dict) -> Limits:
-    return Limits(**settings.get("budget", dict()))
-
-
-def cost(profile: dict, usage: dict) -> float:
-    return (usage.get("input", 0) * profile.get("price_in", 0) + usage.get("output", 0) * profile.get("price_out", 0)) / 1e6
+FUNCTION cost(profile, usage):
+    // missing token count or price counts as 0
+    RETURN (usage.input * profile.price_in + usage.output * profile.price_out) / 1,000,000
 ```
 
 `user_day_usd` is the most one user may spend in a day. `run_usd` is the most one **[run](glossary.md#run-budget)** may spend. They come from the `[budget]` table in `settings.toml`. Defaults: $2 a day, $0.5 a run.
 
 Prices live in each profile ([18](18-profiles-plugins.md)) as `price_in` and `price_out`, in USD per 1 million tokens. `cost` multiplies the token counts from the model's `usage` by these prices. A profile with no prices costs $0. That is a quiet hole, so the server warns at start:
 
-```python
-        for name, pr in settings["profiles"].items():
-            if "price_in" not in pr or "price_out" not in pr:
-                log.warning("profile %s has no prices: its calls cost $0 and never hit a budget", name)
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `create_app.lifespan`
+
+```text
+FOR EACH profile (name, pr) in settings.profiles:
+    IF pr has no price_in OR no price_out:
+        LOG warning "profile <name> has no prices: its calls cost $0 and never hit a budget"
 ```
 
 ### Record cost after every call
 
 In `apps/server/src/simp_server/server.py`, the `Run` writes a usage row each time an assistant message ends:
 
-```python
-                u = {"input": m.usage.get("input", 0), "output": m.usage.get("output", 0)}
-                ...
-                await self.mgr.store.add_usage(self.user_id, self.sid, self.model.id, **u, cost=budget.cost(self.profile, u))
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.on_event`
+
+```text
+u = {input: m.usage.input or 0, output: m.usage.output or 0}
+...
+WAIT for store.add_usage(user_id, sid, model.id, u, cost = budget.cost(profile, u))
 ```
 
 The row goes to the SQLite store from [22](22-store-auth.md), so the count survives a crash. The session title call records its usage the same way.
 
 The store can sum it:
 
-```python
-    async def spent(self, user_id: str, since: float, session_id: str | None = None) -> float:
-        sql, args = "SELECT COALESCE(SUM(cost), 0) AS c FROM usage WHERE user_id=? AND at>=?", [user_id, since]
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.spent`
+
+```text
+FUNCTION spent(user_id, since, session_id = none):
+    RETURN SUM(cost) of usage rows for user_id with time >= since   // 0 if no rows
+    // (also filter by session_id when given)
 ```
 
 `since` is a timestamp: `budget.day_start()` (local midnight) for the day limit, or the run start time plus the session id for the run limit.
@@ -181,17 +200,21 @@ The store can sum it:
 
 Now the check. Where do we put it? The agent calls the model through one function, `stream_fn` ([04](04-providers.md)). If we wrap that one function, every model call passes the check. That wrapper is the **[budget guard](glossary.md#budget-guard)**:
 
-```python
-def guard(stream_fn, check):
-    async def fn(model, ctx, **kw):
-        if msg := await check():
-            yield {"type": "error", "message": AssistantMessage(stop_reason="error", error=msg, error_kind="budget")}
-            return
-        async for ev in stream_fn(model, ctx, **kw):
-            yield ev
+Real code: [budget.py](../../apps/server/src/simp_server/budget.py) — `guard`
 
-    return fn
+```text
+FUNCTION guard(stream_fn, check):
+    FUNCTION fn(model, ctx, ...):
+        msg = WAIT for check()
+        IF msg:
+            SEND event {type: "error", message: AssistantMessage(stop_reason = "error", error = msg, error_kind = "budget")}
+            RETURN                              // the real model is never called
+        FOR EACH event ev from stream_fn(model, ctx, ...):
+            SEND event ev
+    RETURN fn
 ```
+
+Key idea: one wrapper on the one model door, so every call is checked. Limit: it checks money already spent, not the next cost.
 
 `check` is an async function. It returns `None` when all is fine, or a text when the call must be refused. If refused, the guard does **not** call the real model. It yields one `error` event with an `AssistantMessage` that has `stop_reason="error"`. For the agent this looks like a normal failed model call ([03](03-stream-parser.md)). So the loop stops in the normal way. No new code path in the agent.
 
@@ -199,30 +222,33 @@ Note `error_kind="budget"`. Retry ([15](15-retry.md)) never retries `"fatal" | "
 
 The `Run` gives the guard to its session:
 
-```python
-    @property
-    def guarded_stream(self):
-        return budget.guard(self.mgr.stream_fn, self.over_budget)
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.guarded_stream`
+
+```text
+PROPERTY guarded_stream:
+    RETURN budget.guard(manager.stream_fn, over_budget)
 ```
 
 It is passed as `stream_fn=self.guarded_stream` to `AgentSession` ([13](13-session.md)), and the title call uses `self.guarded_stream` too.
 
 ### The check itself
 
-```python
-    async def over_budget(self) -> str | None:
-        lim, store, msg = self.mgr.limits, self.mgr.store, None
-        if self.mgr.paused():
-            msg = "budget: server paused by the admin"
-        elif not await store.user_active(self.user_id):
-            msg = "budget: user revoked"
-        elif await store.spent(self.user_id, budget.day_start()) >= lim.user_day_usd:
-            msg = f"budget: daily limit ${lim.user_day_usd:g} reached"
-        elif await store.spent(self.user_id, self.run_start, self.sid) >= lim.run_usd:
-            msg = f"budget: run limit ${lim.run_usd:g} reached"
-        if msg:
-            log.warning("over budget: %s", msg, extra=self._ctx())
-        return msg
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.over_budget`
+
+```text
+FUNCTION over_budget():
+    msg = nothing
+    IF manager.paused():
+        msg = "budget: server paused by the admin"
+    ELSE IF NOT (WAIT for store.user_active(user_id)):
+        msg = "budget: user revoked"
+    ELSE IF (WAIT for store.spent(user_id, day_start())) >= limits.user_day_usd:
+        msg = "budget: daily limit $<user_day_usd> reached"
+    ELSE IF (WAIT for store.spent(user_id, run_start, sid)) >= limits.run_usd:
+        msg = "budget: run limit $<run_usd> reached"
+    IF msg:
+        LOG warning "over budget: <msg>"
+    RETURN msg
 ```
 
 Four reasons to refuse, in order: the server is paused (kill switch, below); the user was revoked ([22](22-store-auth.md)); the user spent the day limit; this run spent the run limit since `run_start`.
@@ -231,10 +257,12 @@ The check is `>=` on money **already spent**. It does not guess the next cost. S
 
 What is a "run" here? `run_start` is set in `Run.start`:
 
-```python
-    async def start(self, text, fresh: bool = True) -> None:  # text: a prompt, or a coroutine factory (continue_, compact)
-        if fresh:  # a queued follow-up stays inside the same run budget
-            self.run_start = time.time()
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.start`
+
+```text
+FUNCTION start(text, fresh = true):   // text: a prompt, or a coroutine factory (continue_, compact)
+    IF fresh:                            // a queued follow-up stays inside the same run budget
+        run_start = now
 ```
 
 A new prompt starts a fresh run budget. A queued follow-up ([07](07-steering.md)) starts with `fresh=False`, so queueing cannot get around the run limit.
@@ -245,20 +273,25 @@ When the guard refuses, the run ends in state `"error"`. The client sees why fro
 
 A **[kill switch](glossary.md#kill-switch)** stops all model calls on the server at once. Here it is a file named `PAUSED` in the data directory:
 
-```python
-    def paused(self) -> bool:
-        return (Path(self.settings["data_dir"]) / "PAUSED").exists()
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `SessionManager.paused`
+
+```text
+FUNCTION paused():
+    RETURN file "<data_dir>/PAUSED" exists
 ```
 
 The admin uses the CLI:
 
-```python
-    sub.add_parser("pause", help="kill switch: refuse every LLM call until resume")
-    sub.add_parser("resume", help="lift the kill switch")
-    ...
-    if a.mode in ("pause", "resume"):
-        f = Path(load_settings()["data_dir"]) / "PAUSED"
-        f.touch() if a.mode == "pause" else f.unlink(missing_ok=True)
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `main`
+
+```text
+ADD CLI command "pause"  // kill switch: refuse every LLM call until resume
+ADD CLI command "resume" // lift the kill switch
+...
+IF mode is "pause" or "resume":
+    f = "<data_dir>/PAUSED"
+    IF mode is "pause": create f
+    ELSE: delete f (ok if missing)
 ```
 
 `pause` creates the file. `resume` deletes it. Why a file and not an API call or a flag in memory?
@@ -271,51 +304,63 @@ Pause does not kill tools that are already running. It only refuses the next mod
 
 Users can see their state through `/api/usage`:
 
-```python
-    @app.get("/api/usage")
-    async def usage(u=Depends(user)):
-        return {"today_usd": round(await store.spent(u["id"], budget.day_start()), 4),
-                "day_limit_usd": mgr.limits.user_day_usd, "paused": mgr.paused()}
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `create_app.usage`
+
+```text
+GET /api/usage (logged-in user u):
+    RETURN {today_usd: store.spent(u.id, day_start()) rounded to 4 places,
+            day_limit_usd: limits.user_day_usd,
+            paused: manager.paused()}
 ```
 
 ### Idle release: evict runs nobody uses
 
 Now memory and containers. The `SessionManager` keeps loaded runs in `self.runs`, and the last time each was used in `self.last_used`:
 
-```python
-        self.idle_s = settings.get("idle_minutes", 15) * 60
-        self.cap = settings.get("max_open_sessions", 8)
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `SessionManager.__init__`
+
+```text
+idle_s = settings.idle_minutes (default 15) * 60
+cap = settings.max_open_sessions (default 8)
 ```
 
 To **[evict](glossary.md#eviction)** a run means: remove it from memory and close its sandbox. Its files and its event log stay in the store.
 
-```python
-    async def evict(self, sid: str) -> None:
-        """Free RAM and the container; files and log stay, the next get reloads from the store."""
-        run = self.runs.pop(sid)
-        self.last_used.pop(sid, None)
-        await self.sandbox.close(run.ref)
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `SessionManager.evict`
+
+```text
+FUNCTION evict(sid):
+    // free RAM and the container; files and log stay, the next get reloads from the store
+    run = REMOVE runs[sid]
+    REMOVE last_used[sid] (if there)
+    WAIT for sandbox.close(run.ref)
 ```
 
 But we must never evict a run that is in use:
 
-```python
-    def evictable(self, run: Run) -> bool:
-        return (not run.busy and not run.subs and (run.task is None or run.task.done())
-                and (run.title_task is None or run.title_task.done()))
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `SessionManager.evictable`
+
+```text
+FUNCTION evictable(run):
+    RETURN run is NOT busy
+       AND run has no subscribers
+       AND (run has no task OR task is done)
+       AND (run has no title_task OR title_task is done)
 ```
 
 A run is safe to evict only if it is not busy, no client is subscribed to its stream ([21](21-transport.md)), and its task and title task are done. An open tab counts as "in use".
 
 `evict_idle` evicts every evictable run that was not used for `idle_s` seconds:
 
-```python
-    async def evict_idle(self) -> None:
-        async with self.lock:
-            now = time.monotonic()
-            for sid, run in list(self.runs.items()):
-                if self.evictable(run) and now - self.last_used.get(sid, 0) >= self.idle_s:
-                    await self.evict(sid)
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `SessionManager.evict_idle`
+
+```text
+FUNCTION evict_idle():
+    WITH lock:
+        now = monotonic clock
+        FOR EACH (sid, run) in runs:
+            IF evictable(run) AND now - last_used[sid] (default 0) >= idle_s:
+                WAIT for evict(sid)
 ```
 
 `now` comes from a [monotonic clock](glossary.md#monotonic-clock), a clock that only goes forward, so a change to the system time cannot evict runs early.

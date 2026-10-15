@@ -95,3 +95,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - Review round 2: README status line now says "Written: 00, 01"; wrapped the Profile glossary line.
 - Note: links to chapters not yet written are plain text; they become links when those chapters exist.
 - Pseudo-code: ch14-18 logic blocks now easy pseudo-code with a 'Real code' link; test/usage code kept.
+- Pseudo-code: ch22-24, 26, 27 logic blocks now easy pseudo-code with a 'Real code' link; tests, schemas, interfaces and extend examples kept.

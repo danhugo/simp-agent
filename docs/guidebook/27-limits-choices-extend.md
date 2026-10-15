@@ -139,10 +139,13 @@ Two of these are worth one more look, because they shape how you extend the syst
 
 **The core only classifies.** In `packages/simp_agent/src/simp_agent/ai/__init__.py`:
 
-```python
-def is_context_overflow(error: str) -> bool:
-...
-def is_retryable(error: str, kind: str | None = None) -> bool:
+Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `is_context_overflow`, `is_retryable`
+
+```text
+FUNCTION is_context_overflow(error) -> yes/no
+    // only looks at the error text; does nothing else
+FUNCTION is_retryable(error, kind) -> yes/no
+    // only answers; the session decides to retry or not
 ```
 
 `ai` does not retry and does not compact. It only answers "what kind of error is this?". The `session` layer acts on the answer. So if you want a different retry policy, you change the session or the app. You never touch `ai`.
@@ -175,20 +178,26 @@ Here are the real limits at this commit.
 
 **1. Tools run one by one.** In `packages/simp_agent/src/simp_agent/agent/__init__.py`, the loop runs tool calls in a plain `for`:
 
-```python
-for call in calls:
-    if cancel.is_set():
-        break
+Real code: [agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `agent_loop`
+
+```text
+FOR EACH call IN calls:          // one by one, no parallel run
+    IF cancel is set: STOP
+    run the tool, WAIT for it
 ```
 
 If the model asks for three `read` calls at once, they run one after another. `NOTES.md` lists "parallel tool execution" as not done. For fizzbuzz this is fine. For a big repo, it is slower.
 
 **2. One huge turn cannot be compacted.** In `packages/simp_agent/src/simp_agent/agent/compaction.py`:
 
-```python
-def find_cut(messages: list, start: int, keep_tokens: int) -> int | None:
-    """First kept index in (start, len). Only a user or assistant message: never a tool_result, so pairs stay together.
-    ponytail: no split-turn cut (pi isSplitTurn); one huge turn cannot be compacted."""
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `find_cut`
+
+```text
+FUNCTION find_cut(messages, start, keep_tokens) -> index or nothing
+    RETURN first kept index after start
+    // only a user or assistant message, never a tool_result,
+    //   so call/result pairs stay together
+    // ponytail: no split-turn cut; one huge turn cannot be compacted
 ```
 
 The cut ([16](16-compaction.md)) only lands on a user or assistant message. So if one turn has many large tool results, there is no place to cut inside it. Overflow recovery ([17](17-overflow.md)) compacts once; a second overflow ends the run with the error. The roadmap lists "compaction inside one long turn" for later.
@@ -256,8 +265,12 @@ Then both the CLI and the server can switch it on through a profile ([18](18-pro
 
 Tools may change between turns. When they do, the agent adds a note to history, so the model knows. From `agent/__init__.py`:
 
-```python
-note = UserMessage(f"<system-reminder>Tools added: {', '.join(added) or 'none'}; "
+Real code: [agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `_llm_turn`
+
+```text
+IF tool names changed since last turn:
+    ADD UserMessage "<system-reminder>Tools added: ...; removed: ..." to history
+    // so the model knows the tool list changed
 ```
 
 **Rules for extending.** Keep these, and the system stays healthy:

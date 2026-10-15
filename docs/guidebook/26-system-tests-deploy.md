@@ -41,28 +41,22 @@ This chapter fixes all three with small, boring tools: a fake model, a fake serv
 
 Start with the backup. The simplest idea: copy the data folder.
 
-```python
-import shutil, sqlite3, tempfile
-from pathlib import Path
+Naive sketch (not in the repo):
 
-home = Path(tempfile.mkdtemp())
-db = sqlite3.connect(home / "simp.db")
-db.execute("PRAGMA journal_mode=WAL")     # the server uses WAL mode
-db.execute("CREATE TABLE t(x)")
-db.execute("INSERT INTO t VALUES(42)")
-db.commit()                               # committed, but db stays open (server is running)
+```text
+MAKE a new folder "home"
+OPEN database home/simp.db in WAL mode     // same as the server
+CREATE table t, ADD row 42, COMMIT         // db stays open: the server is running
+WRITE home/.env = "OPENAI_API_KEY=secret"
 
-(home / ".env").write_text("OPENAI_API_KEY=secret")
+COPY the whole folder to "copy", but SKIP *-wal and *-shm files
 
-copy = Path(tempfile.mkdtemp()) / "copy"
-shutil.copytree(home, copy, ignore=shutil.ignore_patterns("*-wal", "*-shm"))
-
-print(sorted(p.name for p in copy.iterdir()))   # .env is in the backup
-try:
-    print(sqlite3.connect(copy / "simp.db").execute("SELECT x FROM t").fetchone())
-except sqlite3.Error as e:
-    print("broken backup:", e)
+PRINT the file names in "copy"             // .env is in the backup
+TRY to read row 42 from copy/simp.db
+IF it fails: PRINT "broken backup"
 ```
+
+Key idea: a plain folder copy. It is simple, but see the two bugs below.
 
 It looks fine, but it breaks in two ways:
 
@@ -75,47 +69,66 @@ The naive way to test the whole system has the same kind of problem: point the b
 
 **Step 1: use SQLite's own copy.** Do not copy `simp.db` as a file. Ask SQLite to copy it:
 
-```python
-src, dst = sqlite3.connect(home / "simp.db"), sqlite3.connect(snap)
-with dst:
-    src.backup(dst)
+Real code: [ops.py](../../apps/server/src/simp_server/ops.py) — `backup`
+
+```text
+OPEN src = data_dir/simp.db, dst = snap
+ASK SQLite: src.backup(dst)      // SQLite makes the copy itself
 ```
+
+Key idea: let SQLite copy its own file.
 
 Why: `backup` gives a safe copy, even with rows still in the WAL file and the server running.
 
 **Step 2: copy only an allow list.** Do not copy the whole folder:
 
-```python
-for name in ("settings.toml", "workspaces", "sandboxes"):
-    if (data_dir / name).exists():
-        tar.add(data_dir / name, name)
+Real code: [ops.py](../../apps/server/src/simp_server/ops.py) — `backup`
+
+```text
+FOR EACH name IN ("settings.toml", "workspaces", "sandboxes"):
+    IF data_dir/name exists: ADD it to the tar
 ```
+
+Key idea: copy only names on the list.
 
 Why: `.env` is not on the list, so keys never enter a backup.
 
 **Step 3: pack it in one file and drop old ones.** Name the file by time, then delete all but the newest N:
 
-```python
-for old in sorted(dest.glob("simp-*.tar.gz"))[:-keep]:
-    old.unlink()
+Real code: [ops.py](../../apps/server/src/simp_server/ops.py) — `backup`
+
+```text
+FOR EACH old file IN (all simp-*.tar.gz, sorted, except the newest keep):
+    DELETE old
 ```
+
+Key idea: keep only the newest N files.
 
 Why: names like `simp-20260101-000000.tar.gz` sort by time as plain text.
 
 **Step 4: a fake model for tests.** Look only at the last message and answer the same way every time:
 
-```python
-else:
-    chunks, calls = ["Echo: ", last.content], []
+Real code: [fakellm.py](../../apps/server/src/simp_server/fakellm.py) — `stream`
+
+```text
+ELSE:                                  // no rule matched
+    answer "Echo: " + last.content, no tool calls
 ```
+
+Key idea: same input, same answer.
 
 Why: tests can now say "the answer must be `Echo: hello`". Add more rules (`tool`, `slow`) for more flows.
 
 **Step 5: plug the fake into the real server.** One flag swaps the model and nothing else:
 
-```python
-create_app(settings, stream if a.fake_llm else ai.stream)
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `main`
+
+```text
+model = fake stream IF --fake-llm ELSE real ai.stream
+create_app(settings, model)
 ```
+
+Key idea: only the model changes.
 
 Why: the store, auth and tools stay real. Then `ops.py`, `fakellm.py` and the launchd files below are the full code.
 
@@ -125,20 +138,24 @@ Why: the store, auth and tools stay real. Then `ops.py`, `fakellm.py` and the la
 
 In [02](02-fake-provider.md) we learned that the agent never calls a model directly. It calls a `stream_fn`. So the server can take a fake one. `apps/server/src/simp_server/fakellm.py`:
 
-```python
-async def stream(model, ctx, api_key=None):
-    last = ctx.messages[-1]
-    if ctx.system_prompt.startswith("Name this coding session"):
-        chunks, calls = ["Fake title"], []
-    elif last.role == "tool_result":
-        chunks, calls = [f"Tool said: {last.content.strip()}"], []
-    elif last.content.startswith("tool"):
-        chunks, calls = ["Running a command."], [ToolCall(f"call{next(ids)}", "bash", {"command": "echo hi-from-tool"})]
-    elif last.content.startswith("slow"):
-        chunks, calls = [f"w{i} " for i in range(40)], []
-    else:
-        chunks, calls = ["Echo: ", last.content], []
+Real code: [fakellm.py](../../apps/server/src/simp_server/fakellm.py) — `stream`
+
+```text
+FUNCTION stream(model, ctx, api_key):
+    last = the last message in ctx
+    IF system prompt starts with "Name this coding session":
+        answer "Fake title"
+    ELSE IF last is a tool result:
+        answer "Tool said: " + the tool output
+    ELSE IF last starts with "tool":
+        answer "Running a command." AND ask for tool bash "echo hi-from-tool"
+    ELSE IF last starts with "slow":
+        answer "w0 ", "w1 " ... "w39 "         // 40 chunks
+    ELSE:
+        answer "Echo: " + last
 ```
+
+Key idea: rules are checked from top to bottom. The first match wins.
 
 It only looks at the last message. Each rule exists for one kind of test:
 
@@ -151,15 +168,16 @@ Then it yields the same events a real provider yields: `start`, `thinking_delta`
 
 How does the server use it? One flag in `apps/server/src/simp_server/server.py`:
 
-```python
-r.add_argument("--fake-llm", action="store_true", help="deterministic scripted model (e2e)")
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `main`
+
+```text
+ADD CLI flag --fake-llm                   // "deterministic scripted model (e2e)"
 ...
-        if a.fake_llm:
-            from .fakellm import stream
-        ...
-        uvicorn.run(create_app(settings, stream if a.fake_llm else ai.stream), host=settings["host"], port=a.port,
-                    timeout_graceful_shutdown=SHUTDOWN_GRACE, log_config=None)
+IF --fake-llm: LOAD stream from fakellm
+START uvicorn with create_app(settings, fake stream IF --fake-llm ELSE ai.stream)
 ```
+
+Key idea: one flag picks the model. All other parts stay real.
 
 Everything else is the **real** server: real store, real auth, real budget, real tools. Only the model is fake. Why? Because the model is the only part that is slow, costs money, and is random. Everything we want to test is the code around it.
 
@@ -179,10 +197,15 @@ SCRIPT = [
 
 A `Hub` class holds one session: the event log, the run state, in-flight text, and the live subscribers. Text is streamed 4 characters at a time. Every frame is checked against the protocol before it goes on the wire:
 
-```python
-    def _send(self, ev: dict) -> None:
-        p.server_event.validate_python(ev)  # never put an off-schema frame on the wire
+Real code: [fake.py](../../apps/server/src/simp_server/fake.py) — `Hub._send`
+
+```text
+FUNCTION _send(ev):
+    CHECK ev against the protocol schema   // never put an off-schema frame on the wire
+    ...then send it
 ```
+
+Key idea: a bad frame fails here, not in the browser.
 
 Why have a second server? It was built so the web client ([25](25-web-client.md)) could be written before the real server was ready. You start it with `simp-server fake` (see `apps/server/src/simp_server/__main__.py`: any mode not in the server list, like `run`, `seed` or `backup`, goes to `fake.main`). The script `apps/web/e2e/fake_reload.py` is a manual check against it: reload in the middle of a stream, approve after reload, upload a file.
 
@@ -253,27 +276,33 @@ What it checks:
 
 **JSON logs.** `setup_logging` sends every log line to stderr as one JSON object. `JsonFormatter` keeps `ts`, `level`, `msg`, plus any extra fields you pass:
 
-```python
-        d = {"ts": round(r.created, 3), "level": r.levelname, "msg": r.getMessage()}
-        d.update({k: v for k, v in vars(r).items() if k not in _STD})
+Real code: [ops.py](../../apps/server/src/simp_server/ops.py) — `JsonFormatter.format`
+
+```text
+d = { ts: record time, level: record level, msg: record message }
+FOR EACH field IN the record:
+    IF field is not a normal LogRecord field (_STD): ADD it to d
 ```
+
+Key idea: one JSON object per line, with your extra fields.
 
 `_STD` is the set of normal `LogRecord` fields, so only your own extras (like `run_id`) are added. The server calls `ops.setup_logging()` right before `uvicorn.run`.
 
 **Backup.** `backup(data_dir, dest, keep=0)` writes one `.tar.gz` file named by time:
 
-```python
-        if (data_dir / "simp.db").exists():
-            snap = Path(tmp) / "simp.db"
-            src, dst = sqlite3.connect(data_dir / "simp.db"), sqlite3.connect(snap)
-            with dst:
-                src.backup(dst)
-            ...
-            tar.add(snap, "simp.db")
-        for name in ("settings.toml", "workspaces", "sandboxes"):
-            if (data_dir / name).exists():
-                tar.add(data_dir / name, name)
+Real code: [ops.py](../../apps/server/src/simp_server/ops.py) — `backup`
+
+```text
+IF data_dir/simp.db exists:
+    snap = a temp file
+    ASK SQLite: copy simp.db into snap       // safe while the server runs
+    ...
+    ADD snap to the tar as "simp.db"
+FOR EACH name IN ("settings.toml", "workspaces", "sandboxes"):
+    IF data_dir/name exists: ADD it to the tar
 ```
+
+Key idea: a safe db copy plus an allow list.
 
 This fixes both naive bugs (steps 1 and 2 above):
 
@@ -282,11 +311,15 @@ This fixes both naive bugs (steps 1 and 2 above):
 
 Then old backups are removed:
 
-```python
-    if keep > 0:  # names sort by time
-        for old in sorted(dest.glob("simp-*.tar.gz"))[:-keep]:
-            old.unlink()
+Real code: [ops.py](../../apps/server/src/simp_server/ops.py) — `backup`
+
+```text
+IF keep > 0:                                  // names sort by time
+    FOR EACH old file IN (simp-*.tar.gz sorted, except the newest keep):
+        DELETE old
 ```
+
+Key idea: only `simp-*` files are deleted.
 
 The glob only matches `simp-*.tar.gz`, so other files in the folder are safe.
 
