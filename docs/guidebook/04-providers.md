@@ -41,18 +41,16 @@ There are also three cross-cutting problems:
 
 The naive way is an `if` chain in the loop:
 
-```python
-async def ask(model, context, api_key):
-    if model.api == "anthropic-messages":
-        import anthropic
-        client = anthropic.AsyncAnthropic(api_key=api_key)
-        ...  # build anthropic messages, stream, parse
-    elif model.api == "openai-completions":
-        import openai
-        client = openai.AsyncOpenAI(api_key=api_key)
-        ...  # build openai messages, stream, parse
-    else:
-        raise ValueError(model.api)
+```text
+FUNCTION ask(model, context, api_key):
+    IF model.api is "anthropic-messages":
+        IMPORT the anthropic SDK
+        make a client, build anthropic messages, stream, parse
+    ELSE IF model.api is "openai-completions":
+        IMPORT the openai SDK
+        make a client, build openai messages, stream, parse
+    ELSE:
+        RAISE an error   // crashes the loop
 ```
 
 Where it breaks:
@@ -66,9 +64,9 @@ Where it breaks:
 
 **Step 1 — a dict instead of `if`.** Map `model.api` to a stream function. A new vendor is one new entry; users add theirs with `register_provider`.
 
-```python
-_PROVIDERS = {"anthropic-messages": ..., "openai-completions": ...}
-fn = _PROVIDERS[model.api]
+```text
+_PROVIDERS = a table: api name -> stream function
+fn = LOOK UP model.api in _PROVIDERS
 ```
 
 **Step 2 — import late.** Each entry imports its SDK only on the first call (`_builtin`), so you need only the SDK you use.
@@ -100,17 +98,19 @@ flowchart LR
 
 A model says which **API format** to speak, not only which vendor:
 
-```python
-@dataclass
-class Model:
-    id: str = "claude-sonnet-5-5"
-    provider: str = "anthropic"
-    max_tokens: int = 8192
-    context_window: int = 200000
-    api: str = "anthropic-messages"  # anthropic-messages | openai-completions | openai-responses
-    base_url: str | None = None
-    api_key_env: str | None = None  # env var holding the key
-    compat: dict = field(default_factory=dict)  # openai: include_usage, max_tokens_field, supports_finish_reason; all: reasoning_effort; anthropic: thinking_budget
+Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`Model`)
+
+```text
+CLASS Model:
+    id             = "claude-sonnet-5-5"
+    provider       = "anthropic"          // just a name, for messages and keys
+    max_tokens     = 8192
+    context_window = 200000
+    api            = "anthropic-messages" // or openai-completions, openai-responses; picks the code
+    base_url       = none
+    api_key_env    = none                 // env var that holds the key
+    compat         = empty dict           // openai: include_usage, max_tokens_field, supports_finish_reason
+                                          // all: reasoning_effort; anthropic: thinking_budget
 ```
 
 `api` picks the code. `provider` is just a name (for messages and keys). So a local vLLM server is `provider="vllm", api="openai-completions", base_url="http://..."`. `compat` holds small per-server switches, so odd servers need a setting, not a new provider. Profiles (ch [18](18-profiles-plugins.md)) fill these fields from config.
@@ -119,29 +119,33 @@ class Model:
 
 The [provider registry](glossary.md#provider-registry) is a plain dict from `api` string to stream function (`ai/__init__.py`):
 
-```python
-_PROVIDERS = {"anthropic-messages": _builtin("anthropic"), "openai-completions": _builtin("openai_completions"),
-              "openai-responses": _builtin("openai_responses")}
+Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`register_provider`)
 
+```text
+_PROVIDERS = {
+    "anthropic-messages" -> _builtin("anthropic"),
+    "openai-completions" -> _builtin("openai_completions"),
+    "openai-responses"   -> _builtin("openai_responses"),
+}
 
-def register_provider(api: str, stream_fn) -> None:
-    """stream_fn(model, context, api_key=None) -> async iterator of events. Must not raise."""
+FUNCTION register_provider(api, stream_fn):
+    // stream_fn(model, context, api_key) gives events and must not raise
     _PROVIDERS[api] = stream_fn
 ```
 
 `register_provider` lets anyone add or replace an `api` without touching the library. The built-ins go through `_builtin`:
 
-```python
-def _builtin(module: str):
-    async def fn(model, context, **opts):  # lazy import: providers import this module
-        if not opts.get("api_key"):  # strict: providers never read env; the app passes get_api_key
-            msg = AssistantMessage(stop_reason="error", error=f"no API key for provider {model.provider}", error_kind="fatal")
-            yield {"type": "error", "message": msg}
-            return
-        async for ev in import_module(f".providers.{module}", __package__).stream(model, context, **opts):
-            yield ev
+Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`_builtin`)
 
-    return fn
+```text
+FUNCTION _builtin(module):
+    RETURN a stream function that, WHEN called with (model, context, opts):
+        IF no api_key in opts:   // providers never read env; the app passes the key
+            SEND event {error, message with error "no API key for provider ...", error_kind "fatal"}
+            STOP
+        IMPORT providers/<module> now   // late import: avoids a circular import
+        FOR EACH event from that module's stream(model, context, opts):
+            SEND the event
 ```
 
 Two things here, both with a reason:
@@ -151,18 +155,19 @@ Two things here, both with a reason:
 
 Then the one entry point:
 
-```python
-async def stream(model: Model, context: Context, **opts) -> AsyncIterator[dict]:
-    """Yield events. Never raises: errors become an 'error' event with a final message. opts: api_key."""
-    fn = _PROVIDERS.get(model.api)
-    if fn is None:
-        yield {"type": "error", "message": AssistantMessage(stop_reason="error", error=f"Unknown api: {model.api}")}
-        return
-    ctx = Context(context.system_prompt, transform_messages(context.messages, model), context.tools)
-    async for ev in fn(model, ctx, **opts):
-        if m := ev.get("message") or ev.get("partial"):
-            m.api, m.provider, m.model = model.api, model.provider, model.id
-        yield ev
+Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`stream`)
+
+```text
+FUNCTION stream(model, context, opts):   // never raises
+    fn = LOOK UP model.api in _PROVIDERS
+    IF not found:
+        SEND event {error, message with error "Unknown api: ..."}
+        STOP
+    ctx = same context, but messages = transform_messages(context.messages, model)
+    FOR EACH event from fn(model, ctx, opts):
+        IF the event has a message or partial:
+            STAMP it with model.api, model.provider, model.id
+        SEND the event
 ```
 
 It does three jobs for every provider, so no provider repeats them:
@@ -175,23 +180,25 @@ It does three jobs for every provider, so no provider repeats them:
 
 `transform_messages(messages, model)` does one pass over the history:
 
-```python
-    for m in messages:
-        if m.role in ("compaction", "custom"):  # history markers, never sent
-            continue
-        if isinstance(m, ToolResultMessage):
-            pending.pop(m.tool_call_id, None)
-            out.append(m)
-            continue
-        flush()
-        if isinstance(m, AssistantMessage):
-            if m.stop_reason in ("error", "aborted"):
-                continue
-            pending = {c.id: c.name for c in m.tool_calls()}
-            if model is not None:
-                m = dataclasses.replace(m, content=_thinking(m, model))
-        out.append(m)
-    flush()
+Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`transform_messages`)
+
+```text
+FOR EACH message m in messages:
+    IF m is a compaction or custom entry:   // history markers, never sent
+        SKIP it
+    IF m is a tool result:
+        REMOVE its call from pending
+        ADD m to out
+        NEXT
+    flush()   // add "No result provided" for each call still in pending
+    IF m is an assistant message:
+        IF m.stop_reason is error or aborted:
+            SKIP it
+        pending = the tool calls in m (id -> name)
+        IF a model is given:
+            m = a COPY of m with content = _thinking(m, model)
+    ADD m to out
+flush()
 ```
 
 - [Compaction entries](glossary.md#compaction-entry) and [custom entries](glossary.md#custom-entry) are skipped. They live in history but are never sent.
@@ -205,17 +212,19 @@ Some models "think" before they answer. We keep that as `ThinkingContent(thinkin
 
 `_thinking(m, model)` decides what to send back, using the stamps:
 
-```python
-    same = (m.provider, m.api, m.model) == (model.provider, model.api, model.id)
+Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`_thinking`)
+
+```text
+same = (m.provider, m.api, m.model) equal (model.provider, model.api, model.id)
+FOR EACH block c in m.content:
+    IF c is thinking:
+        IF c is redacted OR (same AND c has a signature):
+            IF same: ADD c          // else drop: the other model cannot verify it
+        ELSE IF c has text:
+            ADD c if same, else ADD it as plain text
+    ELSE IF c is text with a signature AND not same:
+        ADD plain text without the signature
     ...
-        if isinstance(c, ThinkingContent):
-            if c.redacted or (same and c.signature):
-                if same:
-                    out.append(c)
-            elif c.thinking.strip():
-                out.append(c if same else TextContent(c.thinking))
-        elif isinstance(c, TextContent) and c.signature and not same:
-            out.append(TextContent(c.text))
 ```
 
 | Thinking block | Same model | Other model |
@@ -232,25 +241,28 @@ All three have the same plan: **convert** our messages, **call** the SDK with `s
 
 **OpenAI Chat Completions** (`openai_completions.py`). This is the format most local servers copy. `to_openai` puts the system prompt first, sends tool results as one `role: "tool"` message each, and sends `content: None` for an assistant turn that only has tool calls. `stream` reads `compat`:
 
-```python
-            compat.get("max_tokens_field", "max_tokens"): model.max_tokens,
-        }
-        if compat.get("include_usage", True):
-            kw["stream_options"] = {"include_usage": True}
-        if compat.get("reasoning_effort"):
-            kw["reasoning_effort"] = compat["reasoning_effort"]
+Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) (`stream`)
+
+```text
+kw[ compat "max_tokens_field" or "max_tokens" ] = model.max_tokens
+IF compat include_usage (default yes):
+    kw.stream_options = {include_usage: true}
+IF compat reasoning_effort is set:
+    kw.reasoning_effort = that value
 ```
 
 Some servers want `max_completion_tokens`, some fail on `stream_options`. `compat` handles that without code. The parser is the one from ch [03](03-stream-parser.md).
 
 **OpenAI Responses** (`openai_responses.py`). The newer OpenAI API. We send `store: False`, so OpenAI keeps nothing between calls. To let a reasoning model see its own past reasoning, we ask for `include: ["reasoning.encrypted_content"]` and save the whole reasoning item as JSON in `ThinkingContent.signature`. `to_input` puts it back in the input as-is. Text parts also keep a small JSON signature (`{v, id, phase}`) so their item id goes back the same. A tool call id is stored as `call_id|item_id` in one string; `to_input` splits it again. With reasoning on, the system prompt uses role `developer`. The request is built in `request`:
 
-```python
-    kw = {"model": model.id, "input": to_input(model, context.system_prompt, context.messages), "stream": True,
-          "store": False, "max_output_tokens": max(16, model.max_tokens)}
-    if effort := _reasoning(model):
-        kw["reasoning"] = {"effort": effort, "summary": "auto"}
-        kw["include"] = ["reasoning.encrypted_content"]
+Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_responses.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_responses.py) (`request`)
+
+```text
+kw = {model id, input = to_input(model, system prompt, messages), stream: true,
+      store: false, max_output_tokens: at least 16}
+IF the model has a reasoning effort:
+    kw.reasoning = {effort, summary: "auto"}
+    kw.include   = ["reasoning.encrypted_content"]   // so we can send it back later
 ```
 
 `parse` here works like the one in ch 03, but on Responses [SSE](glossary.md#sse) events. Here is the same tool call as in ch 03 (`read` with `{"path": "a"}`), cut to the events and fields we use:
@@ -285,13 +297,15 @@ Unlike Chat Completions, the `.done` event carries the whole arguments string, s
 
 **Anthropic Messages** (`anthropic.py`). `_to_anthropic` sends a tool result as a `tool_result` block in a **user** turn. Anthropic needs user and assistant turns to alternate, so the last step merges turns next to each other with the same role:
 
-```python
-    merged = list()  # consecutive same-role turns become one (Anthropic needs user/assistant alternation)
-    for t in out:
-        if merged and merged[-1]["role"] == t["role"]:
-            merged[-1]["content"].extend(t["content"])
-        else:
-            merged.append(t)
+Real code: [packages/simp_agent/src/simp_agent/ai/providers/anthropic.py](../../packages/simp_agent/src/simp_agent/ai/providers/anthropic.py) (`_to_anthropic`)
+
+```text
+merged = empty list
+FOR EACH turn t in out:
+    IF the last merged turn has the same role as t:
+        ADD t's content to that last turn   // Anthropic needs user/assistant to alternate
+    ELSE:
+        ADD t to merged
 ```
 
 So three tool results become one user turn. Thinking is turned on by `thinking_params(model)`: `compat.thinking_budget` gives a fixed token budget (older models); `compat.reasoning_effort` gives adaptive thinking with an effort level. The same tool call from Anthropic looks like this (cut to the fields we use):
@@ -336,18 +350,18 @@ During streaming, `parse` keeps partial text on `msg` (useful if the run is abor
 
 Providers turn every failure into `AssistantMessage.error`, a string. Two small functions read that string:
 
-```python
-def is_context_overflow(error: str) -> bool:
-    return bool(_OVERFLOW.search(error or ""))
+Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`is_retryable`, `is_context_overflow`)
 
+```text
+FUNCTION is_context_overflow(error):
+    RETURN true IF error matches _OVERFLOW
 
-NON_RETRYABLE = {"fatal", "budget", "policy"}
+NON_RETRYABLE = {fatal, budget, policy}
 
-
-def is_retryable(error: str, kind: str | None = None) -> bool:
-    if kind in NON_RETRYABLE:
-        return False
-    return not is_context_overflow(error) and bool(_RETRYABLE.search(error or ""))
+FUNCTION is_retryable(error, kind):
+    IF kind is in NON_RETRYABLE:
+        RETURN false   // our own code knows better than the text
+    RETURN true IF not an overflow AND error matches _RETRYABLE
 ```
 
 - `_OVERFLOW` matches the ways vendors say "too long": `prompt is too long`, `maximum context length`, `context_length_exceeded`, `too many tokens`, and so on. This is a [context overflow](glossary.md#context-overflow).
@@ -374,19 +388,19 @@ No real model or key is needed. The tests replace the SDK or the provider with a
 
 `test_dispatch_by_api` (`tests/test_openai.py`) checks the registry and `transform_messages` together:
 
-```python
-async def test_dispatch_by_api(monkeypatch):
-    seen = []
+Real code: [packages/simp_agent/tests/test_openai.py](../../packages/simp_agent/tests/test_openai.py) (`test_dispatch_by_api`)
 
-    async def fake(model, ctx, api_key=None):
-        seen.append((model.api, ctx.messages))
-        yield {"type": "done", "message": AssistantMessage()}
-
-    monkeypatch.setattr(oc, "stream", fake)
-    calls = AssistantMessage([ToolCall("a", "x", {})], "tool_use")
-    [e async for e in ai.stream(Model(id="m", api="openai-completions"), Context("s", [UserMessage("u"), calls]), api_key="k")]
-    assert seen[0][0] == "openai-completions"
-    assert seen[0][1][-1].content == "No result provided"  # transform_messages ran before the provider
+```text
+TEST dispatch_by_api:
+    seen = empty list
+    fake provider WHEN called with (model, ctx):
+        ADD (model.api, ctx.messages) to seen
+        SEND event {done}
+    PUT fake in place of openai_completions.stream
+    history = [user "u", assistant with tool call "a" and no result]
+    RUN ai.stream with api "openai-completions" and key "k"
+    CHECK seen[0] api is "openai-completions"
+    CHECK last message seen is "No result provided"   // transform_messages ran first
 ```
 
 The history ends with an orphan tool call. The provider sees a "No result provided" result added for it.
