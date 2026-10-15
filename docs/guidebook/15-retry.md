@@ -206,11 +206,12 @@ Key idea: the wait is a timed wait on the abort event, not a sleep.
 
 The session's `abort()` sets this event and also aborts the agent ([06](06-events-abort.md)):
 
-```python
-    def abort(self) -> None:
-        self._abort.set()
-        self.agent.abort()
+```text
+FUNCTION abort():
+    SET the session's own abort event     // stops the backoff wait
+    TELL the agent to abort               // stops a running model call
 ```
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `Session.abort`
 
 Why a separate event? During backoff the agent is **not** running. There is no model call to cancel, so `agent.abort()` alone would do nothing. The session needs its own flag for its own wait. `_run` makes a fresh `asyncio.Event()` at the start of each run, so an old abort does not stop the next prompt.
 
