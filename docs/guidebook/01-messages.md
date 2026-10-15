@@ -219,21 +219,24 @@ They have a `role` too, so they save and load just like messages. Before a reque
 
 Saving needs two functions:
 
-```python
-def to_dict(m) -> dict:
-    """Any message or CompactionEntry -> JSON-safe dict."""
-    return dataclasses.asdict(m)
+```text
+FUNCTION to_dict(m):
+    RETURN dataclasses.asdict(m)        // walks nested blocks for us
 
-
-def from_dict(d: dict):
-    d = dict(d)
-    cls = {"user": UserMessage, "assistant": AssistantMessage, "tool_result": ToolResultMessage, "compaction": CompactionEntry,
-           "custom": CustomEntry}[d["role"]]
-    if cls is AssistantMessage:
-        types = {"text": TextContent, "thinking": ThinkingContent, "tool_call": ToolCall}
-        d["content"] = [types[c["type"]](**c) for c in d["content"]]
-    return cls(**d)
+FUNCTION from_dict(d):
+    pick the class from d["role"]:
+        user -> UserMessage, assistant -> AssistantMessage,
+        tool_result -> ToolResultMessage, compaction -> CompactionEntry,
+        custom -> CustomEntry
+    IF the class is AssistantMessage:
+        FOR EACH block in d["content"]:
+            pick the block class from block["type"]:
+                text -> TextContent, thinking -> ThinkingContent, tool_call -> ToolCall
+            rebuild the block from its fields
+    RETURN the class built from the fields of d
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`to_dict`, `from_dict`)
 
 `to_dict` is one line because `dataclasses.asdict` already walks nested dataclasses. All fields are strings, numbers, bools, lists or dicts, so the result goes straight into `json.dumps`.
 
@@ -251,11 +254,12 @@ One nice side effect: **old saved files still load.** A field added later has a 
 
 The CLI uses exactly this pair to save sessions as JSON lines (`apps/cli/src/simp_cli/__init__.py`):
 
-```python
-f.write(json.dumps(to_dict(entry)) + "\n")
-...
-return [from_dict(json.loads(line)) for line in self.path.read_text().splitlines() if line.strip()]
+```text
+append(entry):  write json.dumps(to_dict(entry)) as one new line
+load():         FOR EACH non-empty line: from_dict(json.loads(line))
 ```
+
+Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__init__.py) (`JsonlStore.append`, `JsonlStore.load`)
 
 ### Packing a request: Tool, Context, Model
 

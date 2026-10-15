@@ -105,14 +105,17 @@ The result is the real code below.
 
 All tools live in `coding/tools.py`. Two tiny helpers set the pattern:
 
-```python
-def _obj(props: dict, required: list) -> dict:
-    return {"type": "object", "properties": props, "required": required, "additionalProperties": False}
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `_obj`, `_path`
 
+```text
+FUNCTION _obj(props, required):
+    RETURN schema {type "object", these props, these required, no extra fields}
 
-def _path(ctx, path: str) -> str:
-    return os.path.join(ctx.cwd, path)  # absolute paths stay as is
+FUNCTION _path(ctx, path):
+    RETURN ctx.cwd joined with path     // an absolute path stays as is
 ```
+
+Key idea: one schema shape and one path rule for all tools.
 
 - `_obj` builds the JSON schema for a tool's arguments. `additionalProperties: False` tells the model not to invent extra fields.
 - `_path` makes a path relative to `ctx.cwd`. If the model gives an absolute path, `os.path.join` keeps it as is. The fence is **not** here: it is in the env ([path safety](glossary.md#path-safety), [09](09-exec-env.md#path-safety)). A tool only joins; the env decides if the path is allowed.
@@ -123,58 +126,65 @@ Errors are plain exceptions. A tool raises `ValueError`, `OSError` or `RuntimeEr
 
 All tools share one cutting rule, in `coding/truncate.py`:
 
-```python
+Real code: [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `_cut`
+
+```text
 MAX_LINES = 2000
-MAX_BYTES = 50 * 1024
+MAX_BYTES = 50 KB
 
-
-def _cut(lines: list, max_lines: int, max_bytes: int) -> list:
-    kept, size = [], 0
-    for line in lines[:max_lines]:
-        size += len(line.encode()) + (1 if kept else 0)
-        if size > max_bytes:
-            break
-        kept.append(line)
-    return kept
+FUNCTION _cut(lines, max_lines, max_bytes):
+    kept = [], size = 0
+    FOR EACH line in the first max_lines lines:
+        ADD line bytes (+1 for the newline, if not the first) to size
+        IF size > max_bytes:
+            STOP                        // never keep half a line
+        ADD line to kept
+    RETURN kept
 ```
+
+Key idea: keep whole lines under two limits. Limit: one very long first line means zero lines kept.
 
 [Truncation](glossary.md#truncation) keeps **whole lines** under **two** limits: at most 2000 lines and at most 50 KB. Two limits, because one is not enough: 2000 short lines are fine, but 10 lines of minified JavaScript can be 1 MB. The `+ 1` counts the newline between lines. A half line is never kept, so the model never sees a broken line.
 
 There are two directions:
 
-```python
-def truncate_head(text, max_lines=MAX_LINES, max_bytes=MAX_BYTES):
-    """Keep the first lines (read, ls, grep, find)."""
-    kept = _cut(text.split("\n"), max_lines, max_bytes)
-    return "\n".join(kept), _info(text, kept)
+Real code: [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `truncate_head`, `truncate_tail`
 
+```text
+FUNCTION truncate_head(text):            // read, ls, grep, find
+    kept = _cut(lines of text)
+    RETURN kept joined, _info(text, kept)
 
-def truncate_tail(text, max_lines=MAX_LINES, max_bytes=MAX_BYTES):
-    """Keep the last lines (bash: the end of the output matters most)."""
-    kept = _cut(text.split("\n")[::-1], max_lines, max_bytes)[::-1]
-    return "\n".join(kept), _info(text, kept)
+FUNCTION truncate_tail(text):            // bash: the end matters most
+    kept = _cut(lines of text in REVERSE order), then REVERSE back
+    RETURN kept joined, _info(text, kept)
 ```
+
+Key idea: tail is just head on reversed lines.
 
 `truncate_tail` just reverses the lines, cuts, and reverses back. Both return the text and an info dict: `truncated`, `total_lines`, `total_bytes`, `kept_lines`.
 
 The tools do not call these two directly (except `read`). They call two small wrappers that also add a **note for the model**:
 
-```python
-def head(text: str) -> str:
+Real code: [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `head`, `tail`
+
+```text
+FUNCTION head(text):
     out, info = truncate_head(text)
-    if info["truncated"] and not info["kept_lines"]:
-        return f"[First line exceeds {MAX_BYTES // 1024}KB limit; use bash with head -c to read part of it]"
-    if info["truncated"]:
-        out += f"\n[Output truncated: showing first {info['kept_lines']} of {info['total_lines']} lines]"
-    return out
+    IF cut AND zero lines kept:
+        RETURN "[First line exceeds 50KB limit; use bash with head -c ...]"
+    IF cut:
+        ADD at the END "[Output truncated: showing first K of N lines]"
+    RETURN out
 
-
-def tail(text: str) -> str:
+FUNCTION tail(text):
     out, info = truncate_tail(text)
-    if info["truncated"]:
-        out = f"[Output truncated: showing last {info['kept_lines']} of {info['total_lines']} lines]\n" + out
-    return out
+    IF cut:
+        ADD at the START "[Output truncated: showing last K of N lines]"
+    RETURN out
 ```
+
+Key idea: every cut comes with a note for the model.
 
 The note is the important part. A model that sees "showing first 2000 of 9000 lines" knows the answer is not complete and can ask again in a narrower way. A model that sees a silent cut thinks it saw everything. Note also the odd case in `head`: if the very first line is over 50 KB, zero lines fit, so `head` says so and suggests `head -c`.
 
@@ -187,16 +197,18 @@ flowchart LR
 
 ### `read`
 
-```python
-async def read(args: dict, ctx) -> str:
-    lines = (await ctx.env.read_file(_path(ctx, args["path"]))).splitlines()
-    start = max(args.get("offset", 1), 1) - 1
-    end = start + args.get("limit", MAX_LINES)
-    out, info = truncate_head("\n".join(f"{i + 1}\t{line}" for i, line in enumerate(lines[start:end], start)))
-    end = min(end, len(lines), start + info["kept_lines"])
-    if end < len(lines):
-        out += f"\n[{len(lines) - end} more lines; use offset={end + 1} to continue]"
-    return out
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `read`
+
+```text
+FUNCTION read(args, ctx):
+    lines = WAIT for ctx.env.read_file(_path(ctx, path)), split into lines
+    start = max(offset, 1) - 1          // offset is 1-based, default 1
+    end = start + limit                  // limit default 2000
+    out, info = truncate_head(lines[start:end], each as "number<TAB>line")
+    end = smallest of: end, number of lines, start + kept lines
+    IF end < number of lines:
+        ADD "[N more lines; use offset=M to continue]"   // the exact next call
+    RETURN out
 ```
 
 Step by step:
@@ -210,10 +222,12 @@ Step by step:
 
 ### `write`
 
-```python
-async def write(args: dict, ctx) -> str:
-    await ctx.env.write_file(_path(ctx, args["path"]), args["content"])
-    return f"Wrote {len(args['content'])} chars to {args['path']}"
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `write`
+
+```text
+FUNCTION write(args, ctx):
+    WAIT for ctx.env.write_file(_path(ctx, path), content)   // env makes parent folders
+    RETURN "Wrote N chars to path"       // short: do not echo the content back
 ```
 
 One line of work. The env already makes parent folders ([09](09-exec-env.md#localenv-this-machine)), so the tool description can promise "Makes parent dirs." The result is short on purpose: the model already knows the content it sent; echoing it back would only waste context.
@@ -222,31 +236,29 @@ One line of work. The env already makes parent folders ([09](09-exec-env.md#loca
 
 `edit` changes part of a file. It is the most careful tool, because a wrong edit silently breaks code.
 
-```python
-async def edit(args: dict, ctx) -> str:
-    """Every edit matches the ORIGINAL text exactly once; overlaps are an error; then all apply (pi edit.ts)."""
-    edits = args.get("edits") or []
-    if "old_text" in args:
-        edits = [{"old_text": args["old_text"], "new_text": args.get("new_text", "")}, *edits]
-    if not edits:
-        raise ValueError("Give old_text/new_text or edits")
-    p = _path(ctx, args["path"])
-    text = await ctx.env.read_file(p)
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `edit`
+
+```text
+FUNCTION edit(args, ctx):
+    edits = args.edits or []
+    IF args has old_text:
+        PUT {old_text, new_text} FIRST in edits
+    IF edits is empty: ERROR "Give old_text/new_text or edits"
+    p = _path(ctx, path)
+    text = WAIT for ctx.env.read_file(p)
     spans = []
-    for i, e in enumerate(edits):
-        n = text.count(e["old_text"]) if e["old_text"] else 0
-        if n != 1:
-            raise ValueError(f"edits[{i}].old_text must match exactly once in {args['path']}, found {n} matches")
-        start = text.index(e["old_text"])
-        spans.append((start, start + len(e["old_text"]), e["new_text"]))
-    spans.sort()
-    for a, b in zip(spans, spans[1:]):
-        if b[0] < a[1]:
-            raise ValueError("Edits overlap; merge them into one edit")
-    for start, end, new in reversed(spans):
-        text = text[:start] + new + text[end:]
-    await ctx.env.write_file(p, text)
-    return f"Successfully replaced {len(spans)} block(s) in {args['path']}."
+    FOR EACH edit i:
+        n = how many times old_text is in text (0 if old_text is empty)
+        IF n != 1:
+            ERROR "edits[i].old_text must match exactly once ..., found n matches"
+        ADD (start, end, new_text) to spans     // positions in the ORIGINAL text
+    SORT spans by start
+    FOR EACH pair of neighbour spans:
+        IF next starts before previous ends: ERROR "Edits overlap; merge them into one edit"
+    FOR EACH span from LAST to FIRST:    // back to front, so earlier positions stay true
+        REPLACE text[start:end] with new
+    WAIT for ctx.env.write_file(p, text)   // one write, only after all checks
+    RETURN "Successfully replaced K block(s) in path."
 ```
 
 The rules, and why:
@@ -269,24 +281,23 @@ flowchart TD
 
 ### `ls`
 
-```python
-async def list_dir(ctx, path: str) -> list:
-    """env.list_dir if the env has one, else `ls -1Ap`. Dirs end with "/"."""
-    if hasattr(ctx.env, "list_dir"):
-        return await ctx.env.list_dir(path)
-    code, out = await ctx.env.exec(f"ls -1Ap {shlex.quote(path)}", ctx.cwd, None, ctx.cancel)
-    if code != 0:
-        raise OSError(out.strip() or f"ls failed: {path}")
-    return [x for x in out.splitlines() if x]
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `list_dir`, `ls`
 
+```text
+FUNCTION list_dir(ctx, path):
+    IF ctx.env has list_dir:
+        RETURN WAIT for ctx.env.list_dir(path)
+    code, out = WAIT for ctx.env.exec("ls -1Ap <quoted path>", ctx.cwd, ...)
+    IF code != 0: ERROR (OSError) with the output
+    RETURN non-empty lines of out        // folders end with "/"
 
-async def ls(args: dict, ctx) -> str:
-    names = sorted(await list_dir(ctx, _path(ctx, args.get("path", "."))), key=str.lower)
-    limit = args.get("limit", 500)
-    out = "\n".join(names[:limit]) or "(empty directory)"
-    if len(names) > limit:
-        out += f"\n[{limit} of {len(names)} entries shown; raise limit for more]"
-    return head(out)
+FUNCTION ls(args, ctx):
+    names = list_dir(ctx, _path(ctx, path or ".")), sorted ignoring case
+    limit = args.limit or 500
+    out = first `limit` names joined, or "(empty directory)"
+    IF more names than limit:
+        ADD "[limit of N entries shown; raise limit for more]"
+    RETURN head(out)
 ```
 
 `list_dir` uses an env method called `list_dir` if the env has one. `LocalEnv` from [09](09-exec-env.md) does not (its method is named `list`), so in practice it runs `ls -1Ap` through `ctx.env.exec`: one name per line (`-1`), dotfiles but not `.` and `..` (`-A`), a `/` after folders (`-p`). Running through `exec` means the same code works in a Docker env ([24](24-docker-sandbox.md)). The path goes through `shlex.quote`, so a name with spaces or `;` cannot break the command.
@@ -297,40 +308,45 @@ async def ls(args: dict, ctx) -> str:
 
 Both search tools follow the same plan: build an argv, try a fast modern program, fall back to the classic one.
 
-```python
-async def _run(ctx, primary: list, fallback: list) -> tuple[int | None, str]:
-    """Run primary argv; if the program is missing (exit 127), run fallback."""
-    code, out = await ctx.env.exec(shlex.join(primary), ctx.cwd, None, ctx.cancel)
-    if code == 127:
-        code, out = await ctx.env.exec(shlex.join(fallback), ctx.cwd, None, ctx.cancel)
-    return code, out
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `_run`
+
+```text
+FUNCTION _run(ctx, primary, fallback):
+    code, out = WAIT for ctx.env.exec(quoted primary, ...)
+    IF code == 127:                      // 127 = "command not found"
+        code, out = WAIT for ctx.env.exec(quoted fallback, ...)
+    RETURN code, out
 ```
 
 Exit code 127 is what a shell returns for "command not found". So: `rg` (ripgrep) if installed, else `grep`; `fd` if installed, else `find`. The fast tools respect `.gitignore`, so they skip `node_modules` and build folders. The fallbacks work everywhere, but do not skip those folders. `shlex.join` quotes every argument, so a pattern like `it's "x"` reaches the program as one safe argument.
 
 The output goes through one shared helper:
 
-```python
-def _limited(code, out: str, limit: int, empty: str) -> str:
-    if code not in (0, 1):
-        raise RuntimeError(out.strip() or f"exit code {code}")
-    lines = [x for x in out.splitlines() if x]
-    text = "\n".join(lines[:limit]) or empty
-    if len(lines) > limit:
-        text += f"\n[{limit} results limit reached; refine the pattern or raise limit]"
-    return head(text)
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `_limited`
+
+```text
+FUNCTION _limited(code, out, limit, empty):
+    IF code is not 0 and not 1:          // 1 = "no matches", not an error
+        ERROR (RuntimeError) with the output
+    lines = non-empty lines of out
+    text = first `limit` lines joined, or `empty`
+    IF more lines than limit:
+        ADD "[limit results limit reached; refine the pattern or raise limit]"
+    RETURN head(text)
 ```
 
 For `grep` and `rg`, exit code 1 means "no matches", not "error". So 0 and 1 are both fine, and anything else (a bad regex, a missing folder) is raised. No results gives a clear text (`No matches found` / `No files found`). Too many results gives a note that asks the model to narrow the search.
 
 One more guard, for both tools:
 
-```python
-def _search_path(args: dict) -> str:
-    path = args.get("path", ".")
-    if path.startswith("-"):  # would be read as an option (rg --pre=, find -delete)
-        raise ValueError(f"path must not start with '-': {path} (use ./{path})")
-    return path
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `_search_path`
+
+```text
+FUNCTION _search_path(args):
+    path = args.path or "."
+    IF path starts with "-":             // rg --pre=, find -delete would read it as an option
+        ERROR "path must not start with '-': path (use ./path)"
+    RETURN path
 ```
 
 Quoting stops the shell from reading the path as code, but the **program** can still read it as an option. A path of `--pre=evil` makes `rg` run a program; `-delete` makes `find` delete files. So a path may not start with `-`.
@@ -342,26 +358,27 @@ The mapping is: `ignore_case` → `-i`, `literal` → `-F` (else plain `grep` ge
 
 ### `bash`
 
-```python
-def make_bash(max_timeout_s: float | None = None):
-    """No default timeout (pi bash.ts). max_timeout_s: the host's cap; a bigger or missing timeout is clamped to it."""
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `make_bash`
 
-    async def bash(args: dict, ctx) -> str:
-        timeout = args.get("timeout")
-        if timeout is not None and not (math.isfinite(timeout) and timeout > 0):
-            raise ValueError(f"timeout must be a positive number of seconds, got {timeout}")
-        if max_timeout_s is not None:
-            timeout = min(timeout or max_timeout_s, max_timeout_s)
-        start = time.monotonic()
-        code, out = await ctx.env.exec(args["command"], ctx.cwd, timeout, ctx.cancel, ctx.on_update)
-        if code is not None:
-            return tail(f"{out}\n[exit code: {code}]")
-        if ctx.cancel.is_set():
-            return tail(f"{out}\n[Command interrupted by the user after {_elapsed(time.monotonic() - start)}]")
-        return tail(f"{out}\n[Command timed out after {timeout:g} seconds]")
-
-    return bash
+```text
+FUNCTION make_bash(max_timeout_s):       // no default timeout
+    FUNCTION bash(args, ctx):
+        timeout = args.timeout
+        IF timeout is given AND not (finite and > 0):
+            ERROR "timeout must be a positive number of seconds"
+        IF max_timeout_s is set:
+            timeout = min(timeout or max_timeout_s, max_timeout_s)   // host cap wins
+        start = monotonic clock now
+        code, out = WAIT for ctx.env.exec(command, ctx.cwd, timeout, ctx.cancel, ctx.on_update)
+        IF code is not None:
+            RETURN tail(out + "[exit code: code]")
+        IF ctx.cancel is set:
+            RETURN tail(out + "[Command interrupted by the user after <elapsed>]")
+        RETURN tail(out + "[Command timed out after <timeout> seconds]")
+    RETURN bash
 ```
+
+Key idea: exec does the hard work; bash only adds the ending note. Limit: no timeout unless the model or host sets one.
 
 `start` uses a [monotonic clock](glossary.md#monotonic-clock) (a clock that only goes forward), so the time shown is right even if the system time changes.
 
