@@ -160,30 +160,32 @@ The four tasks grow in difficulty:
 
 `load_tasks` reads them:
 
-```python
-# evals/run.py
-def load_tasks(names: list[str] | None) -> list[dict]:
-    tasks = {f.stem: {"name": f.stem, **tomllib.loads(f.read_text())} for f in sorted((HERE / "tasks").glob("*.toml"))}
-    if names is None:
-        return list(tasks.values())
-    if missing := [n for n in names if n not in tasks]:
-        raise SystemExit(f"unknown tasks: {', '.join(missing)} (have: {', '.join(tasks)})")
-    return [tasks[n] for n in names]
+Real code: [evals/run.py](../../evals/run.py) — `load_tasks`
+
+```text
+FUNCTION load_tasks(names):
+    tasks = FOR EACH file in tasks/*.toml (sorted): name = file name, plus its TOML keys
+    IF names is None:
+        RETURN all tasks
+    IF some names are not in tasks:
+        STOP with "unknown tasks: ... (have: ...)"   // before any money is spent
+    RETURN the tasks with these names
 ```
 
 No names means all tasks, sorted by file name. A wrong name stops early with the list of real names, before any money is spent.
 
 ### run_task: one task, one fresh folder
 
-```python
-# evals/run.py — run_task
-with tempfile.TemporaryDirectory(prefix=f"simp-eval-{task['name']}-") as d:
-    root = Path(d).resolve()
-    for rel, text in task.get("setup", {}).items():
-        (root / rel).parent.mkdir(parents=True, exist_ok=True)
-        (root / rel).write_text(text)
-    s = AgentSession(model, env=LocalEnv(str(root)), cwd=str(root), stream_fn=stream_fn,
-                     get_api_key=lambda provider: key, max_retries=1)
+Real code: [evals/run.py](../../evals/run.py) — `run_task`
+
+```text
+INSIDE run_task:
+    WITH a new temp folder d:
+        root = real path of d            // macOS: /tmp is a symlink
+        FOR EACH (rel, text) in task.setup:
+            make parent folders, WRITE text to root/rel
+        s = AgentSession(model, env=LocalEnv(root), cwd=root, stream_fn,
+                         get_api_key = the profile key, max_retries=1)
 ```
 
 Why each part:
@@ -200,21 +202,21 @@ The key is found from the [profile](glossary.md#profile): its `api_key_env`, or 
 
 The harness does not change the loop. It only **listens** to [events](glossary.md#event) ([06](06-events-abort.md)):
 
-```python
-# evals/run.py — inside run_task
-def on_event(e):
-    m = e.get("message")
-    if e["type"] == "message_end" and getattr(m, "role", None) == "assistant":
-        r["turns"] += 1
-        r["input"] += m.usage.get("input", 0)
-        r["output"] += m.usage.get("output", 0)
-        r["answer"] = m.text()
-        if m.error:
-            r["error"] = m.error
-        if r["turns"] >= MAX_TURNS:
-            r["error"] = f"hit {MAX_TURNS} turns"
-            s.abort()
+Real code: [evals/run.py](../../evals/run.py) — `run_task` (inner `on_event`)
+
+```text
+FUNCTION on_event(e):
+    IF e is message_end AND the message is from the assistant:
+        ADD 1 to r.turns
+        ADD usage input / output to r.input / r.output
+        r.answer = message text          // keep the last text
+        IF message has error: r.error = it
+        IF r.turns >= MAX_TURNS:
+            r.error = "hit 25 turns"
+            s.abort()                    // stop a runaway agent
 ```
+
+Key idea: count and stop only by listening to events; the agent is not changed.
 
 Each assistant message is one [turn](glossary.md#turn). We add its [usage](glossary.md#usage) and keep the last text as the answer. Two limits stop a runaway agent:
 
@@ -225,12 +227,14 @@ A task that hits a limit is not a crash. The row gets an `error`, and the check 
 
 ### The check
 
-```python
-# evals/run.py — run_task
-(root / "_answer.txt").write_text(r.pop("answer", ""))
-chk = subprocess.run(task["check"], shell=True, cwd=root, capture_output=True, text=True,
-                     timeout=CHECK_TIMEOUT_S, env={**os.environ, "PYTHON": sys.executable})
-r["passed"], r["check_output"] = chk.returncode == 0, (chk.stdout + chk.stderr)[-2000:]
+Real code: [evals/run.py](../../evals/run.py) — `run_task`
+
+```text
+WRITE the last answer to root/_answer.txt
+chk = RUN task.check in a shell, in root,
+      with timeout CHECK_TIMEOUT_S and env PYTHON = this Python
+r.passed = (chk exit code == 0)
+r.check_output = last 2000 chars of stdout + stderr
 ```
 
 - The last answer goes to `_answer.txt`, so a check can test **what the agent said**, not only files. `read_answer` uses this.
@@ -254,12 +258,13 @@ It then writes `evals/results/<date-time>-<profile>.json` with every row and the
 
 ### main: reuse the server's settings
 
-```python
-# evals/run.py — main
-settings = load_settings(Path(a.home).expanduser())
+Real code: [evals/run.py](../../evals/run.py) — `main`
+
+```text
+settings = load_settings(--home folder)
 ...
 keys = take_keys(settings)
-asyncio.run(run_all(a.profile, settings["profiles"][a.profile], keys, a.tasks.split(",") if a.tasks else None))
+RUN run_all(profile name, that profile, keys, task names from --tasks or all)
 ```
 
 The harness reads the same `settings.toml` as the server ([22](22-store-auth.md)), from `--home` (default `$SIMP_SERVER_HOME` or `~/.simp-server`). It reads keys from `<data_dir>/.env` and the process env. `data_dir` is `--home` unless settings change it. So you eval exactly the profiles you serve. Run it like this:

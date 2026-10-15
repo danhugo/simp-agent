@@ -30,22 +30,27 @@ We want a **[plugin](glossary.md#plugin)**: a plain object that the session call
 
 A first try: a list of callbacks, one per tool call.
 
-```python
-class Session:
-    def __init__(self, agent, plugins=()):
-        self.agent, self.plugins = agent, list(plugins)
-        agent.before_tool_call = self.before
+Naive sketch (not in the repo):
 
-    async def before(self, call, ctx):
-        for p in self.plugins:
-            r = p.tool_call(call)          # every plugin must have tool_call
-            if r and "block" in r:
-                return r["block"]
+```text
+CLASS Session:
+    FUNCTION init(agent, plugins):
+        save agent and plugins
+        agent.before_tool_call = before
 
-class NoBash:
-    def tool_call(self, call):
-        return {"block": "no bash"} if call.name == "bash" else None
+    FUNCTION before(call, ctx):
+        FOR EACH plugin p:
+            r = p.tool_call(call)        // every plugin MUST have tool_call
+            IF r has "block":
+                RETURN r["block"]
+
+CLASS NoBash:
+    FUNCTION tool_call(call):
+        IF call.name is "bash": RETURN {block: "no bash"}
+        RETURN nothing
 ```
+
+Key idea: one callback list. Limit: no optional hooks, no error safety, one hook point.
 
 It blocks `bash` for the fizzbuzz task. Problems:
 
@@ -60,11 +65,15 @@ We fix the naive `Session` one problem at a time.
 
 **Step 1 — hooks are optional.** Do not call `p.tool_call(...)` directly. Look it up first with `getattr`, and skip the plugin if it has no such method:
 
-```python
-fn = getattr(p, hook, None)
-if fn is None:
-    return None
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `_hook`
+
+```text
+fn = method named hook on plugin p, or nothing
+IF fn is nothing:
+    RETURN nothing          // plugin does not want this hook
 ```
+
+Key idea: a missing hook is skipped, not an error.
 
 Now a plugin that only wants events needs only `on_event`. This fixes problem 1.
 
@@ -74,12 +83,16 @@ Now a plugin that only wants events needs only `on_event`. This fixes problem 1.
 
 **Step 4 — but not for safety checks.** For `tool_call`, "skip on error" is wrong. A crashed guard must not let the tool run. So `_hook` gets `isolate=False`, and `_before_tool_call` turns the error into a block:
 
-```python
-try:
-    r = await self._hook(p, "tool_call", call, isolate=False) or {}
-except Exception as e:
-    return f"blocked by plugin {plugin_name(p)} ({type(e).__name__}: {e})"
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `_before_tool_call`
+
+```text
+TRY:
+    r = WAIT for _hook(p, "tool_call", call, isolate = false), or {}
+IF it raised error e:
+    RETURN "blocked by plugin <name> (<error type>: e)"   // crash means no
 ```
+
+Key idea: a crashed safety check blocks the tool.
 
 **Step 5 — more hook points.** One hook is not enough. We call `_hook` at more fixed places: `input` and `before_agent_start` in `prompt()`, `context` before each model call, `tool_result` after a tool, `tool_update` and `on_event` in `_emit`. This fixes problem 3.
 
@@ -95,27 +108,35 @@ The code is in `packages/simp_agent/src/simp_agent/session/__init__.py`.
 
 There is no base class. A plugin is any object. Its name is `p.name` or its class name:
 
-```python
-def plugin_name(p) -> str:
-    return getattr(p, "name", type(p).__name__)
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `plugin_name`
+
+```text
+FUNCTION plugin_name(p):
+    RETURN p.name IF it has one, ELSE the class name of p
 ```
+
+Key idea: no base class; any object can be a plugin.
 
 The session calls a **[hook](glossary.md#plugin-hook)** only if the plugin has a method with that name. All calls go through one helper, `_hook`:
 
-```python
-    async def _hook(self, p, hook: str, *args, isolate: bool = True):
-        fn = getattr(p, hook, None)
-        if fn is None:
-            return None
-        try:
-            return await _maybe_await(fn(*args))
-        except Exception as e:
-            if not isolate:
-                raise
-            await _emit_all(self._subs, {"type": "plugin_error", "plugin": plugin_name(p), "hook": hook,
-                                         "error": f"{type(e).__name__}: {e}"})
-            return None
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._hook`
+
+```text
+FUNCTION _hook(p, hook, args, isolate = true):
+    fn = method named hook on p, or nothing
+    IF fn is nothing:
+        RETURN nothing                         // missing hook: skip
+    TRY:
+        RETURN WAIT for fn(args) IF it is async, ELSE its plain result
+    IF it raised error:
+        IF not isolate:
+            raise it again                     // caller decides (tool_call)
+        SEND event plugin_error {plugin, hook, error} to subscribers only
+                                               // not to plugins, so on_event cannot loop
+        RETURN nothing                         // as if the plugin did nothing
 ```
+
+Key idea: one place for lookup, sync/async and error handling.
 
 Three things in a few lines:
 
@@ -142,53 +163,71 @@ Let us look at the important ones.
 
 **`setup` gets a `PluginAPI` and its config.** In `start()`:
 
-```python
-        for p in self.plugins:
-            await self._hook(p, "setup", PluginAPI(self, plugin_name(p)), self.plugin_config.get(plugin_name(p), {}))
-        for p in self.plugins:
-            await self._hook(p, "session_start")
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.start`
+
+```text
+FOR EACH plugin p:
+    WAIT for _hook(p, "setup", new PluginAPI(session, name of p), plugin_config[name of p] or {})
+FOR EACH plugin p:
+    WAIT for _hook(p, "session_start")      // only after ALL setups are done
 ```
+
+Key idea: each plugin gets its own API handle and only its own config.
 
 `plugin_config` is a dict keyed by plugin name. Each plugin sees only its own part.
 
 **`context` is a chain.** Before each model call:
 
-```python
-    async def _context(self, view: list) -> list:
-        for p in self.plugins:  # chained: each gets the previous output
-            view = await self._hook(p, "context", list(view)) or view
-        return view
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._context`
+
+```text
+FUNCTION _context(view):
+    FOR EACH plugin p:                  // chained: each gets the previous output
+        new = WAIT for _hook(p, "context", COPY of view)
+        IF new is not empty: view = new  // fail or nothing: keep old view
+    RETURN view
 ```
+
+Key idea: plugins change only the view sent to the model, never the saved history.
 
 Each plugin gets the output of the one before. It gets a *copy* of the list (`list(view)`), and the result is only the **[view](glossary.md#view-llm-view)** sent to the model. The saved history does not change. If a plugin fails or returns `None`, the chain keeps the previous view.
 
 **`tool_call` fails closed.** This one is different:
 
-```python
-    async def _before_tool_call(self, call, ctx) -> str | None:
-        for p in self.plugins:  # first block wins; a raising hook blocks (fail closed)
-            try:
-                r = await self._hook(p, "tool_call", call, isolate=False) or {}
-            except Exception as e:
-                return f"blocked by plugin {plugin_name(p)} ({type(e).__name__}: {e})"
-            if "block" in r:
-                return f"blocked by plugin {plugin_name(p)}: {r['block']}"
-            if "args" in r:
-                call.arguments = r["args"]
-        ...  # then the approval check from ch 08
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._before_tool_call`
+
+```text
+FUNCTION _before_tool_call(call, ctx):
+    FOR EACH plugin p:                  // first block wins
+        TRY:
+            r = WAIT for _hook(p, "tool_call", call, isolate = false), or {}
+        IF it raised error e:
+            RETURN "blocked by plugin <name> (<error type>: e)"   // fail closed
+        IF r has "block":
+            RETURN "blocked by plugin <name>: <reason>"
+        IF r has "args":
+            call.arguments = r["args"]   // plugin rewrites the arguments
+    ...  // then the approval check from ch 08
 ```
+
+Key idea: an error in a safety hook means "no". Limit: plugins run before user approval.
 
 Here `isolate=False`. If a plugin's `tool_call` raises, the tool is **blocked**. Why? A `tool_call` hook is often a safety check. If the check crashes, running the tool anyway would be unsafe. So for this one hook, an error means "no". This is called **[fail closed](glossary.md#fail-closed)**. The first plugin that blocks wins. Plugins run before the user approval from [08](08-hooks-approval.md), so a blocked call never asks the user.
 
 **`tool_result` merges.** Each plugin can return a few fields, and they are merged with `dataclasses.replace`:
 
-```python
-    async def _after_tool_call(self, call, result, ctx):
-        for p in self.plugins:  # partial overrides, merged in order
-            if r := await self._hook(p, "tool_result", call, result):
-                result = dataclasses.replace(result, **r)
-        return result
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._after_tool_call`
+
+```text
+FUNCTION _after_tool_call(call, result, ctx):
+    FOR EACH plugin p:                  // in order
+        r = WAIT for _hook(p, "tool_result", call, result)
+        IF r is not empty:
+            result = copy of result with the fields in r replaced
+    RETURN result
 ```
+
+Key idea: each plugin changes only the fields it returns.
 
 **`input` can handle a command.** In `prompt()`, if a plugin returns `{"handled": True}`, the session returns `[]` and the model is never called. This is how a plugin can own a slash command like `/plan`.
 
@@ -196,23 +235,24 @@ Here `isolate=False`. If a plugin's `tool_call` raises, the tool is **blocked**.
 
 A plugin does not get the whole session. It gets a **[PluginAPI](glossary.md#pluginapi)**:
 
-```python
-class PluginAPI:
-    """What a plugin can do with its session (pi ExtensionAPI)."""
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `PluginAPI`
 
-    def __init__(self, session: "AgentSession", name: str):
-        self._s, self.name = session, name
+```text
+CLASS PluginAPI:                         // what a plugin may do with its session
+    FUNCTION init(session, name): save both
 
-    def register_tool(self, tool) -> None:
-        self.unregister_tool(tool.name)
-        self._s.agent.tools.append(tool)
+    FUNCTION register_tool(tool):
+        unregister_tool(tool.name)       // same name: replace the old one
+        ADD tool to session agent tools
     ...
-    def add_prompt_section(self, id: str, value, order: int = 100) -> None:
-        self._s.add_prompt_section(id, value, order)
+    FUNCTION add_prompt_section(id, value, order = 100):
+        session.add_prompt_section(id, value, order)
     ...
-    async def append_entry(self, type: str, data: dict) -> CustomEntry:
-        return await self._s.append_entry(type, data)
+    FUNCTION append_entry(type, data):
+        RETURN WAIT for session.append_entry(type, data)
 ```
+
+Key idea: a small, named surface, not the whole session.
 
 The full list: `register_tool`, `unregister_tool`, `add_prompt_section`, `remove_prompt_section`, `append_entry` ([CustomEntry](13-session.md)), `send_message` (steer, follow-up or a new prompt), `set_model`, `abort`, `get_messages`, `env`, `cwd`, and `emit` (send a custom event tagged with the plugin name). A small, named surface is easier to keep stable than "here is the whole session".
 
@@ -224,16 +264,21 @@ The system prompt is built every turn from ordered **[prompt sections](glossary.
 
 `_emit` also feeds plugins:
 
-```python
-    async def _emit(self, e: dict) -> None:
-        if e["type"] == "tool_execution_update":
-            for p in self.plugins:  # e.g. mask secrets before the UI and logs see them
-                if (r := await self._hook(p, "tool_update", e["call"], e["text"])) is not None:
-                    e = {**e, "text": r}
-        await _emit_all(self._subs, e)
-        for p in self.plugins:
-            await self._hook(p, "on_event", e)
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._emit`
+
+```text
+FUNCTION _emit(e):
+    IF e.type is "tool_execution_update":
+        FOR EACH plugin p:               // e.g. mask secrets before UI and logs see them
+            r = WAIT for _hook(p, "tool_update", e.call, e.text)
+            IF r is not nothing:
+                e = copy of e with text = r
+    SEND event e to all subscribers
+    FOR EACH plugin p:
+        WAIT for _hook(p, "on_event", e)
 ```
+
+Key idea: tool output is changed before anyone sees it; then plugins see every event.
 
 Streamed tool output goes through `tool_update` **before** the app sees it. So a redact plugin can hide a key before it reaches the screen or a log.
 

@@ -131,21 +131,19 @@ All code is in `apps/server/src/simp_server/server.py` unless said otherwise.
 
 The server uses two plain HTTP routes:
 
-```python
-    @app.post("/api/sessions/{sid}/commands")
-    async def post_command(sid: str, request: Request, u=Depends(user)):
-        try:
-            c = p.command.validate_python(await request.json())
-        except ValidationError as e:
-            raise HTTPException(422, e.errors(include_url=False)) from None
-        await (await mgr.get(u, sid)).command(c)
-        return {"ok": True}
+```text
+ON POST /api/sessions/{sid}/commands (logged-in user u):
+    c = check the JSON body with the protocol Command parser
+    IF it does not fit: FAIL with HTTP 422 and the errors
+    get the Run for (u, sid), and run its command(c)
+    RETURN {"ok": true}
 
-    @app.get("/api/sessions/{sid}/events")
-    async def events(sid: str, request: Request, after: int | None = None, u=Depends(user)):
-        ...
-        return StreamingResponse(gen(), media_type="text/event-stream")
+ON GET /api/sessions/{sid}/events?after=N (logged-in user u):
+    ...
+    RETURN a long response of type text/event-stream, filled by gen()
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), functions `post_command` and `events` inside `create_app`.
 
 Events go out with **[SSE](glossary.md#sse)** (Server-Sent Events). SSE is one long HTTP response with `text/event-stream` type. The server writes small text blocks into it, one per event. The browser reads them with a small fetch-based reader (see [25](25-web-client.md#fetch-based-sse)).
 
@@ -155,11 +153,15 @@ Why not WebSocket? SSE is one-way, which is all we need out. Plain HTTP works th
 
 Each event is written by `sse` in `apps/server/src/simp_server/fake.py`:
 
-```python
-def sse(ev: dict) -> str:
-    head = f"id: {ev['seq']}\n" if "seq" in ev else ""
-    return f"{head}event: {ev['type']}\ndata: {json.dumps(ev)}\n\n"
+```text
+FUNCTION sse(ev):
+    IF ev has a seq: start with the line "id: <seq>"
+    then the line   "event: <type>"
+    then the line   "data: <ev as JSON>"
+    then one empty line                   // ends the event
 ```
+
+Real code: [apps/server/src/simp_server/fake.py](../../apps/server/src/simp_server/fake.py), function `sse`.
 
 Note the `id:` line. It is only there when the event has a `seq`. That is the key to replay.
 
@@ -172,23 +174,27 @@ Events are of two kinds:
 
 `seq` is a number that goes up by one for each saved row. `Run.durable` makes a durable event:
 
-```python
-    async def durable(self, cls, **kw) -> None:
-        self.seq += 1
-        ev = cls(seq=self.seq, **kw).model_dump()
-        self.log.append(ev)
-        self._send(ev)
-        await self.mgr.store.add_entry(self.user_id, self.sid, ev["seq"], ev["type"], ev)
+```text
+FUNCTION durable(cls, fields):
+    seq = seq + 1
+    ev = build model cls(seq, fields) as a dict    // a wrong field fails here
+    ADD ev to log
+    _send(ev)                                      // to live tabs
+    SAVE ev in the store as row (user, session, seq, type)
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.durable`.
 
 It adds the event to the in-memory `log`, sends it to live clients, and saves it. The `Run` is also the `SessionStore` of its `AgentSession` ([13](13-session.md)). Its `append` uses the **same** counter:
 
-```python
-    # SessionStore for AgentSession: core messages share the seq counter with protocol events
-    async def append(self, entry) -> None:
-        self.seq += 1
-        await self.mgr.store.add_entry(self.user_id, self.sid, self.seq, "msg", to_dict(entry))
+```text
+// SessionStore for AgentSession: core messages share the seq counter with protocol events
+FUNCTION append(entry):
+    seq = seq + 1
+    SAVE entry in the store as row (user, session, seq, "msg")
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.append`.
 
 So core messages (`"msg"` rows, used to resume the agent) and protocol events live in one ordered stream. `self.log` keeps only the protocol events (`e["type"] != "msg"`). The comment in `__init__` says it plainly: `# ponytail: whole log in memory`.
 
@@ -196,21 +202,25 @@ So core messages (`"msg"` rows, used to resume the agent) and protocol events li
 
 When a tab connects, it says "I have seen up to seq N". It can do this with `?after=N`, or with the [`Last-Event-ID`](glossary.md#last-event-id) header that our client sends on every connect ([25](25-web-client.md#fetch-based-sse)):
 
-```python
-        first, q = run.subscribe(after if after is not None else int(request.headers.get("last-event-id") or 0))
+```text
+after = the ?after=N value, ELSE the Last-Event-ID header, ELSE 0
+first, q = run.subscribe(after)
 ```
 
 `Run.subscribe` builds the answer:
 
-```python
-    def subscribe(self, after: int) -> tuple[list[dict], asyncio.Queue]:
-        """Missed durable events, then a snapshot, then live. No await here, so nothing slips in between."""
-        q = asyncio.Queue(QUEUE_MAX)
-        self.subs.add(q)
-        snap = p.Snapshot(last_seq=self.seq, run_state=self.state, in_flight=self.inflight, pending_approval=self.pending,
-                          title=self.info.title, plan_mode=self.plan_mode)
-        return [*(e for e in self.log if e["seq"] > after), snap.model_dump()], q
+```text
+FUNCTION subscribe(after):
+    // missed durable events, then a snapshot, then live.
+    // No await here, so nothing slips in between.
+    q = a new queue that holds at most QUEUE_MAX events
+    ADD q to subs
+    snap = Snapshot(last_seq = seq, run_state, in_flight,
+                    pending_approval, title, plan_mode)
+    RETURN ( every e in log with e["seq"] > after, then snap ),  q
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.subscribe`.
 
 Three parts, in this order:
 
@@ -222,34 +232,33 @@ The docstring says "No await here". That matters. asyncio only switches tasks at
 
 The snapshot fixes problem 3 of the naive version. `in_flight` (`p.InFlight`) holds the text, thinking and tool output of the message that is still streaming. `Run.on_event` keeps it up to date while deltas arrive:
 
-```python
-        elif t == "message_update" and e["event"]["type"] in ("text_delta", "thinking_delta"):
-            kind, delta = e["event"]["type"][:-6], e["event"]["delta"]
-            off = len(getattr(f, kind))
-            setattr(f, kind, getattr(f, kind) + delta)
-            cls = p.TextDelta if kind == "text" else p.ThinkingDelta
-            self._send(cls(msg_id=f.msg_id, offset=off, delta=delta).model_dump())
+```text
+IF the event is message_update with a text_delta or thinking_delta:
+    kind  = "text" or "thinking"
+    off   = length of the in-flight kind so far     // where this piece starts
+    ADD delta to the in-flight kind
+    _send live event TextDelta / ThinkingDelta(msg_id, offset = off, delta)
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.on_event`.
 
 Each delta carries an [`offset`](glossary.md#offset): where it starts in the full text. A tab that joined late gets "Hello " in the snapshot, then a delta with `offset=6`. It can check that the pieces fit.
 
 ### The SSE loop
 
-```python
-        async def gen():
-            try:
-                for ev in first:
-                    yield sse(ev)
-                while q in run.subs or not q.empty():  # dropped (queue overflow): send what we have, then end
-                    try:
-                        yield sse(await asyncio.wait_for(q.get(), HEARTBEAT))
-                    except TimeoutError:
-                        if await request.is_disconnected() or await auth.authenticate(request) is None:
-                            return  # gone, or its token was revoked/rotated
-                        yield ": ping\n\n"
-            finally:
-                run.subs.discard(q)
+```text
+FUNCTION gen():
+    FOR EACH ev in first: SEND sse(ev)            // replay + snapshot
+    WHILE q is still in subs, or q is not empty:  // dropped: send what we have, then end
+        WAIT for the next event in q, at most HEARTBEAT seconds
+        IF one came: SEND sse(it)
+        ELSE (time is up):
+            IF the client is gone, or its token is no longer valid: STOP
+            SEND ": ping"                          // keeps proxies from closing it
+    ALWAYS at the end: REMOVE q from subs
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), function `gen` inside `events` in `create_app`.
 
 - First it sends the replay and the snapshot.
 - Then it waits for live events. If nothing comes for `HEARTBEAT` (15 seconds; see [Heartbeat](glossary.md#heartbeat)), it checks two things: is the client gone, and is its token still valid? If both are fine, it sends `": ping"`. A line that starts with `:` is a comment in SSE. It keeps proxies from closing the idle connection.
@@ -257,14 +266,15 @@ Each delta carries an [`offset`](glossary.md#offset): where it starts in the ful
 
 ### Slow clients are dropped, never waited for
 
-```python
-    def _send(self, ev: dict) -> None:
-        for q in list(self.subs):
-            try:
-                q.put_nowait(ev)
-            except asyncio.QueueFull:  # never block the run: drop the slow client; it reconnects and gets a snapshot
-                self.subs.discard(q)
+```text
+FUNCTION _send(ev):
+    FOR EACH queue q in subs:
+        put ev in q, but never wait
+        IF q is full:                // never block the run
+            REMOVE q from subs       // the slow tab reconnects and gets a snapshot
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run._send`.
 
 Each queue holds at most `QUEUE_MAX` (1000) events. `put_nowait` never waits. If a queue is full, the server removes it from `subs`. The SSE loop above then sends what is left and ends. The browser reconnects with `Last-Event-ID` and gets the missed durable events plus a fresh snapshot. The run never waits for a tab. This fixes problem 2.
 
@@ -274,17 +284,19 @@ Because the run only talks to queues, a run with **zero** tabs works the same. T
 
 `Run.command` handles every command type. For text:
 
-```python
-        if isinstance(c, (p.Prompt, p.FollowUp, p.Steer)):
-            if not self.busy:
-                await self.start(c.text)
-            elif len(self.session.agent.steering) + len(self.session.agent.follow_ups) >= MAX_QUEUED:
-                raise HTTPException(429, f"{MAX_QUEUED} messages already queued")
-            elif isinstance(c, p.Steer):
-                self.session.steer(c.text)
-            else:
-                self.session.follow_up(c.text)
+```text
+IF c is Prompt, FollowUp or Steer:
+    IF not busy:
+        start a run with c.text
+    ELSE IF steer queue + follow-up queue >= MAX_QUEUED:
+        FAIL with HTTP 429 "messages already queued"
+    ELSE IF c is Steer:
+        session.steer(c.text)
+    ELSE:
+        session.follow_up(c.text)
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.command`.
 
 - If the run is idle, any text starts a new run.
 - If the run is busy, the text goes into the agent's steering or follow-up queue ([07](07-steering.md)). A `Prompt` while busy becomes a follow-up.
@@ -294,10 +306,12 @@ Because the run only talks to queues, a run with **zero** tabs works the same. T
 
 When a run ends, `_turn` checks for follow-ups that came too late for the loop:
 
-```python
-        if agent.follow_ups:  # came in after the loop decided to stop
-            await self.start(agent.follow_ups.pop(0).content, fresh=False)
+```text
+IF the agent still has follow-ups:      // came in after the loop decided to stop
+    TAKE the first one, and start a new run with its text
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run._turn`.
 
 `Abort` sets state `aborting` and calls `session.abort()` ([06](06-events-abort.md)). `Compact` and `Continue` return `409` while busy.
 
@@ -305,31 +319,33 @@ When a run ends, `_turn` checks for follow-ups that came too late for the loop:
 
 In [08](08-hooks-approval.md) the agent asks an `approve` callback before a risky tool call. On the server, `Run.approve` is that callback:
 
-```python
-    async def approve(self, call) -> str:
-        """AgentSession approve callback: ask every tab, wait for a decision. Abort cancels this."""
-        self.answer = asyncio.get_running_loop().create_future()
-        self.pending = p.PendingApproval(call_id=call.id, tool=call.name, args=call.arguments)
-        try:  # an abort can land at any await here, not only while waiting for the answer
-            await self.durable(p.ApprovalRequest, call_id=call.id, tool=call.name, args=call.arguments)
-            if self.state == "running":
-                await self.set_state("waiting_approval")
-            decision = await self.answer
-        except asyncio.CancelledError:
-            self.pending = None
-            await self.durable(p.ApprovalResolved, call_id=call.id, decision="aborted")
-            raise
-        ...
+```text
+FUNCTION approve(call):     // ask every tab, wait for a decision. Abort cancels this.
+    answer  = a new empty future
+    pending = PendingApproval(call_id, tool, args)
+    TRY:                    // an abort can land at any wait here
+        SEND durable event ApprovalRequest(call_id, tool, args)
+        IF state is "running": set_state("waiting_approval")
+        decision = WAIT for answer
+    IF cancelled (abort):
+        pending = none
+        SEND durable event ApprovalResolved(call_id, decision = "aborted")
+        stop here (pass the cancel on)
+    ...
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.approve`.
 
 It creates a **[future](glossary.md#future)**: an asyncio object that a task can wait on until someone else sets its value. It sends a durable `approval_request` to every tab and waits. The answer comes in as an `Approve` command:
 
-```python
-        elif isinstance(c, p.Approve):
-            if not self.pending or self.pending.call_id != c.call_id or self.answer.done():
-                raise HTTPException(409, "no pending approval with that call_id")
-            self.answer.set_result(c.decision)
+```text
+ELSE IF c is Approve:
+    IF nothing is pending, OR the call_id does not match, OR answer is already set:
+        FAIL with HTTP 409 "no pending approval with that call_id"
+    set answer to c.decision            // approve() wakes up
 ```
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.command`.
 
 The `call_id` must match the pending call. A second tab that clicks late gets `409`, so one call is never answered twice. The decision is `"allow"`, `"deny"` or `"always"` (`Decision` in `protocol.py`).
 
