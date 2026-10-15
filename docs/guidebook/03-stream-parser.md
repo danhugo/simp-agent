@@ -29,16 +29,19 @@ chunk 1: delta.content = "Hel"
 chunk 2: delta.content = "lo",  finish_reason = "stop"
 ```
 
-A tool call is worse. Its arguments are a JSON string, and the server cuts that string anywhere:
+A tool call is worse. Its arguments are a JSON string, and the server cuts that string anywhere. This is what the server really sends for one call to `read` with `{"path": "a"}` (each line is one chunk, cut to the `choices[0]` part):
 
 ```text
-chunk 1: tool_calls[0] = {index: 0, id: "c1", name: "read", arguments: '{"pa'}
-chunk 2: tool_calls[0] = {index: 0,                        arguments: 'th": '}
-chunk 3: tool_calls[0] = {index: 0,                        arguments: '"a"}'}  finish_reason = "tool_calls"
-chunk 4: (no choices)  usage = {prompt_tokens: 7, completion_tokens: 3}
+chunk 1: delta = {role: "assistant", content: null,
+                  tool_calls: [{index: 0, id: "call_1", type: "function",
+                                function: {name: "read", arguments: ""}}]}
+chunk 2: delta = {tool_calls: [{index: 0, function: {arguments: "{\"pa"}}]}
+chunk 3: delta = {tool_calls: [{index: 0, function: {arguments: "th\": \"a\"}"}}]}
+chunk 4: delta = {}                          finish_reason = "tool_calls"
+chunk 5: choices = []                        usage = {prompt_tokens: 7, completion_tokens: 3, ...}
 ```
 
-No single chunk holds valid JSON. The `id` and `name` come only in the first piece. Usage comes in an extra chunk at the very end, with no `choices` at all. The rest of simp-agent wants none of this. The agent loop (ch [05](05-agent-loop.md)) wants one `AssistantMessage` with clean `TextContent` and `ToolCall` parts, a `stop_reason`, and `usage`.
+No single chunk holds valid JSON. Only the first piece has the `id`, `type` and `name`. Later pieces have just `index` and a bit of `arguments`. The `index` tells you which call the bit belongs to. `finish_reason` comes in its own chunk with an empty `delta`. Usage comes in one more chunk at the very end, with `choices` empty. The server sends it only because we ask with `stream_options: {"include_usage": true}` (`openai_completions.py:119-120`). The rest of simp-agent wants none of this. The agent loop (ch [05](05-agent-loop.md)) wants one `AssistantMessage` with clean `TextContent` and `ToolCall` parts, a `stop_reason`, and `usage`.
 
 So we need two things at once:
 
