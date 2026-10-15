@@ -103,25 +103,16 @@ kw.compat = a COPY of profile "compat" (or empty)   // never change the settings
 IF api starts with "openai":
     IF include_usage is not set: include_usage = True   // an explicit False stays
 ```
+
+**Step 5 — plugins by name.** A small table maps names to classes. A typo raises at once. Each call makes new objects, because plugins keep state:
+
+Real code: [plugins/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/plugins/__init__.py) — `build_plugins`
+
 ```text
-// A settings profile (plain dict from TOML) -> Model. Shared by the CLI and the server.
-build_model(pr):
-  api = pr "api", default "anthropic-messages"
-  kw:
-    id          = pr "model"
-    api         = api
-    provider    = "openai" IF api starts with "openai" ELSE "anthropic"
-    base_url    = pr "base_url"
-    api_key_env = pr "api_key_env"
-    compat      = a COPY of pr "compat" (empty if missing)
-  IF pr has max_tokens or context_window: ADD them to kw
-  IF api starts with "openai":
-    SET compat include_usage = true, ONLY IF not set yet
-  DROP every kw value that is None      // None -> Model's default
-  RETURN Model(kw)
+known = "redact_secrets" -> RedactSecrets, "plan_mode" -> PlanMode
+RETURN a NEW object of known[name] FOR EACH name
 ```
 
-Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
 Key idea: a name table; a typo fails at once.
 
 **Step 6 — two real plugins.** Now we write `RedactSecrets` and `PlanMode`. They use only the hooks from [14](14-plugins.md). The result is the real code below.
@@ -130,25 +121,27 @@ Key idea: a name table; a typo fails at once.
 
 ### Profiles and build_model
 
-A **[profile](glossary.md#profile)** is a plain dict (from a settings file) that describes one model setup. `packages/simp_agent/src/simp_agent/session/profile.py`:
+A **[profile](glossary.md#profile)** is a plain dict (from a settings file) that describes one model setup.
 
 Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
 
 ```text
-// A settings profile (plain dict) -> Model. Shared by the CLI and the server.
+// A settings profile (plain dict from TOML) -> Model. Shared by the CLI and the server.
 FUNCTION build_model(pr):
-    api = pr "api", or "anthropic-messages"
-    provider = "openai" IF api starts with "openai", ELSE "anthropic"
-```text
-build_plugins(names):
-  known = "redact_secrets" -> RedactSecrets, "plan_mode" -> PlanMode
-  IF any name is not in known:
-    RAISE error "unknown plugin ...; have [list]"
-  FOR EACH name, in order: MAKE a NEW object of its class
-  RETURN the list
+    api = pr "api", default "anthropic-messages"
+    kw:
+        id          = pr "model"
+        api         = api
+        provider    = "openai" IF api starts with "openai" ELSE "anthropic"
+        base_url    = pr "base_url"
+        api_key_env = pr "api_key_env"
+        compat      = a COPY of pr "compat" (empty if missing)
+    IF pr has max_tokens or context_window: ADD them to kw
+    IF api starts with "openai":
+        SET compat include_usage = true, ONLY IF not set yet
+    DROP every kw value that is None      // None -> Model's default
+    RETURN Model(kw)
 ```
-
-Real code: [plugins/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/plugins/__init__.py) — `build_plugins`
 
 Key idea: one function, so a profile means the same model in the CLI and the server.
 
@@ -166,43 +159,34 @@ Note: keys are never in the profile. Only `api_key_env`, the **name** of an env 
 
 ### build_plugins: names to objects
 
-`packages/simp_agent/src/simp_agent/plugins/__init__.py`:
-
-Real code: [plugins/__init__.py](../../packages/simp_agent/src/simp_agent/plugins/__init__.py) — `build_plugins`
+Real code: [plugins/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/plugins/__init__.py) — `build_plugins`
 
 ```text
 FUNCTION build_plugins(names):
-    known = {"redact_secrets": RedactSecrets, "plan_mode": PlanMode}
+    known = "redact_secrets" -> RedactSecrets, "plan_mode" -> PlanMode
     IF any name is not in known:
-```text
-setup(api, config):
-  values = config "secrets" (empty list if missing)
-  IF config "env" is on (default on):
-    FOR EACH env var whose name has KEY / TOKEN / SECRET / PASSWORD:
-      ADD its value to values
-  secrets = values with length >= 8, no repeats, LONGEST FIRST
+        RAISE error "unknown plugin ...; have [list]"
+    FOR EACH name, in order: MAKE a NEW object of its class
+    RETURN the list
 ```
 
-Real code: [plugins/redact_secrets.py](../../packages/simp_agent/src/simp_agent/plugins/redact_secrets.py) — `RedactSecrets.setup`
+A profile lists plugins by name. `build_plugins` turns names into fresh objects and raises a clear error on a typo. The server calls it for every profile when it starts (`create_app`), so a typo stops the boot, not the first chat.
 
 Why fresh objects? A plugin keeps state (plan mode's on/off). Each session needs its own.
 
 ### RedactSecrets
 
-```text
-tool_result(call, result):
-  masked = mask(result content)
-  IF masked is different: REPLACE the content with masked
-  ELSE: do nothing
+**[RedactSecrets](glossary.md#redactsecrets)** (`plugins/redact_secrets.py`) masks secrets in tool output and in everything sent to the model.
 
-tool_update(call, text):
-  RETURN mask(text)              // streamed output
-
-context(messages):
-  RETURN a masked COPY of each message   // history keeps the original
-```
-
-Real code: [plugins/redact_secrets.py](../../packages/simp_agent/src/simp_agent/plugins/redact_secrets.py) — `RedactSecrets.tool_result`, `tool_update`, `context`
+```python
+PATTERNS = re.compile(
+    r"sk-[A-Za-z0-9_-]{16,}"  # OpenAI / Anthropic style keys
+    r"|eyJ[\w-]+\.[\w-]+\.[\w-]+"  # JWT
+    r"|AKIA[0-9A-Z]{16}"  # AWS access key id
+    r"|gh[pousr]_[A-Za-z0-9]{30,}"  # GitHub tokens
+)
+SECRET_ENV = re.compile(r"KEY|TOKEN|SECRET|PASSWORD", re.I)
+MASK = "[REDACTED]"
 ```
 
 Two ways to find a secret:
@@ -210,38 +194,37 @@ Two ways to find a secret:
 1. **Known shapes** (`PATTERNS`): API keys, JWTs, AWS and GitHub tokens.
 2. **Known values**, collected in `setup`:
 
-Real code: [plugins/redact_secrets.py](../../packages/simp_agent/src/simp_agent/plugins/redact_secrets.py) — `setup`
+Real code: [plugins/redact_secrets.py](../../packages/simp_agent/src/simp_agent/plugins/redact_secrets.py) — `RedactSecrets.setup`
 
 ```text
 FUNCTION setup(api, config):
-```text
-BLOCKED = write, edit, bash
-PROMPT  = "PLAN MODE is on: plan only. ... Do not change files or run commands."
-
-PlanMode (name "plan_mode"):
-  start: enabled = off
-
-  setup(api, config):
-    FIND the LAST CustomEntry of type "plan_mode" in history
-    IF found: turn on/off from its data      // resume keeps the old state
-    ELSE:     turn on/off from config "enabled" (default off)
-
-  _apply(on):
-    SET enabled = on
-    IF on: ADD prompt section "plan_mode" with PROMPT, order 1000   // last section
-    ELSE:  REMOVE prompt section "plan_mode"
-
-  set_enabled(on):
-    _apply(on)
-    SAVE CustomEntry "plan_mode" with enabled = on   // saved, not sent to the model
-
-  tool_call(call):
-    IF enabled AND call name is in BLOCKED:
-      BLOCK with "plan mode is on (read-only)"
-    ELSE: do nothing
+    values = config "secrets" (empty list if missing)
+    IF config "env" is on (default on):
+        FOR EACH env var whose name has KEY / TOKEN / SECRET / PASSWORD:
+            ADD its value to values
+    secrets = values with length >= 8, no repeats, LONGEST FIRST
 ```
 
-Real code: [plugins/plan_mode.py](../../packages/simp_agent/src/simp_agent/plugins/plan_mode.py) — `PlanMode` (`setup`, `_apply`, `set_enabled`, `tool_call`)
+`config["secrets"]` lets the app pass its own keys (the server passes its provider keys). With `env` on (the default), the value of every env var whose name has `KEY`, `TOKEN`, `SECRET` or `PASSWORD` is also masked. Values shorter than 8 characters are skipped: masking `"1"` everywhere would break the output. Longest first, so a long secret is masked whole before a shorter one that is part of it.
+
+It uses three hooks from [14](14-plugins.md):
+
+Real code: [plugins/redact_secrets.py](../../packages/simp_agent/src/simp_agent/plugins/redact_secrets.py) — `RedactSecrets.tool_result`, `tool_update`, `context`
+
+```text
+FUNCTION tool_result(call, result):
+    masked = mask(result content)
+    IF masked is different: REPLACE the content with masked
+    ELSE: do nothing
+
+FUNCTION tool_update(call, text):
+    RETURN mask(text)              // streamed output
+
+FUNCTION context(messages):
+    RETURN a masked COPY of each message   // history keeps the original
+```
+
+- `tool_result`: if `bash` prints `cat .env`, the saved tool result is masked.
 - `tool_update`: streamed output is masked before the UI sees it.
 - `context`: every message in the model's view is masked. `deep` walks every string field of every dataclass (text, thinking, tool call arguments) and returns **copies**. It skips `id`, `signature`, `type` and `role`: these are provider data we must not touch, and changing them would break the next call.
 

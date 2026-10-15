@@ -92,6 +92,17 @@ Why: Ctrl-C must work at once, even when no model call is running.
 **Step 4 — tell the UI.** We emit `auto_retry_start` before each wait and `auto_retry_end` at the end.
 
 Why: the user should see "retrying", not a frozen screen.
+
+**Note — failed replies are already hidden.** We need nothing new for this. `transform_messages` in `ai` already drops assistant messages with `stop_reason` `"error"` or `"aborted"` ([04](04-providers.md)). The error stays in history (for the user and the store), but the model never sees it.
+
+**Step 5 — move it into the session.** The loop lives in `AgentSession._run`, so `prompt()` and `continue_()` both get it for free.
+
+The result is the real code below.
+
+## Real design
+
+### Which errors are retryable
+
 Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `_RETRYABLE`, `NON_RETRYABLE`, `is_retryable`
 
 ```text
@@ -107,18 +118,18 @@ FUNCTION is_retryable(error, kind):
     IF is_context_overflow(error): RETURN no   // same big request fails again
     RETURN yes IF _RETRYABLE matches the error text
 ```
-```text
-_RETRYABLE = regex, ignore case, matches:
-    429 or any 5xx code, "overloaded", "rate limit", "bad gateway",
-    "too many requests", "service unavailable", "internal server error",
-    "connection", "network", "timed out" / "timeout", "econnreset", "stream ended"
 
-NON_RETRYABLE = {"fatal", "budget", "policy"}
+Two inputs decide:
 
-FUNCTION is_retryable(error, kind):
-    IF kind is in NON_RETRYABLE:
-        RETURN no                          // our own code said "never retry"
-    IF error is a context overflow:
+- **The error text.** Providers do not agree on error types, but the text almost always has `429`, a `5xx` code, "overloaded" or "timed out". A regex over the text works for all providers ([04](04-providers.md)) with no per-provider code.
+- **The error kind.** `AssistantMessage.error_kind` can be `"fatal"`, `"budget"` or `"policy"`. These are **never** retried, even if the text looks retryable. For example, `stream()` sets `error_kind="fatal"` when there is no API key. The server sets `"budget"` when a user is over their limit ([23](23-limits.md)). The text alone cannot tell "the provider rate-limits you" from "our own budget stops you".
+
+A context overflow is also not retryable here: the same too-big request would fail again. It has its own path ([17](17-overflow.md)).
+
+### The retry loop in `_run`
+
+`prompt()` and `continue_()` both call `_run` ([13](13-session.md)).
+
 Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._run`
 
 ```text
@@ -145,42 +156,21 @@ FUNCTION _run(start):
         SEND event auto_retry_end {success: ok, attempt}
     RETURN new
 ```
-            ...                            // chapter 17
-        ELSE IF is_retryable(last.error, last.error_kind) AND attempt < max_retries:
-            attempt = attempt + 1
-            delay = retry_base_delay * 2 ^ (attempt - 1)
-            SEND event auto_retry_start {attempt, max_attempts, delay, error}
-            WAIT for abort event, at most delay seconds
-            IF abort came first:
-                STOP loop                  // aborted during backoff
-            // time ran out: normal case, go on
-        ELSE:
-            STOP loop
-        ADD WAIT for a.continue_() to new   // same history, no new user text
-    IF attempt > 0:
-        ok = last message is not an assistant error
-        SEND event auto_retry_end {success: ok, attempt}
-    RETURN new
-Real code: [server.py](../../apps/server/src/simp_server/server.py) — `on_event`
 
-```text
-IF event type is "auto_retry_start":
-    SEND a durable warning Notice "retry {attempt}/{max_attempts}: {error}"
-IF event type is "auto_retry_end":
-    SEND a durable Notice "retry succeeded" or "retry failed"   // from success
-```
+Step by step:
+
 1. Run once (`start()`).
 2. While the last message is an assistant error: if it is retryable and we have tries left, wait, then call `a.continue_()`. Otherwise stop.
 3. At the end, if we retried at all, send `auto_retry_end` with `success`.
 
 **Exponential [backoff](glossary.md#backoff).** `delay = retry_base_delay * 2 ** (attempt - 1)`. With the defaults (`retry_base_delay=2.0`, `max_retries=3`) the waits are 2, 4 and 8 seconds. Each wait doubles, so a busy server gets more and more room.
-```text
-TRY:
-    WAIT for the abort event, but at most `delay` seconds
-    STOP the loop                // abort came first: no retry
-IF the time ran out (TimeoutError):
-    do nothing                   // normal case: go on and retry
-```
+
+**Retry is `continue_()`, not a new prompt.** The error message stays in history (history is append-only, [13](13-session.md)). We do not resend the user text. `continue_()` asks the model again with the same history. Before the call, `transform_messages` in `ai` drops assistant turns with `stop_reason` `"error"` or `"aborted"` from what is sent ([04](04-providers.md)). So the model never sees its own failed reply.
+
+**Events.** `auto_retry_start` carries `attempt`, `max_attempts`, `delay` and the `error`. `auto_retry_end` carries `success` and `attempt`. Two apps use them:
+
+- The CLI (`apps/cli/src/simp_cli/repl.py`) sets its state to `"retrying"` on `auto_retry_start`.
+- The server (`apps/server/src/simp_server/server.py`) turns them into notices ([20](20-server-run.md)):
 
 Real code: [server.py](../../apps/server/src/simp_server/server.py) — `on_event`
 
