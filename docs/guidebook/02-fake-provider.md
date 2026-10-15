@@ -60,13 +60,11 @@ That one line is why a fake is easy. The default is the real `ai.stream`; a test
 
 The first idea is a function that always returns the same answer:
 
-```python
-from simp_agent.ai import AssistantMessage, TextContent
-
-async def fake(model, ctx, api_key=None):
-    msg = AssistantMessage([TextContent("ok")])
-    yield {"type": "start", "partial": msg}
-    yield {"type": "done", "message": msg}
+```text
+FUNCTION fake(model, ctx, api_key):
+    msg = AssistantMessage with the text "ok"
+    SEND event {start, msg}
+    SEND event {done, msg}
 ```
 
 This works for a test where the model only says "ok". But it breaks fast:
@@ -79,16 +77,15 @@ This works for a test where the model only says "ok". But it breaks fast:
 
 **Step 1 — a script of replies.** Keep a list and take the next one each call:
 
-```python
-class FakeProvider:
-    def __init__(self, *replies):
-        self.replies = iter(replies)
-        self.calls = 0
+```text
+CLASS FakeProvider(replies...):
+    replies = the replies, ready to take one by one
+    calls = 0
 
-    async def __call__(self, model, ctx, api_key=None):
-        msg = next(self.replies)
-        yield {"type": "start", "partial": msg}
-        yield {"type": "done", "message": msg}
+    WHEN called with (model, ctx, api_key):
+        msg = TAKE the next reply
+        SEND event {start, msg}
+        SEND event {done, msg}
 ```
 
 Why a class: it must remember where it is in the script between calls.
@@ -103,27 +100,26 @@ Why a class: it must remember where it is in the script between calls.
 
 Put the four steps together and you get the full class:
 
-```python
-class FakeProvider:
-    """A stream_fn that plays scripted replies in order. A reply may be a callable (ctx) -> message.
-    Records each call: calls (count), ctxs (the Context), messages (a copy of ctx.messages), api_keys, models."""
+```text
+CLASS FakeProvider(replies...):
+    replies = the replies, ready to take one by one
+    ctxs, messages, api_keys, models = empty lists
+    calls = 0
 
-    def __init__(self, *replies):
-        self.replies = iter(replies)
-        self.ctxs, self.messages, self.api_keys, self.models = [], [], [], []
-        self.calls = 0
-
-    async def __call__(self, model, ctx, api_key=None):
-        self.calls += 1
-        self.ctxs.append(ctx)
-        self.messages.append(list(ctx.messages))
-        self.api_keys.append(api_key)
-        self.models.append(model)
-        msg = next(self.replies)
-        msg = msg(ctx) if callable(msg) else msg
-        yield {"type": "start", "partial": msg}
-        yield {"type": "error" if msg.stop_reason == "error" else "done", "message": msg}
+    WHEN called with (model, ctx, api_key):          // the instance IS a stream_fn
+        calls = calls + 1
+        ADD ctx to ctxs
+        ADD a COPY of ctx.messages to messages        // freeze what was sent now
+        ADD api_key to api_keys
+        ADD model to models
+        msg = TAKE the next reply                     // none left -> test fails
+        IF msg is a function: msg = msg(ctx)
+        SEND event {start, msg}
+        IF msg.stop_reason is "error": SEND event {error, msg}
+        ELSE:                          SEND event {done, msg}
 ```
+
+Real code: [packages/simp_agent/src/simp_agent/testing/__init__.py](../../packages/simp_agent/src/simp_agent/testing/__init__.py) (`FakeProvider`)
 
 Let us go through it part by part.
 
