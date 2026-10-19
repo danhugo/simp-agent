@@ -1,0 +1,202 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1840" height="1000" viewBox="0 0 1840 1000" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker><marker id="p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker><marker id="gr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker><filter id="s" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.12"/></filter></defs>
+<rect width="1840" height="1000" fill="#f8fafc"/>
+<text x="920" y="44" font-size="28" fill="#0f172a" font-weight="700" text-anchor="middle">The agent loop of simp-agent — one complete picture</text>
+<text x="920" y="72" font-size="15" fill="#64748b" font-weight="normal" text-anchor="middle">Blocks = steps (numbers = order).  Yellow cards = data passed.  Grey dashed = from another Part.  Purple tags = chapter + code.</text>
+<rect x="30" y="110" width="200" height="760" rx="18" fill="#e0e7ff" stroke="#6366f1" stroke-width="2.5" filter="url(#s)"/>
+<text x="130" y="150" font-size="20" fill="#312e81" font-weight="700" text-anchor="middle">Agent</text>
+<text x="130" y="172" font-size="13" fill="#4338ca" font-weight="normal" text-anchor="middle">(class, Ch06)</text>
+<text x="130" y="220" font-size="13" fill="#3730a3" font-weight="700" text-anchor="middle">keeps:</text>
+<text x="130" y="242" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">messages (history)</text>
+<text x="130" y="264" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">subscribers</text>
+<text x="130" y="286" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">cancel flag</text>
+<text x="130" y="308" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">steering queue</text>
+<text x="130" y="330" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">follow_up queue</text>
+<text x="130" y="352" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle"></text>
+<text x="130" y="374" font-size="13" fill="#3730a3" font-weight="700" text-anchor="middle">you call:</text>
+<text x="130" y="396" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">prompt(text)</text>
+<text x="130" y="418" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">steer(text)  Ch07</text>
+<text x="130" y="440" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">follow_up(text)  Ch07</text>
+<text x="130" y="462" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">abort()  Ch06</text>
+<text x="130" y="484" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">subscribe(fn)  Ch06</text>
+<text x="130" y="820" font-size="13" fill="#3730a3" font-weight="700" text-anchor="middle">returns: new messages</text>
+<rect x="290" y="140" width="230" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" stroke-dasharray="0" filter="url(#s)"/>
+<circle cx="405" cy="168" r="16" fill="#2563eb"/>
+<text x="405" y="174" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">1</text>
+<text x="405" y="208" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Start the run</text>
+<text x="405" y="230" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Add the prompt(s) to</text>
+<text x="405" y="247" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">history. Send</text>
+<text x="405" y="264" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">agent_start.</text>
+<text x="302" y="300" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="332" y="300" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">prompts</text>
+<text x="302" y="318" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="332" y="318" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">history</text>
+<rect x="300" y="332" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="310" y="349" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch05</text>
+<text x="504" y="349" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="end" font-family="Menlo, monospace">agent_loop()</text>
+<rect x="600" y="140" width="230" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" stroke-dasharray="0" filter="url(#s)"/>
+<circle cx="715" cy="168" r="16" fill="#2563eb"/>
+<text x="715" y="174" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">2</text>
+<text x="715" y="208" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Take steering</text>
+<text x="715" y="230" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Add messages the user</text>
+<text x="715" y="247" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">typed while we worked</text>
+<text x="715" y="264" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">(read after 1 and each turn).</text>
+<text x="612" y="300" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="642" y="300" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">steering queue</text>
+<text x="612" y="318" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="642" y="318" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">history</text>
+<rect x="610" y="332" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="620" y="349" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch07</text>
+<text x="814" y="349" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="end" font-family="Menlo, monospace">get_steering</text>
+<rect x="910" y="140" width="230" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" stroke-dasharray="0" filter="url(#s)"/>
+<circle cx="1025" cy="168" r="16" fill="#2563eb"/>
+<text x="1025" y="174" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">3</text>
+<text x="1025" y="208" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Build the view</text>
+<text x="1025" y="230" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">prepare_next_turn, poll</text>
+<text x="1025" y="247" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">steering again, tool note,</text>
+<text x="1025" y="264" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">clean → Context.</text>
+<text x="922" y="300" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="952" y="300" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">history</text>
+<text x="922" y="318" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="952" y="318" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">Context</text>
+<rect x="920" y="332" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="930" y="349" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch05·07</text>
+<text x="1124" y="349" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="end" font-family="Menlo, monospace">_llm_turn()</text>
+<rect x="1220" y="140" width="230" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" stroke-dasharray="0" filter="url(#s)"/>
+<circle cx="1335" cy="168" r="16" fill="#2563eb"/>
+<text x="1335" y="174" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">4</text>
+<text x="1335" y="208" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Call the model</text>
+<text x="1335" y="230" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Stream events live;</text>
+<text x="1335" y="247" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Stop closes the stream.</text>
+<text x="1335" y="264" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Keep the final message.</text>
+<text x="1232" y="300" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="1262" y="300" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">Context</text>
+<text x="1232" y="318" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="1262" y="318" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">AssistantMessage</text>
+<rect x="1230" y="332" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1240" y="349" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch05·06</text>
+<text x="1434" y="349" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="end" font-family="Menlo, monospace">_stream()</text>
+<rect x="1560" y="140" width="230" height="230" rx="14" fill="#fff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" filter="url(#s)"/>
+<text x="1675" y="208" font-size="16" fill="#64748b" font-weight="700" text-anchor="middle">ai.stream()</text>
+<text x="1675" y="230" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">model + Context in,</text>
+<text x="1675" y="247" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">events out.</text>
+<text x="1675" y="264" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">→ Part 1</text>
+<text x="1572" y="300" font-size="11" fill="#94a3b8" font-weight="700" text-anchor="start">IN</text>
+<text x="1602" y="300" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">Model, Context</text>
+<text x="1572" y="318" font-size="11" fill="#94a3b8" font-weight="700" text-anchor="start">OUT</text>
+<text x="1602" y="318" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">events</text>
+<rect x="1570" y="332" width="210" height="24" rx="12" fill="#f1f5f9"/>
+<text x="1580" y="349" font-size="11.5" fill="#64748b" font-weight="700" text-anchor="start">Part 1</text>
+<text x="1774" y="349" font-size="11" fill="#64748b" font-weight="normal" text-anchor="end" font-family="Menlo, monospace">stream_fn</text>
+<rect x="1560" y="520" width="230" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" stroke-dasharray="0" filter="url(#s)"/>
+<circle cx="1675" cy="548" r="16" fill="#2563eb"/>
+<text x="1675" y="554" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">5</text>
+<text x="1675" y="588" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Check the reply</text>
+<text x="1675" y="610" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">error/aborted → end.</text>
+<text x="1675" y="627" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">length → calls get an</text>
+<text x="1675" y="644" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">error result, not run.</text>
+<text x="1572" y="680" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="1602" y="680" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">AssistantMessage</text>
+<text x="1572" y="698" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="1602" y="698" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">tool calls</text>
+<rect x="1570" y="712" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1580" y="729" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch05·06</text>
+<text x="1774" y="729" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="end" font-family="Menlo, monospace">agent_loop()</text>
+<rect x="1220" y="520" width="230" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" stroke-dasharray="0" filter="url(#s)"/>
+<circle cx="1335" cy="548" r="16" fill="#2563eb"/>
+<text x="1335" y="554" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">6</text>
+<text x="1335" y="588" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Before hook</text>
+<text x="1335" y="610" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Ask: may this call run?</text>
+<text x="1335" y="627" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">A string = deny →</text>
+<text x="1335" y="644" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">&quot;User denied: …&quot;.</text>
+<text x="1232" y="680" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="1262" y="680" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">ToolCall, ctx</text>
+<text x="1232" y="698" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="1262" y="698" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">None / reason</text>
+<rect x="1230" y="712" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1240" y="729" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch08</text>
+<text x="1434" y="729" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="end" font-family="Menlo, monospace">before_tool_call</text>
+<rect x="910" y="520" width="230" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" stroke-dasharray="0" filter="url(#s)"/>
+<circle cx="1025" cy="548" r="16" fill="#2563eb"/>
+<text x="1025" y="554" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">7</text>
+<text x="1025" y="588" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Run the tool</text>
+<text x="1025" y="610" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Find tool, fix + check</text>
+<text x="1025" y="627" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">args, execute. Never</text>
+<text x="1025" y="644" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">raises: errors = result.</text>
+<text x="922" y="680" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="952" y="680" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">ToolCall, ctx</text>
+<text x="922" y="698" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="952" y="698" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">ToolResultMessage</text>
+<rect x="920" y="712" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="930" y="729" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch05</text>
+<text x="1124" y="729" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="end" font-family="Menlo, monospace">run_tool()</text>
+<rect x="600" y="520" width="230" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" stroke-dasharray="0" filter="url(#s)"/>
+<circle cx="715" cy="548" r="16" fill="#2563eb"/>
+<text x="715" y="554" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">8</text>
+<text x="715" y="588" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">After hook</text>
+<text x="715" y="610" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">May replace the result</text>
+<text x="715" y="627" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">(runs after a deny too).</text>
+<text x="612" y="680" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="642" y="680" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">call, result, ctx</text>
+<text x="612" y="698" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="642" y="698" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">ToolResultMessage</text>
+<rect x="610" y="712" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="620" y="729" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch08</text>
+<text x="814" y="729" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="end" font-family="Menlo, monospace">after_tool_call</text>
+<rect x="290" y="520" width="230" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" stroke-dasharray="0" filter="url(#s)"/>
+<circle cx="405" cy="548" r="16" fill="#2563eb"/>
+<text x="405" y="554" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">9</text>
+<text x="405" y="588" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Next turn or stop?</text>
+<text x="405" y="610" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Tool calls or steering →</text>
+<text x="405" y="627" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">turn again (block 2). Else</text>
+<text x="405" y="644" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">follow_up → again. Else end.</text>
+<text x="302" y="680" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="332" y="680" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">calls, queues</text>
+<text x="302" y="698" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="332" y="698" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">loop / agent_end</text>
+<rect x="300" y="712" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="310" y="729" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch05·07</text>
+<text x="504" y="729" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="end" font-family="Menlo, monospace">agent_loop()</text>
+<line x1="230" y1="255" x2="290" y2="255" stroke="#6366f1" stroke-width="2.5" marker-end="url(#p)"/>
+<line x1="520" y1="255" x2="600" y2="255" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<rect x="527.5" y="230.0" width="65" height="22" rx="6" fill="#fef9c3" stroke="#eab308"/>
+<text x="560.0" y="245.0" font-size="11.5" fill="#713f12" font-weight="normal" text-anchor="middle">history</text>
+<line x1="830" y1="255" x2="910" y2="255" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<rect x="837.5" y="230.0" width="65" height="22" rx="6" fill="#fef9c3" stroke="#eab308"/>
+<text x="870.0" y="245.0" font-size="11.5" fill="#713f12" font-weight="normal" text-anchor="middle">history</text>
+<line x1="1140" y1="255" x2="1220" y2="255" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<rect x="1147.5" y="230.0" width="65" height="22" rx="6" fill="#fef9c3" stroke="#eab308"/>
+<text x="1180.0" y="245.0" font-size="11.5" fill="#713f12" font-weight="normal" text-anchor="middle">Context</text>
+<line x1="1450" y1="225" x2="1560" y2="225" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#gr)"/>
+<rect x="1472.5" y="200.0" width="65" height="22" rx="6" fill="#fef9c3" stroke="#eab308"/>
+<text x="1505.0" y="215.0" font-size="11.5" fill="#713f12" font-weight="normal" text-anchor="middle">Context</text>
+<line x1="1560" y1="285" x2="1450" y2="285" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#gr)"/>
+<rect x="1476.0" y="260.0" width="58" height="22" rx="6" fill="#fef9c3" stroke="#eab308"/>
+<text x="1505.0" y="275.0" font-size="11.5" fill="#713f12" font-weight="normal" text-anchor="middle">events</text>
+<line x1="1420" y1="370" x2="1600" y2="520" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<rect x="1446.0" y="420.0" width="128" height="22" rx="6" fill="#fef9c3" stroke="#eab308"/>
+<text x="1510.0" y="435.0" font-size="11.5" fill="#713f12" font-weight="normal" text-anchor="middle">AssistantMessage</text>
+<line x1="1560" y1="635" x2="1450" y2="635" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<rect x="1469.0" y="610.0" width="72" height="22" rx="6" fill="#fef9c3" stroke="#eab308"/>
+<text x="1505.0" y="625.0" font-size="11.5" fill="#713f12" font-weight="normal" text-anchor="middle">ToolCall</text>
+<line x1="1220" y1="635" x2="1140" y2="635" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<rect x="1147.5" y="610.0" width="65" height="22" rx="6" fill="#fef9c3" stroke="#eab308"/>
+<text x="1180.0" y="625.0" font-size="11.5" fill="#713f12" font-weight="normal" text-anchor="middle">allowed</text>
+<line x1="910" y1="635" x2="830" y2="635" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<rect x="841.0" y="610.0" width="58" height="22" rx="6" fill="#fef9c3" stroke="#eab308"/>
+<text x="870.0" y="625.0" font-size="11.5" fill="#713f12" font-weight="normal" text-anchor="middle">result</text>
+<line x1="600" y1="635" x2="520" y2="635" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<rect x="531.0" y="610.0" width="58" height="22" rx="6" fill="#fef9c3" stroke="#eab308"/>
+<text x="560.0" y="625.0" font-size="11.5" fill="#713f12" font-weight="normal" text-anchor="middle">result</text>
+<path d="M 405 520 C 405 440, 715 450, 715 374" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-dasharray="7 5" marker-end="url(#g)"/>
+<text x="540" y="460" font-size="13" fill="#166534" font-weight="700" text-anchor="start">next turn</text>
+<line x1="290" y1="560" x2="230" y2="560" stroke="#6366f1" stroke-width="2.5" marker-end="url(#p)"/>
+<rect x="210.0" y="535.0" width="100" height="22" rx="6" fill="#fef9c3" stroke="#eab308"/>
+<text x="260.0" y="550.0" font-size="11.5" fill="#713f12" font-weight="normal" text-anchor="middle">new messages</text>
+<text x="1675" y="780" font-size="13" fill="#166534" font-weight="700" text-anchor="middle">loop over each tool call: 6 → 7 → 8</text>
+<rect x="290" y="800" width="1500" height="90" rx="14" fill="#fff7ed" stroke="#f97316" stroke-width="2"/>
+<text x="1040" y="830" font-size="15" fill="#9a3412" font-weight="700" text-anchor="middle">Events (Ch06): every block sends small dicts to the subscribers</text>
+<text x="1040" y="856" font-size="12.5" fill="#9a3412" font-weight="normal" text-anchor="middle">agent_start · turn_start · message_start / message_update / message_end · tool_execution_start / _update / _end · turn_end · agent_end</text>
+<text x="1040" y="876" font-size="12.5" fill="#9a3412" font-weight="normal" text-anchor="middle">Stop button = abort(): sets the cancel flag; the stream closes, the running tool sees ctx.cancel, the run ends with stop_reason &quot;aborted&quot;.</text>
+<text x="920" y="950" font-size="14" fill="#64748b" font-weight="normal" text-anchor="middle">Tool approval (ask the human for bash / write / edit) is one before_tool_call (block 6), written in AgentSession → Part 4, Ch13.</text>
+</svg>

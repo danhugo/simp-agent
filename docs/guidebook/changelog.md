@@ -5,6 +5,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 ## 2026-10-19
 
 - Added [Part 1 big picture](part-1-ai.md) (diagram img/part-1-ai.svg, block table, objects, worked example). Linked from README and "Where we are" in 01-04. Glossary: added Model, Tool, AssistantMessage, Stream event.
+- Added [Part 2 big picture](part-2-agent.md) (diagram img/part-2-agent.svg, block table, objects, worked example). Linked from README and "Where we are" in 05-08. Glossary: added LoopConfig, Agent (class).
 - Part 1 big picture: picture now splits Translate and Send, numbers match the table (Label = 6), Agent-decides box is grey and points to Part 2; paths fixed to `ai/providers/*.py`; Clean row notes it skips compaction/custom entries. README explains big-picture pages.
 
 ## 2026-10-15
