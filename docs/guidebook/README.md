@@ -35,6 +35,7 @@ The block numbers in the picture and the table are the same, in the order the st
 - [16 Part 4 · Compaction](16-compaction.md) — Keep long conversations inside the context window.
 - [17 Part 4 · Context overflow](17-overflow.md) — Recover when the model says the context is too big.
 - [18 Part 4 · Profiles and built-in plugins](18-profiles-plugins.md) — Pick models by profile and ship two real plugins.
+- [Part 5 big picture: the system](part-5-system.md) — All blocks of Part 5, their IN and OUT, on one page.
 - [19 Part 5 · The CLI](19-cli.md) — Wrap the session in a terminal app.
 - [20 Part 5 · Server: the Run](20-server-run.md) — Run a session on a server with a typed protocol.
 - [21 Part 5 · Transport](21-transport.md) — Stream events to clients and take commands back.

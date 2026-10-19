@@ -15,6 +15,8 @@ flowchart LR
 
 *This chapter starts the `server` app (marked). It uses the `session` layer from the outside.*
 
+Big picture of Part 5: [part-5-system](part-5-system.md).
+
 Code in this chapter (commit `2fc2776`):
 
 - `apps/server/src/simp_server/protocol.py` — the protocol models, `Snapshot`, `TRANSITIONS`, `check_transition`
