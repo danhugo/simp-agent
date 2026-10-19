@@ -17,6 +17,18 @@ One entry in a conversation: `UserMessage`, `AssistantMessage` or `ToolResultMes
 ## Context
 Everything sent to a model in one request: system prompt, messages and tools (class `Context` in `ai`). Home: [01](01-messages.md#packing-a-request-tool-context-model).
 
+## Model
+Which model to call and how (class `Model` in `ai`): `id`, `provider`, `api`, `max_tokens`, `context_window`, `base_url`, `api_key_env`, `compat`. `api` picks the provider. Home: [01](01-messages.md#packing-a-request-tool-context-model); overview: [Part 1](part-1-ai.md).
+
+## Tool
+What the model is told about one tool (class `Tool` in `ai`): `name`, `description`, `parameters` (JSON schema). Home: [01](01-messages.md#packing-a-request-tool-context-model).
+
+## AssistantMessage
+The model's reply: `content` blocks (`TextContent`, `ThinkingContent`, `ToolCall`), `stop_reason`, `usage`, `error`, `error_kind`, and `api`/`provider`/`model` stamped by `ai.stream`. Home: [01](01-messages.md); overview: [Part 1](part-1-ai.md).
+
+## Stream event
+One dict yielded by a stream function: `start`, `text_delta`, `thinking_start/delta/end`, `toolcall_start/delta/end`, then `done` or `error` with the final `AssistantMessage`. Not the same as an agent [event](#event). Home: [03](03-stream-parser.md); overview: [Part 1](part-1-ai.md).
+
 ## Compaction entry
 A history marker (`CompactionEntry`) that says "messages before `first_kept_index` are replaced by this summary". Never sent to the model as-is. Defined in [01](01-messages.md); built in [16](16-compaction.md).
 

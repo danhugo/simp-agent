@@ -11,6 +11,8 @@ flowchart LR
     ai["ai ★ messages (this chapter)"] --> agent --> coding --> session --> plugins --> testing
 ```
 
+Big picture of Part 1: [part-1-ai](part-1-ai.md).
+
 We start at the far left of the [layer map](00-overview.md#the-layer-map): the `ai` layer. Before we can call a model, run a tool, or save a chat, we need one thing all of them share: the **[message](glossary.md#message)**.
 
 Code in this chapter (commit `2fc2776`):

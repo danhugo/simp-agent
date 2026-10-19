@@ -1,0 +1,206 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1840" height="1060" viewBox="0 0 1840 1060" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker><marker id="p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker><filter id="s" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.12"/></filter></defs>
+<rect width="1840" height="1060" fill="#f8fafc"/>
+<text x="920.0" y="44" font-size="28" fill="#0f172a" font-weight="700" text-anchor="middle">The AI block of simp-agent — one complete picture</text>
+<text x="920.0" y="72" font-size="15" fill="#64748b" font-weight="normal" text-anchor="middle">Blocks = what happens.  Cards on the arrows = the real objects passed along.  Purple tags = book chapter + code.</text>
+<text x="220" y="110" font-size="15" fill="#2563eb" font-weight="700" text-anchor="start">GOING OUT  →  the question</text>
+<text x="220" y="500" font-size="15" fill="#16a34a" font-weight="700" text-anchor="start">←  COMING BACK  —  the answer, piece by piece</text>
+<rect x="30" y="125" width="170" height="890" rx="18" fill="#e0e7ff" stroke="#6366f1" stroke-width="2.5" filter="url(#s)"/>
+<text x="115" y="165" font-size="20" fill="#312e81" font-weight="700" text-anchor="middle">The Agent</text>
+<text x="115" y="190" font-size="13" fill="#4338ca" font-weight="normal" text-anchor="middle">(your app)</text>
+<text x="115" y="240" font-size="13" fill="#3730a3" font-weight="700" text-anchor="middle">Gives:</text>
+<text x="115" y="260" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">Model</text>
+<text x="115" y="280" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">Context</text>
+<text x="115" y="600" font-size="13" fill="#3730a3" font-weight="700" text-anchor="middle">Gets back:</text>
+<text x="115" y="620" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">events (live)</text>
+<text x="115" y="640" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">AssistantMessage</text>
+<text x="115" y="660" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">(at the end)</text>
+<rect x="45" y="975" width="140" height="24" rx="12" fill="#f5f3ff"/>
+<text x="115" y="992" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="middle">Ch05 agent loop</text>
+<rect x="1640" y="125" width="170" height="620" rx="18" fill="#1e293b" stroke="#1e293b" stroke-width="0" filter="url(#s)"/>
+<text x="1725" y="410" font-size="20" fill="#f8fafc" font-weight="700" text-anchor="middle">The LLM</text>
+<text x="1725" y="436" font-size="13" fill="#cbd5e1" font-weight="normal" text-anchor="middle">Claude / GPT …</text>
+<text x="1725" y="470" font-size="12" fill="#94a3b8" font-weight="normal" text-anchor="middle">reads the request,</text>
+<text x="1725" y="488" font-size="12" fill="#94a3b8" font-weight="normal" text-anchor="middle">answers a few</text>
+<text x="1725" y="506" font-size="12" fill="#94a3b8" font-weight="normal" text-anchor="middle">words at a time</text>
+<rect x="420" y="130" width="200" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="520" cy="158" r="16" fill="#2563eb"/>
+<text x="520" y="164" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">1</text>
+<text x="520" y="198" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Pick the driver</text>
+<text x="520" y="220" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Look at Model.api.</text>
+<text x="520" y="237" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Choose the code that</text>
+<text x="520" y="254" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">talks to that company.</text>
+<text x="432" y="280" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="460" y="280" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">Model</text>
+<text x="432" y="298" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="460" y="298" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">a driver function</text>
+<rect x="430" y="310" width="180" height="24" rx="12" fill="#f5f3ff"/>
+<text x="440" y="327" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch04</text>
+<text x="478" y="327" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">stream()</text>
+<rect x="840" y="130" width="200" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="940" cy="158" r="16" fill="#2563eb"/>
+<text x="940" y="164" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">2</text>
+<text x="940" y="198" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Clean messages</text>
+<text x="940" y="220" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Fix old messages so</text>
+<text x="940" y="237" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">this model accepts them</text>
+<text x="940" y="254" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">(e.g. drop foreign thinking).</text>
+<text x="852" y="280" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="880" y="280" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">messages[]</text>
+<text x="852" y="298" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="880" y="298" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">clean messages[]</text>
+<rect x="850" y="310" width="180" height="24" rx="12" fill="#f5f3ff"/>
+<text x="860" y="327" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch01</text>
+<text x="898" y="327" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">transform_…()</text>
+<rect x="1260" y="130" width="200" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="1360" cy="158" r="16" fill="#2563eb"/>
+<text x="1360" y="164" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">3</text>
+<text x="1360" y="198" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Translate + send</text>
+<text x="1360" y="220" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Rewrite in the company's</text>
+<text x="1360" y="237" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">own JSON format, then</text>
+<text x="1360" y="254" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">open an HTTP stream.</text>
+<text x="1272" y="280" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="1300" y="280" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">Context</text>
+<text x="1272" y="298" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="1300" y="298" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">HTTP request</text>
+<rect x="1270" y="310" width="180" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1280" y="327" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch04</text>
+<text x="1318" y="327" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">to_openai() …</text>
+<path d="M200 140 L416 140" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
+<path d="M620 140 L836 140" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
+<path d="M1040 140 L1256 140" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
+<path d="M1460 140 L1636 140" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
+<rect x="210" y="160" width="200" height="119" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="220" y="180" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="start">Model</text>
+<text x="222" y="199" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">id</text>
+<text x="222" y="216" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">provider · api</text>
+<text x="222" y="233" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">max_tokens</text>
+<text x="222" y="250" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">context_window</text>
+<text x="222" y="267" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">compat</text>
+<rect x="210" y="300" width="200" height="119" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="220" y="320" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="start">Context</text>
+<text x="222" y="339" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">system_prompt</text>
+<text x="222" y="356" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">tools[]  (Tool:</text>
+<text x="222" y="373" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">  name, description,</text>
+<text x="222" y="390" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">  parameters)</text>
+<text x="222" y="407" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">messages[]  (see next card)</text>
+<rect x="630" y="160" width="200" height="153" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="640" y="180" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="start">messages[] — 3 kinds</text>
+<text x="642" y="199" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">UserMessage</text>
+<text x="642" y="216" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">  content</text>
+<text x="642" y="233" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">AssistantMessage</text>
+<text x="642" y="250" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">  (an earlier reply)</text>
+<text x="642" y="267" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">ToolResultMessage</text>
+<text x="642" y="284" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">  tool_call_id, tool_name</text>
+<text x="642" y="301" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">  content, is_error</text>
+<rect x="1050" y="160" width="200" height="119" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="1060" y="180" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="start">Same Context,</text>
+<text x="1062" y="199" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">but every message is now</text>
+<text x="1062" y="216" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">safe for this model.</text>
+<text x="1062" y="233" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start"></text>
+<text x="1062" y="250" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">The driver picked in ①</text>
+<text x="1062" y="267" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">will use it.</text>
+<rect x="1470" y="160" width="160" height="102" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="1480" y="180" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="start">API request</text>
+<text x="1482" y="199" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">company JSON:</text>
+<text x="1482" y="216" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">model, messages,</text>
+<text x="1482" y="233" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">tools, max_tokens,</text>
+<text x="1482" y="250" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">stream: true</text>
+<rect x="1260" y="520" width="200" height="215" rx="14" fill="#fff" stroke="#16a34a" stroke-width="2" filter="url(#s)"/>
+<circle cx="1360" cy="548" r="16" fill="#16a34a"/>
+<text x="1360" y="554" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">4</text>
+<text x="1360" y="588" font-size="16" fill="#14532d" font-weight="700" text-anchor="middle">Read the stream</text>
+<text x="1360" y="610" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Turn raw pieces into</text>
+<text x="1360" y="627" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">simple events. Collect</text>
+<text x="1360" y="644" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">tool-call JSON until done.</text>
+<text x="1272" y="670" font-size="11" fill="#16a34a" font-weight="700" text-anchor="start">IN</text>
+<text x="1300" y="670" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">raw chunks</text>
+<text x="1272" y="688" font-size="11" fill="#16a34a" font-weight="700" text-anchor="start">OUT</text>
+<text x="1300" y="688" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">events</text>
+<rect x="1270" y="700" width="180" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1280" y="717" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch03</text>
+<text x="1318" y="717" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">parse()</text>
+<rect x="840" y="520" width="200" height="215" rx="14" fill="#fff" stroke="#16a34a" stroke-width="2" filter="url(#s)"/>
+<circle cx="940" cy="548" r="16" fill="#16a34a"/>
+<text x="940" y="554" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">5</text>
+<text x="940" y="588" font-size="16" fill="#14532d" font-weight="700" text-anchor="middle">Label &amp; pass on</text>
+<text x="940" y="610" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Write api / provider /</text>
+<text x="940" y="627" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">model on the message,</text>
+<text x="940" y="644" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">give each event to Agent.</text>
+<text x="852" y="670" font-size="11" fill="#16a34a" font-weight="700" text-anchor="start">IN</text>
+<text x="880" y="670" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">events</text>
+<text x="852" y="688" font-size="11" fill="#16a34a" font-weight="700" text-anchor="start">OUT</text>
+<text x="880" y="688" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">labelled events</text>
+<rect x="850" y="700" width="180" height="24" rx="12" fill="#f5f3ff"/>
+<text x="860" y="717" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch04</text>
+<text x="898" y="717" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">stream()</text>
+<path d="M1640 530 L1464 530" stroke="#16a34a" stroke-width="3" fill="none" marker-end="url(#g)"/>
+<path d="M1260 530 L1044 530" stroke="#16a34a" stroke-width="3" fill="none" marker-end="url(#g)"/>
+<path d="M840 530 L204 530" stroke="#16a34a" stroke-width="3" fill="none" marker-end="url(#g)"/>
+<rect x="1470" y="550" width="160" height="102" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1480" y="570" font-size="12.5" fill="#16a34a" font-weight="700" text-anchor="start">Raw chunks</text>
+<text x="1482" y="589" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">tiny pieces in the</text>
+<text x="1482" y="606" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">company's format,</text>
+<text x="1482" y="623" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">e.g. a few words or</text>
+<text x="1482" y="640" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">a bit of JSON</text>
+<rect x="1050" y="550" width="200" height="204" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+<text x="1060" y="570" font-size="12.5" fill="#16a34a" font-weight="700" text-anchor="start">Events (signals)</text>
+<text x="1062" y="589" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">start {partial}</text>
+<text x="1062" y="606" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">thinking_start</text>
+<text x="1062" y="623" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">thinking_delta {delta}</text>
+<text x="1062" y="640" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">thinking_end</text>
+<text x="1062" y="657" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">text_delta {delta}</text>
+<text x="1062" y="674" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">toolcall_start {name}</text>
+<text x="1062" y="691" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">toolcall_delta {delta}</text>
+<text x="1062" y="708" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">toolcall_end</text>
+<text x="1062" y="725" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">done {message}  or</text>
+<text x="1062" y="742" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">error {message}</text>
+<rect x="220" y="550" width="600" height="360" rx="14" fill="#fff" stroke="#16a34a" stroke-width="2" filter="url(#s)"/>
+<rect x="220" y="550" width="600" height="38" rx="14" fill="#dcfce7"/><rect x="220" y="575" width="600" height="13" fill="#dcfce7"/>
+<text x="238" y="575" font-size="17" fill="#14532d" font-weight="700" text-anchor="start">AssistantMessage</text>
+<text x="400" y="575" font-size="12.5" fill="#475569" font-weight="normal" text-anchor="start">— carried by the last event (done / error)</text>
+<text x="238" y="612" font-size="12.5" fill="#0f172a" font-weight="700" text-anchor="start" font-family="Menlo, monospace">content[]</text>
+<text x="320" y="612" font-size="12.5" fill="#475569" font-weight="normal" text-anchor="start">blocks, in order:</text>
+<rect x="238" y="624" width="564" height="36" rx="8" fill="#fefce8" stroke="#fde68a"/>
+<text x="250" y="647" font-size="12.5" fill="#0f172a" font-weight="700" text-anchor="start">ThinkingContent</text>
+<text x="380" y="647" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">thinking, signature</text>
+<text x="560" y="647" font-size="12" fill="#64748b" font-weight="normal" text-anchor="start">its private reasoning</text>
+<rect x="238" y="666" width="564" height="36" rx="8" fill="#f0fdf4" stroke="#bbf7d0"/>
+<text x="250" y="689" font-size="12.5" fill="#0f172a" font-weight="700" text-anchor="start">TextContent</text>
+<text x="380" y="689" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">text</text>
+<text x="560" y="689" font-size="12" fill="#64748b" font-weight="normal" text-anchor="start">what the user reads</text>
+<rect x="238" y="708" width="564" height="36" rx="8" fill="#faf5ff" stroke="#e9d5ff"/>
+<text x="250" y="731" font-size="12.5" fill="#0f172a" font-weight="700" text-anchor="start">ToolCall</text>
+<text x="380" y="731" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">id, name, arguments</text>
+<text x="560" y="731" font-size="12" fill="#64748b" font-weight="normal" text-anchor="start">"run this tool with these inputs"</text>
+<text x="238" y="770" font-size="12.5" fill="#0f172a" font-weight="700" text-anchor="start" font-family="Menlo, monospace">stop_reason</text>
+<rect x="340" y="756" width="84" height="22" rx="11" fill="#dcfce7"/>
+<text x="382" y="772" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">stop</text>
+<rect x="432" y="756" width="84" height="22" rx="11" fill="#ede9fe"/>
+<text x="474" y="772" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">tool_use</text>
+<rect x="524" y="756" width="84" height="22" rx="11" fill="#fef3c7"/>
+<text x="566" y="772" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">length</text>
+<rect x="616" y="756" width="84" height="22" rx="11" fill="#fee2e2"/>
+<text x="658" y="772" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">error</text>
+<rect x="708" y="756" width="84" height="22" rx="11" fill="#e2e8f0"/>
+<text x="750" y="772" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">aborted</text>
+<text x="238" y="804" font-size="12.5" fill="#0f172a" font-weight="700" text-anchor="start" font-family="Menlo, monospace">usage</text>
+<text x="300" y="804" font-size="12.5" fill="#475569" font-weight="normal" text-anchor="start">{input, output} tokens</text>
+<text x="238" y="828" font-size="12.5" fill="#0f172a" font-weight="700" text-anchor="start" font-family="Menlo, monospace">error, error_kind</text>
+<text x="380" y="828" font-size="12.5" fill="#475569" font-weight="normal" text-anchor="start">what went wrong; fatal/budget/policy = no retry</text>
+<text x="238" y="852" font-size="12.5" fill="#0f172a" font-weight="700" text-anchor="start" font-family="Menlo, monospace">api, provider, model</text>
+<text x="410" y="852" font-size="12.5" fill="#475569" font-weight="normal" text-anchor="start">stamped by ⑤</text>
+<rect x="238" y="872" width="190" height="24" rx="12" fill="#f5f3ff"/>
+<text x="250" y="889" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch01 messages · Ch03 · Ch06</text>
+<rect x="840" y="760" width="790" height="60" rx="12" fill="#fef2f2" stroke="#fecaca" stroke-width="1.5"/>
+<text x="860" y="786" font-size="13.5" fill="#991b1b" font-weight="700" text-anchor="start">Rule: stream() never crashes.</text>
+<text x="860" y="806" font-size="12.5" fill="#991b1b" font-weight="normal" text-anchor="start">Unknown model, no API key, network error → it becomes an  error {message}  event.   Ch04 · Ch15 retry</text>
+<rect x="840" y="840" width="790" height="175" rx="14" fill="#faf5ff" stroke="#7c3aed" stroke-width="2" filter="url(#s)"/>
+<text x="860" y="868" font-size="15" fill="#581c87" font-weight="700" text-anchor="start">⑥ The Agent decides what next (looks at stop_reason)</text>
+<text x="860" y="898" font-size="13" fill="#3b0764" font-weight="normal" text-anchor="start">tool_use →  run each ToolCall  →  make a ToolResultMessage  →  add both to Context.messages  →  call stream() again (back to ①)</text>
+<text x="860" y="922" font-size="13" fill="#3b0764" font-weight="normal" text-anchor="start">stop     →  the turn is over; show the text to the user</text>
+<text x="860" y="946" font-size="13" fill="#3b0764" font-weight="normal" text-anchor="start">length / error / aborted  →  stop, retry, or compact the chat (Ch15, Ch16, Ch17)</text>
+<rect x="860" y="972" width="150" height="24" rx="12" fill="#ede9fe"/>
+<text x="872" y="989" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch05 agent loop</text>
+<path d="M840 930 C700 960 400 960 204 960" stroke="#7c3aed" stroke-width="2.5" fill="none" stroke-dasharray="6 4" marker-end="url(#p)"/>
+<text x="560" y="980" font-size="12" fill="#7c3aed" font-weight="700" text-anchor="middle">next turn: messages grow</text>
+</svg>
