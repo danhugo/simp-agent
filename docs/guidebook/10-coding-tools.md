@@ -13,6 +13,8 @@ flowchart LR
 
 In [05](05-agent-loop.md#tools-agenttool) we built the [agent tool](glossary.md#agent-tool) type and `run_tool`. In [09](09-exec-env.md) we built the [execution environment](glossary.md#execution-environment), the one object that touches files and runs commands. Now we join the two: seven real tools that a coding agent needs. Each tool is a short `async` function that takes `(args, ctx)` and returns a string. Each one does its IO through `ctx.env` and nothing else.
 
+Big picture of Part 3: [part-3-coding](part-3-coding.md).
+
 Code in this chapter (commit `2fc2776`):
 
 - `packages/simp_agent/src/simp_agent/coding/tools.py` — the seven tools and `make_tools`

@@ -1,0 +1,168 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1840" height="1100" viewBox="0 0 1840 1100" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker><marker id="p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker><filter id="s" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.12"/></filter></defs>
+<rect width="1840" height="1100" fill="#f8fafc"/>
+<text x="920" y="44" font-size="28" fill="#0f172a" font-weight="700" text-anchor="middle">The coding block of simp-agent — one complete picture</text>
+<text x="920" y="72" font-size="15" fill="#64748b" font-weight="normal" text-anchor="middle">Blocks = what happens.  Cards on the arrows = the data passed between steps.  Purple tags = book chapter + code.</text>
+<text x="40" y="110" font-size="15" fill="#2563eb" font-weight="700" text-anchor="start">SET UP  →  tools and prompt, before the loop runs</text>
+<rect x="40" y="125" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="155.0" cy="153" r="16" fill="#2563eb"/>
+<text x="155.0" y="159" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">1</text>
+<text x="155.0" y="193" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Make the tools</text>
+<text x="155.0" y="215" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Seven tools: read, write,</text>
+<text x="155.0" y="232" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">edit, bash, grep, find, ls.</text>
+<text x="155.0" y="249" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Name + schema + function.</text>
+<text x="52" y="275" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="82" y="275" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">bash max timeout</text>
+<text x="52" y="293" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="82" y="293" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">list[AgentTool]</text>
+<rect x="50" y="305" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="60" y="322" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch10</text>
+<text x="100" y="322" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">make_tools()</text>
+<rect x="40" y="370" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="155.0" cy="398" r="16" fill="#2563eb"/>
+<text x="155.0" y="404" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">2</text>
+<text x="155.0" y="438" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Load project file</text>
+<text x="155.0" y="460" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Try AGENTS.md, CLAUDE.md …</text>
+<text x="155.0" y="477" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">in cwd. First one wins.</text>
+<text x="52" y="520" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="82" y="520" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">env, cwd</text>
+<text x="52" y="538" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="82" y="538" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">(path, text) | None</text>
+<rect x="50" y="550" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="60" y="567" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch11</text>
+<text x="100" y="567" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">load_context_file()</text>
+<rect x="460" y="245" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="575.0" cy="273" r="16" fill="#2563eb"/>
+<text x="575.0" y="279" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">3</text>
+<text x="575.0" y="313" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Build the prompt</text>
+<text x="575.0" y="335" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Who you are + tool list</text>
+<text x="575.0" y="352" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">project file: own section</text>
+<text x="575.0" y="369" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">+ date + cwd.</text>
+<text x="472" y="395" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="502" y="395" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">tools, cwd, file</text>
+<text x="472" y="413" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="502" y="413" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">one string</text>
+<rect x="470" y="425" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="480" y="442" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch11</text>
+<text x="520" y="442" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">system_prompt()</text>
+<line x1="270" y1="232" x2="460" y2="320" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<rect x="339.0" y="251.0" width="52.0" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="365.0" y="266.0" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">tools</text>
+<line x1="270" y1="477" x2="460" y2="400" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<rect x="313.8" y="413.5" width="102.4" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="365.0" y="428.5" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">(path, text) → session</text>
+<rect x="880" y="245" width="230" height="215" rx="14" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2" filter="url(#s)"/>
+<text x="995.0" y="313" font-size="16" fill="#64748b" font-weight="700" text-anchor="middle">Agent loop</text>
+<text x="995.0" y="335" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Sends prompt + tools to</text>
+<text x="995.0" y="352" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">the model. Model asks for</text>
+<text x="995.0" y="369" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">a tool → loop calls it.</text>
+<line x1="690" y1="352" x2="880" y2="352" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<rect x="730.2" y="327.0" width="109.60000000000001" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="785.0" y="342.0" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">system prompt</text>
+<text x="995" y="430" font-size="13" fill="#64748b" font-weight="700" text-anchor="middle">→ Part 2 (ch05)</text>
+<text x="40" y="640" font-size="15" fill="#16a34a" font-weight="700" text-anchor="start">ONE TOOL CALL  →  down to the disk / shell, and back</text>
+<rect x="460" y="655" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="575.0" cy="683" r="16" fill="#2563eb"/>
+<text x="575.0" y="689" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">4</text>
+<text x="575.0" y="723" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Run the tool</text>
+<text x="575.0" y="745" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Read args, join path</text>
+<text x="575.0" y="762" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">to ctx.cwd, call ctx.env.</text>
+<text x="472" y="805" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="502" y="805" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">args, ToolContext</text>
+<text x="472" y="823" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="502" y="823" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">a string</text>
+<rect x="470" y="835" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="480" y="852" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch10</text>
+<text x="520" y="852" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">read · bash · …</text>
+<rect x="880" y="655" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="995.0" cy="683" r="16" fill="#2563eb"/>
+<text x="995.0" y="689" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">5</text>
+<text x="995.0" y="723" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Check the path</text>
+<text x="995.0" y="745" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">With a root: refuse</text>
+<text x="995.0" y="762" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">paths that go outside.</text>
+<text x="892" y="805" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="922" y="805" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">a path</text>
+<text x="892" y="823" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="922" y="823" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">safe Path / error</text>
+<rect x="890" y="835" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="900" y="852" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch09</text>
+<text x="940" y="852" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">LocalEnv._path()</text>
+<rect x="1300" y="655" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="1415.0" cy="683" r="16" fill="#2563eb"/>
+<text x="1415.0" y="689" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">6</text>
+<text x="1415.0" y="723" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Touch files / run</text>
+<text x="1415.0" y="745" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">read · write · list · exec.</text>
+<text x="1415.0" y="762" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Timeout/cancel → kill</text>
+<text x="1415.0" y="779" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">whole process group.</text>
+<text x="1312" y="805" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="1342" y="805" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">path / command</text>
+<text x="1312" y="823" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="1342" y="823" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">text / (code, out)</text>
+<rect x="1310" y="835" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1320" y="852" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch09</text>
+<text x="1360" y="852" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">exec(), run_kill()</text>
+<rect x="1300" y="875" width="230" height="205" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="1415.0" cy="903" r="16" fill="#2563eb"/>
+<text x="1415.0" y="909" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">7</text>
+<text x="1415.0" y="943" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Cut long output</text>
+<text x="1415.0" y="965" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Keep head (read) or</text>
+<text x="1415.0" y="982" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">tail (bash) + a note.</text>
+<text x="1312" y="1025" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="1342" y="1025" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">long text</text>
+<text x="1312" y="1043" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="1342" y="1043" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">short text</text>
+<rect x="1310" y="1055" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1320" y="1072" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch10</text>
+<text x="1360" y="1072" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">truncate_head/tail</text>
+<line x1="930" y1="460" x2="530" y2="655" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<rect x="675.2" y="532.5" width="109.60000000000001" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="730.0" y="547.5" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">ToolCall args</text>
+<line x1="690" y1="762" x2="880" y2="762" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<rect x="762.6" y="737.0" width="44.8" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="785.0" y="752.0" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">path</text>
+<line x1="1110" y1="762" x2="1300" y2="762" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<rect x="1164.6" y="737.0" width="80.8" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="1205.0" y="752.0" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">safe Path</text>
+<line x1="1415" y1="870" x2="1415" y2="875" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<line x1="1300" y1="980" x2="690" y2="840" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<rect x="943.8" y="885.0" width="102.4" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="995.0" y="900.0" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">short string</text>
+<line x1="640" y1="655" x2="1060" y2="460" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)" stroke-dasharray="6 5"/>
+<text x="900" y="600" font-size="12" fill="#16a34a" font-weight="700" text-anchor="start">string → ToolResultMessage → loop</text>
+<rect x="1300" y="125" width="500" height="470" rx="18" fill="#fefce8" stroke="#ca8a04" stroke-width="2" filter="url(#s)"/>
+<text x="1550" y="155" font-size="15" fill="#a16207" font-weight="700" text-anchor="middle">EVAL  — measures the whole agent</text>
+<rect x="1310" y="175" width="235" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="1427.5" cy="203" r="16" fill="#2563eb"/>
+<text x="1427.5" y="209" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">8</text>
+<text x="1427.5" y="243" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Run one task</text>
+<text x="1427.5" y="265" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Temp folder + setup files,</text>
+<text x="1427.5" y="282" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">AgentSession on prompt,</text>
+<text x="1427.5" y="299" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">count turns, run check.</text>
+<text x="1322" y="325" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="1352" y="325" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">task (TOML)</text>
+<text x="1322" y="343" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="1352" y="343" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">result row</text>
+<rect x="1320" y="355" width="215" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1330" y="372" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch12</text>
+<text x="1370" y="372" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">run_task()</text>
+<rect x="1555" y="175" width="235" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="1672.5" cy="203" r="16" fill="#2563eb"/>
+<text x="1672.5" y="209" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">9</text>
+<text x="1672.5" y="243" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Report</text>
+<text x="1672.5" y="265" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Print the table and</text>
+<text x="1672.5" y="282" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">total, save JSON in</text>
+<text x="1672.5" y="299" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">evals/results/.</text>
+<text x="1567" y="325" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="1597" y="325" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">result rows</text>
+<text x="1567" y="343" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="1597" y="343" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">table + JSON</text>
+<rect x="1565" y="355" width="215" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1575" y="372" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch12</text>
+<text x="1615" y="372" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">run_all()</text>
+<line x1="1545" y1="282" x2="1555" y2="282" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<line x1="1310" y1="330" x2="1110" y2="330" stroke="#7c3aed" stroke-width="2.5" marker-end="url(#p)" stroke-dasharray="6 5"/>
+<rect x="1140.8" y="305.0" width="138.4" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="1210.0" y="320.0" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">runs AgentSession</text>
+<text x="1550" y="430" font-size="12" fill="#713f12" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">fix_bug.toml:  prompt = "Fix the bug in calc.py"</text>
+<text x="1550" y="452" font-size="12" fill="#713f12" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">check = pytest test_calc.py   (exit 0 = PASS)</text>
+</svg>

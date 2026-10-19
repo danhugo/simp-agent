@@ -98,4 +98,4 @@ If the user pressed Stop in step 8, the tool would see `ctx.cancel`, the loop wo
 
 - Builds on: [Part 1 big picture](part-1-ai.md) · [04 Providers](04-providers.md).
 - Chapters: [05 The agent loop](05-agent-loop.md) · [06 Events and abort](06-events-abort.md) · [07 Steering](07-steering.md) · [08 Hooks and approval](08-hooks-approval.md).
-- Next: [09 Execution environment](09-exec-env.md) gives tools a safe `env` (the `ToolContext.env` field).
+- Next: [Part 3 big picture](part-3-coding.md), then [09 Execution environment](09-exec-env.md) gives tools a safe `env` (the `ToolContext.env` field).

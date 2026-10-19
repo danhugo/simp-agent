@@ -20,6 +20,8 @@ In [10](10-coding-tools.md) we built seven tools. The model can now read, edit a
 
  The text that tells it these things is the [system prompt](glossary.md#system-prompt).
 
+Big picture of Part 3: [part-3-coding](part-3-coding.md).
+
 Code in this chapter (commit `2fc2776`):
 
 - `packages/simp_agent/src/simp_agent/coding/__init__.py` — `system_prompt`, `CONTEXT_FILES`, `load_context_file`

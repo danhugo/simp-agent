@@ -15,6 +15,8 @@ In [05](05-agent-loop.md#toolcontext-what-a-tool-gets) every tool got a [tool co
 
 The next chapter ([10](10-coding-tools.md)) writes the real coding tools: `read`, `write`, `edit`, `ls`, `grep`, `find`, `bash`. They will **all** go through this object. So this chapter is small, but everything after it stands on it.
 
+Big picture of Part 3: [part-3-coding](part-3-coding.md).
+
 Code in this chapter (commit `2fc2776`):
 
 - `packages/simp_agent/src/simp_agent/agent/env.py` — `ExecutionEnv`, `LocalEnv`, `run_kill`
