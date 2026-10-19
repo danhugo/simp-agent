@@ -24,6 +24,7 @@ The block numbers in the picture and the table are the same, in the order the st
 - [06 Part 2 · Events and abort](06-events-abort.md) — Let callers watch the loop and stop it.
 - [07 Part 2 · Steering](07-steering.md) — Let the user add messages while the agent works.
 - [08 Part 2 · Hooks and approval](08-hooks-approval.md) — Check or change tool calls before and after they run.
+- [Part 3 big picture: the coding layer](part-3-coding.md) — All blocks of Part 3, their IN and OUT, on one page.
 - [09 Part 3 · Execution environment](09-exec-env.md) — Give tools one safe place to touch files and run commands.
 - [10 Part 3 · Coding tools](10-coding-tools.md) — Build read, write, edit, ls, grep, find and bash.
 - [11 Part 3 · The system prompt](11-system-prompt.md) — Tell the model who it is and what the project wants.
