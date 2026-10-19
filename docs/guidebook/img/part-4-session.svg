@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1840" height="1060" viewBox="0 0 1840 1060" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker><filter id="s" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.12"/></filter></defs>
+<rect width="1840" height="1060" fill="#f8fafc"/>
+<text x="920" y="44" font-size="28" fill="#0f172a" font-weight="700" text-anchor="middle">The session block of simp-agent — one complete picture</text>
+<text x="920" y="72" font-size="15" fill="#64748b" font-weight="normal" text-anchor="middle">Blocks = what happens.  Cards on the arrows = the data passed between steps.  Purple tags = book chapter + code.</text>
+<text x="220" y="110" font-size="15" fill="#2563eb" font-weight="700" text-anchor="start">GOING IN  →  the task, and each model turn is prepared</text>
+<text x="220" y="560" font-size="15" fill="#16a34a" font-weight="700" text-anchor="start">←  COMING BACK  —  tools run, messages are saved, errors are fixed</text>
+<rect x="30" y="125" width="170" height="890" rx="18" fill="#e0e7ff" stroke="#6366f1" stroke-width="2.5" filter="url(#s)"/>
+<text x="115" y="165" font-size="20" fill="#312e81" font-weight="700" text-anchor="middle">The App</text>
+<text x="115" y="190" font-size="13" fill="#4338ca" font-weight="normal" text-anchor="middle">(CLI / server)</text>
+<text x="115" y="240" font-size="13" fill="#3730a3" font-weight="700" text-anchor="middle">Gives:</text>
+<text x="115" y="260" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">profile dict</text>
+<text x="115" y="280" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">plugin names</text>
+<text x="115" y="300" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">store</text>
+<text x="115" y="320" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">task text</text>
+<text x="115" y="640" font-size="13" fill="#3730a3" font-weight="700" text-anchor="middle">Gets back:</text>
+<text x="115" y="660" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">events (live)</text>
+<text x="115" y="680" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">new messages</text>
+<text x="115" y="700" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">lines in store</text>
+<rect x="45" y="975" width="140" height="24" rx="12" fill="#f5f3ff"/>
+<text x="115" y="992" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="middle">Ch19 CLI · Ch20</text>
+<rect x="1640" y="125" width="170" height="890" rx="18" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2" stroke-dasharray="8 6"/>
+<text x="1725" y="430" font-size="20" fill="#475569" font-weight="700" text-anchor="middle">Agent loop</text>
+<text x="1725" y="456" font-size="13" fill="#64748b" font-weight="normal" text-anchor="middle">model call,</text>
+<text x="1725" y="474" font-size="13" fill="#64748b" font-weight="normal" text-anchor="middle">run tools,</text>
+<text x="1725" y="492" font-size="13" fill="#64748b" font-weight="normal" text-anchor="middle">repeat</text>
+<text x="1725" y="530" font-size="15" fill="#475569" font-weight="700" text-anchor="middle">→ Part 2</text>
+<text x="1725" y="550" font-size="12" fill="#64748b" font-weight="normal" text-anchor="middle">(ch05–08)</text>
+<rect x="240" y="130" width="250" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="365" cy="158" r="16" fill="#2563eb"/>
+<text x="365" y="164" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">1</text>
+<text x="365" y="198" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Build</text>
+<text x="365" y="220" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Profile → Model.</text>
+<text x="365" y="237" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Plugin names →</text>
+<text x="365" y="254" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">plugin objects.</text>
+<text x="252" y="283" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="282" y="283" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">profile, names</text>
+<text x="252" y="301" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="282" y="301" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">Model, plugins</text>
+<rect x="250" y="324" width="230" height="24" rx="12" fill="#f5f3ff"/>
+<text x="260" y="341" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch18</text>
+<text x="298" y="341" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">build_model()</text>
+<rect x="550" y="130" width="230" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="665" cy="158" r="16" fill="#2563eb"/>
+<text x="665" y="164" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">2</text>
+<text x="665" y="198" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Start</text>
+<text x="665" y="220" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Once: context file,</text>
+<text x="665" y="237" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">plugin setup(),</text>
+<text x="665" y="254" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">session_start.</text>
+<text x="562" y="283" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="592" y="283" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">plugins</text>
+<text x="562" y="301" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="592" y="301" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">sections ready</text>
+<rect x="560" y="324" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="570" y="341" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch13·14</text>
+<text x="632" y="341" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">start()</text>
+<rect x="830" y="130" width="230" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="945" cy="158" r="16" fill="#2563eb"/>
+<text x="945" y="164" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">3</text>
+<text x="945" y="198" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Input hooks</text>
+<text x="945" y="220" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Plugins may change</text>
+<text x="945" y="237" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">the text or add</text>
+<text x="945" y="254" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">extra messages.</text>
+<text x="842" y="283" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="872" y="283" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">task text</text>
+<text x="842" y="301" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="872" y="301" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">text + extra</text>
+<rect x="840" y="324" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="850" y="341" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch14</text>
+<text x="888" y="341" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">prompt()</text>
+<rect x="1110" y="130" width="230" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="1225" cy="158" r="16" fill="#2563eb"/>
+<text x="1225" y="164" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">4</text>
+<text x="1225" y="198" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Prepare view</text>
+<text x="1225" y="220" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Too big? compact.</text>
+<text x="1225" y="237" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">build_view, then</text>
+<text x="1225" y="254" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">plugin context hooks.</text>
+<text x="1122" y="283" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="1152" y="283" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">full history</text>
+<text x="1122" y="301" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="1152" y="301" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">LLM view</text>
+<rect x="1120" y="324" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1130" y="341" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch16·14</text>
+<text x="1192" y="341" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">_prepare()</text>
+<rect x="1390" y="130" width="230" height="230" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="1505" cy="158" r="16" fill="#2563eb"/>
+<text x="1505" y="164" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">5</text>
+<text x="1505" y="198" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Build prompt</text>
+<text x="1505" y="220" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Join prompt sections</text>
+<text x="1505" y="237" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">by order into one</text>
+<text x="1505" y="254" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">system prompt.</text>
+<text x="1402" y="283" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="1432" y="283" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">sections</text>
+<text x="1402" y="301" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="1432" y="301" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">system prompt</text>
+<rect x="1400" y="324" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1410" y="341" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch13</text>
+<text x="1448" y="341" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">_build_prompt()</text>
+<path d="M490 140 L546 140" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
+<path d="M780 140 L826 140" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
+<path d="M1060 140 L1106 140" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
+<path d="M1340 140 L1386 140" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
+<path d="M1620 140 L1636 140" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
+<path d="M200 160 L236 160" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
+<rect x="1548.0" y="384" width="124" height="24" rx="6" fill="#fef9c3" stroke="#ca8a04"/>
+<text x="1610" y="400" font-size="11.5" fill="#713f12" font-weight="700" text-anchor="middle" font-family="Menlo, monospace">view + prompt</text>
+<path d="M1590 380 L1636 380" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
+<rect x="1350" y="620" width="260" height="230" rx="14" fill="#fff" stroke="#16a34a" stroke-width="2" filter="url(#s)"/>
+<circle cx="1480" cy="648" r="16" fill="#16a34a"/>
+<text x="1480" y="654" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">6</text>
+<text x="1480" y="688" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Tool hooks</text>
+<text x="1480" y="710" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">tool_call: block or</text>
+<text x="1480" y="727" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">change args; approve;</text>
+<text x="1480" y="744" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">tool_result: change.</text>
+<text x="1362" y="773" font-size="11" fill="#16a34a" font-weight="700" text-anchor="start">IN</text>
+<text x="1392" y="773" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">ToolCall, result</text>
+<text x="1362" y="791" font-size="11" fill="#16a34a" font-weight="700" text-anchor="start">OUT</text>
+<text x="1392" y="791" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">allow/block, result</text>
+<rect x="1360" y="814" width="240" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1370" y="831" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch14</text>
+<text x="1408" y="831" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">_before_tool_call()</text>
+<rect x="1000" y="620" width="260" height="230" rx="14" fill="#fff" stroke="#16a34a" stroke-width="2" filter="url(#s)"/>
+<circle cx="1130" cy="648" r="16" fill="#16a34a"/>
+<text x="1130" y="654" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">7</text>
+<text x="1130" y="688" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Save + emit</text>
+<text x="1130" y="710" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">message_end →</text>
+<text x="1130" y="727" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">store.append().</text>
+<text x="1130" y="744" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Events → subscribers.</text>
+<text x="1012" y="773" font-size="11" fill="#16a34a" font-weight="700" text-anchor="start">IN</text>
+<text x="1042" y="773" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">agent events</text>
+<text x="1012" y="791" font-size="11" fill="#16a34a" font-weight="700" text-anchor="start">OUT</text>
+<text x="1042" y="791" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">store lines, events</text>
+<rect x="1010" y="814" width="240" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1020" y="831" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch13·14</text>
+<text x="1082" y="831" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">_on_agent_event()</text>
+<rect x="650" y="620" width="260" height="230" rx="14" fill="#fff" stroke="#16a34a" stroke-width="2" filter="url(#s)"/>
+<circle cx="780" cy="648" r="16" fill="#16a34a"/>
+<text x="780" y="654" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">8</text>
+<text x="780" y="688" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Recover</text>
+<text x="780" y="710" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Overflow → compact</text>
+<text x="780" y="727" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">once. 429 / 5xx →</text>
+<text x="780" y="744" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">backoff, retry.</text>
+<text x="662" y="773" font-size="11" fill="#16a34a" font-weight="700" text-anchor="start">IN</text>
+<text x="692" y="773" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">last error msg</text>
+<text x="662" y="791" font-size="11" fill="#16a34a" font-weight="700" text-anchor="start">OUT</text>
+<text x="692" y="791" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">new messages</text>
+<rect x="660" y="814" width="240" height="24" rx="12" fill="#f5f3ff"/>
+<text x="670" y="831" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch15·17</text>
+<text x="732" y="831" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">_run()</text>
+<path d="M1636 700 L1614 700" stroke="#16a34a" stroke-width="3" fill="none" marker-end="url(#g)"/>
+<path d="M1346 700 L1264 700" stroke="#16a34a" stroke-width="3" fill="none" marker-end="url(#g)"/>
+<path d="M996 700 L914 700" stroke="#16a34a" stroke-width="3" fill="none" marker-end="url(#g)"/>
+<path d="M646 700 L204 700" stroke="#16a34a" stroke-width="3" fill="none" marker-end="url(#g)"/>
+<rect x="1263.0" y="664" width="84" height="24" rx="6" fill="#fef9c3" stroke="#ca8a04"/>
+<text x="1305" y="680" font-size="11.5" fill="#713f12" font-weight="700" text-anchor="middle" font-family="Menlo, monospace">messages</text>
+<rect x="925.0" y="664" width="60" height="24" rx="6" fill="#fef9c3" stroke="#ca8a04"/>
+<text x="955" y="680" font-size="11.5" fill="#713f12" font-weight="700" text-anchor="middle" font-family="Menlo, monospace">saved</text>
+<rect x="362.0" y="664" width="116" height="24" rx="6" fill="#fef9c3" stroke="#ca8a04"/>
+<text x="420" y="680" font-size="11.5" fill="#713f12" font-weight="700" text-anchor="middle" font-family="Menlo, monospace">new messages</text>
+<path d="M780 850 L780 930 L1725 930 L1725 1019" stroke="#16a34a" stroke-width="2.5" stroke-dasharray="7 5" fill="none"/>
+<text x="1250" y="920" font-size="13" fill="#15803d" font-weight="700" text-anchor="middle">error fixed → continue_() → agent loop again</text>
+<text x="920" y="1040" font-size="14" fill="#475569" font-weight="normal" text-anchor="middle">History stays append-only: CompactionEntry and CustomEntry are added, never deleted. The LLM sees only the view.</text>
+</svg>

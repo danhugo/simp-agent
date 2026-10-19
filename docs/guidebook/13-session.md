@@ -13,6 +13,8 @@ flowchart LR
 
 This chapter starts the `session` layer.
 
+Big picture of Part 4: [part-4-session](part-4-session.md).
+
 Code in this chapter (commit `2fc2776`):
 
 - `packages/simp_agent/src/simp_agent/session/__init__.py` — `SessionStore`, `AgentSession`
