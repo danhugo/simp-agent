@@ -11,6 +11,8 @@ flowchart LR
     ai --> agent["agent ★ loop (this chapter)"] --> coding --> session --> plugins --> testing
 ```
 
+Big picture of Part 2: [part-2-agent](part-2-agent.md).
+
 Part 1 finished the `ai` [layer](glossary.md#layer). We can now send a [context](glossary.md#context) to any model with `ai.stream` ([04](04-providers.md)) and get back one `AssistantMessage` ([03](03-stream-parser.md)). In tests, `FakeProvider` plays the model ([02](02-fake-provider.md)).
 
 But one model call is not an agent. A [coding agent](glossary.md#coding-agent) must **act**: the model asks for a [tool call](glossary.md#tool-call), we run it, we give the result back, and we ask again. This chapter builds that [agent loop](glossary.md#agent-loop).

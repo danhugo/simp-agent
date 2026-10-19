@@ -19,6 +19,7 @@ The block numbers in the picture and the table are the same, in the order the st
 - [02 Part 1 · A fake provider](02-fake-provider.md) — Test a model call before any real model exists.
 - [03 Part 1 · The stream parser](03-stream-parser.md) — Turn streamed deltas into a complete assistant message.
 - [04 Part 1 · Providers](04-providers.md) — Talk to real models through one small registry.
+- [Part 2 big picture: the agent loop](part-2-agent.md) — All blocks of Part 2, their IN and OUT, on one page.
 - [05 Part 2 · The agent loop](05-agent-loop.md) — Build the smallest loop that calls a model and runs tools.
 - [06 Part 2 · Events and abort](06-events-abort.md) — Let callers watch the loop and stop it.
 - [07 Part 2 · Steering](07-steering.md) — Let the user add messages while the agent works.
