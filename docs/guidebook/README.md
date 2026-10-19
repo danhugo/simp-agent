@@ -28,6 +28,7 @@ The block numbers in the picture and the table are the same, in the order the st
 - [10 Part 3 · Coding tools](10-coding-tools.md) — Build read, write, edit, ls, grep, find and bash.
 - [11 Part 3 · The system prompt](11-system-prompt.md) — Tell the model who it is and what the project wants.
 - [12 Part 3 · Evals](12-evals.md) — Measure the agent on real tasks; when you add a capability later, you can add a case for it.
+- [Part 4 big picture: the session layer](part-4-session.md) — All blocks of Part 4, their IN and OUT, on one page.
 - [13 Part 4 · Sessions](13-session.md) — Keep a conversation across turns and save it.
 - [14 Part 4 · Plugins](14-plugins.md) — Add behaviour without changing the core.
 - [15 Part 4 · Retry](15-retry.md) — Retry failed model calls with backoff.

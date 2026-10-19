@@ -16,6 +16,8 @@ flowchart LR
 
 *This chapter adds `agent/compaction.py` (pure helpers, in `agent`) and wires it into the `session` layer (both marked).*
 
+Big picture of Part 4: [part-4-session](part-4-session.md).
+
 Code in this chapter (commit `2fc2776`):
 
 - `packages/simp_agent/src/simp_agent/agent/compaction.py` — `CompactionSettings`, `should_compact`, `find_cut`, `serialize_conversation`, `summarize`, `file_lists`, `compact`, `build_view`
