@@ -105,3 +105,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - Pseudo-code: ch14-18 logic blocks now easy pseudo-code with a 'Real code' link; test/usage code kept.
 - Pseudo-code: ch22-24, 26, 27 logic blocks now easy pseudo-code with a 'Real code' link; tests, schemas, interfaces and extend examples kept.
 - Pseudo-code fix: ch01-03, ch08 logic blocks now text pseudo + Real code lines.
+- Part 5 big picture page: part-5-system.md + img/part-5-system.svg (10 blocks, ch19-26); linked from README and ch19-26.

@@ -20,6 +20,8 @@ flowchart TB
 
 *This chapter adds the server's `store` and `auth` (marked).*
 
+Big picture of Part 5: [part-5-system](part-5-system.md).
+
 Code in this chapter (commit `2fc2776`):
 
 - `apps/server/src/simp_server/store.py` — `SqliteStore`, `sha`, `hash_password`, `check_password`

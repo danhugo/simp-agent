@@ -16,6 +16,8 @@ flowchart LR
 
 *This chapter adds the part around the apps (marked): end-to-end tests, backups and a service on one machine.*
 
+Big picture of Part 5: [part-5-system](part-5-system.md).
+
 Code in this chapter (commit `2fc2776`):
 
 - `apps/server/src/simp_server/fakellm.py` — `stream` (the fake model)

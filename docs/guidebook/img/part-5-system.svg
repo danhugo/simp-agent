@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1840" height="1260" viewBox="0 0 1840 1260" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker><marker id="p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker><filter id="s" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.12"/></filter></defs>
+<rect width="1840" height="1100" fill="#f8fafc"/>
+<rect width="1840" height="1260" fill="#f8fafc"/>
+<text x="920" y="44" font-size="28" fill="#0f172a" font-weight="700" text-anchor="middle">The system block of simp-agent — one complete picture</text>
+<text x="920" y="72" font-size="15" fill="#64748b" font-weight="normal" text-anchor="middle">Blocks = what happens.  Cards on the arrows = the data passed between steps.  Purple tags = book chapter + code.</text>
+<text x="40" y="110" font-size="15" fill="#7c3aed" font-weight="700" text-anchor="start">PATH A  →  the terminal app, one user, one folder</text>
+<rect x="40" y="125" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="155.0" cy="153" r="16" fill="#2563eb"/>
+<text x="155.0" y="159" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">1</text>
+<text x="155.0" y="193" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">CLI</text>
+<text x="155.0" y="215" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Read flags + settings,</text>
+<text x="155.0" y="232" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">open a JSONL file, print</text>
+<text x="155.0" y="249" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">events as lines.</text>
+<text x="52" y="275" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="82" y="275" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">task text, flags</text>
+<text x="52" y="293" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="82" y="293" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">lines, exit code</text>
+<rect x="50" y="305" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="60" y="322" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch19</text>
+<text x="100" y="322" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">run()</text>
+<line x1="270" y1="232" x2="1640" y2="400" stroke="#7c3aed" stroke-width="2.5" marker-end="url(#p)"/>
+<rect x="864.2" y="291.0" width="181.6" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="955.0" y="306.0" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">task text + approve=ask</text>
+<text x="40" y="385" font-size="15" fill="#2563eb" font-weight="700" text-anchor="start">PATH B  →  the server: a command goes in</text>
+<rect x="40" y="400" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="155.0" cy="428" r="16" fill="#2563eb"/>
+<text x="155.0" y="434" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">2</text>
+<text x="155.0" y="468" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Web client</text>
+<text x="155.0" y="490" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">POST a command.</text>
+<text x="155.0" y="507" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Read SSE, reduce()</text>
+<text x="155.0" y="524" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">events into state.</text>
+<text x="52" y="550" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="82" y="550" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">user clicks</text>
+<text x="52" y="568" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="82" y="568" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">JSON command</text>
+<rect x="50" y="580" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="60" y="597" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch25</text>
+<text x="100" y="597" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">api.ts</text>
+<rect x="330" y="400" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="445.0" cy="428" r="16" fill="#2563eb"/>
+<text x="445.0" y="434" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">3</text>
+<text x="445.0" y="468" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Auth</text>
+<text x="445.0" y="490" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Bearer token →</text>
+<text x="445.0" y="507" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">the user, or 401.</text>
+<text x="342" y="550" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="372" y="550" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">HTTP request</text>
+<text x="342" y="568" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="372" y="568" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">user {id, name}</text>
+<rect x="340" y="580" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="350" y="597" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch22</text>
+<text x="390" y="597" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">authenticate()</text>
+<rect x="620" y="400" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="735.0" cy="428" r="16" fill="#2563eb"/>
+<text x="735.0" y="434" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">4</text>
+<text x="735.0" y="468" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Load run</text>
+<text x="735.0" y="490" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Find session row, cap</text>
+<text x="735.0" y="507" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">open runs, rebuild Run</text>
+<text x="735.0" y="524" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">from saved entries.</text>
+<text x="632" y="550" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="662" y="550" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">user, session id</text>
+<text x="632" y="568" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="662" y="568" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">Run</text>
+<rect x="630" y="580" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="640" y="597" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch22</text>
+<text x="680" y="597" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">SessionManager.get()</text>
+<rect x="910" y="400" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="1025.0" cy="428" r="16" fill="#2563eb"/>
+<text x="1025.0" y="434" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">5</text>
+<text x="1025.0" y="468" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Sandbox</text>
+<text x="1025.0" y="490" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Workspace for the session.</text>
+<text x="1025.0" y="507" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Docker: commands run in</text>
+<text x="1025.0" y="524" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">the session's container.</text>
+<text x="922" y="550" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="952" y="550" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">sandbox_ref</text>
+<text x="922" y="568" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="952" y="568" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">ExecutionEnv</text>
+<rect x="920" y="580" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="930" y="597" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch24</text>
+<text x="970" y="597" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">DockerSandbox.open()</text>
+<rect x="1200" y="400" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="1315.0" cy="428" r="16" fill="#2563eb"/>
+<text x="1315.0" y="434" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">6</text>
+<text x="1315.0" y="468" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Command</text>
+<text x="1315.0" y="490" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Check JSON. Prompt, steer,</text>
+<text x="1315.0" y="507" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">abort, approve … State</text>
+<text x="1315.0" y="524" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">moves by TRANSITIONS.</text>
+<text x="1212" y="550" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="1242" y="550" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">Command</text>
+<text x="1212" y="568" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="1242" y="568" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">run starts</text>
+<rect x="1210" y="580" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1220" y="597" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch20</text>
+<text x="1260" y="597" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">Run.command()</text>
+<line x1="270" y1="507" x2="330" y2="507" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<line x1="560" y1="507" x2="620" y2="507" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<line x1="850" y1="507" x2="910" y2="507" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<line x1="1140" y1="507" x2="1200" y2="507" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<line x1="1430" y1="507" x2="1530" y2="507" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<rect x="1457.6" y="482.0" width="44.8" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="1480.0" y="497.0" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">text</text>
+<rect x="1530" y="400" width="280" height="535" rx="18" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2" stroke-dasharray="8 6"/>
+<text x="1670" y="450" font-size="20" fill="#475569" font-weight="700" text-anchor="middle">AgentSession</text>
+<text x="1670" y="490" font-size="13.5" fill="#475569" font-weight="normal" text-anchor="middle">Runs the agent loop,</text>
+<text x="1670" y="510" font-size="13.5" fill="#475569" font-weight="normal" text-anchor="middle">tools, plugins, retry,</text>
+<text x="1670" y="530" font-size="13.5" fill="#475569" font-weight="normal" text-anchor="middle">compaction.</text>
+<text x="1670" y="550" font-size="13.5" fill="#475569" font-weight="normal" text-anchor="middle"></text>
+<text x="1670" y="570" font-size="13.5" fill="#475569" font-weight="normal" text-anchor="middle">Calls the model through</text>
+<text x="1670" y="590" font-size="13.5" fill="#475569" font-weight="normal" text-anchor="middle">stream_fn, emits events.</text>
+<text x="1670" y="640" font-size="14" fill="#64748b" font-weight="700" text-anchor="middle">→ Part 4 (ch13–18)</text>
+<text x="880" y="700" font-size="15" fill="#16a34a" font-weight="700" text-anchor="start">←  COMING BACK  —  model calls are guarded, events are saved and streamed</text>
+<rect x="1200" y="720" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="1315.0" cy="748" r="16" fill="#2563eb"/>
+<text x="1315.0" y="754" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">7</text>
+<text x="1315.0" y="788" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Budget guard</text>
+<text x="1315.0" y="810" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Before each model call:</text>
+<text x="1315.0" y="827" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">paused? revoked? day or</text>
+<text x="1315.0" y="844" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">run limit? → error.</text>
+<text x="1212" y="870" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="1242" y="870" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">model, context</text>
+<text x="1212" y="888" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="1242" y="888" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">events / error</text>
+<rect x="1210" y="900" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1220" y="917" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch23</text>
+<text x="1260" y="917" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">budget.guard()</text>
+<rect x="910" y="720" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="1025.0" cy="748" r="16" fill="#2563eb"/>
+<text x="1025.0" y="754" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">8</text>
+<text x="1025.0" y="788" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Events</text>
+<text x="1025.0" y="810" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Durable: seq + save.</text>
+<text x="1025.0" y="827" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Live deltas: send only,</text>
+<text x="1025.0" y="844" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">fill in-flight buffer.</text>
+<text x="922" y="870" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="952" y="870" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">session events</text>
+<text x="922" y="888" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="952" y="888" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">protocol events</text>
+<rect x="920" y="900" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="930" y="917" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch21</text>
+<text x="970" y="917" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">Run.on_event()</text>
+<rect x="620" y="720" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="735.0" cy="748" r="16" fill="#2563eb"/>
+<text x="735.0" y="754" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">9</text>
+<text x="735.0" y="788" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Stream out</text>
+<text x="735.0" y="810" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Missed events after N,</text>
+<text x="735.0" y="827" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">then a snapshot, then</text>
+<text x="735.0" y="844" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">live. Ping when idle.</text>
+<text x="632" y="870" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="662" y="870" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">after = N</text>
+<text x="632" y="888" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="662" y="888" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">text/event-stream</text>
+<rect x="630" y="900" width="210" height="24" rx="12" fill="#f5f3ff"/>
+<text x="640" y="917" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch21</text>
+<text x="680" y="917" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">Run.subscribe()</text>
+<line x1="1530" y1="827" x2="1430" y2="827" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<rect x="1439.6" y="802.0" width="80.8" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="1480.0" y="817.0" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">stream_fn</text>
+<line x1="1200" y1="827" x2="1140" y2="827" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<polyline points="1670,935 1670,962 1025,962 1025,942" fill="none" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<rect x="1300" y="951" width="140" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="1370" y="966" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">session events</text>
+<line x1="910" y1="827" x2="850" y2="827" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<rect x="832.4" y="802.0" width="95.2" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="880.0" y="817.0" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">event dicts</text>
+<line x1="620" y1="827" x2="155" y2="615" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<rect x="347.1" y="696.0" width="80.8" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="387.5" y="711.0" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">SSE lines</text>
+<rect x="40" y="990" width="1770" height="230" rx="18" fill="#fefce8" stroke="#ca8a04" stroke-width="2" filter="url(#s)"/>
+<circle cx="80" cy="1030" r="16" fill="#ca8a04"/>
+<text x="80" y="1036" font-size="15" fill="#fff" font-weight="700" text-anchor="middle">10</text>
+<text x="110" y="1036" font-size="17" fill="#a16207" font-weight="700" text-anchor="start">Test + run  — wraps the whole system (Ch26)</text>
+<text x="110" y="1075" font-size="14" fill="#713f12" font-weight="normal" text-anchor="start">FakeLLM (fakellm.py · stream): a model that always gives the same answer, so tests need no API key.</text>
+<text x="110" y="1105" font-size="14" fill="#713f12" font-weight="normal" text-anchor="start">fake.py: the whole server with fake events. Playwright tests (apps/web/e2e) click the real web UI.</text>
+<text x="110" y="1135" font-size="14" fill="#713f12" font-weight="normal" text-anchor="start">ops.py: JSON logs (JsonFormatter) and a safe copy of the database (backup).</text>
+<text x="110" y="1165" font-size="14" fill="#713f12" font-weight="normal" text-anchor="start">deploy/launchd: two macOS services — run the server, and back it up every day.</text>
+</svg>

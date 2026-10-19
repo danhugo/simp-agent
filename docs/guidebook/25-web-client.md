@@ -21,6 +21,8 @@ flowchart TB
 
 *This chapter builds `apps/web` (marked).*
 
+Big picture of Part 5: [part-5-system](part-5-system.md).
+
 Code in this chapter (commit `2fc2776`):
 
 - `apps/web/src/api.ts` — `api`, `subscribe`, `getToken`, `setToken`, `AuthError`
