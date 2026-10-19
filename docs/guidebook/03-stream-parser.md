@@ -11,6 +11,8 @@ flowchart LR
     ai["ai ★ stream parser (this chapter)"] --> agent --> coding --> session --> plugins --> testing
 ```
 
+Big picture of Part 1: [part-1-ai](part-1-ai.md).
+
 In [02](02-fake-provider.md) we fixed the shape of a model call: a [stream function](glossary.md#stream-function) yields event dicts and ends with `done` or `error` holding the final `AssistantMessage`. The fake jumps straight from `start` to `done`. A real model does not. It sends its answer in many small pieces, called **[deltas](glossary.md#delta)**. This chapter builds the code that glues those pieces back into one message.
 
 Code in this chapter (commit `2fc2776`):

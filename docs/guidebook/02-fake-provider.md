@@ -11,6 +11,8 @@ flowchart LR
     ai["ai (messages)"] --> agent --> coding --> session --> plugins --> testing["testing ★ FakeProvider (this chapter)"]
 ```
 
+Big picture of Part 1: [part-1-ai](part-1-ai.md).
+
 In [01](01-messages.md) we made the [messages](glossary.md#message). Now we need something that *returns* messages, like a model does. A real model is slow, costs money, needs an API key, and gives a different answer each time. So before we write any real [provider](glossary.md#provider), we write a fake one.
 
 It lives in the `testing` [layer](glossary.md#layer), at the far right of the map. It may import from every other layer, and no library code imports it.

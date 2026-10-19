@@ -11,6 +11,8 @@ flowchart LR
     ai["ai ★ providers (this chapter)"] --> agent --> coding --> session --> plugins --> testing
 ```
 
+Big picture of Part 1: [part-1-ai](part-1-ai.md).
+
 In [02](02-fake-provider.md) we fixed the shape of a model call: a [stream function](glossary.md#stream-function). In [03](03-stream-parser.md) we built the parser that turns OpenAI chunks into one `AssistantMessage`. This chapter finishes the `ai` [layer](glossary.md#layer). We add the **request side** (our messages → vendor format), the two other vendors, and one function, `ai.stream`, that picks the right [provider](glossary.md#provider) for a model.
 
 Code in this chapter (commit `2fc2776`):

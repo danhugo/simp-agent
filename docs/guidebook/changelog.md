@@ -2,6 +2,10 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-10-19
+
+- Added [Part 1 big picture](part-1-ai.md) (diagram img/part-1-ai.svg, block table, objects, worked example). Linked from README and "Where we are" in 01-04. Glossary: added Model, Tool, AssistantMessage, Stream event.
+
 ## 2026-10-15
 - ch 19–21: python blocks that explain logic are now plain-English pseudo-code, each with a "Real code:" link (file + function). Shell commands, tests and the ch 21 naive version and Steps 1–4 (used by Exercise 1) stay real code. (checked at `2fc2776`)
 - ch 10–13: code that explains logic is now easy pseudo-code (`text` blocks) with a "Real code:" link to the file and function; naive versions, step excerpts, tests, TOML, shell and CLI usage stay real code. (checked at `0ca2c62`)
