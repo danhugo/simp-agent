@@ -3,7 +3,7 @@
 <rect width="1840" height="1100" fill="#f8fafc"/>
 <text x="920" y="44" font-size="28" fill="#0f172a" font-weight="700" text-anchor="middle">The coding block of simp-agent — one complete picture</text>
 <text x="920" y="72" font-size="15" fill="#64748b" font-weight="normal" text-anchor="middle">Blocks = what happens.  Cards on the arrows = the data passed between steps.  Purple tags = book chapter + code.</text>
-<text x="40" y="110" font-size="15" fill="#2563eb" font-weight="700" text-anchor="start">SET UP  →  tools and prompt, before the loop runs</text>
+<text x="40" y="110" font-size="15" fill="#2563eb" font-weight="700" text-anchor="start">SET UP  →  tools and prompt, prompt rebuilt before every model call</text>
 <rect x="40" y="125" width="230" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
 <circle cx="155.0" cy="153" r="16" fill="#2563eb"/>
 <text x="155.0" y="159" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">1</text>
@@ -39,7 +39,7 @@
 <text x="575.0" y="352" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">project file: own section</text>
 <text x="575.0" y="369" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">+ date + cwd.</text>
 <text x="472" y="395" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
-<text x="502" y="395" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">tools, cwd, file</text>
+<text x="502" y="395" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">tools, cwd</text>
 <text x="472" y="413" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
 <text x="502" y="413" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">one string</text>
 <rect x="470" y="425" width="210" height="24" rx="12" fill="#f5f3ff"/>
@@ -48,9 +48,9 @@
 <line x1="270" y1="232" x2="460" y2="320" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
 <rect x="339.0" y="251.0" width="52.0" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
 <text x="365.0" y="266.0" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">tools</text>
-<line x1="270" y1="477" x2="460" y2="400" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
-<rect x="313.8" y="413.5" width="102.4" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
-<text x="365.0" y="428.5" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">(path, text) → session</text>
+<line x1="270" y1="500" x2="920" y2="462" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<rect x="500.0" y="470.5" width="150.0" height="22" rx="6" fill="#fff" stroke="#cbd5e1"/>
+<text x="575.0" y="485.5" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="middle" font-family="Menlo, monospace">(path, text) → session</text>
 <rect x="880" y="245" width="230" height="215" rx="14" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2" filter="url(#s)"/>
 <text x="995.0" y="313" font-size="16" fill="#64748b" font-weight="700" text-anchor="middle">Agent loop</text>
 <text x="995.0" y="335" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Sends prompt + tools to</text>

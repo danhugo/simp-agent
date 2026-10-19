@@ -86,4 +86,4 @@ Yesterday the agent wrote `fizzbuzz.py`. The history is in a JSONL file. Today y
 
 - Builds on: [Part 3 big picture](part-3-coding.md), [Part 3 · 11 The system prompt](11-system-prompt.md) and [12 Evals](12-evals.md); the agent loop from [05](05-agent-loop.md)–[08](08-hooks-approval.md).
 - Chapters: [13 Sessions](13-session.md) · [14 Plugins](14-plugins.md) · [15 Retry](15-retry.md) · [16 Compaction](16-compaction.md) · [17 Context overflow](17-overflow.md) · [18 Profiles and built-in plugins](18-profiles-plugins.md).
-- Next: [19 The CLI](19-cli.md) builds an app on top of `AgentSession`.
+- Next: [Part 5 big picture](part-5-system.md), then [19 The CLI](19-cli.md) builds an app on top of `AgentSession`.

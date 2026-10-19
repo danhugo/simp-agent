@@ -79,4 +79,4 @@ flowchart LR
 
 - Builds on: [00 Overview](00-overview.md).
 - Chapters: [01 Messages](01-messages.md) · [02 A fake provider](02-fake-provider.md) · [03 The stream parser](03-stream-parser.md) · [04 Providers](04-providers.md).
-- Next: [05 The agent loop](05-agent-loop.md) uses `ai.stream()` as its `stream_fn`.
+- Next: [Part 2 big picture](part-2-agent.md), then [05 The agent loop](05-agent-loop.md) uses `ai.stream()` as its `stream_fn`.

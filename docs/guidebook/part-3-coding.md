@@ -28,18 +28,20 @@ Read the top row left to right: we set up tools and the prompt, then hand them t
 
 - **A tool (4) wraps the env (5, 6).** A tool never opens a file or starts a process itself. It always calls `ctx.env`. The env checks the path (5) first, then does the work (6).
 - **Cut (7) happens inside the tool,** after the env answers and before the string goes back to the loop.
-- **Blocks 1–3 happen before the loop runs.** The loop (Part 2) gets the tools and the prompt. It calls a tool (4) when the model asks for one.
+- **Blocks 1–2 run once at start; block 3 runs before every model call.** The loop (Part 2) gets the tools and the prompt. It calls a tool (4) when the model asks for one.
 - The prompt (3) is not built once. The session keeps it as a [prompt section](glossary.md#prompt-section) function, and `AgentSession._build_prompt` calls it before **every** model call. The project file (2) is a second section (`context_file`, order 10) after this one (`coding`, order 0). So the tool list in it is never old. How sections are stored is built in [13](13-session.md).
 - **The eval (8, 9) is outside everything.** It starts a full `AgentSession` with a `LocalEnv` rooted in a temp folder, and only looks at events and the files left behind.
 - `ExecutionEnv` is a contract; `LocalEnv` is the one we build here. A Docker env with the same contract comes in [24](24-docker-sandbox.md). `EnvConformance` is one test suite every env must pass.
 
 ```mermaid
 flowchart LR
-    subgraph Setup["before the loop"]
+    subgraph Setup["set up"]
         M["1 make_tools (ch10)"] --> P["3 system_prompt (ch11)"]
-        L["2 load_context_file (ch11)"] --> P
+        L["2 load_context_file (ch11)"]
     end
-    Setup --> Loop["agent loop → Part 2"]
+    P -- "section coding" --> Loop["agent loop → Part 2"]
+    L -- "own section context_file" --> Loop
+    M -- tools --> Loop
     Loop --> T
     subgraph T["4 tool function (ch10)"]
         subgraph E["env (ch09)"]
@@ -86,4 +88,4 @@ flowchart LR
 
 - Builds on: [Part 2](part-2-agent.md) — the loop, `AgentTool`, `run_tool` and `ToolContext` from [05](05-agent-loop.md), the approval gate from [08](08-hooks-approval.md).
 - Chapters: [09 Execution environment](09-exec-env.md) · [10 Coding tools](10-coding-tools.md) · [11 The system prompt](11-system-prompt.md) · [12 Evals](12-evals.md).
-- Next: [13 Sessions](13-session.md) wraps the loop, tools and prompt into one `AgentSession`.
+- Next: [Part 4 big picture](part-4-session.md), then [13 Sessions](13-session.md) wraps the loop, tools and prompt into one `AgentSession`.

@@ -168,7 +168,7 @@
 <circle cx="80" cy="1030" r="16" fill="#ca8a04"/>
 <text x="80" y="1036" font-size="15" fill="#fff" font-weight="700" text-anchor="middle">10</text>
 <text x="110" y="1036" font-size="17" fill="#a16207" font-weight="700" text-anchor="start">Test + run  — wraps the whole system (Ch26)</text>
-<text x="110" y="1075" font-size="14" fill="#713f12" font-weight="normal" text-anchor="start">FakeLLM (fakellm.py · stream): a model that always gives the same answer, so tests need no API key.</text>
+<text x="110" y="1075" font-size="14" fill="#713f12" font-weight="normal" text-anchor="start">FakeLLM (fakellm.py · stream): answers based on the last message (echo, tool, slow), so tests need no API key.</text>
 <text x="110" y="1105" font-size="14" fill="#713f12" font-weight="normal" text-anchor="start">fake.py: the whole server with fake events. Playwright tests (apps/web/e2e) click the real web UI.</text>
 <text x="110" y="1135" font-size="14" fill="#713f12" font-weight="normal" text-anchor="start">ops.py: JSON logs (JsonFormatter) and a safe copy of the database (backup).</text>
 <text x="110" y="1165" font-size="14" fill="#713f12" font-weight="normal" text-anchor="start">deploy/launchd: two macOS services — run the server, and back it up every day.</text>
