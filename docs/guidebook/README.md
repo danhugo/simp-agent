@@ -10,6 +10,9 @@ This book teaches you how to **build** simp-agent, step by step. It is not a use
 
 Chapter 00 shows the whole system. Then we start from the smallest piece and add one capability per chapter. Each chapter builds on the one before it.
 
+Each Part starts with a **big-picture page**: one picture and one table of all its blocks, with what goes IN and comes OUT of each.
+The block numbers in the picture and the table are the same, in the order the steps run; a step from another Part has no number.
+
 - [00 Overview: what we build](00-overview.md) — See the whole of simp-agent before building it piece by piece.
 - [Part 1 big picture: the AI layer](part-1-ai.md) — All blocks of Part 1, their IN and OUT, on one page.
 - [01 Part 1 · Messages](01-messages.md) — Define the message types every other part passes around.

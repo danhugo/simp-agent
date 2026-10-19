@@ -2,7 +2,7 @@
 <defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker><marker id="p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker><filter id="s" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.12"/></filter></defs>
 <rect width="1840" height="1060" fill="#f8fafc"/>
 <text x="920.0" y="44" font-size="28" fill="#0f172a" font-weight="700" text-anchor="middle">The AI block of simp-agent — one complete picture</text>
-<text x="920.0" y="72" font-size="15" fill="#64748b" font-weight="normal" text-anchor="middle">Blocks = what happens.  Cards on the arrows = the real objects passed along.  Purple tags = book chapter + code.</text>
+<text x="920.0" y="72" font-size="15" fill="#64748b" font-weight="normal" text-anchor="middle">Blocks = what happens.  Cards on the arrows = the data passed between steps.  Purple tags = book chapter + code.</text>
 <text x="220" y="110" font-size="15" fill="#2563eb" font-weight="700" text-anchor="start">GOING OUT  →  the question</text>
 <text x="220" y="500" font-size="15" fill="#16a34a" font-weight="700" text-anchor="start">←  COMING BACK  —  the answer, piece by piece</text>
 <rect x="30" y="125" width="170" height="890" rx="18" fill="#e0e7ff" stroke="#6366f1" stroke-width="2.5" filter="url(#s)"/>
@@ -49,26 +49,40 @@
 <text x="852" y="298" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
 <text x="880" y="298" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">clean messages[]</text>
 <rect x="850" y="310" width="180" height="24" rx="12" fill="#f5f3ff"/>
-<text x="860" y="327" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch01</text>
-<text x="898" y="327" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">transform_…()</text>
+<text x="860" y="327" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch01 · Ch04</text>
+<text x="945" y="327" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">transform_…()</text>
 <rect x="1260" y="130" width="200" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
 <circle cx="1360" cy="158" r="16" fill="#2563eb"/>
 <text x="1360" y="164" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">3</text>
-<text x="1360" y="198" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Translate + send</text>
-<text x="1360" y="220" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Rewrite in the company's</text>
-<text x="1360" y="237" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">own JSON format, then</text>
-<text x="1360" y="254" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">open an HTTP stream.</text>
+<text x="1360" y="198" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Translate</text>
+<text x="1360" y="220" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Rewrite messages and</text>
+<text x="1360" y="237" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">tools in the company's</text>
+<text x="1360" y="254" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">own JSON format.</text>
 <text x="1272" y="280" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
 <text x="1300" y="280" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">Context</text>
 <text x="1272" y="298" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
-<text x="1300" y="298" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">HTTP request</text>
+<text x="1300" y="298" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">vendor request</text>
 <rect x="1270" y="310" width="180" height="24" rx="12" fill="#f5f3ff"/>
 <text x="1280" y="327" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch04</text>
 <text x="1318" y="327" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">to_openai() …</text>
 <path d="M200 140 L416 140" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
 <path d="M620 140 L836 140" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
 <path d="M1040 140 L1256 140" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
-<path d="M1460 140 L1636 140" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
+<path d="M1460 320 L1476 320" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
+<rect x="1480" y="280" width="140" height="200" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
+<circle cx="1550" cy="306" r="16" fill="#2563eb"/>
+<text x="1550" y="312" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">4</text>
+<text x="1550" y="344" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Send</text>
+<text x="1550" y="366" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Open one HTTP</text>
+<text x="1550" y="383" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">stream with the key.</text>
+<text x="1490" y="408" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
+<text x="1518" y="408" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">request</text>
+<text x="1490" y="426" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
+<text x="1518" y="426" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">raw chunks</text>
+<rect x="1490" y="442" width="120" height="24" rx="12" fill="#f5f3ff"/>
+<text x="1500" y="459" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch04</text>
+<text x="1538" y="459" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">stream()</text>
+<path d="M1620 380 L1636 380" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#b)"/>
 <rect x="210" y="160" width="200" height="119" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
 <text x="220" y="180" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="start">Model</text>
 <text x="222" y="199" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">id</text>
@@ -107,8 +121,8 @@
 <text x="1482" y="250" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">stream: true</text>
 <rect x="1260" y="520" width="200" height="215" rx="14" fill="#fff" stroke="#16a34a" stroke-width="2" filter="url(#s)"/>
 <circle cx="1360" cy="548" r="16" fill="#16a34a"/>
-<text x="1360" y="554" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">4</text>
-<text x="1360" y="588" font-size="16" fill="#14532d" font-weight="700" text-anchor="middle">Read the stream</text>
+<text x="1360" y="554" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">5</text>
+<text x="1360" y="588" font-size="16" fill="#14532d" font-weight="700" text-anchor="middle">Parse the stream</text>
 <text x="1360" y="610" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Turn raw pieces into</text>
 <text x="1360" y="627" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">simple events. Collect</text>
 <text x="1360" y="644" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">tool-call JSON until done.</text>
@@ -121,7 +135,7 @@
 <text x="1318" y="717" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">parse()</text>
 <rect x="840" y="520" width="200" height="215" rx="14" fill="#fff" stroke="#16a34a" stroke-width="2" filter="url(#s)"/>
 <circle cx="940" cy="548" r="16" fill="#16a34a"/>
-<text x="940" y="554" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">5</text>
+<text x="940" y="554" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">6</text>
 <text x="940" y="588" font-size="16" fill="#14532d" font-weight="700" text-anchor="middle">Label &amp; pass on</text>
 <text x="940" y="610" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Write api / provider /</text>
 <text x="940" y="627" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">model on the message,</text>
@@ -188,17 +202,17 @@
 <text x="238" y="828" font-size="12.5" fill="#0f172a" font-weight="700" text-anchor="start" font-family="Menlo, monospace">error, error_kind</text>
 <text x="380" y="828" font-size="12.5" fill="#475569" font-weight="normal" text-anchor="start">what went wrong; fatal/budget/policy = no retry</text>
 <text x="238" y="852" font-size="12.5" fill="#0f172a" font-weight="700" text-anchor="start" font-family="Menlo, monospace">api, provider, model</text>
-<text x="410" y="852" font-size="12.5" fill="#475569" font-weight="normal" text-anchor="start">stamped by ⑤</text>
+<text x="410" y="852" font-size="12.5" fill="#475569" font-weight="normal" text-anchor="start">stamped by ⑥</text>
 <rect x="238" y="872" width="190" height="24" rx="12" fill="#f5f3ff"/>
 <text x="250" y="889" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch01 messages · Ch03 · Ch06</text>
 <rect x="840" y="760" width="790" height="60" rx="12" fill="#fef2f2" stroke="#fecaca" stroke-width="1.5"/>
 <text x="860" y="786" font-size="13.5" fill="#991b1b" font-weight="700" text-anchor="start">Rule: stream() never crashes.</text>
 <text x="860" y="806" font-size="12.5" fill="#991b1b" font-weight="normal" text-anchor="start">Unknown model, no API key, network error → it becomes an  error {message}  event.   Ch04 · Ch15 retry</text>
-<rect x="840" y="840" width="790" height="175" rx="14" fill="#faf5ff" stroke="#7c3aed" stroke-width="2" filter="url(#s)"/>
-<text x="860" y="868" font-size="15" fill="#581c87" font-weight="700" text-anchor="start">⑥ The Agent decides what next (looks at stop_reason)</text>
-<text x="860" y="898" font-size="13" fill="#3b0764" font-weight="normal" text-anchor="start">tool_use →  run each ToolCall  →  make a ToolResultMessage  →  add both to Context.messages  →  call stream() again (back to ①)</text>
-<text x="860" y="922" font-size="13" fill="#3b0764" font-weight="normal" text-anchor="start">stop     →  the turn is over; show the text to the user</text>
-<text x="860" y="946" font-size="13" fill="#3b0764" font-weight="normal" text-anchor="start">length / error / aborted  →  stop, retry, or compact the chat (Ch15, Ch16, Ch17)</text>
+<rect x="840" y="840" width="790" height="175" rx="14" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2" filter="url(#s)"/>
+<text x="860" y="868" font-size="15" fill="#334155" font-weight="700" text-anchor="start">The Agent decides what next (looks at stop_reason)  → Part 2</text>
+<text x="860" y="898" font-size="13" fill="#475569" font-weight="normal" text-anchor="start">tool_use →  run each ToolCall  →  make a ToolResultMessage  →  add both to Context.messages  →  call stream() again (back to ①)</text>
+<text x="860" y="922" font-size="13" fill="#475569" font-weight="normal" text-anchor="start">stop     →  the turn is over; show the text to the user</text>
+<text x="860" y="946" font-size="13" fill="#475569" font-weight="normal" text-anchor="start">length / error / aborted  →  stop, retry, or compact the chat (Ch15, Ch16, Ch17)</text>
 <rect x="860" y="972" width="150" height="24" rx="12" fill="#ede9fe"/>
 <text x="872" y="989" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch05 agent loop</text>
 <path d="M840 930 C700 960 400 960 204 960" stroke="#7c3aed" stroke-width="2.5" fill="none" stroke-dasharray="6 4" marker-end="url(#p)"/>
