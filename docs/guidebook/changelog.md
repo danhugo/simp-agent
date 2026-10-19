@@ -3,7 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-19
-
+- Big picture review fixes: Part 3 project file is its own prompt section (diagram + SVG), block 3 runs before every model call; FakeLLM line in Part 5 SVG; "Next" links go to the next Part page.
 - Added [Part 3 big picture](part-3-coding.md) (diagram img/part-3-coding.svg, block table, objects, worked example). Linked from README and "Where we are" in 09-12. (checked at `ca8d944`)
 - Added [Part 4 big picture](part-4-session.md) (diagram img/part-4-session.svg, block table, objects, worked example). Linked from README and "Where we are" in 13-18. (checked at `2fc2776`)
 - Added [Part 1 big picture](part-1-ai.md) (diagram img/part-1-ai.svg, block table, objects, worked example). Linked from README and "Where we are" in 01-04. Glossary: added Model, Tool, AssistantMessage, Stream event.
