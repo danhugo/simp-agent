@@ -11,10 +11,11 @@ flowchart LR
     O["★ cards: Message, Context, Tool, Model (this chapter)"] -.-> P
     P["1 Pick"] --> C["2 Clean"] --> T["3 Translate"] --> S["4 Send"] --> R["5 Parse"] --> L["6 Label"]
     classDef me fill:#ffe9a8,stroke:#c90
+    classDef part fill:#fff4d6,stroke:#c90,stroke-dasharray:3 3
     class O me
 ```
 
-Builds: the cards (objects) on the arrows · IN: nothing · OUT: `Message`, `Context`, `Tool`, `Model`
+**Builds:** the objects on the arrows · **IN:** nothing · **OUT:** `Message`, `Context`, `Model`
 
 Big picture of Part 1: [part-1-ai](part-1-ai.md).
 
@@ -351,4 +352,4 @@ No model is needed. Messages are plain data, so they are the easiest part to tes
 
 **Built on by:** [03](03-stream-parser.md) (builds an `AssistantMessage` from a stream) · [04](04-providers.md) (translates messages per vendor, `transform_messages`) · [05](05-agent-loop.md) (reads `stop_reason`, adds tool results) · [13](13-session.md) (saves history) · [14](14-plugins.md) (`CustomEntry`) · [16](16-compaction.md) (`CompactionEntry`)
 
-**OUT of this chapter →** the objects every block passes; first used by the stream-function box (blocks 3–5, faked) in [02](02-fake-provider.md).
+**OUT →** `Context` and `Model` are the IN of the stream function, faked in block 3–5 (ch 02).

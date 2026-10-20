@@ -10,10 +10,11 @@
 flowchart LR
     P["1 Pick"] --> C["2 Clean"] --> T["3 Translate"] --> S["4 Send"] --> R["5 Parse"] --> L["6 Label"]
     classDef me fill:#ffe9a8,stroke:#c90
+    classDef part fill:#fff4d6,stroke:#c90,stroke-dasharray:3 3
     class R me
 ```
 
-Builds: block 5 Parse · IN: raw chunks · OUT: events + one `AssistantMessage`
+**Builds:** block 5 · **IN:** raw chunks · **OUT:** events, `AssistantMessage`
 
 Big picture of Part 1: [part-1-ai](part-1-ai.md).
 
@@ -387,4 +388,4 @@ uv run pytest packages/simp_agent/tests/test_openai.py
 
 **Builds on:** [02 A fake provider](02-fake-provider.md) · **Next:** [04 Providers](04-providers.md) — the request side, the other two vendors, and the registry that picks one by `model.api`.
 
-**OUT of this chapter →** events + message; used inside the stream functions (blocks 3–5) and by block 6 Label in [04](04-providers.md).
+**OUT →** events are the IN of block 6 Label (ch 04).
