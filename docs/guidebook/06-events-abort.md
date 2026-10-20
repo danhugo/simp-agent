@@ -214,7 +214,7 @@ Why one shared event and not a flag per part? Because a single `set()` reaches t
 
 Say the model asked for tools `c1`, `c2`, `c3`, and the user stops during `c2`. Then `c2` gets its result (maybe "Interrupted by the user"), the loop breaks before `c3`, and adds the aborted message. History now has tool call `c3` with **no result**.
 
-The loop does not fix that itself. `_llm_turn` runs `ai.transform_messages` on the view before every model call (and the real `ai.stream` runs it again, [04](04-providers.md#transform_messages-clean-history-before-sending)). It drops `aborted` / `error` assistant messages and adds an error result `"No result provided"` for any call with no result. The saved history keeps the truth (what really happened); only the view sent to the model is cleaned.
+The loop does not fix that itself. `_llm_turn` runs `ai.transform_messages` on the view before every model call (and the real `ai.stream` runs it again, [04](04-providers.md#2-clean-transform_messages)). It drops `aborted` / `error` assistant messages and adds an error result `"No result provided"` for any call with no result. The saved history keeps the truth (what really happened); only the view sent to the model is cleaned.
 
 ### `_stream`: stop a model call in the middle
 

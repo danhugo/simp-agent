@@ -8,8 +8,12 @@
 
 ```mermaid
 flowchart LR
-    ai["ai ★ stream parser (this chapter)"] --> agent --> coding --> session --> plugins --> testing
+    P["1 Pick"] --> C["2 Clean"] --> T["3 Translate"] --> S["4 Send"] --> R["5 Parse"] --> L["6 Label"]
+    classDef me fill:#ffe9a8,stroke:#c90
+    class R me
 ```
+
+Builds: block 5 Parse · IN: raw chunks · OUT: events + one `AssistantMessage`
 
 Big picture of Part 1: [part-1-ai](part-1-ai.md).
 
@@ -102,6 +106,8 @@ Real code: [openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/p
 The real `parse` is these five steps together. We walk through it in four parts: text, tool calls, stop reasons, usage.
 
 ## Real design
+
+> Note: Parse (block 5) also exists in the other two providers, `anthropic.py` and `openai_responses.py`. See ch [04](04-providers.md#3-translate--4-send-the-three-providers).
 
 The whole function has one job: read chunks, keep a growing message, yield events. The start:
 
@@ -380,3 +386,5 @@ uv run pytest packages/simp_agent/tests/test_openai.py
 - It never raises; the last event is always `done` or `error`.
 
 **Builds on:** [02 A fake provider](02-fake-provider.md) · **Next:** [04 Providers](04-providers.md) — the request side, the other two vendors, and the registry that picks one by `model.api`.
+
+**OUT of this chapter →** events + message; used inside the stream functions (blocks 3–5) and by block 6 Label in [04](04-providers.md).

@@ -72,10 +72,10 @@ The rule that, when `LocalEnv` has a `root`, a file path may not leave it. `_pat
 How `exec` stops a command: the shell starts in a new process group (`start_new_session=True`), and `run_kill` sends `SIGKILL` to the whole group until it is empty, so background children die too. Home: [09](09-exec-env.md#process-group-kill).
 
 ## Provider registry
-The dict `_PROVIDERS` in `ai` that maps a `Model.api` string (`anthropic-messages`, `openai-completions`, `openai-responses`) to a stream function. `register_provider` adds or replaces one; `ai.stream` looks it up. Home: [04](04-providers.md#the-registry-_providers-register_provider-stream).
+The dict `_PROVIDERS` in `ai` that maps a `Model.api` string (`anthropic-messages`, `openai-completions`, `openai-responses`) to a stream function. `register_provider` adds or replaces one; `ai.stream` looks it up. Home: [04](04-providers.md#1-pick-_providers-register_provider).
 
 ## Context overflow
-An error that says the request is bigger than the model's context window. Found by `is_context_overflow`; never retried as-is. Defined in [04](04-providers.md#error-classification-is_retryable-is_context_overflow); handled in [17](17-overflow.md).
+An error that says the request is bigger than the model's context window. Found by `is_context_overflow`; never retried as-is. Defined in [04](04-providers.md#extra-error-classification-is_retryable-is_context_overflow); handled in [17](17-overflow.md).
 
 ## Event
 A small dict with a `"type"` key (`agent_start`, `turn_start`, `message_update`, `message_end`, `tool_execution_start`, `turn_end`, `agent_end`, …) that the agent loop sends through `emit` so callers can watch a run. `Agent.subscribe` adds a listener. Home: [06](06-events-abort.md#events-one-stream-of-small-dicts).
