@@ -31,7 +31,7 @@ We start at the far left of the [layer map](00-overview.md#the-layer-map): the `
 - **Vendors differ.** Anthropic and OpenAI speak different APIs (ch [02](02-translate-send.md) shows how). Something must **pick** the right code for this model.
 - **History can be broken.** A turn may have ended with an error, or a tool call may have no result because the user stopped the run. Every vendor rejects that. Something must **clean** the history first.
 
-Neither block talks to a model yet. They only prepare. (A third problem — errors come back as plain strings, and the loop must decide retry, compact or give up — is solved in ch [04](04-label-test.md).)
+Neither block talks to a model yet. They only prepare.
 
 ## IN: Model and Context
 
@@ -85,8 +85,7 @@ Where it breaks:
 
 - Every new vendor means editing the loop. A user cannot add their own vendor.
 - Both SDKs must be installed to import this file, even if you use one.
-- A raised exception (network down, bad key) crashes the loop. The [stream function](glossary.md#stream-function) rule says "never raise".
-- It sends the history as-is, so an orphan tool call gives a 400 error from the vendor.
+- A raised exception (network down, bad key) crashes the loop. The [stream function](glossary.md#stream-function) rule says "never raise" (explained below).
 
 ### From naive to real
 
@@ -152,15 +151,7 @@ So a stream function:
 
 A stream function does blocks 3–5 (Translate, Send, Parse) for one vendor. Ch [02](02-translate-send.md) and [03](03-parse.md) build the real ones. Ch [04](04-label-test.md) builds a fake one for tests.
 
-The loop does not call a provider by name. It takes the function as a setting. In `agent/__init__.py`:
-
-```text
-LoopConfig.stream_fn = ai.stream   // tests put a fake here
-```
-
-Real code: [agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `LoopConfig.stream_fn`
-
-That one line is why a fake is easy (ch [04](04-label-test.md)). The default is the real `ai.stream`; a test passes something else.
+The loop takes this function as a setting, so a test can swap in a fake (ch [04](04-label-test.md#why-a-fake)).
 
 ## 2 Clean: `transform_messages`
 
@@ -197,6 +188,8 @@ A `ToolResultMessage` answers the `ToolCall` with the same id. The history may a
 - **Orphan tool calls.** A `ToolCall` with no `ToolResultMessage`. Every vendor rejects this with a 400 error.
 - **Thinking is not portable.** Anthropic signs its thinking; OpenAI Responses encrypts it. Only the same model can read it back.
 
+(One more problem is not about history: errors come back as plain strings, and the loop must decide retry, compact or give up. Ch [04](04-label-test.md) solves it.)
+
 The naive way sends history as-is and gets the 400. The fix: clean **once**, in `ai.stream`, before any provider — so no provider repeats it.
 
 ### Real code
@@ -224,8 +217,6 @@ FOR EACH message m in messages:
 flush()
 ```
 
-- [Compaction entries](glossary.md#compaction-entry) and [custom entries](glossary.md#custom-entry) are skipped. They live in history but are never sent.
-- Assistant turns with `stop_reason` `error` or `aborted` are dropped. They are often half-written.
 - `pending` remembers tool calls still waiting for a result. When the next non-result message comes (or the end), `flush()` adds a `ToolResultMessage(..., "No result provided", is_error=True)` for each one. Now every call has a result, and the vendor accepts the history.
 - It uses `dataclasses.replace`, so the saved history is never changed. Only the copy sent to the model is.
 

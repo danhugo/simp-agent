@@ -12,7 +12,7 @@ One folder of the `simp_agent` library (`ai`, `agent`, `coding`, `session`, `plu
 A request from the model to run one named tool with arguments (class `ToolCall` in `ai`). Home: [00](00-overview.md); built in [01](01-pick-clean.md).
 
 ## Message
-One entry in a conversation: `UserMessage`, `AssistantMessage` or `ToolResultMessage` (all in `ai`). Each has a `role` field so it can be saved to JSON and loaded back with `to_dict` / `from_dict`. Home: [01](01-pick-clean.md#what-is-inside-messages); all fields: [ref-objects](ref-objects.md).
+One entry in a conversation: `UserMessage`, `AssistantMessage` or `ToolResultMessage` (all in `ai`). Each has a `role` field so it can be saved to JSON and loaded back with `to_dict` / `from_dict` ([JSON round trip](ref-objects.md#going-to-json-and-back)). Home: [01](01-pick-clean.md#what-is-inside-messages); all fields: [ref-objects](ref-objects.md).
 
 ## Context
 Everything sent to a model in one request: system prompt, messages and tools (class `Context` in `ai`). Home: [01](01-pick-clean.md#in-model-and-context).

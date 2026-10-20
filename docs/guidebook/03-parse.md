@@ -161,7 +161,7 @@ IF r:
     SEND event {thinking_delta, r}
 ```
 
-When the first text arrives after thinking, the text branch yields `thinking_end`. The message keeps the parts in order: thinking first, then text. ([01](01-pick-clean.md) defines `ThinkingContent`.)
+When the first text arrives after thinking, the text branch yields `thinking_end`. The message keeps the parts in order: thinking first, then text. (`ThinkingContent` fields: [ref-objects](ref-objects.md#content-blocks).)
 
 ### Tool-call assembly from deltas
 
@@ -186,7 +186,7 @@ How a piece finds its call:
 
 1. **By `index`** — the OpenAI way. Piece with `index: 1` belongs to call 1.
 2. **By `id`** — some servers send no `index`, but repeat the `id`.
-3. **Neither matches** — it is a new call. If the server gave no `id`, we make one (`call_` + 12 hex chars), because the tool result must point back to it later (see `ToolResultMessage.tool_call_id` in [01](01-pick-clean.md)).
+3. **Neither matches** — it is a new call. If the server gave no `id`, we make one (`call_` + 12 hex chars), because the tool result must point back to it later (see `ToolResultMessage.tool_call_id` in [ref-objects](ref-objects.md#messages)).
 
 The `name` is kept from the first piece that has one. The argument text is only *added up* here, never parsed. We cannot parse until the stream ends.
 
@@ -207,7 +207,7 @@ Empty arguments (`""`) count as `{}`, because some servers send nothing for a to
 
 ### Stop reasons
 
-The server says *why* it stopped in `finish_reason`. Each server uses its own words. We map them to our five words (`stop | tool_use | length | error | aborted`, from `AssistantMessage` in [01](01-pick-clean.md)):
+The server says *why* it stopped in `finish_reason`. Each server uses its own words. We map them to our five words (`stop | tool_use | length | error | aborted`, from `AssistantMessage`, see [ref-objects](ref-objects.md#messages)):
 
 ```text
 stop reason map (server word -> our word):

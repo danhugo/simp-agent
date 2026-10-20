@@ -120,6 +120,16 @@ A real model cannot do this. We cannot tell it "on the second call, return an er
 
 So the plan is: the [stream function](glossary.md#stream-function) shape from [01](01-pick-clean.md#out-the-shape-of-a-model-call) is the only thing the loop knows. A fake that has this shape can stand in for blocks 3–5, and everything else can be tested against it. The real providers (ch [02](02-translate-send.md), [03](03-parse.md)) match the same shape.
 
+The loop does not call a provider by name. It takes the function as a setting. In `agent/__init__.py`:
+
+```text
+LoopConfig.stream_fn = ai.stream   // tests put a fake here
+```
+
+Real code: [agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `LoopConfig.stream_fn`
+
+The default is the real `ai.stream`; a test passes the fake instead.
+
 ### Naive version
 
 The first idea is a function that always returns the same answer:
