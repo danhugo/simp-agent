@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-20
+- ch02 "Vendors differ" example: assistant turn now has thinking + text + tool call (same model); 3 request JSONs show thinking dropped (Chat Completions), reasoning item resent (Responses), signed thinking block (Anthropic); new Thinking/Text/Tool call × vendor table.
 - ch02 "Vendors differ": one real chat shown in our format and as Chat Completions / Responses / Anthropic request JSON, with notes on each difference. (checked at `01f2da8`)
 - ch01 `_thinking` pseudo: one wording everywhere ("thinking block", "text block", "has words"); old "has text / is text" note removed; worked example, branch notes and table use the same words.
 - ch01 "From naive to real" rewritten: one step per problem from "Where it breaks" (table, late import, never raise), tiny examples, no code names or chapter jumps inside steps; "Real code" labelled fix 1/2/3, repeated "Two things here" removed. ch03 problem bullets reordered to match steps; ch04 adds the missing "replies cannot react" problem and drops code names from steps. (checked at `1d8b39d`)
