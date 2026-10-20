@@ -35,16 +35,22 @@ Vendors differ a lot:
 | System prompt | first message, role `system` | first input item, role `system` or `developer` | separate `system` field |
 | Tool call | `tool_calls` on the assistant message | `function_call` item | `tool_use` block |
 | Tool result | role `tool`, one per result | `function_call_output` item | `tool_result` block inside a **user** turn |
-| Thinking | `reasoning_content` text | encrypted `reasoning` item | signed `thinking` block |
+| Thinking | `reasoning_content` text (read only, never sent back) | encrypted `reasoning` item | signed `thinking` block |
 
-**A real example.** Take one small chat in our format:
+**A real example.** Take one small chat in our format. The assistant turn has the common mix: some thinking, a short text, then a tool call.
 
 ```text
 system:    "You are a coding agent."
 user:      "What is in README.md?"
-assistant: ToolCall(id="call_1", name="read", arguments={"path": "README.md"})
+assistant: content = [
+             Thinking("User wants the file; call read", signature=...),
+             Text("Let me read it."),
+             ToolCall(id="call_1", name="read", arguments={"path": "README.md"}),
+           ]
 tool:      ToolResultMessage(tool_call_id="call_1", content="# simp-agent ...")
 ```
+
+We send it back to the SAME model that wrote the assistant turn. (For another model, Clean in [chapter 1](01-pick-clean.md) already turned signed thinking into plain text and dropped redacted thinking, so there is no thinking block to translate.) The `signature` is whatever that vendor's parser saved when the answer came in: none for Chat Completions, the whole reasoning item as JSON for Responses, an opaque string for Anthropic. To keep it simple we write the tool call id as `call_1` for all three.
 
 Here is the SAME chat as each vendor wants it. We built each one by following the real code (`to_openai`, `to_input`, `_to_anthropic`). We show only the chat part; fields like `model` and `tools` are cut.
 
@@ -54,7 +60,7 @@ OpenAI Chat Completions (`messages=to_openai(...)`):
 "messages": [
   {"role": "system", "content": "You are a coding agent."},        // system = first message
   {"role": "user", "content": "What is in README.md?"},            // content is a plain string
-  {"role": "assistant", "content": null,                           // no text, only a tool call -> null
+  {"role": "assistant", "content": "Let me read it.",              // only the text; the thinking is DROPPED
    "tool_calls": [{"id": "call_1", "type": "function",
      "function": {"name": "read",
                   "arguments": "{\"path\": \"README.md\"}"}}]},    // arguments is a STRING of JSON
@@ -63,6 +69,8 @@ OpenAI Chat Completions (`messages=to_openai(...)`):
 ]
 ```
 
+Plainly: Chat Completions does **not** send thinking back. `to_openai` reads only `m.text()` (text blocks joined) and `m.tool_calls()`; the thinking block is skipped. If the turn had no text, `content` would be `null`.
+
 OpenAI Responses (`input=to_input(...)`):
 
 ```jsonc
@@ -70,12 +78,18 @@ OpenAI Responses (`input=to_input(...)`):
   {"role": "system", "content": "You are a coding agent."},        // system = first item ("developer" for reasoning models)
   {"role": "user",
    "content": [{"type": "input_text", "text": "What is in README.md?"}]},  // text is a typed part
+  {"type": "reasoning", "id": "rs_...", "encrypted_content": "...", ...},  // the saved reasoning item = json.loads(Thinking.signature), sent as-is
+  {"type": "message", "role": "assistant", "status": "completed",
+   "id": "msg_...", "phase": "...",                                 // id and phase come from json.loads(Text.signature)
+   "content": [{"type": "output_text", "text": "Let me read it.", "annotations": []}]},
   {"type": "function_call", "call_id": "call_1", "name": "read",
-   "arguments": "{\"path\": \"README.md\"}"},                      // tool call = its own item, not inside a message; arguments a STRING
+   "arguments": "{\"path\": \"README.md\"}"},                      // tool call = its own item; arguments a STRING
   {"type": "function_call_output", "call_id": "call_1",
    "output": "# simp-agent ..."}                                    // tool result = its own item
 ]
 ```
+
+Here one assistant turn becomes three separate items. The thinking signature is the whole reasoning item as JSON, so `to_input` just loads it and puts it back. If the text has no signature, the id is made up (`msg_pi_<i>`) and there is no `phase`. In real Responses chats our tool call id is `call_1|fc_...` (see below), and then the `function_call` item also gets `"id": "fc_..."`.
 
 Anthropic Messages (`system=...`, `messages=_to_anthropic(...)`):
 
@@ -83,7 +97,10 @@ Anthropic Messages (`system=...`, `messages=_to_anthropic(...)`):
 "system": "You are a coding agent.",                                // system = separate field, not a message
 "messages": [
   {"role": "user", "content": [{"type": "text", "text": "What is in README.md?"}]},
-  {"role": "assistant", "content": [
+  {"role": "assistant", "content": [                               // ONE turn, three blocks, same order
+    {"type": "thinking", "thinking": "User wants the file; call read",
+     "signature": "..."},                                           // signed thinking goes back with its signature
+    {"type": "text", "text": "Let me read it."},
     {"type": "tool_use", "id": "call_1", "name": "read",
      "input": {"path": "README.md"}}]},                             // tool call = block; input is an OBJECT, not a string
   {"role": "user", "content": [
@@ -91,6 +108,16 @@ Anthropic Messages (`system=...`, `messages=_to_anthropic(...)`):
      "content": "# simp-agent ...", "is_error": false}]}            // tool result = block inside a USER turn
 ]
 ```
+
+If the thinking was redacted, the block is `{"type": "redacted_thinking", "data": signature}` instead. If it has no signature (for example the answer was aborted), it is sent as a plain `text` block.
+
+The assistant turn side by side:
+
+| Our block | OpenAI Chat Completions | OpenAI Responses | Anthropic Messages |
+|---|---|---|---|
+| Thinking | dropped, not sent | saved `reasoning` item (from `signature`), own item | `thinking` block with `signature` (redacted → `redacted_thinking`) |
+| Text | `content` string | `message` item, `id`/`phase` from text `signature` | `text` block |
+| Tool call | `tool_calls` entry, `arguments` as JSON string | `function_call` item, `arguments` as JSON string | `tool_use` block, `input` as object |
 
 One chat, three very different shapes. This is why we need block 3 Translate.
 
