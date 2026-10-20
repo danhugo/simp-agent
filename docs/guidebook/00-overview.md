@@ -151,9 +151,9 @@ Which chapter adds which feature, and in which layer it lives:
 | Feature | Chapter | Where in the code |
 |---|---|---|
 | Message types | 01 | `ai` |
-| Fake model for tests | 02 | `testing` (`FakeProvider`) |
-| Streaming into one message | 03 | `ai` |
-| Real providers | 04 | `ai/providers/` |
+| Real providers (Translate + Send) | 02 | `ai/providers/` |
+| Parse into one message | 03 | `ai` |
+| Label + fake model for tests | 04 | `ai`, `testing` (`FakeProvider`) |
 | Agent loop | 05 | `agent` (`agent_loop`) |
 | Events and abort | 06 | `agent` |
 | Steering | 07 | `agent` (`Agent`) |

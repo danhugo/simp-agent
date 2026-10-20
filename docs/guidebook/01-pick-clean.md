@@ -337,7 +337,7 @@ That one line is why a fake is easy (ch [04](04-label-test.md)). The default is 
 
 ## Pick and Clean: the problem
 
-We want the [agent loop](glossary.md#agent-loop) (ch [05](05-agent-loop.md)) to say "ask the model" and not care which vendor answers. Vendors differ a lot (ch [02](02-translate-send.md) shows how). On top of that, **history can be broken.** A turn may have ended with an error, or a tool call may have no result (the user stopped the run). Every vendor rejects a tool call with no result. And **thinking is not portable.** Anthropic signs its thinking. OpenAI Responses encrypts it. Only the same model can read it back.
+We want the [agent loop](glossary.md#agent-loop) (ch [05](05-agent-loop.md)) to say "ask the model" and not care which vendor answers. Vendors differ a lot (ch [02](02-translate-send.md) shows how). On top of that, **history can be broken.** A turn may have ended with an error, or a tool call may have no result (the user stopped the run). Every vendor rejects a tool call with no result. And **thinking is not portable.** Anthropic signs its thinking. OpenAI Responses encrypts it. Only the same model can read it back. And **errors are strings.** A failed turn only gives text like `"Error code: 529 overloaded"`. The loop must still decide: retry, compact the history, or give up.
 
 ### Naive version
 
