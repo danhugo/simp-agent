@@ -260,9 +260,11 @@ same = (m.provider, m.api, m.model) equal (model.provider, model.api, model.id)
 out = new empty list                                     // the new content of this message
 FOR EACH block c in m.content:                           // c = one block of the old message
     IF c is thinking:                                    // branch 1: thinking
-        IF c is redacted OR (same AND c has a signature):
+        IF c is redacted:                                // sealed envelope: only the same model can open it
             IF same: ADD c to out
-            // else skip (not added): no text to keep, and the other model cannot open it
+            // else skip (not added): no words to keep, the other model cannot open it
+        ELSE IF same AND c has a signature:
+            ADD c to out                                 // send back as it is, with its proof
         ELSE IF c has text:                              // "has text" = the thinking block has words
             IF same: ADD c to out
             ELSE: ADD TextContent(c's words) to out      // plain text
@@ -273,6 +275,8 @@ FOR EACH block c in m.content:                           // c = one block of the
         ADD c to out
 RETURN out
 ```
+
+The real code joins the first two checks into one `if c.redacted or (same and c.signature)` with `if same` inside; same result.
 
 `transform_messages` then makes a **copy** of `m` with `content = out` (`dataclasses.replace`). The saved history is not changed; only the copy is sent.
 
