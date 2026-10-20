@@ -89,15 +89,31 @@ Where it breaks:
 
 ### From naive to real
 
-**Step 1 — a dict instead of `if`.** Map `model.api` to a stream function. A new vendor is one new entry; users add theirs with `register_provider`.
+The naive version has three problems. We fix them one at a time.
 
-**Step 2 — import late.** Each entry imports its SDK only on the first call (`_builtin`), so you need only the SDK you use.
+**Problem 1: adding a vendor means editing the loop.** Fix: keep a table. The key is `model.api`; the value is the function that talks to that vendor. Pick just looks it up:
 
-**Step 3 — never raise.** An unknown `api` becomes an `error` event in `stream()` (ch [04](04-label-test.md)); a missing key for a built-in provider becomes an `error` event with `error_kind="fatal"` in `_builtin` (below). Each provider catches its own errors the same way (ch [02](02-translate-send.md)).
+```text
+"anthropic-messages" -> function for Anthropic
+"openai-completions" -> function for OpenAI
+```
+
+A new vendor is one new row. Users can add their own row too, without touching the library.
+
+**Problem 2: you must install every SDK.** Fix: import a vendor's SDK only the first time that vendor is called. For example, if you only use Anthropic, `import openai` never runs, so the OpenAI SDK does not need to be installed.
+
+**Problem 3: one error crashes the loop.** Fix: never raise. Send an error event, just like a normal reply. Each vendor function catches its own errors (network down, bad key) this way. Pick adds two more:
+
+```text
+api not in the table  -> error event "Unknown api: my-api"
+no API key            -> error event "no API key ...", marked fatal (trying again will not help)
+```
+
+The real code below does exactly these three things.
 
 ### Real code
 
-The [provider registry](glossary.md#provider-registry) is a plain dict from `api` string to stream function (`ai/__init__.py`). The lookup itself runs in `stream()`, shown in [ch 04](04-label-test.md#the-entry-point-stream-runs-1-2-6).
+**Fix 1 — the table.** The [provider registry](glossary.md#provider-registry) is a plain dict from `api` string to stream function (`ai/__init__.py`). The lookup itself runs in `stream()`, shown in [ch 04](04-label-test.md#the-entry-point-stream-runs-1-2-6).
 
 Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`register_provider`)
 
@@ -113,7 +129,9 @@ FUNCTION register_provider(api, stream_fn):
     _PROVIDERS[api] = stream_fn
 ```
 
-`register_provider` lets anyone add or replace an `api` without touching the library. The built-ins go through `_builtin`:
+`register_provider` lets anyone add or replace an `api` without touching the library. If `model.api` is not in the dict, `stream()` sends an error event "Unknown api: ..." instead of raising (fix 3).
+
+**Fix 2 and fix 3 — `_builtin`.** The built-ins go through `_builtin`:
 
 Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`_builtin`)
 
@@ -128,10 +146,7 @@ FUNCTION _builtin(module):
             SEND the event
 ```
 
-Two things here, both with a reason:
-
-- **Lazy import.** The provider module is imported only on the first call. The providers import `Model`, `AssistantMessage` and friends from `ai`, so importing them at the top of `ai` would be a circular import. It also means `import anthropic` happens only when you use Anthropic.
-- **No key, no call.** Providers never read environment variables. The app passes `api_key`. A missing key is an `error` event with `error_kind="fatal"`, so retry (ch [15](15-retry.md)) does not try again for nothing.
+The late import is fix 2. It also avoids a circular import: the providers import `Model`, `AssistantMessage` and friends from `ai`. The missing-key check is fix 3: `error_kind="fatal"` tells retry (ch [15](15-retry.md)) not to try again for nothing.
 
 ### OUT: the shape of a model call
 

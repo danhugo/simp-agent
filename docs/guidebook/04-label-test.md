@@ -146,6 +146,7 @@ This works for a test where the model only says "ok". But it breaks fast:
 - **One answer only.** To test a tool call, the model must first say "call `echo`", and then, on the next call, say "done". A fixed answer cannot do this; the loop would call the tool forever.
 - **No memory.** The test cannot ask "how many times was the model called?" or "what did the loop send on the second call?".
 - **No errors.** A message with `stop_reason="error"` still comes out as a `done` event, which a real provider never does.
+- **Replies cannot react.** A fixed reply cannot look at what the loop sent, for example to answer with the tool result.
 
 ### Step by step: from naive to real
 
@@ -164,11 +165,11 @@ CLASS FakeProvider(replies...):
 
 Why a class: it must remember where it is in the script between calls.
 
-**Step 2 — memory.** Write down each call (`self.calls += 1`, `self.messages.append(list(ctx.messages))`, ...) so the test can check *what* was sent.
+**Step 2 — memory.** Count each call and keep a copy of what the loop sent, so the test can check *what* was sent.
 
 **Step 3 — errors.** End with `error` instead of `done` when the reply has `stop_reason == "error"`, like a real provider.
 
-**Step 4 — replies that are functions.** `msg = msg(ctx) if callable(msg) else msg`, so a reply can look at the context.
+**Step 4 — replies that are functions.** A reply can also be a function: we call it with the context and send what it returns, so a reply can look at what the loop sent.
 
 ### Real design: `FakeProvider`
 

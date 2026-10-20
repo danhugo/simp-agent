@@ -81,8 +81,8 @@ FUNCTION parse(chunks):
 
 It works for "Hello" and for one tool call. Then it breaks:
 
-- **Two tool calls at once.** Models often call two tools in one answer (`index` 0 and `index` 1). The naive code glues both argument strings into one, so `json.loads` fails.
 - **The usage chunk.** `chunk.choices[0]` raises `IndexError` on the last chunk, which has an empty `choices` list. A stream function [must never raise](01-pick-clean.md#out-the-shape-of-a-model-call).
+- **Two tool calls at once.** Models often call two tools in one answer (`index` 0 and `index` 1). The naive code glues both argument strings into one, so `json.loads` fails.
 - **Bad JSON.** If the model writes broken arguments, `json.loads` raises and the whole call is lost.
 - **No stop reason.** We always say `done`, even if the server stopped because it ran out of tokens, or the stream was cut off.
 - **Thinking.** Some models send "reasoning" text before the answer. We drop it.
