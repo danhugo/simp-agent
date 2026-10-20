@@ -14,10 +14,11 @@ flowchart LR
     end
     F --> L["6 Label"]
     classDef me fill:#ffe9a8,stroke:#c90
+    classDef part fill:#fff4d6,stroke:#c90,stroke-dasharray:3 3
     class F me
 ```
 
-Builds: the stream-function box (blocks 3–5), faked · IN: `Model`, `Context`, `api_key` · OUT: events, last `done`/`error` holds an `AssistantMessage`
+**Builds:** a test fake for blocks 3–5 · **IN:** `Model`, `Context`, `api_key` · **OUT:** events, `AssistantMessage`
 
 Big picture of Part 1: [part-1-ai](part-1-ai.md).
 
@@ -281,4 +282,4 @@ uv run pytest -q tests/test_core.py::test_no_tool_call_one_turn \
 
 **Built on by:** [04](04-providers.md) (real providers follow the same contract) · [05](05-agent-loop.md) (loop tests) · [06](06-events-abort.md) · [07](07-steering.md) · [15](15-retry.md) (error replies) · [16](16-compaction.md) (summary replies) · [23](23-limits.md) (counting calls)
 
-**OUT of this chapter →** the stream-function shape; block 5 Parse fills it in [03](03-stream-parser.md), blocks 3–4 in [04](04-providers.md).
+**OUT →** the stream-function shape is filled by block 5 Parse (ch 03).

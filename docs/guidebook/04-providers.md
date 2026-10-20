@@ -10,10 +10,12 @@
 flowchart LR
     P["1 Pick"] --> C["2 Clean"] --> T["3 Translate"] --> S["4 Send"] --> R["5 Parse"] --> L["6 Label"]
     classDef me fill:#ffe9a8,stroke:#c90
+    classDef part fill:#fff4d6,stroke:#c90,stroke-dasharray:3 3
     class P,C,T,S,L me
+    class R part
 ```
 
-Builds: blocks 1, 2, 3, 4, 6 (and Parse for the other two vendors) · IN: `Model`, `Context`, `api_key` · OUT: labelled events
+**Builds:** blocks 1, 2, 3, 4, 6 (block 5 for two more vendors) · **IN:** `Model`, `Context`, `api_key` · **OUT:** labelled events
 
 Big picture of Part 1: [part-1-ai](part-1-ai.md).
 
@@ -90,8 +92,8 @@ The real code puts all five in `ai.stream` and a few helpers.
 ```mermaid
 flowchart LR
     L["agent loop"] -->|"model, context, api_key"| S["ai.stream"]
-    S -->|"transform_messages"| S
     S -->|"look up model.api"| R["_PROVIDERS"]
+    S -->|"transform_messages"| S
     R --> A["anthropic.stream"]
     R --> C["openai_completions.stream"]
     R --> P["openai_responses.stream"]
@@ -123,7 +125,7 @@ CLASS Model:
 
 ### 1 Pick: `_PROVIDERS`, `register_provider`
 
-The [provider registry](glossary.md#provider-registry) is a plain dict from `api` string to stream function (`ai/__init__.py`):
+The [provider registry](glossary.md#provider-registry) is a plain dict from `api` string to stream function (`ai/__init__.py`). The lookup itself runs in `stream()`, shown in [the entry point](#the-entry-point-stream-runs-1-2-6) below:
 
 Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`register_provider`)
 
@@ -329,7 +331,7 @@ We do not read these raw events one by one. `client.messages.stream(...)` from t
 
 During streaming, `parse` keeps partial text on `msg` (useful if the run is aborted). At the end, the provider rebuilds `msg.content` from the SDK's `get_final_message()`, which has the complete, signed blocks.
 
-### 6 Label: the entry point `stream`
+### The entry point `stream` (runs 1, 2, 6)
 
 Last, the one entry point. It ties blocks 1, 2 and 6 together:
 
@@ -450,4 +452,4 @@ uv run pytest packages/simp_agent/tests/test_openai.py packages/simp_agent/tests
 
 **Builds on:** [03 The stream parser](03-stream-parser.md) · **Next:** [05 The agent loop](05-agent-loop.md) — the loop that calls `ai.stream` and runs the tools the model asks for.
 
-**OUT of this chapter →** `ai.stream()`; used as `stream_fn` by the agent loop in [05](05-agent-loop.md).
+**OUT →** labelled events from `ai.stream()` are the IN of the agent loop (ch 05).

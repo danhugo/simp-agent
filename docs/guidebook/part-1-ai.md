@@ -16,10 +16,10 @@ Read it left to right on the top row (the question goes out), then right to left
 |---|---|---|---|---|---|---|
 | 1 | Pick the driver | Look up `Model.api` in `_PROVIDERS` and get a stream function. Unknown api → `error` event. | `Model` | a stream function | `ai/__init__.py` · `stream()`, `_PROVIDERS` | [04](04-providers.md#1-pick-_providers-register_provider) |
 | 2 | Clean | Drop error/aborted replies, skip compaction/custom entries, add a result for tool calls with no result, fix thinking blocks for this model. | `Context.messages` | clean `messages` (new `Context`) | `ai/__init__.py` · `transform_messages()` | [04](04-providers.md#2-clean-transform_messages) (why: [01](01-messages.md)) |
-| 3 | Translate | Rewrite our messages and tools in the vendor's own JSON. | `Context` | vendor request | `ai/providers/*.py` · `_to_anthropic()`, `to_openai()`, `to_input()` + `request()`; tools are mapped inside `stream()` | [04](04-providers.md) |
-| 4 | Send | Open one HTTP stream to the vendor with the key. | vendor request | raw chunks | `ai/providers/*.py` · `stream()` | [04](04-providers.md) |
+| 3 | Translate | Rewrite our messages and tools in the vendor's own JSON. | `Context` | vendor request | `ai/providers/*.py` · `_to_anthropic()`, `to_openai()`, `to_input()` + `request()`; tools are mapped inside `stream()` | [04](04-providers.md#3-translate--4-send-the-three-providers) |
+| 4 | Send | Open one HTTP stream to the vendor with the key. | vendor request | raw chunks | `ai/providers/*.py` · `stream()` | [04](04-providers.md#3-translate--4-send-the-three-providers) |
 | 5 | Parse | Turn raw chunks into events, one per piece, and fill the `AssistantMessage`. | raw chunks | events | `ai/providers/*.py` · `parse()`; `stream()` adds `start` and the last `done`/`error` | [03](03-stream-parser.md) |
-| 6 | Label | Write `api`, `provider`, `model` on every message an event carries, then pass each event on. | events | labelled events | `ai/__init__.py` · `stream()` | [04](04-providers.md) |
+| 6 | Label | Write `api`, `provider`, `model` on every message an event carries, then pass each event on. | events | labelled events | `ai/__init__.py` · `stream()` | [04](04-providers.md#the-entry-point-stream-runs-1-2-6) |
 
 Words: a **vendor** is the model company (Anthropic, OpenAI). A **driver** is our plain name for its [stream function](glossary.md#stream-function). For Anthropic, `stream()` takes the final message from the SDK (`get_final_message()`) instead of building it in `parse()`.
 
