@@ -474,7 +474,7 @@ async def test_abort_kills_tree_and_keeps_output(tmp_path):
 
 (This file has its own `call` helper that always calls `bash`.) It checks all three promises at once: the early output is kept, the note says who stopped it and when, and the grandchild `sleep` is dead. Other tests in the file check that bad timeouts (`0`, `-1`, `inf`) are errors and that `max_timeout_s` clamps a model's `timeout=120000` down to 0.5 seconds.
 
-No [FakeProvider](02-fake-provider.md) here: tools do not call models. The `edit` match rules (zero, one, many matches) are tested in `test_core.py` (`test_edit_matches`), next to the loop tests of [05](05-agent-loop.md).
+No [FakeProvider](04-label-test.md) here: tools do not call models. The `edit` match rules (zero, one, many matches) are tested in `test_core.py` (`test_edit_matches`), next to the loop tests of [05](05-agent-loop.md).
 
 ```bash
 uv run pytest packages/simp_agent/tests/test_tools.py packages/simp_agent/tests/test_bash.py

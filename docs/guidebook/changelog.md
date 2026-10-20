@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-20
+- Part 1 re-cut by block flow (wiki block-flow-chapters): 01-messages, 02-fake-provider, 03-stream-parser, 04-providers became [01 Pick + Clean](01-pick-clean.md) (messages, Tool/Context/Model, stream-function shape, registry, `transform_messages`), [02 Translate + Send](02-translate-send.md) (vendor request side, `stream` wrapper), [03 Parse](03-parse.md) (all three parsers), [04 Label + test the pipeline](04-label-test.md) (`ai.stream`, error classification, `FakeProvider`). No facts removed; joins rewritten. All links, README, part-1-ai table and SVG chapter tags, glossary homes updated. (checked at `223ddb0`)
 - Part 1 block flow: ch 01–04 "Where we are" now show the Pick→Clean→Translate→Send→Parse→Label strip with this chapter's blocks marked, plus a "Builds · IN · OUT" line and an "OUT of this chapter →" bridge at the end. ch 04 Real design reordered to flow order (Model, 1 Pick, 2 Clean + Thinking, 3/4 providers, 6 Label, error classification as an extra); anchors fixed. ch 03 notes Parse in the other two providers. (checked at `04e1df1`)
 
 ## 2026-10-19

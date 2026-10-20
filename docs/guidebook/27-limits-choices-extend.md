@@ -132,9 +132,9 @@ Here are the main choices. Each one was taught in an earlier chapter; the link s
 | Choice | What it means | Taught in |
 |---|---|---|
 | Layers, import only downward | Six folders; `test_layers.py` checks the rule | [00](00-overview.md) |
-| A fake model from day one | `FakeProvider` makes every layer testable with no network | [02](02-fake-provider.md) |
-| `stream()` never raises | Errors become an `error` event with a final message | [03](03-stream-parser.md), [04](04-providers.md) |
-| Providers never read the environment | The app gives the key through `get_api_key` | [04](04-providers.md) |
+| A fake model from day one | `FakeProvider` makes every layer testable with no network | [04](04-label-test.md) |
+| `stream()` never raises | Errors become an `error` event with a final message | [02](02-translate-send.md), [04](04-label-test.md) |
+| Providers never read the environment | The app gives the key through `get_api_key` | [01](01-pick-clean.md#1-pick-_providers-register_provider) |
 | History is append-only | Compaction adds a `CompactionEntry`; it never deletes | [13](13-session.md), [16](16-compaction.md) |
 | Core only classifies errors | `is_retryable`, `is_context_overflow`; the session decides | [15](15-retry.md), [17](17-overflow.md) |
 | Everything is a plugin | Store, sandbox, auth, providers, tools, agent plugins | [14](14-plugins.md), [22](22-store-auth.md) |
@@ -240,7 +240,7 @@ FUNCTION register_provider(api, stream_fn):
 ```
 Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `register_provider`
 
-Write one async generator that yields the same events as the built-in ones ([04](04-providers.md)). It must not raise. Then set `api` in a profile to your new name.
+Write one async generator that yields the same events as the built-in ones ([01](01-pick-clean.md#the-shape-of-a-model-call), [03](03-parse.md)). It must not raise. Then set `api` in a profile to your new name.
 
 **A plugin.** This is the fix from the steps above. A **[plugin](glossary.md#plugin)** ([14](14-plugins.md)) is any object with a `name` and some optional hook methods. In `setup` it gets a **[PluginAPI](glossary.md#pluginapi)**. From `packages/simp_agent/src/simp_agent/session/__init__.py`:
 
@@ -324,7 +324,7 @@ Run it:
 uv run pytest apps/cli/tests/test_sockets.py -q -k plugin_setup
 ```
 
-For the other sockets, see the tests in their chapters: providers in [04](04-providers.md), store in [13](13-session.md) and [22](22-store-auth.md), sandbox in [24](24-docker-sandbox.md). And run the layer test from [00](00-overview.md) after any change.
+For the other sockets, see the tests in their chapters: providers in [01](01-pick-clean.md)–[04](04-label-test.md), store in [13](13-session.md) and [22](22-store-auth.md), sandbox in [24](24-docker-sandbox.md). And run the layer test from [00](00-overview.md) after any change.
 
 ## Why this way
 

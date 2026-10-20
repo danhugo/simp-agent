@@ -31,7 +31,7 @@ In [06](06-events-abort.md) we saw that `Agent` allows **one run at a time**. A 
 
 But the user still types while the agent works. A coding run can take minutes. In that time the user may see the agent go the wrong way, or think of the next task. We need a way to take their text **now** and deliver it **at a safe point** later.
 
-What is a safe point? The history must stay valid. The model asked for tools; each tool call must be followed by its tool result ([01](01-messages.md)). If we put a user message **between** a tool call and its result, vendors reject the request. So "deliver now" really means "deliver at the next place where the history is complete".
+What is a safe point? The history must stay valid. The model asked for tools; each tool call must be followed by its tool result ([01](01-pick-clean.md)). If we put a user message **between** a tool call and its result, vendors reject the request. So "deliver now" really means "deliver at the next place where the history is complete".
 
 ## Naive version
 
@@ -257,7 +257,7 @@ Higher layers pass text down: the session ([13](13-session.md)) has its own `ste
 
 ## Test
 
-The tests are in `test_queues_compaction.py`. They use [FakeProvider](02-fake-provider.md) and its `messages` list, which records what the model was sent on each call.
+The tests are in `test_queues_compaction.py`. They use [FakeProvider](04-label-test.md) and its `messages` list, which records what the model was sent on each call.
 
 Steer during a tool:
 

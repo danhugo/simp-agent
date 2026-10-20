@@ -165,7 +165,7 @@ sequenceDiagram
 |---|---|---|
 | `agent_start` | — | first thing, once per run |
 | `turn_start` | — | before each model call |
-| `message_update` | `event` | each raw provider event ([03](03-stream-parser.md)); `event["partial"]` is the message so far |
+| `message_update` | `event` | each raw provider event ([03](03-parse.md)); `event["partial"]` is the message so far |
 | `message_start`, `message_end` | `message` | each time `add` puts a message in history |
 | `tool_execution_start` | `call` | before a tool runs (not for cut-off `length` calls) |
 | `tool_execution_update` | `call`, `text` | when a tool calls `ctx.on_update(text)` ([05](05-agent-loop.md#toolcontext-what-a-tool-gets)) |
@@ -173,7 +173,7 @@ sequenceDiagram
 | `turn_end` | `message` | after the tool batch; also on error / abort |
 | `agent_end` | `messages` | last thing; `messages` = all new messages of this run |
 
-`message_update` carries the provider event as-is. The loop does not invent its own "text delta" type: the UI reads `event["type"]` (`text_delta`, `toolcall_delta`, …) from the [stream parser](03-stream-parser.md). One vocabulary, not two.
+`message_update` carries the provider event as-is. The loop does not invent its own "text delta" type: the UI reads `event["type"]` (`text_delta`, `toolcall_delta`, …) from the [stream parser](03-parse.md). One vocabulary, not two.
 
 Every exit path ends with `turn_end` then `agent_end`. Normal end goes through the bottom of `agent_loop`; error and abort go through `_end`:
 
@@ -214,7 +214,7 @@ Why one shared event and not a flag per part? Because a single `set()` reaches t
 
 Say the model asked for tools `c1`, `c2`, `c3`, and the user stops during `c2`. Then `c2` gets its result (maybe "Interrupted by the user"), the loop breaks before `c3`, and adds the aborted message. History now has tool call `c3` with **no result**.
 
-The loop does not fix that itself. `_llm_turn` runs `ai.transform_messages` on the view before every model call (and the real `ai.stream` runs it again, [04](04-providers.md#2-clean-transform_messages)). It drops `aborted` / `error` assistant messages and adds an error result `"No result provided"` for any call with no result. The saved history keeps the truth (what really happened); only the view sent to the model is cleaned.
+The loop does not fix that itself. `_llm_turn` runs `ai.transform_messages` on the view before every model call (and the real `ai.stream` runs it again, [01](01-pick-clean.md#2-clean-transform_messages)). It drops `aborted` / `error` assistant messages and adds an error result `"No result provided"` for any call with no result. The saved history keeps the truth (what really happened); only the view sent to the model is cleaned.
 
 ### `_stream`: stop a model call in the middle
 
@@ -248,7 +248,7 @@ Step by step:
 - `stop` is a task that finishes when `cancel` is set.
 - For each event, `nxt` is a task that gets the next provider event.
 - `asyncio.wait(..., FIRST_COMPLETED)` returns as soon as **either** one is done. So a stop is seen at once, even if the model is silent.
-- If `nxt` is not done, the stop won. We cancel `nxt`. That raises `CancelledError` **inside** the provider generator, at its `await`. The provider's `async with` block (the HTTP client, [04](04-providers.md)) exits and closes the connection. We stop paying for tokens.
+- If `nxt` is not done, the stop won. We cancel `nxt`. That raises `CancelledError` **inside** the provider generator, at its `await`. The provider's `async with` block (the HTTP client, [02](02-translate-send.md)) exits and closes the connection. We stop paying for tokens.
 - `finally` cleans up both ways: it cancels the `stop` task and calls `aclose()` on the generator.
 
 If the event came first, we yield it. When the provider ends, `nxt.result()` raises `StopAsyncIteration` and we return.
@@ -271,7 +271,7 @@ IF msg is None:                  // aborted mid-stream: keep partial content
 RETURN msg
 ```
 
-Every provider event may carry `partial`, the message built so far ([03](03-stream-parser.md)). The loop keeps the latest one. If the stream ended without `done` or `error`, it is treated as aborted (normally because `cancel` was set): the partial message becomes the answer, marked `aborted`. Now the history has the same text the user saw on screen. `agent_loop` then sees `stop_reason == "aborted"` and ends through `_end`.
+Every provider event may carry `partial`, the message built so far ([03](03-parse.md)). The loop keeps the latest one. If the stream ended without `done` or `error`, it is treated as aborted (normally because `cancel` was set): the partial message becomes the answer, marked `aborted`. Now the history has the same text the user saw on screen. `agent_loop` then sees `stop_reason == "aborted"` and ends through `_end`.
 
 ### The `Agent` class: state on top of the loop
 
@@ -389,7 +389,7 @@ async def test_abort_mid_batch_repairs_history():
     assert next(m for m in sent if getattr(m, "tool_call_id", "") == "c3").content == "No result provided"
 ```
 
-Tool call `c2` sets `cancel`, so `c3` never runs and the run ends `aborted`. Then a **second** run on the same history checks what the model is sent (`FakeProvider.messages`, [02](02-fake-provider.md)): every call has a result (`check_pairs`), the aborted message is gone, and `c3` got `"No result provided"`.
+Tool call `c2` sets `cancel`, so `c3` never runs and the run ends `aborted`. Then a **second** run on the same history checks what the model is sent (`FakeProvider.messages`, [04](04-label-test.md)): every call has a result (`check_pairs`), the aborted message is gone, and `c3` got `"No result provided"`.
 
 Subscribers through `Agent`: `test_raising_subscriber_ends_with_error` adds a subscriber that raises on `message_end`; after `prompt("hi")` the last message has `stop_reason="error"` with `"sub broke"` in it, and `is_streaming` is `False` again. `test_async_subscriber_awaited` checks that an `async` subscriber sees `agent_start` first and `agent_end` last, and `test_prompt_while_streaming` checks the one-run-at-a-time rule.
 

@@ -33,7 +33,7 @@ We need three things:
 2. **Change** a result after it runs (for example, cut a huge output, or add a note).
 3. Do this **without** putting policy into `agent_loop`. The loop should not know what "dangerous" means, or how to ask a human. A CLI asks with `y/n`; a web app shows a button; a test answers at once.
 
-And one rule from [01](01-messages.md) still holds: every tool call must get a tool result. A "no" must still make a result, or the next model request is invalid.
+And one rule from [01](01-pick-clean.md) still holds: every tool call must get a tool result. A "no" must still make a result, or the next model request is invalid.
 
 ## Naive version
 
@@ -174,7 +174,7 @@ Read it step by step:
 3. **The loop does not stop on a deny.** It goes on to the next call, then to the next model turn. Denying one call is not an abort.
 4. **`after_tool_call` runs after a deny too.** The comment says so: "Also runs after a deny". So an after-hook sees every result from a real run **or** a deny (only truncated calls skip it, see step 6). A hook that logs or rewrites results has one place to do it.
 5. **`... or result`** means: if the after-hook returns `None` (or nothing), keep the old result. A hook that only watches does not need to return anything.
-6. **Truncated calls skip the hooks.** When `stop_reason == "length"`, the arguments may be cut off ([03](03-stream-parser.md)). The loop never runs them, so it does not ask the hooks either.
+6. **Truncated calls skip the hooks.** When `stop_reason == "length"`, the arguments may be cut off ([03](03-parse.md)). The loop never runs them, so it does not ask the hooks either.
 
 Why is the deny check `is not None` and not just "truthy"? Because the reason is the signal. An empty string `""` still means "deny" (the model gets `User denied: `). Only `None` means "go on".
 
@@ -253,7 +253,7 @@ async def test_before_tool_call_hook_in_loop():
     assert msgs[-1] is DONE  # the loop continued
 ```
 
-The [FakeProvider](02-fake-provider.md) asks for `bash` (`rm -rf /`), then says `"ok"`. The test checks: the hook saw the call, the tool **did not run**, the result is an error with the reason, and the loop **went on** to the second reply.
+The [FakeProvider](04-label-test.md) asks for `bash` (`rm -rf /`), then says `"ok"`. The test checks: the hook saw the call, the tool **did not run**, the result is an error with the reason, and the loop **went on** to the second reply.
 
 The after-hook test changes a result (`apps/cli/tests/test_sockets.py`):
 

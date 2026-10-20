@@ -2,7 +2,7 @@
 
 **Goal:** See the whole of simp-agent before building it piece by piece.
 
-**Builds on:** — (start here) · **Next:** [01 Messages](01-messages.md)
+**Builds on:** — (start here) · **Next:** [01 Pick + Clean](01-pick-clean.md)
 
 ## Where we are
 
@@ -135,14 +135,14 @@ We build in the same order as the layers: bottom first. Each chapter adds one ca
 
 | Part | Chapters | What you have at the end |
 |---|---|---|
-| 1 · Talk to a model (`ai`) | [01](01-messages.md)–[04](04-providers.md) | Message types, a fake model, a stream parser, real providers. |
+| 1 · Talk to a model (`ai`) | [01](01-pick-clean.md)–[04](04-label-test.md) | Pick + Clean (with the message types), Translate + Send, Parse, Label + a fake model for tests. |
 | 2 · The loop (`agent`) | [05](05-agent-loop.md)–[08](08-hooks-approval.md) | A loop that runs tools, sends events, can be stopped, steered and checked. |
 | 3 · Coding (`coding`) | [09](09-exec-env.md)–[12](12-evals.md) | A safe place to touch files, real coding tools, a system prompt, evals. |
 | 4 · Sessions (`session`, `plugins`) | [13](13-session.md)–[18](18-profiles-plugins.md) | Saved conversations, plugins, retry, compaction, overflow recovery, profiles. |
 | 5 · Apps | [19](19-cli.md)–[26](26-system-tests-deploy.md) | CLI, server, transport, store, limits, Docker sandbox, web client, deploy. |
 | Wrap-up | [27](27-limits-choices-extend.md) | Why it is built this way, where it stops, how to extend it. |
 
-**Why bottom first?** Every chapter can then be tested with what already exists. Chapter 02 builds `FakeProvider` early on purpose: with a fake model, every later chapter can test the loop, tools and sessions without a network or an API key.
+**Why bottom first?** Every chapter can then be tested with what already exists. Chapter 04 builds `FakeProvider` at the end of Part 1 on purpose: with a fake model, every later chapter can test the loop, tools and sessions without a network or an API key.
 
 ## Capability table
 
@@ -204,4 +204,4 @@ We follow this task as the system grows:
 - `test_layers.py` enforces "import only downward".
 - We build bottom up, one capability per chapter, with the fizzbuzz task as the running example.
 
-**Builds on:** — · **Next:** [01 Messages](01-messages.md)
+**Builds on:** — · **Next:** [01 Pick + Clean](01-pick-clean.md)

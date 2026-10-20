@@ -30,7 +30,7 @@ Code in this chapter (commit `2fc2776`):
 
 Part 4 is almost done. The session saves, retries, compacts and runs plugins. Two gaps are left before the apps:
 
-1. **Choosing a model.** A `Model` ([01](01-messages.md), [04](04-providers.md)) has many fields: `id`, `api`, `provider`, `base_url`, `api_key_env`, `context_window`, `max_tokens`, `compat`. Users want to write "use my `local` setup" in a settings file, not build a `Model` by hand. Both the CLI and the server need this, and they must agree.
+1. **Choosing a model.** A `Model` ([01](01-pick-clean.md#the-model)) has many fields: `id`, `api`, `provider`, `base_url`, `api_key_env`, `context_window`, `max_tokens`, `compat`. Users want to write "use my `local` setup" in a settings file, not build a `Model` by hand. Both the CLI and the server need this, and they must agree.
 2. **Plugins that prove the sockets.** [14](14-plugins.md) built the hook points. We need real plugins that use them: one that keeps secrets out of the model and the logs, and one that makes the agent read-only.
 
 ## Naive version
@@ -61,7 +61,7 @@ It works for `claude`. It breaks when:
 
 We fix the naive `model_for` one problem at a time.
 
-**Step 1 — pick `provider` from `api`.** The provider name decides which API key is used ([04](04-providers.md)). An `openai-*` API always means the `openai` provider:
+**Step 1 — pick `provider` from `api`.** The provider name decides which API key is used ([01](01-pick-clean.md#1-pick-_providers-register_provider)). An `openai-*` API always means the `openai` provider:
 
 Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
 
@@ -149,7 +149,7 @@ Key idea: one function, so a profile means the same model in the CLI and the ser
 
 Each line fixes one naive problem:
 
-- **`provider` comes from `api`.** `openai-completions` and `openai-responses` → `"openai"`, else `"anthropic"`. The provider name is what `get_api_key` gets ([04](04-providers.md)).
+- **`provider` comes from `api`.** `openai-completions` and `openai-responses` → `"openai"`, else `"anthropic"`. The provider name is what `get_api_key` gets ([01](01-pick-clean.md#1-pick-_providers-register_provider)).
 - **Only known keys are read.** `model` becomes `id`. Other keys, like `plugins`, are ignored here, so one profile dict can hold model and app settings.
 - **`None` is dropped.** `Model`'s own defaults stay.
 - **`include_usage` on by default for OpenAI APIs.** `setdefault` keeps an explicit `False`, for a server that does not support it.

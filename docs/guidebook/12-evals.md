@@ -13,7 +13,7 @@ flowchart LR
     evals -.uses.-> agent
 ```
 
-After [11](11-system-prompt.md) the agent has a loop, tools and a system prompt. It can do real coding work. Now a new question: **how well?** Unit tests with the [FakeProvider](02-fake-provider.md) prove that our code does what we wrote. They cannot tell us if a real model, with our tools and our prompt, can fix a bug. For that we need an [eval](glossary.md#eval).
+After [11](11-system-prompt.md) the agent has a loop, tools and a system prompt. It can do real coding work. Now a new question: **how well?** Unit tests with the [FakeProvider](04-label-test.md) prove that our code does what we wrote. They cannot tell us if a real model, with our tools and our prompt, can fix a bug. For that we need an [eval](glossary.md#eval).
 
 Big picture of Part 3: [part-3-coding](part-3-coding.md).
 
@@ -194,7 +194,7 @@ Why each part:
 - **Temp folder.** Every task starts clean, and the folder is deleted at the end. Runs do not affect each other.
 - **`.resolve()`.** On macOS `/tmp` is a symlink (a link to another folder) to `/private/tmp`. Using the real path as root and cwd keeps it the same everywhere, including `LocalEnv`'s path checks ([09](09-exec-env.md)).
 - **`LocalEnv`** — the same [execution environment](glossary.md#execution-environment) the CLI uses. We measure the real tools, not a copy.
-- **`stream_fn`** — by default `ai.stream`, the real [provider](glossary.md#provider) call ([04](04-providers.md)). The test passes a FakeProvider here instead.
+- **`stream_fn`** — by default `ai.stream`, the real [provider](glossary.md#provider) call ([04](04-label-test.md)). The test passes a FakeProvider here instead.
 - **`max_retries=1`** — retry a failed model call only once ([15](15-retry.md)). An eval should show problems, not hide them behind long waits.
 
 The key is found from the [profile](glossary.md#profile): its `api_key_env`, or else `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` by the API type.

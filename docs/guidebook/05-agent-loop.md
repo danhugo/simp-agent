@@ -2,7 +2,7 @@
 
 **Goal:** Build the smallest loop that calls a model and runs tools.
 
-**Builds on:** [04 Providers](04-providers.md) · **Next:** [06 Events and abort](06-events-abort.md)
+**Builds on:** [04 Label + test the pipeline](04-label-test.md) · **Next:** [06 Events and abort](06-events-abort.md)
 
 ## Where we are
 
@@ -13,7 +13,7 @@ flowchart LR
 
 Big picture of Part 2: [part-2-agent](part-2-agent.md).
 
-Part 1 finished the `ai` [layer](glossary.md#layer). We can now send a [context](glossary.md#context) to any model with `ai.stream` ([04](04-providers.md)) and get back one `AssistantMessage` ([03](03-stream-parser.md)). In tests, `FakeProvider` plays the model ([02](02-fake-provider.md)).
+Part 1 finished the `ai` [layer](glossary.md#layer). We can now send a [context](glossary.md#context) to any model with `ai.stream` ([04](04-label-test.md)) and get back one `AssistantMessage` ([03](03-parse.md)). In tests, `FakeProvider` plays the model ([04](04-label-test.md#testing-the-pipeline-without-a-real-model)).
 
 But one model call is not an agent. A [coding agent](glossary.md#coding-agent) must **act**: the model asks for a [tool call](glossary.md#tool-call), we run it, we give the result back, and we ask again. This chapter builds that [agent loop](glossary.md#agent-loop).
 
@@ -131,7 +131,7 @@ The result is the real design below.
 
 ### Tools: `AgentTool`
 
-From [01](01-messages.md), `ai.Tool` is only a description for the model: `name`, `description`, `parameters` (a JSON schema). The `ai` layer never runs tools. The `agent` layer adds the code:
+From [01](01-pick-clean.md), `ai.Tool` is only a description for the model: `name`, `description`, `parameters` (a JSON schema). The `ai` layer never runs tools. The `agent` layer adds the code:
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`AgentTool`)
 
@@ -233,8 +233,8 @@ CLASS LoopConfig:
     cwd = the current folder
 ```
 
-- `stream_fn` defaults to `ai.stream`. A test passes `FakeProvider(...)` instead. This is the [stream function](glossary.md#stream-function) shape from [02](02-fake-provider.md) paying off: the loop cannot tell the difference.
-- `get_api_key(provider)` is called **before every model call**, so an OAuth token can refresh in the middle of a long run. `api_key_opts` turns it into `{"api_key": ...}`. If it is `None`, no key is passed and the provider returns a "no API key" error ([04](04-providers.md)).
+- `stream_fn` defaults to `ai.stream`. A test passes `FakeProvider(...)` instead. This is the [stream function](glossary.md#stream-function) shape from [01](01-pick-clean.md#the-shape-of-a-model-call) paying off: the loop cannot tell the difference.
+- `get_api_key(provider)` is called **before every model call**, so an OAuth token can refresh in the middle of a long run. `api_key_opts` turns it into `{"api_key": ...}`. If it is `None`, no key is passed and the provider returns a "no API key" error ([01](01-pick-clean.md#1-pick-_providers-register_provider)).
 - `env` and `cwd` go into every `ToolContext`.
 - `get_tools`, if set, is called every turn and wins over `tools`. So the tool list can change during a run. The `Agent` class sets `get_tools=lambda: self.tools`, so changing `agent.tools` takes effect at the next turn.
 
@@ -306,9 +306,9 @@ One pass of the inner `while` is one [turn](glossary.md#turn): one model call pl
 - **Inputs.** `messages` is the full history. The loop **appends** to it (mutates it). `prompts` are the new user messages for this run. The return value is only the **new** messages, so the caller can save or show them.
 - **`add(m)`** does two things: it appends `m` to `messages` and to `new`, and it emits `message_start` / `message_end` events. Every message goes through `add`, so events and history never disagree. Events are the topic of [06](06-events-abort.md).
 - **The stop rule.** `has_calls = bool(calls)`. If the model asked for nothing, the inner loop ends. This is the only "done" signal: the model decides when it has finished.
-- **Errors end the run, not the program.** A provider error comes back as an `AssistantMessage` with `stop_reason="error"` ([02](02-fake-provider.md)). The loop adds it to history and returns. The caller sees it; retry is a separate job ([15](15-retry.md)).
+- **Errors end the run, not the program.** A provider error comes back as an `AssistantMessage` with `stop_reason="error"` ([01](01-pick-clean.md), [02](02-translate-send.md)). The loop adds it to history and returns. The caller sees it; retry is a separate job ([15](15-retry.md)).
 - **Cut-off calls are never run.** When `stop_reason == "length"`, each call gets an error result "Tool call was truncated (max tokens); not executed". Running half-written arguments (say, a `write` with half a file) would be dangerous. The model still gets a result for each call, so the next request is valid.
-- **Every tool call gets a result.** Unknown tool, bad args, crash, truncated: in every case the loop adds a `ToolResultMessage`. Providers reject a tool call with no result ([04](04-providers.md)), so this keeps the history sendable. (One exception: after an abort the remaining calls are skipped; `transform_messages` repairs that later, see [04](04-providers.md) and [06](06-events-abort.md).)
+- **Every tool call gets a result.** Unknown tool, bad args, crash, truncated: in every case the loop adds a `ToolResultMessage`. Providers reject a tool call with no result ([01](01-pick-clean.md#2-clean-transform_messages)), so this keeps the history sendable. (One exception: after an abort the remaining calls are skipped; `transform_messages` repairs that later, see [01](01-pick-clean.md#2-clean-transform_messages) and [06](06-events-abort.md).)
 - **Tools run one after another**, in the order the model gave, so results stay in the same order as the calls. (A design reason, not written in the code: two tools never edit the same file at the same time.)
 
 The parts marked `...` are: `tool_execution_*` events and abort ([06](06-events-abort.md)), steering and follow-ups ([07](07-steering.md)), and `before_tool_call` / `after_tool_call` ([08](08-hooks-approval.md)).
@@ -336,7 +336,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 
 - The tool list is read again **every turn**.
 - `system_prompt` is typed `str`, but it may also be a function (sync or async) that returns the string. A function is called every turn, so the prompt can change between turns. (What goes in the prompt is [11](11-system-prompt.md).)
-- `transform_messages` ([04](04-providers.md)) cleans the history before it is sent. The view goes through `transform_context` and `convert_to_llm` first; both do nothing by default.
+- `transform_messages` ([01](01-pick-clean.md#2-clean-transform_messages)) cleans the history before it is sent. The view goes through `transform_context` and `convert_to_llm` first; both do nothing by default.
 - The final message is taken from the last `done` or `error` event — the one rule of a stream function.
 - `_stream` wraps `stream_fn` so the call can be stopped in the middle; that is [06](06-events-abort.md).
 
@@ -427,4 +427,4 @@ uv run pytest packages/simp_agent/tests/test_core.py
 - Cut-off (`length`) tool calls are never run, but still get a result.
 - `LoopConfig.stream_fn` lets tests use `FakeProvider`; the other hooks have empty defaults and are filled in by later chapters.
 
-**Builds on:** [04 Providers](04-providers.md) · **Next:** [06 Events and abort](06-events-abort.md) — what the `send(...)` events are, and how `cancel` stops a model call or a tool in the middle.
+**Builds on:** [04 Label + test the pipeline](04-label-test.md) · **Next:** [06 Events and abort](06-events-abort.md) — what the `send(...)` events are, and how `cancel` stops a model call or a tool in the middle.

@@ -15,10 +15,10 @@ The block numbers in the picture and the table are the same, in the order the st
 
 - [00 Overview: what we build](00-overview.md) — See the whole of simp-agent before building it piece by piece.
 - [Part 1 big picture: the AI layer](part-1-ai.md) — All blocks of Part 1, their IN and OUT, on one page.
-- [01 Part 1 · Messages](01-messages.md) — Define the message types every other part passes around.
-- [02 Part 1 · A fake provider](02-fake-provider.md) — Test a model call before any real model exists.
-- [03 Part 1 · The stream parser](03-stream-parser.md) — Turn streamed deltas into a complete assistant message.
-- [04 Part 1 · Providers](04-providers.md) — Talk to real models through one small registry.
+- [01 Part 1 · Pick + Clean](01-pick-clean.md) — Pick the right code for a model, and clean the chat history before it is sent.
+- [02 Part 1 · Translate + Send](02-translate-send.md) — Turn our clean messages into one vendor's JSON, and open a stream to that vendor.
+- [03 Part 1 · Parse](03-parse.md) — Turn streamed deltas into a complete assistant message, for all three vendors.
+- [04 Part 1 · Label + test the pipeline](04-label-test.md) — Label every answer with who wrote it, read errors, and test the whole pipeline without a real model.
 - [Part 2 big picture: the agent loop](part-2-agent.md) — All blocks of Part 2, their IN and OUT, on one page.
 - [05 Part 2 · The agent loop](05-agent-loop.md) — Build the smallest loop that calls a model and runs tools.
 - [06 Part 2 · Events and abort](06-events-abort.md) — Let callers watch the loop and stop it.
