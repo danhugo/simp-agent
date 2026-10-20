@@ -299,7 +299,7 @@ FOR EACH entry in entries:
 // ponytail: whole log in memory
 ```
 
-The `msg` rows rebuild the `AgentSession` history (what the model sees). The other rows rebuild the protocol log (what clients see). The last `run_state` sets the state, and `self.seq` continues from the last row.
+The `msg` rows rebuild the `AgentSession` history (what the model sees; `from_dict` is the [JSON round trip](ref-objects.md#going-to-json-and-back)). The other rows rebuild the protocol log (what clients see). The last `run_state` sets the state, and `self.seq` continues from the last row.
 
 ### recover
 
