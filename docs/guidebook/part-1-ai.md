@@ -2,7 +2,7 @@
 
 **In one sentence:** Part 1 builds `ai.stream()`. You give it a **Model** and a **Context**. It gives back a stream of small **events**, and the last event holds one finished **AssistantMessage**.
 
-Read this page before [01](01-messages.md), and come back to it any time you get lost in [01](01-messages.md)–[04](04-providers.md). It adds no new facts; it only puts the pieces of those four chapters side by side.
+Read this page before [01](01-messages.md), and come back to it any time you get lost in [01](01-messages.md)–[04](04-providers.md). Chapters follow build order (test first); the strip at the top of each chapter shows which blocks it builds. It adds no new facts; it only puts the pieces of those four chapters side by side.
 
 ## The picture
 
@@ -14,8 +14,8 @@ Read it left to right on the top row (the question goes out), then right to left
 
 | # | Block | What it does | IN | OUT | Code (file · function) | Chapter |
 |---|---|---|---|---|---|---|
-| 1 | Pick the driver | Look up `Model.api` in `_PROVIDERS` and get a stream function. Unknown api → `error` event. | `Model` | a stream function | `ai/__init__.py` · `stream()`, `_PROVIDERS` | [04](04-providers.md#the-registry-_providers-register_provider-stream) |
-| 2 | Clean | Drop error/aborted replies, skip compaction/custom entries, add a result for tool calls with no result, fix thinking blocks for this model. | `Context.messages` | clean `messages` (new `Context`) | `ai/__init__.py` · `transform_messages()` | [01](01-messages.md), [04](04-providers.md) |
+| 1 | Pick the driver | Look up `Model.api` in `_PROVIDERS` and get a stream function. Unknown api → `error` event. | `Model` | a stream function | `ai/__init__.py` · `stream()`, `_PROVIDERS` | [04](04-providers.md#1-pick-_providers-register_provider) |
+| 2 | Clean | Drop error/aborted replies, skip compaction/custom entries, add a result for tool calls with no result, fix thinking blocks for this model. | `Context.messages` | clean `messages` (new `Context`) | `ai/__init__.py` · `transform_messages()` | [04](04-providers.md#2-clean-transform_messages) (why: [01](01-messages.md)) |
 | 3 | Translate | Rewrite our messages and tools in the vendor's own JSON. | `Context` | vendor request | `ai/providers/*.py` · `_to_anthropic()`, `to_openai()`, `to_input()` + `request()`; tools are mapped inside `stream()` | [04](04-providers.md) |
 | 4 | Send | Open one HTTP stream to the vendor with the key. | vendor request | raw chunks | `ai/providers/*.py` · `stream()` | [04](04-providers.md) |
 | 5 | Parse | Turn raw chunks into events, one per piece, and fill the `AssistantMessage`. | raw chunks | events | `ai/providers/*.py` · `parse()`; `stream()` adds `start` and the last `done`/`error` | [03](03-stream-parser.md) |

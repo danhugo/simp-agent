@@ -8,8 +8,13 @@
 
 ```mermaid
 flowchart LR
-    ai["ai ★ messages (this chapter)"] --> agent --> coding --> session --> plugins --> testing
+    O["★ cards: Message, Context, Tool, Model (this chapter)"] -.-> P
+    P["1 Pick"] --> C["2 Clean"] --> T["3 Translate"] --> S["4 Send"] --> R["5 Parse"] --> L["6 Label"]
+    classDef me fill:#ffe9a8,stroke:#c90
+    class O me
 ```
+
+Builds: the cards (objects) on the arrows · IN: nothing · OUT: `Message`, `Context`, `Tool`, `Model`
 
 Big picture of Part 1: [part-1-ai](part-1-ai.md).
 
@@ -148,7 +153,7 @@ Why each field is there:
 - `content` is a **list of blocks**, not a string. A model can think, write text, call a tool, write more text, call another tool — all in one answer. The list keeps that order.
 - `stop_reason` says why the model stopped: `stop`, `tool_use`, `length`, `error` or `aborted`. Note: the loop in ch [05](05-agent-loop.md) decides "run tools?" from `tool_calls()`, not from `tool_use`. It uses `stop_reason` for the special cases: `error` and `aborted` end the turn (ch [06](06-events-abort.md), [15](15-retry.md)); on `length` the tool calls are cut off, so they are not run and each gets an error result.
 - `usage` ([usage](glossary.md#usage)) counts input and output tokens. Compaction uses it to estimate size (ch [16](16-compaction.md)).
-- `error` and `error_kind` hold what went wrong. A provider never raises; it returns an assistant message with `stop_reason="error"` instead (ch [04](04-providers.md)). `error_kind` of `"fatal"`, `"budget"` or `"policy"` means "do not retry". The function that reads it is `is_retryable`, built in ch [04](04-providers.md#error-classification-is_retryable-is_context_overflow) and used by retry in ch [15](15-retry.md).
+- `error` and `error_kind` hold what went wrong. A provider never raises; it returns an assistant message with `stop_reason="error"` instead (ch [04](04-providers.md)). `error_kind` of `"fatal"`, `"budget"` or `"policy"` means "do not retry". The function that reads it is `is_retryable`, built in ch [04](04-providers.md#extra-error-classification-is_retryable-is_context_overflow) and used by retry in ch [15](15-retry.md).
 - `api`, `provider`, `model` record who wrote the message. `stream()` fills them in. They matter when you switch models mid-chat: some thinking blocks can only be sent back to the same model (ch [04](04-providers.md)).
 - `text()` and `tool_calls()` are small helpers so callers do not loop over blocks by hand.
 
@@ -203,7 +208,7 @@ class CustomEntry:
 - A **[compaction entry](glossary.md#compaction-entry)** marks "everything before `first_kept_index` is now replaced by `summary`". We only ever add to the end of the history; old messages are not deleted or changed. Ch [16](16-compaction.md) builds this.
 - A **[custom entry](glossary.md#custom-entry)** is a place for plugins to keep their own data in the history, so it is saved and comes back on resume. Ch [14](14-plugins.md) uses it.
 
-They have a `role` too, so they save and load just like messages. Before a request is sent, `transform_messages()` skips both (ch [04](04-providers.md#transform_messages-clean-history-before-sending)).
+They have a `role` too, so they save and load just like messages. Before a request is sent, `transform_messages()` skips both (ch [04](04-providers.md#2-clean-transform_messages)).
 
 ### Going to JSON and back
 
@@ -345,3 +350,5 @@ No model is needed. Messages are plain data, so they are the easiest part to tes
 **Builds on:** [00 Overview](00-overview.md) · **Next:** [02 A fake provider](02-fake-provider.md) — now that we have messages, we make a fake model that returns them, so we can test without a real API.
 
 **Built on by:** [03](03-stream-parser.md) (builds an `AssistantMessage` from a stream) · [04](04-providers.md) (translates messages per vendor, `transform_messages`) · [05](05-agent-loop.md) (reads `stop_reason`, adds tool results) · [13](13-session.md) (saves history) · [14](14-plugins.md) (`CustomEntry`) · [16](16-compaction.md) (`CompactionEntry`)
+
+**OUT of this chapter →** the objects every block passes; first used by the stream-function box (blocks 3–5, faked) in [02](02-fake-provider.md).

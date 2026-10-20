@@ -2,6 +2,9 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-10-20
+- Part 1 block flow: ch 01–04 "Where we are" now show the Pick→Clean→Translate→Send→Parse→Label strip with this chapter's blocks marked, plus a "Builds · IN · OUT" line and an "OUT of this chapter →" bridge at the end. ch 04 Real design reordered to flow order (Model, 1 Pick, 2 Clean + Thinking, 3/4 providers, 6 Label, error classification as an extra); anchors fixed. ch 03 notes Parse in the other two providers. (checked at `04e1df1`)
+
 ## 2026-10-19
 - Big picture review fixes: Part 3 project file is its own prompt section (diagram + SVG), block 3 runs before every model call; FakeLLM line in Part 5 SVG; "Next" links go to the next Part page.
 - Added [Part 3 big picture](part-3-coding.md) (diagram img/part-3-coding.svg, block table, objects, worked example). Linked from README and "Where we are" in 09-12. (checked at `ca8d944`)

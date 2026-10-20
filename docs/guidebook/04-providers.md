@@ -8,8 +8,12 @@
 
 ```mermaid
 flowchart LR
-    ai["ai ★ providers (this chapter)"] --> agent --> coding --> session --> plugins --> testing
+    P["1 Pick"] --> C["2 Clean"] --> T["3 Translate"] --> S["4 Send"] --> R["5 Parse"] --> L["6 Label"]
+    classDef me fill:#ffe9a8,stroke:#c90
+    class P,C,T,S,L me
 ```
+
+Builds: blocks 1, 2, 3, 4, 6 (and Parse for the other two vendors) · IN: `Model`, `Context`, `api_key` · OUT: labelled events
 
 Big picture of Part 1: [part-1-ai](part-1-ai.md).
 
@@ -117,7 +121,7 @@ CLASS Model:
 
 `api` picks the code. `provider` is just a name (for messages and keys). So a local vLLM server is `provider="vllm", api="openai-completions", base_url="http://..."`. `compat` holds small per-server switches, so odd servers need a setting, not a new provider. Profiles (ch [18](18-profiles-plugins.md)) fill these fields from config.
 
-### The registry: `_PROVIDERS`, `register_provider`, `stream`
+### 1 Pick: `_PROVIDERS`, `register_provider`
 
 The [provider registry](glossary.md#provider-registry) is a plain dict from `api` string to stream function (`ai/__init__.py`):
 
@@ -155,30 +159,7 @@ Two things here, both with a reason:
 - **Lazy import.** The provider module is imported only on the first call. The providers import `Model`, `AssistantMessage` and friends from `ai`, so importing them at the top of `ai` would be a circular import. It also means `import anthropic` happens only when you use Anthropic.
 - **No key, no call.** Providers never read environment variables. The app passes `api_key`. A missing key is an `error` event with `error_kind="fatal"`, so retry (ch [15](15-retry.md)) does not try again for nothing.
 
-Then the one entry point:
-
-Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`stream`)
-
-```text
-FUNCTION stream(model, context, opts):   // never raises
-    fn = LOOK UP model.api in _PROVIDERS
-    IF not found:
-        SEND event {error, message with error "Unknown api: ..."}
-        STOP
-    ctx = same context, but messages = transform_messages(context.messages, model)
-    FOR EACH event from fn(model, ctx, opts):
-        IF the event has a message or partial:
-            STAMP it with model.api, model.provider, model.id
-        SEND the event
-```
-
-It does three jobs for every provider, so no provider repeats them:
-
-1. Unknown `api` → `error` event, not an exception.
-2. Clean the history with `transform_messages` (next section).
-3. **Stamp** each message with `api`, `provider` and `model`. Later, `transform_messages` reads these stamps to know who wrote a turn.
-
-### `transform_messages`: clean history before sending
+### 2 Clean: `transform_messages`
 
 `transform_messages(messages, model)` does one pass over the history:
 
@@ -208,11 +189,11 @@ flush()
 - `pending` remembers tool calls still waiting for a result. When the next non-result message comes (or the end), `flush()` adds a `ToolResultMessage(..., "No result provided", is_error=True)` for each one. Now every call has a result, and the vendor accepts the history.
 - It uses `dataclasses.replace`, so the saved history is never changed. Only the copy sent to the model is.
 
-### Thinking: who can read it back
+#### Thinking: who can read it back
 
 Some models "think" before they answer. We keep that as `ThinkingContent(thinking, signature, redacted)`. The `signature` is vendor proof: an Anthropic signature, or the whole OpenAI Responses reasoning item as JSON. A **redacted** block has no readable text at all.
 
-`_thinking(m, model)` decides what to send back, using the stamps:
+`_thinking(m, model)` decides what to send back, using the stamps (written by block 6, below):
 
 Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`_thinking`)
 
@@ -237,7 +218,7 @@ FOR EACH block c in m.content:
 
 This matters when the user switches model in the middle of a session: the new model still sees what the old one thought, as text, and never gets a signature it would reject.
 
-### The three providers
+### 3 Translate / 4 Send: the three providers
 
 All three have the same plan: **convert** our messages, **call** the SDK with `stream=True`, **parse** events, and catch every exception into an `error` event. Each one imports its SDK inside `stream`, so you only need the SDK you use. (Note: the import sits just before the `try`, so a missing SDK raises `ImportError` — the one case that breaks "never raise".)
 
@@ -348,7 +329,32 @@ We do not read these raw events one by one. `client.messages.stream(...)` from t
 
 During streaming, `parse` keeps partial text on `msg` (useful if the run is aborted). At the end, the provider rebuilds `msg.content` from the SDK's `get_final_message()`, which has the complete, signed blocks.
 
-### Error classification: `is_retryable`, `is_context_overflow`
+### 6 Label: the entry point `stream`
+
+Last, the one entry point. It ties blocks 1, 2 and 6 together:
+
+Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`stream`)
+
+```text
+FUNCTION stream(model, context, opts):   // never raises
+    fn = LOOK UP model.api in _PROVIDERS
+    IF not found:
+        SEND event {error, message with error "Unknown api: ..."}
+        STOP
+    ctx = same context, but messages = transform_messages(context.messages, model)
+    FOR EACH event from fn(model, ctx, opts):
+        IF the event has a message or partial:
+            STAMP it with model.api, model.provider, model.id
+        SEND the event
+```
+
+It does three jobs for every provider, so no provider repeats them:
+
+1. Unknown `api` → `error` event, not an exception.
+2. Clean the history with `transform_messages` (block 2 above).
+3. **Stamp** each message with `api`, `provider` and `model`. Later, `transform_messages` reads these stamps to know who wrote a turn.
+
+### Extra: error classification: `is_retryable`, `is_context_overflow`
 
 Providers turn every failure into `AssistantMessage.error`, a string. Two small functions read that string:
 
@@ -443,3 +449,5 @@ uv run pytest packages/simp_agent/tests/test_openai.py packages/simp_agent/tests
 - `is_context_overflow` and `is_retryable` turn an error string into "compact", "retry" or "give up".
 
 **Builds on:** [03 The stream parser](03-stream-parser.md) · **Next:** [05 The agent loop](05-agent-loop.md) — the loop that calls `ai.stream` and runs the tools the model asks for.
+
+**OUT of this chapter →** `ai.stream()`; used as `stream_fn` by the agent loop in [05](05-agent-loop.md).

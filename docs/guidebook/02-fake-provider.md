@@ -8,14 +8,22 @@
 
 ```mermaid
 flowchart LR
-    ai["ai (messages)"] --> agent --> coding --> session --> plugins --> testing["testing ★ FakeProvider (this chapter)"]
+    P["1 Pick"] --> C["2 Clean"] --> F
+    subgraph F["★ stream function (this chapter: fake)"]
+        T["3 Translate"] --> S["4 Send"] --> R["5 Parse"]
+    end
+    F --> L["6 Label"]
+    classDef me fill:#ffe9a8,stroke:#c90
+    class F me
 ```
+
+Builds: the stream-function box (blocks 3–5), faked · IN: `Model`, `Context`, `api_key` · OUT: events, last `done`/`error` holds an `AssistantMessage`
 
 Big picture of Part 1: [part-1-ai](part-1-ai.md).
 
 In [01](01-messages.md) we made the [messages](glossary.md#message). Now we need something that *returns* messages, like a model does. A real model is slow, costs money, needs an API key, and gives a different answer each time. So before we write any real [provider](glossary.md#provider), we write a fake one.
 
-It lives in the `testing` [layer](glossary.md#layer), at the far right of the map. It may import from every other layer, and no library code imports it.
+It lives in the `testing` [layer](glossary.md#layer), at the far right of the [layer map](00-overview.md#the-layer-map). It may import from every other layer, and no library code imports it.
 
 Code in this chapter (commit `2fc2776`):
 
@@ -236,7 +244,7 @@ Real code: [testing/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/te
 
 The first reply ends with `done`, the second with `error`, and `fp.messages` kept what was sent.
 
-The fake can also stand in for `ai.stream` directly. Note one difference: `ai.stream` cleans the history with `transform_messages` before calling a provider (ch [04](04-providers.md#transform_messages-clean-history-before-sending)). The fake skips that step; it gets the messages exactly as passed.
+The fake can also stand in for `ai.stream` directly. Note one difference: `ai.stream` cleans the history with `transform_messages` before calling a provider (ch [04](04-providers.md#2-clean-transform_messages)). The fake skips that step; it gets the messages exactly as passed.
 
 > **Forward note: the fake inside the loop.** Most real tests pass the fake to the agent loop as `stream_fn`. For example, `tests/test_core.py` scripts "call the `echo` tool, then say ok" as `run(call("echo", x="a"), DONE)`. We build the loop and this `run` helper in ch [05](05-agent-loop.md), and use a reply function to steer mid-call in ch [07](07-steering.md).
 
@@ -272,3 +280,5 @@ uv run pytest -q tests/test_core.py::test_no_tool_call_one_turn \
 **Builds on:** [01 Messages](01-messages.md) · **Next:** [03 The stream parser](03-stream-parser.md) — a real provider sends many small pieces, not one message; next we build the parser that joins them.
 
 **Built on by:** [04](04-providers.md) (real providers follow the same contract) · [05](05-agent-loop.md) (loop tests) · [06](06-events-abort.md) · [07](07-steering.md) · [15](15-retry.md) (error replies) · [16](16-compaction.md) (summary replies) · [23](23-limits.md) (counting calls)
+
+**OUT of this chapter →** the stream-function shape; block 5 Parse fills it in [03](03-stream-parser.md), blocks 3–4 in [04](04-providers.md).
