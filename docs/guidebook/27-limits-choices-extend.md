@@ -240,7 +240,7 @@ FUNCTION register_provider(api, stream_fn):
 ```
 Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `register_provider`
 
-Write one async generator that yields the same events as the built-in ones ([01](01-pick-clean.md#the-shape-of-a-model-call), [03](03-parse.md)). It must not raise. Then set `api` in a profile to your new name.
+Write one async generator that yields the same events as the built-in ones ([01](01-pick-clean.md#out-the-shape-of-a-model-call), [03](03-parse.md)). It must not raise. Then set `api` in a profile to your new name.
 
 **A plugin.** This is the fix from the steps above. A **[plugin](glossary.md#plugin)** ([14](14-plugins.md)) is any object with a `name` and some optional hook methods. In `setup` it gets a **[PluginAPI](glossary.md#pluginapi)**. From `packages/simp_agent/src/simp_agent/session/__init__.py`:
 

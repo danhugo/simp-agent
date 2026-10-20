@@ -16,6 +16,7 @@ The block numbers in the picture and the table are the same, in the order the st
 - [00 Overview: what we build](00-overview.md) — See the whole of simp-agent before building it piece by piece.
 - [Part 1 big picture: the AI layer](part-1-ai.md) — All blocks of Part 1, their IN and OUT, on one page.
 - [01 Part 1 · Pick + Clean](01-pick-clean.md) — Pick the right code for a model, and clean the chat history before it is sent.
+  - [Reference · the `ai` objects](ref-objects.md) — every message, block and request field; JSON save/load.
 - [02 Part 1 · Translate + Send](02-translate-send.md) — Turn our clean messages into one vendor's JSON, and open a stream to that vendor.
 - [03 Part 1 · Parse](03-parse.md) — Turn streamed deltas into a complete assistant message, for all three vendors.
 - [04 Part 1 · Label + test the pipeline](04-label-test.md) — Label every answer with who wrote it, read errors, and test the whole pipeline without a real model.

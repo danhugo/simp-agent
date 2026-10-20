@@ -18,7 +18,7 @@ flowchart LR
 
 Big picture of Part 1: [part-1-ai](part-1-ai.md).
 
-In [01](01-pick-clean.md#the-shape-of-a-model-call) we fixed the shape of a model call: a [stream function](glossary.md#stream-function) yields event dicts and ends with `done` or `error` holding the final `AssistantMessage`. In [02](02-translate-send.md) the stream function sent the request. A real model does not answer in one piece. It sends its answer in many small pieces, called **[deltas](glossary.md#delta)**. This chapter builds the code that glues those pieces back into one message.
+In [01](01-pick-clean.md#out-the-shape-of-a-model-call) we fixed the shape of a model call: a [stream function](glossary.md#stream-function) yields event dicts and ends with `done` or `error` holding the final `AssistantMessage`. In [02](02-translate-send.md) the stream function sent the request. A real model does not answer in one piece. It sends its answer in many small pieces, called **[deltas](glossary.md#delta)**. This chapter builds the code that glues those pieces back into one message.
 
 Code in this chapter (commit `2fc2776`):
 
@@ -82,7 +82,7 @@ FUNCTION parse(chunks):
 It works for "Hello" and for one tool call. Then it breaks:
 
 - **Two tool calls at once.** Models often call two tools in one answer (`index` 0 and `index` 1). The naive code glues both argument strings into one, so `json.loads` fails.
-- **The usage chunk.** `chunk.choices[0]` raises `IndexError` on the last chunk, which has an empty `choices` list. A stream function [must never raise](01-pick-clean.md#the-shape-of-a-model-call).
+- **The usage chunk.** `chunk.choices[0]` raises `IndexError` on the last chunk, which has an empty `choices` list. A stream function [must never raise](01-pick-clean.md#out-the-shape-of-a-model-call).
 - **Bad JSON.** If the model writes broken arguments, `json.loads` raises and the whole call is lost.
 - **No stop reason.** We always say `done`, even if the server stopped because it ran out of tokens, or the stream was cut off.
 - **Thinking.** Some models send "reasoning" text before the answer. We drop it.
@@ -122,7 +122,7 @@ FUNCTION parse(chunks, compat):
 
 Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) (`parse`)
 
-`msg` is the message we build. `start` hands it out at once as `partial`, the same object that will be in `done` later. `calls` holds tool calls that are still being built. `finish` remembers the last finish reason seen. `compat` is a dict of small switches per server; it comes from the `Model` (see ch [01](01-pick-clean.md#the-model)).
+`msg` is the message we build. `start` hands it out at once as `partial`, the same object that will be in `done` later. `calls` holds tool calls that are still being built. `finish` remembers the last finish reason seen. `compat` is a dict of small switches per server; it comes from the `Model` (all keys: [ref-objects](ref-objects.md#request-objects-tool-context-model)).
 
 ```mermaid
 flowchart TD
@@ -246,7 +246,7 @@ Four cases:
 
 Plus one fix: vLLM and Ollama say `stop` even when they called a tool. If we have tool calls, the stop reason becomes `tool_use`. This keeps `stop_reason` true for UIs, events and saved history. The loop itself runs tools from `tool_calls()`, not from `stop_reason` (ch [05](05-agent-loop.md)).
 
-The last event is `error` when the stop reason is `error`, else `done`. That keeps the [stream function](glossary.md#stream-function) contract from [01](01-pick-clean.md#the-shape-of-a-model-call): the end event always holds the full message, and nothing is raised.
+The last event is `error` when the stop reason is `error`, else `done`. That keeps the [stream function](glossary.md#stream-function) contract from [01](01-pick-clean.md#out-the-shape-of-a-model-call): the end event always holds the full message, and nothing is raised.
 
 ### Usage
 

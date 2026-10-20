@@ -12,34 +12,34 @@ One folder of the `simp_agent` library (`ai`, `agent`, `coding`, `session`, `plu
 A request from the model to run one named tool with arguments (class `ToolCall` in `ai`). Home: [00](00-overview.md); built in [01](01-pick-clean.md).
 
 ## Message
-One entry in a conversation: `UserMessage`, `AssistantMessage` or `ToolResultMessage` (all in `ai`). Each has a `role` field so it can be saved to JSON and loaded back with `to_dict` / `from_dict`. Home: [01](01-pick-clean.md).
+One entry in a conversation: `UserMessage`, `AssistantMessage` or `ToolResultMessage` (all in `ai`). Each has a `role` field so it can be saved to JSON and loaded back with `to_dict` / `from_dict`. Home: [01](01-pick-clean.md#what-is-inside-messages); all fields: [ref-objects](ref-objects.md).
 
 ## Context
-Everything sent to a model in one request: system prompt, messages and tools (class `Context` in `ai`). Home: [01](01-pick-clean.md#in-packing-a-request-tool-context-model).
+Everything sent to a model in one request: system prompt, messages and tools (class `Context` in `ai`). Home: [01](01-pick-clean.md#in-model-and-context).
 
 ## Model
-Which model to call and how (class `Model` in `ai`): `id`, `provider`, `api`, `max_tokens`, `context_window`, `base_url`, `api_key_env`, `compat`. `api` picks the provider. Home: [01](01-pick-clean.md#in-packing-a-request-tool-context-model); overview: [Part 1](part-1-ai.md).
+Which model to call and how (class `Model` in `ai`): `id`, `provider`, `api`, `max_tokens`, `context_window`, `base_url`, `api_key_env`, `compat`. `api` picks the provider. Home: [01](01-pick-clean.md#in-model-and-context); all fields: [ref-objects](ref-objects.md#request-objects-tool-context-model); overview: [Part 1](part-1-ai.md).
 
 ## Tool
-What the model is told about one tool (class `Tool` in `ai`): `name`, `description`, `parameters` (JSON schema). Home: [01](01-pick-clean.md#in-packing-a-request-tool-context-model).
+What the model is told about one tool (class `Tool` in `ai`): `name`, `description`, `parameters` (JSON schema). Home: [ref-objects](ref-objects.md#request-objects-tool-context-model).
 
 ## AssistantMessage
-The model's reply: `content` blocks (`TextContent`, `ThinkingContent`, `ToolCall`), `stop_reason`, `usage`, `error`, `error_kind`, and `api`/`provider`/`model` stamped by `ai.stream`. Home: [01](01-pick-clean.md); overview: [Part 1](part-1-ai.md).
+The model's reply: `content` blocks (`TextContent`, `ThinkingContent`, `ToolCall`), `stop_reason`, `usage`, `error`, `error_kind`, and `api`/`provider`/`model` stamped by `ai.stream`. Home: [01](01-pick-clean.md#what-is-inside-messages), fields: [ref-objects](ref-objects.md#messages); overview: [Part 1](part-1-ai.md).
 
 ## Stream event
 One dict yielded by a stream function: `start`, `text_delta`, `thinking_start/delta/end`, `toolcall_start/delta/end`, then `done` or `error` with the final `AssistantMessage`. Not the same as an agent [event](#event). Home: [03](03-parse.md); overview: [Part 1](part-1-ai.md).
 
 ## Compaction entry
-A history marker (`CompactionEntry`) that says "messages before `first_kept_index` are replaced by this summary". Never sent to the model as-is. Defined in [01](01-pick-clean.md); built in [16](16-compaction.md).
+A history marker (`CompactionEntry`) that says "messages before `first_kept_index` are replaced by this summary". Never sent to the model as-is. Defined in [ref-objects](ref-objects.md#two-history-entries-that-are-not-messages); built in [16](16-compaction.md).
 
 ## Custom entry
-A history entry (`CustomEntry`) where apps and plugins keep their own data. Saved and replayed, never sent to the model. Defined in [01](01-pick-clean.md); used in [14](14-plugins.md).
+A history entry (`CustomEntry`) where apps and plugins keep their own data. Saved and replayed, never sent to the model. Defined in [ref-objects](ref-objects.md#two-history-entries-that-are-not-messages); used in [14](14-plugins.md).
 
 ## Provider
-The code that talks to one model vendor's API and turns its answer into our events and messages. Every provider is a stream function. Defined in [01](01-pick-clean.md#the-shape-of-a-model-call); built in [02](02-translate-send.md) and [03](03-parse.md); faked in [04](04-label-test.md#testing-the-pipeline-without-a-real-model).
+The code that talks to one model vendor's API and turns its answer into our events and messages. Every provider is a stream function. Defined in [01](01-pick-clean.md#out-the-shape-of-a-model-call); built in [02](02-translate-send.md) and [03](03-parse.md); faked in [04](04-label-test.md#testing-the-pipeline-without-a-real-model).
 
 ## Stream function
-An async function `(model, context, api_key=None)` that yields event dicts and ends with a `done` or `error` event holding the final `AssistantMessage`. It never raises. The loop takes it as the `stream_fn` setting. Home: [01](01-pick-clean.md#the-shape-of-a-model-call).
+An async function `(model, context, api_key=None)` that yields event dicts and ends with a `done` or `error` event holding the final `AssistantMessage`. It never raises. The loop takes it as the `stream_fn` setting. Home: [01](01-pick-clean.md#out-the-shape-of-a-model-call).
 
 ## Scripted reply
 One answer given in advance to `FakeProvider`; replies are played in order, one per model call. A reply is a message or a function `(ctx) -> message`. Home: [04](04-label-test.md#a-script-of-replies).
