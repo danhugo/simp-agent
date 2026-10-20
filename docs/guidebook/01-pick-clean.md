@@ -257,16 +257,42 @@ Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/si
 
 ```text
 same = (m.provider, m.api, m.model) equal (model.provider, model.api, model.id)
-FOR EACH block c in m.content:
+out = new empty list                                     // the new content of this message
+FOR EACH block c in m.content:                           // c = one block of the old message
     IF c is thinking:                                    // branch 1: thinking
         IF c is redacted OR (same AND c has a signature):
-            IF same: ADD c          // else drop: no text to keep, and the other model cannot open it
-        ELSE IF c has text:
-            ADD c if same, else ADD it as plain text
-    ELSE IF c is text with a signature AND not same:     // branch 2: answer text
-        ADD plain text without the signature
+            IF same: ADD c to out
+            // else skip (not added): no text to keep, and the other model cannot open it
+        ELSE IF c has text:                              // "has text" = the thinking block has words
+            IF same: ADD c to out
+            ELSE: ADD TextContent(c's words) to out      // plain text
+        // else (empty thinking): skip (not added)
+    ELSE IF c is text with a signature AND not same:     // branch 2: "is text" = an answer TextContent
+        ADD TextContent(c's words) to out                // same words, no signature
     ELSE:
-        ADD c
+        ADD c to out
+RETURN out
+```
+
+`transform_messages` then makes a **copy** of `m` with `content = out` (`dataclasses.replace`). The saved history is not changed; only the copy is sent.
+
+Note the two similar words: **"c has text"** means a *thinking* block that has words inside. **"c is text"** means the block is an answer `TextContent`.
+
+**A worked example.** An old GPT message (api `openai-responses`) has three blocks:
+
+```text
+m.content = [
+    Thinking("User wants README…", signature = <reasoning item JSON>),
+    Text("Let me read the file.", signature = {"id": "msg_1"}),
+    ToolCall(read),
+]
+```
+
+- Send to the **same GPT**: `same` is true. Every block is added as it is. `out` = the same three blocks, with their signatures.
+- Send to **Claude**: `same` is false. The thinking has a signature but is not redacted, and it has words, so it becomes plain text. The answer text has a signature, so it loses it. The tool call is added as it is.
+
+```text
+out = [Text("User wants README…"), Text("Let me read the file."), ToolCall(read)]
 ```
 
 **Branch 1 is about thinking.** For the same model, we send the block back as it is, with its proof. For another model, we keep the words as plain text and drop the proof. A redacted block has no words, so for another model it is dropped. An unsigned empty block is always dropped.
