@@ -118,7 +118,7 @@ Almost every later chapter needs "the model said X" to test something:
 
 A real model cannot do this. We cannot tell it "on the second call, return an error". And a test that calls a real API is slow, costs money, and fails when the network is down.
 
-So the plan is: the [stream function](glossary.md#stream-function) shape from [01](01-pick-clean.md#the-shape-of-a-model-call) is the only thing the loop knows. A fake that has this shape can stand in for blocks 3–5, and everything else can be tested against it. The real providers (ch [02](02-translate-send.md), [03](03-parse.md)) match the same shape.
+So the plan is: the [stream function](glossary.md#stream-function) shape from [01](01-pick-clean.md#out-the-shape-of-a-model-call) is the only thing the loop knows. A fake that has this shape can stand in for blocks 3–5, and everything else can be tested against it. The real providers (ch [02](02-translate-send.md), [03](03-parse.md)) match the same shape.
 
 ### Naive version
 
@@ -207,7 +207,7 @@ sequenceDiagram
 
 #### The instance is the function
 
-`FakeProvider` has an `async def __call__` with `yield` inside. So an instance *is* a stream function: you can pass it anywhere a `stream_fn` goes. It has the same arguments as the contract from [01](01-pick-clean.md#the-shape-of-a-model-call): `(model, ctx, api_key=None)`.
+`FakeProvider` has an `async def __call__` with `yield` inside. So an instance *is* a stream function: you can pass it anywhere a `stream_fn` goes. It has the same arguments as the contract from [01](01-pick-clean.md#out-the-shape-of-a-model-call): `(model, ctx, api_key=None)`.
 
 Why a class and not a plain function? Because it must keep state between calls: where it is in the script, and what it has seen.
 

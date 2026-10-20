@@ -30,7 +30,7 @@ Code in this chapter (commit `2fc2776`):
 
 Part 4 is almost done. The session saves, retries, compacts and runs plugins. Two gaps are left before the apps:
 
-1. **Choosing a model.** A `Model` ([01](01-pick-clean.md#the-model)) has many fields: `id`, `api`, `provider`, `base_url`, `api_key_env`, `context_window`, `max_tokens`, `compat`. Users want to write "use my `local` setup" in a settings file, not build a `Model` by hand. Both the CLI and the server need this, and they must agree.
+1. **Choosing a model.** A `Model` ([01](01-pick-clean.md#in-model-and-context), all fields: [ref-objects](ref-objects.md#request-objects-tool-context-model)) has many fields: `id`, `api`, `provider`, `base_url`, `api_key_env`, `context_window`, `max_tokens`, `compat`. Users want to write "use my `local` setup" in a settings file, not build a `Model` by hand. Both the CLI and the server need this, and they must agree.
 2. **Plugins that prove the sockets.** [14](14-plugins.md) built the hook points. We need real plugins that use them: one that keeps secrets out of the model and the logs, and one that makes the agent read-only.
 
 ## Naive version

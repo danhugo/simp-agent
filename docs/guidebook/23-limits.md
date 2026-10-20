@@ -200,7 +200,7 @@ FUNCTION spent(user_id, since, session_id = none):
 
 ### The budget guard: wrap the stream
 
-Now the check. Where do we put it? The agent calls the model through one function, `stream_fn` ([01](01-pick-clean.md#the-shape-of-a-model-call)). If we wrap that one function, every model call passes the check. That wrapper is the **[budget guard](glossary.md#budget-guard)**:
+Now the check. Where do we put it? The agent calls the model through one function, `stream_fn` ([01](01-pick-clean.md#out-the-shape-of-a-model-call)). If we wrap that one function, every model call passes the check. That wrapper is the **[budget guard](glossary.md#budget-guard)**:
 
 Real code: [budget.py](../../apps/server/src/simp_server/budget.py) — `guard`
 
