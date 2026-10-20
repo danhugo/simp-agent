@@ -37,6 +37,63 @@ Vendors differ a lot:
 | Tool result | role `tool`, one per result | `function_call_output` item | `tool_result` block inside a **user** turn |
 | Thinking | `reasoning_content` text | encrypted `reasoning` item | signed `thinking` block |
 
+**A real example.** Take one small chat in our format:
+
+```text
+system:    "You are a coding agent."
+user:      "What is in README.md?"
+assistant: ToolCall(id="call_1", name="read", arguments={"path": "README.md"})
+tool:      ToolResultMessage(tool_call_id="call_1", content="# simp-agent ...")
+```
+
+Here is the SAME chat as each vendor wants it. We built each one by following the real code (`to_openai`, `to_input`, `_to_anthropic`). We show only the chat part; fields like `model` and `tools` are cut.
+
+OpenAI Chat Completions (`messages=to_openai(...)`):
+
+```jsonc
+"messages": [
+  {"role": "system", "content": "You are a coding agent."},        // system = first message
+  {"role": "user", "content": "What is in README.md?"},            // content is a plain string
+  {"role": "assistant", "content": null,                           // no text, only a tool call -> null
+   "tool_calls": [{"id": "call_1", "type": "function",
+     "function": {"name": "read",
+                  "arguments": "{\"path\": \"README.md\"}"}}]},    // arguments is a STRING of JSON
+  {"role": "tool", "tool_call_id": "call_1",
+   "content": "# simp-agent ..."}                                   // tool result = its own role "tool"
+]
+```
+
+OpenAI Responses (`input=to_input(...)`):
+
+```jsonc
+"input": [
+  {"role": "system", "content": "You are a coding agent."},        // system = first item ("developer" for reasoning models)
+  {"role": "user",
+   "content": [{"type": "input_text", "text": "What is in README.md?"}]},  // text is a typed part
+  {"type": "function_call", "call_id": "call_1", "name": "read",
+   "arguments": "{\"path\": \"README.md\"}"},                      // tool call = its own item, not inside a message; arguments a STRING
+  {"type": "function_call_output", "call_id": "call_1",
+   "output": "# simp-agent ..."}                                    // tool result = its own item
+]
+```
+
+Anthropic Messages (`system=...`, `messages=_to_anthropic(...)`):
+
+```jsonc
+"system": "You are a coding agent.",                                // system = separate field, not a message
+"messages": [
+  {"role": "user", "content": [{"type": "text", "text": "What is in README.md?"}]},
+  {"role": "assistant", "content": [
+    {"type": "tool_use", "id": "call_1", "name": "read",
+     "input": {"path": "README.md"}}]},                             // tool call = block; input is an OBJECT, not a string
+  {"role": "user", "content": [
+    {"type": "tool_result", "tool_use_id": "call_1",
+     "content": "# simp-agent ...", "is_error": false}]}            // tool result = block inside a USER turn
+]
+```
+
+One chat, three very different shapes. This is why we need block 3 Translate.
+
 And sending can fail in many ways: network down, bad key, a 529 "overloaded". The [stream function](glossary.md#stream-function) rule says "never raise", so every failure must become an `error` event.
 
 ## 3 Translate / 4 Send: the three providers
