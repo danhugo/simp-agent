@@ -298,9 +298,9 @@ m.content = [
 out = [TextBlock("User wants README…"), TextBlock("Let me read the file."), ToolCall(read)]
 ```
 
-**Branch 1 is about thinking blocks.** For the same model, we send the thinking block back as it is, with its signature. For another model, we put its words into a text block and drop the signature. A redacted thinking block has no words, so for another model it is dropped. A thinking block with no signature and no words is always dropped.
+**Thinking blocks.** For the same model, we send the thinking block back as it is, with its signature. For another model, we put its words into a text block and drop the signature. A redacted thinking block has no words, so for another model it is dropped. A thinking block with no signature and no words is always dropped.
 
-**Branch 2 is about text blocks, not thinking blocks.** OpenAI Responses puts the message id and phase on a text block as a `signature`. Another model does not know this id. So for another model we send a text block with the same words and no signature. For the same model the block is sent as it is.
+**Text blocks with a signature.** OpenAI Responses puts the message id and phase on a text block as a `signature`. Another model does not know this id. So for another model we send a text block with the same words and no signature. For the same model the block is sent as it is.
 
 | Block | Same model | Other model |
 |---|---|---|
