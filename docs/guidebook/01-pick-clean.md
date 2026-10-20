@@ -237,32 +237,51 @@ flush()
 
 ### Thinking: who can read it back
 
-Some models "think" before they answer. We keep that as `ThinkingContent(thinking, signature, redacted)`. The `signature` is vendor proof: an Anthropic signature, or the whole OpenAI Responses reasoning item as JSON. A **redacted** block has no readable text at all.
+**A scenario.** Last turn, Claude "thought" before it answered. That thinking is saved in the history. Now we send the whole history again. Two cases:
 
-`_thinking(m, model)` decides what to send back, using the stamps (written by block 6 Label, ch [04](04-label-test.md)):
+- We send it to the **same** Claude again.
+- The user switched to GPT in the middle of the session, so we send it to **another** model.
+
+The same old message must be cleaned in a different way for each case. `_thinking(m, model)` does this.
+
+**What `same` means.** `same` is true when the old message `m` was written by the exact model we call now: same provider, same api and same model id. It is *not* about the kind of block. We know who wrote `m` from its stamps (written by block 6 Label, ch [04](04-label-test.md)).
+
+**The words we need:**
+
+- A thinking block is `ThinkingContent(thinking, signature, redacted)`.
+- **Signature** = vendor proof. The vendor made it, and only the vendor checks it. It is an Anthropic signature, or (for OpenAI Responses) the whole reasoning item as JSON.
+- **Redacted** = Anthropic encrypted thinking. It has no readable text at all, only data that Claude can open.
+- **Plain text** = a normal `TextContent`, the same kind of block as an answer. A model never accepts another vendor's thinking block, but every model accepts text. So for another model we keep the thoughts as readable text, in the same place in the message.
 
 Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`_thinking`)
 
 ```text
 same = (m.provider, m.api, m.model) equal (model.provider, model.api, model.id)
 FOR EACH block c in m.content:
-    IF c is thinking:
+    IF c is thinking:                                    // branch 1: thinking
         IF c is redacted OR (same AND c has a signature):
-            IF same: ADD c          // else drop: the other model cannot verify it
+            IF same: ADD c          // else drop: no text to keep, and the other model cannot open it
         ELSE IF c has text:
             ADD c if same, else ADD it as plain text
-    ELSE IF c is text with a signature AND not same:
+    ELSE IF c is text with a signature AND not same:     // branch 2: answer text
         ADD plain text without the signature
-    ...
+    ELSE:
+        ADD c
 ```
 
-| Thinking block | Same model | Other model |
-|---|---|---|
-| signed or redacted | kept as is | dropped (it cannot verify it) |
-| unsigned, with text | kept | turned into plain text |
-| unsigned, empty | dropped | dropped |
+**Branch 1 is about thinking.** For the same model, we send the block back as it is, with its proof. For another model, we keep the words as plain text and drop the proof. A redacted block has no words, so for another model it is dropped. An unsigned empty block is always dropped.
 
-This matters when the user switches model in the middle of a session: the new model still sees what the old one thought, as text, and never gets a signature it would reject.
+**Branch 2 is about ANSWER text, not thinking.** OpenAI Responses puts the message id and phase on a text block as a `signature`. Another model does not know this id. So for another model we keep the words and drop the signature. For the same model the block is sent as it is.
+
+| Block | Same model | Other model |
+|---|---|---|
+| redacted thinking | kept as is | dropped (no text, cannot open it) |
+| signed thinking | kept as is | plain text, signature dropped (dropped if it has no text) |
+| unsigned thinking, with text | kept | plain text |
+| unsigned thinking, empty | dropped | dropped |
+| answer text with a signature | kept as is | plain text, signature dropped |
+
+In one line: the same model gets its blocks back with their proof; another model gets only the readable words, as plain text.
 
 ## Test
 
@@ -313,7 +332,7 @@ uv run pytest -q tests/test_openai.py::test_dispatch_by_api \
 - **Pick:** `Model.api` picks a stream function from the `_PROVIDERS` dict. `register_provider` adds your own. Built-ins are imported lazily, and refuse to run without an `api_key` (`error_kind="fatal"`).
 - A model call is a **stream function**: `(model, context, api_key=None)` → async events, ending with `done` or `error`, never raising.
 - Messages are user, assistant (a list of text / thinking / tool-call blocks) and tool result.
-- **Clean:** `transform_messages` drops markers and failed turns, and adds "No result provided" for orphan tool calls. Signed or redacted thinking goes back only to the same model (other models: dropped); unsigned thinking with text becomes plain text for other models.
+- **Clean:** `transform_messages` drops markers and failed turns, and adds "No result provided" for orphan tool calls. The same model gets its thinking back as it is; another model gets only the readable words as plain text (redacted thinking is dropped).
 
 **Builds on:** [00 Overview](00-overview.md) · **Next:** [02 Translate + Send](02-translate-send.md) — the stream function turns the clean messages into one vendor's JSON and sends them.
 
