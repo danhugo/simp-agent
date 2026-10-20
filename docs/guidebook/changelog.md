@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-20
+- ch01 `_thinking` pseudo: one wording everywhere ("thinking block", "text block", "has words"); old "has text / is text" note removed; worked example, branch notes and table use the same words.
 - ch01 "From naive to real" rewritten: one step per problem from "Where it breaks" (table, late import, never raise), tiny examples, no code names or chapter jumps inside steps; "Real code" labelled fix 1/2/3, repeated "Two things here" removed. ch03 problem bullets reordered to match steps; ch04 adds the missing "replies cannot react" problem and drops code names from steps. (checked at `1d8b39d`)
 - ch01: rewrote "Thinking: who can read it back" with a scenario; defined `same`, redacted, signature, plain text; split the answer-text branch; fixed the table (signed thinking becomes plain text for another model, not dropped).
 - ch01-04 polish (coherence review): ch03 links object fields to ref-objects; `LoopConfig.stream_fn` fake note moved from ch01 to ch04 "Why a fake"; ch01 naive Pick drops orphan-call bullet, "errors as strings" note moved into Clean, repeated Clean bullets removed; JSON round-trip / CustomEntry links to ref-objects in glossary, ch13, ch22. (checked at `d06ae9d`)

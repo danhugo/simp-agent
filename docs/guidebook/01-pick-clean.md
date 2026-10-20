@@ -248,31 +248,32 @@ The same old message must be cleaned in a different way for each case. `_thinkin
 
 **The words we need:**
 
-- A thinking block is `ThinkingContent(thinking, signature, redacted)`.
+- A **thinking block** is `ThinkingContent(thinking, signature, redacted)`. Its words are in `thinking`; "has words" means `thinking` is not empty.
 - **Signature** = vendor proof. The vendor made it, and only the vendor checks it. It is an Anthropic signature, or (for OpenAI Responses) the whole reasoning item as JSON.
-- **Redacted** = Anthropic encrypted thinking. It has no readable text at all, only data that Claude can open.
-- **Plain text** = a normal `TextContent`, the same kind of block as an answer. A model never accepts another vendor's thinking block, but every model accepts text. So for another model we keep the thoughts as readable text, in the same place in the message.
+- **Redacted** = Anthropic encrypted thinking. It has no readable words at all, only data that Claude can open.
+- A **text block** is a normal `TextContent`, the same kind of block as an answer. A model never accepts another vendor's thinking block, but every model accepts a text block. So for another model we put the thinking words into a text block (plain text), in the same place in the message.
 
 Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`_thinking`)
 
 ```text
 same = (m.provider, m.api, m.model) equal (model.provider, model.api, model.id)
-out = new empty list                                     // the new content of this message
-FOR EACH block c in m.content:                           // c = one block of the old message
-    IF c is thinking:                                    // branch 1: thinking
-        IF c is redacted:                                // sealed envelope: only the same model can open it
-            IF same: ADD c to out
-            // else skip (not added): no words to keep, the other model cannot open it
+out = new empty list
+FOR EACH block c in m.content:
+    IF c is a thinking block:
+        IF c is redacted:
+            IF same: ADD c to out                  // send as it is
+            // else skip: no words, the other model cannot open it
         ELSE IF same AND c has a signature:
-            ADD c to out                                 // send back as it is, with its proof
-        ELSE IF c has text:                              // "has text" = the thinking block has words
+            ADD c to out                           // send as it is, with its signature
+        ELSE IF c has words:
             IF same: ADD c to out
-            ELSE: ADD TextContent(c's words) to out      // plain text
-        // else (empty thinking): skip (not added)
-    ELSE IF c is text with a signature AND not same:     // branch 2: "is text" = an answer TextContent
-        ADD TextContent(c's words) to out                // same words, no signature
+            ELSE: ADD a text block with c's words to out   // thinking becomes plain text
+        // else (empty thinking block): skip
+    ELSE IF c is a text block with a signature AND not same:
+        // e.g. an OpenAI Responses text block (signature = its message id), user switched to Claude
+        ADD a text block without the signature to out      // same words, no id
     ELSE:
-        ADD c to out
+        ADD c to out                               // send as it is
 RETURN out
 ```
 
@@ -280,38 +281,36 @@ The real code joins the first two checks into one `if c.redacted or (same and c.
 
 `transform_messages` then makes a **copy** of `m` with `content = out` (`dataclasses.replace`). The saved history is not changed; only the copy is sent.
 
-Note the two similar words: **"c has text"** means a *thinking* block that has words inside. **"c is text"** means the block is an answer `TextContent`.
-
 **A worked example.** An old GPT message (api `openai-responses`) has three blocks:
 
 ```text
 m.content = [
-    Thinking("User wants README…", signature = <reasoning item JSON>),
-    Text("Let me read the file.", signature = {"id": "msg_1"}),
+    ThinkingBlock("User wants README…", signature = <reasoning item JSON>),
+    TextBlock("Let me read the file.", signature = {"id": "msg_1"}),
     ToolCall(read),
 ]
 ```
 
 - Send to the **same GPT**: `same` is true. Every block is added as it is. `out` = the same three blocks, with their signatures.
-- Send to **Claude**: `same` is false. The thinking has a signature but is not redacted, and it has words, so it becomes plain text. The answer text has a signature, so it loses it. The tool call is added as it is.
+- Send to **Claude**: `same` is false. The thinking block has a signature but is not redacted, and it has words, so it becomes a text block with the same words. The text block has a signature, so it loses it. The tool call is added as it is.
 
 ```text
-out = [Text("User wants README…"), Text("Let me read the file."), ToolCall(read)]
+out = [TextBlock("User wants README…"), TextBlock("Let me read the file."), ToolCall(read)]
 ```
 
-**Branch 1 is about thinking.** For the same model, we send the block back as it is, with its proof. For another model, we keep the words as plain text and drop the proof. A redacted block has no words, so for another model it is dropped. An unsigned empty block is always dropped.
+**Branch 1 is about thinking blocks.** For the same model, we send the thinking block back as it is, with its signature. For another model, we put its words into a text block and drop the signature. A redacted thinking block has no words, so for another model it is dropped. A thinking block with no signature and no words is always dropped.
 
-**Branch 2 is about ANSWER text, not thinking.** OpenAI Responses puts the message id and phase on a text block as a `signature`. Another model does not know this id. So for another model we keep the words and drop the signature. For the same model the block is sent as it is.
+**Branch 2 is about text blocks, not thinking blocks.** OpenAI Responses puts the message id and phase on a text block as a `signature`. Another model does not know this id. So for another model we send a text block with the same words and no signature. For the same model the block is sent as it is.
 
 | Block | Same model | Other model |
 |---|---|---|
-| redacted thinking | kept as is | dropped (no text, cannot open it) |
-| signed thinking | kept as is | plain text, signature dropped (dropped if it has no text) |
-| unsigned thinking, with text | kept | plain text |
-| unsigned thinking, empty | dropped | dropped |
-| answer text with a signature | kept as is | plain text, signature dropped |
+| redacted thinking block | kept as is | dropped (no words, cannot open it) |
+| thinking block with a signature | kept as is | text block with its words, signature dropped (dropped if it has no words) |
+| thinking block, no signature, has words | kept | text block with its words |
+| thinking block, no signature, no words | dropped | dropped |
+| text block with a signature | kept as is | text block, signature dropped |
 
-In one line: the same model gets its blocks back with their proof; another model gets only the readable words, as plain text.
+In one line: the same model gets its blocks back with their proof; another model gets only the readable words, in text blocks.
 
 ## Test
 
