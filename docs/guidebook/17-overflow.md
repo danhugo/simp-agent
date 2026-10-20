@@ -31,7 +31,7 @@ Code in this chapter (commit `2fc2776`):
 - `Model.context_window` may be set wrong in a profile ([18](18-profiles-plugins.md)).
 - One tool result can be huge and arrive in the same turn.
 
-So sometimes the provider answers: "prompt is too long: 210000 tokens > 200000 maximum". The stream ends with an assistant error ([03](03-stream-parser.md)). The retry from [15](15-retry.md) does not help: the same request fails again. Without a fix, the session is stuck: every new prompt makes the history even bigger.
+So sometimes the provider answers: "prompt is too long: 210000 tokens > 200000 maximum". The stream ends with an assistant error ([03](03-parse.md)). The retry from [15](15-retry.md) does not help: the same request fails again. Without a fix, the session is stuck: every new prompt makes the history even bigger.
 
 This is a **[context overflow](glossary.md#context-overflow)**.
 
@@ -184,7 +184,7 @@ Read it line by line:
 Why does `continue_()` now work? Two things:
 
 1. `compact()` appended a `CompactionEntry` ([16](16-compaction.md)). `build_view` now sends the summary plus recent messages, not the full history.
-2. The overflow error message stays in history (append-only), but `transform_messages` drops error turns from what is sent ([04](04-providers.md)). So the model does not see "prompt is too long" either.
+2. The overflow error message stays in history (append-only), but `transform_messages` drops error turns from what is sent ([01](01-pick-clean.md#2-clean-transform_messages)). So the model does not see "prompt is too long" either.
 
 Note that `compact()` here runs with the session's normal settings. It does not try to cut harder. If the recent part alone (`keep_recent_tokens`) is still too big, the second call overflows and the run stops. That is a clear error for the user, better than a loop.
 
@@ -263,7 +263,7 @@ async def test_overflow_compacts_and_retries_once():
 What it checks:
 
 - The model has a big default window, so `should_compact` is false. Only the overflow can trigger compaction.
-- `FakeProvider` ([02](02-fake-provider.md)) replies: first the overflow error, then `"SUM"` (the summary call), then `DONE`.
+- `FakeProvider` ([04](04-label-test.md)) replies: first the overflow error, then `"SUM"` (the summary call), then `DONE`.
 - 3 calls in total, and the run ends with `DONE`.
 - The third call starts with the summary (`SUM_HEAD`) and does not contain the overflow error.
 

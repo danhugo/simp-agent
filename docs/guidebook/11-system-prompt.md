@@ -31,7 +31,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-Every model call takes a [context](glossary.md#context): a system prompt, the messages, and the tools ([01](01-messages.md)). Until now our tests passed a fixed string like `"s"`. For a real coding agent that is not enough:
+Every model call takes a [context](glossary.md#context): a system prompt, the messages, and the tools ([01](01-pick-clean.md)). Until now our tests passed a fixed string like `"s"`. For a real coding agent that is not enough:
 
 1. **Role.** Without a role, the model may chat instead of acting.
 2. **Tools.** The tool schemas are sent, but a short list with one line per tool, in plain words, helps the model choose well.
@@ -237,7 +237,7 @@ INSIDE _llm_turn:
         ...
 ```
 
-The session passes `self._build_prompt` to `Agent(...)`. So before **every** model call, the sections are rebuilt. The loop does not know about sections; it only sees "a string, or a thing that gives a string". Each provider then puts that string where its API wants it ([04](04-providers.md)): `system=` for Anthropic, a `system` (or `developer`) message for OpenAI.
+The session passes `self._build_prompt` to `Agent(...)`. So before **every** model call, the sections are rebuilt. The loop does not know about sections; it only sees "a string, or a thing that gives a string". Each provider then puts that string where its API wants it ([02](02-translate-send.md)): `system=` for Anthropic, a `system` (or `developer`) message for OpenAI.
 
 ## Test
 
@@ -258,7 +258,7 @@ async def test_context_file_in_system_prompt(tmp_path):
 What it shows:
 
 - A real `AGENTS.md` in a temp folder, a session with that `cwd`, and **no** `system_prompt` argument — so the default coding prompt is used.
-- The fake stream function plays the role of the [provider](glossary.md#provider) ([02](02-fake-provider.md)). It does not answer anything useful; it just **records** the system prompt it got.
+- The fake stream function plays the role of the [provider](glossary.md#provider) ([04](04-label-test.md)). It does not answer anything useful; it just **records** the system prompt it got.
 - The check: the file's text (`use tabs`) **and** its path (`AGENTS.md`) are in the prompt the model saw. This goes end to end: `start()` → `load_context_file` → section → `_build_prompt` → `_llm_turn` → `Context`.
 
 Run it:

@@ -150,7 +150,7 @@ Before the mode, `main` builds the model. `resolve_config` takes a profile from 
 REMOVE "api_key" from cfg, if it is there     // keys never come from the file
 ```
 
-Only the name of an environment variable (`api_key_env`) can be in settings. `env_api_key(model)` is the CLI's `get_api_key`: it reads that variable, then falls back to `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. Providers never read the environment themselves ([04](04-providers.md)); the app does.
+Only the name of an environment variable (`api_key_env`) can be in settings. `env_api_key(model)` is the CLI's `get_api_key`: it reads that variable, then falls back to `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. Providers never read the environment themselves ([01](01-pick-clean.md#1-pick-_providers-register_provider)); the app does.
 
 ### Sessions on disk
 
@@ -387,7 +387,7 @@ No terminal, no model, no event loop. That is why `route` is a pure function and
 Other tests in the same files use the same idea:
 
 - `test_approval_answer_default_no` and `test_interrupt_action` test the other pure functions.
-- `test_deny_skips_tool` and `test_always_asks_once_and_read_never_asks` run an `AgentSession` on `FakeProvider` ([02](02-fake-provider.md)) with an `approve` function.
+- `test_deny_skips_tool` and `test_always_asks_once_and_read_never_asks` run an `AgentSession` on `FakeProvider` ([04](04-label-test.md)) with an `approve` function.
 - `test_print_mode_full_lines_no_ansi` (in `test_tui.py`) feeds deltas to `LinePrinter` and checks it prints only full lines, with no ANSI.
 - `test_pty_streaming_screen` starts a real REPL in a pseudo terminal and reads the screen with `pyte`. It checks that the answer shows while it still streams.
 

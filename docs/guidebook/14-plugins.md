@@ -314,7 +314,7 @@ async def test_plugin_context_chain_and_error_isolated():
 What it checks:
 
 - `Rec` builds a plugin from keyword hooks. No base class needed.
-- The chain: `p1` adds `"A"`, `p3` sees `"A"` and adds `"AB"`. The model (a `FakeProvider`, [02](02-fake-provider.md)) got `["hi", "A", "AB"]`.
+- The chain: `p1` adds `"A"`, `p3` sees `"A"` and adds `"AB"`. The model (a `FakeProvider`, [04](04-label-test.md)) got `["hi", "A", "AB"]`.
 - Isolation: `p2` raised, but the run went on, and one `plugin_error` event names `p2` and `context`.
 
 The sibling test `test_plugin_tool_call_first_block_exception_and_result_merge` in the same file checks the fail-closed rule for `tool_call`.

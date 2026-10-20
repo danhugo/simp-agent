@@ -200,7 +200,7 @@ FUNCTION spent(user_id, since, session_id = none):
 
 ### The budget guard: wrap the stream
 
-Now the check. Where do we put it? The agent calls the model through one function, `stream_fn` ([04](04-providers.md)). If we wrap that one function, every model call passes the check. That wrapper is the **[budget guard](glossary.md#budget-guard)**:
+Now the check. Where do we put it? The agent calls the model through one function, `stream_fn` ([01](01-pick-clean.md#the-shape-of-a-model-call)). If we wrap that one function, every model call passes the check. That wrapper is the **[budget guard](glossary.md#budget-guard)**:
 
 Real code: [budget.py](../../apps/server/src/simp_server/budget.py) — `guard`
 
@@ -218,7 +218,7 @@ FUNCTION guard(stream_fn, check):
 
 Key idea: one wrapper on the one model door, so every call is checked. Limit: it checks money already spent, not the next cost.
 
-`check` is an async function. It returns `None` when all is fine, or a text when the call must be refused. If refused, the guard does **not** call the real model. It yields one `error` event with an `AssistantMessage` that has `stop_reason="error"`. For the agent this looks like a normal failed model call ([03](03-stream-parser.md)). So the loop stops in the normal way. No new code path in the agent.
+`check` is an async function. It returns `None` when all is fine, or a text when the call must be refused. If refused, the guard does **not** call the real model. It yields one `error` event with an `AssistantMessage` that has `stop_reason="error"`. For the agent this looks like a normal failed model call ([03](03-parse.md)). So the loop stops in the normal way. No new code path in the agent.
 
 Note `error_kind="budget"`. Retry ([15](15-retry.md)) never retries `"fatal" | "budget" | "policy"` errors (see `is_retryable`). A refused call would only be refused again.
 
@@ -399,7 +399,7 @@ async def test_run_budget_stops_tool_loop(tmp_path):
 
 What it checks:
 
-- The `FakeProvider` ([02](02-fake-provider.md)) has five replies, each asking for a `bash` call. This is the runaway loop.
+- The `FakeProvider` ([04](04-label-test.md)) has five replies, each asking for a `bash` call. This is the runaway loop.
 - Each call costs $1. The run limit is $1.5.
 - After call 2 the spend is $2, over the limit. Call 3 is refused **before** it reaches the provider, so `fp.calls == 2`.
 - The run ends in state `"error"`, and the store holds exactly $2.

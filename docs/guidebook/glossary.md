@@ -9,46 +9,46 @@ A program that takes a task in plain words, asks a language model what to do, ru
 One folder of the `simp_agent` library (`ai`, `agent`, `coding`, `session`, `plugins`, `testing`). A layer imports only layers to its left; `test_layers.py` checks this. Home: [00](00-overview.md#the-layer-map).
 
 ## Tool call
-A request from the model to run one named tool with arguments (class `ToolCall` in `ai`). Home: [00](00-overview.md); built in [01](01-messages.md).
+A request from the model to run one named tool with arguments (class `ToolCall` in `ai`). Home: [00](00-overview.md); built in [01](01-pick-clean.md).
 
 ## Message
-One entry in a conversation: `UserMessage`, `AssistantMessage` or `ToolResultMessage` (all in `ai`). Each has a `role` field so it can be saved to JSON and loaded back with `to_dict` / `from_dict`. Home: [01](01-messages.md).
+One entry in a conversation: `UserMessage`, `AssistantMessage` or `ToolResultMessage` (all in `ai`). Each has a `role` field so it can be saved to JSON and loaded back with `to_dict` / `from_dict`. Home: [01](01-pick-clean.md).
 
 ## Context
-Everything sent to a model in one request: system prompt, messages and tools (class `Context` in `ai`). Home: [01](01-messages.md#packing-a-request-tool-context-model).
+Everything sent to a model in one request: system prompt, messages and tools (class `Context` in `ai`). Home: [01](01-pick-clean.md#in-packing-a-request-tool-context-model).
 
 ## Model
-Which model to call and how (class `Model` in `ai`): `id`, `provider`, `api`, `max_tokens`, `context_window`, `base_url`, `api_key_env`, `compat`. `api` picks the provider. Home: [01](01-messages.md#packing-a-request-tool-context-model); overview: [Part 1](part-1-ai.md).
+Which model to call and how (class `Model` in `ai`): `id`, `provider`, `api`, `max_tokens`, `context_window`, `base_url`, `api_key_env`, `compat`. `api` picks the provider. Home: [01](01-pick-clean.md#in-packing-a-request-tool-context-model); overview: [Part 1](part-1-ai.md).
 
 ## Tool
-What the model is told about one tool (class `Tool` in `ai`): `name`, `description`, `parameters` (JSON schema). Home: [01](01-messages.md#packing-a-request-tool-context-model).
+What the model is told about one tool (class `Tool` in `ai`): `name`, `description`, `parameters` (JSON schema). Home: [01](01-pick-clean.md#in-packing-a-request-tool-context-model).
 
 ## AssistantMessage
-The model's reply: `content` blocks (`TextContent`, `ThinkingContent`, `ToolCall`), `stop_reason`, `usage`, `error`, `error_kind`, and `api`/`provider`/`model` stamped by `ai.stream`. Home: [01](01-messages.md); overview: [Part 1](part-1-ai.md).
+The model's reply: `content` blocks (`TextContent`, `ThinkingContent`, `ToolCall`), `stop_reason`, `usage`, `error`, `error_kind`, and `api`/`provider`/`model` stamped by `ai.stream`. Home: [01](01-pick-clean.md); overview: [Part 1](part-1-ai.md).
 
 ## Stream event
-One dict yielded by a stream function: `start`, `text_delta`, `thinking_start/delta/end`, `toolcall_start/delta/end`, then `done` or `error` with the final `AssistantMessage`. Not the same as an agent [event](#event). Home: [03](03-stream-parser.md); overview: [Part 1](part-1-ai.md).
+One dict yielded by a stream function: `start`, `text_delta`, `thinking_start/delta/end`, `toolcall_start/delta/end`, then `done` or `error` with the final `AssistantMessage`. Not the same as an agent [event](#event). Home: [03](03-parse.md); overview: [Part 1](part-1-ai.md).
 
 ## Compaction entry
-A history marker (`CompactionEntry`) that says "messages before `first_kept_index` are replaced by this summary". Never sent to the model as-is. Defined in [01](01-messages.md); built in [16](16-compaction.md).
+A history marker (`CompactionEntry`) that says "messages before `first_kept_index` are replaced by this summary". Never sent to the model as-is. Defined in [01](01-pick-clean.md); built in [16](16-compaction.md).
 
 ## Custom entry
-A history entry (`CustomEntry`) where apps and plugins keep their own data. Saved and replayed, never sent to the model. Defined in [01](01-messages.md); used in [14](14-plugins.md).
+A history entry (`CustomEntry`) where apps and plugins keep their own data. Saved and replayed, never sent to the model. Defined in [01](01-pick-clean.md); used in [14](14-plugins.md).
 
 ## Provider
-The code that talks to one model vendor's API and turns its answer into our events and messages. Every provider is a stream function. Defined in [02](02-fake-provider.md); built in [04](04-providers.md).
+The code that talks to one model vendor's API and turns its answer into our events and messages. Every provider is a stream function. Defined in [01](01-pick-clean.md#the-shape-of-a-model-call); built in [02](02-translate-send.md) and [03](03-parse.md); faked in [04](04-label-test.md#testing-the-pipeline-without-a-real-model).
 
 ## Stream function
-An async function `(model, context, api_key=None)` that yields event dicts and ends with a `done` or `error` event holding the final `AssistantMessage`. It never raises. The loop takes it as the `stream_fn` setting. Home: [02](02-fake-provider.md#the-shape-of-a-model-call).
+An async function `(model, context, api_key=None)` that yields event dicts and ends with a `done` or `error` event holding the final `AssistantMessage`. It never raises. The loop takes it as the `stream_fn` setting. Home: [01](01-pick-clean.md#the-shape-of-a-model-call).
 
 ## Scripted reply
-One answer given in advance to `FakeProvider`; replies are played in order, one per model call. A reply is a message or a function `(ctx) -> message`. Home: [02](02-fake-provider.md#a-script-of-replies).
+One answer given in advance to `FakeProvider`; replies are played in order, one per model call. A reply is a message or a function `(ctx) -> message`. Home: [04](04-label-test.md#a-script-of-replies).
 
 ## Delta
-One small piece of a streamed model answer (a bit of text, thinking, or tool-call arguments). The stream parser joins deltas into one `AssistantMessage` and yields each one as a `*_delta` event. Home: [03](03-stream-parser.md).
+One small piece of a streamed model answer (a bit of text, thinking, or tool-call arguments). The stream parser joins deltas into one `AssistantMessage` and yields each one as a `*_delta` event. Home: [03](03-parse.md).
 
 ## Usage
-The token count of one model call, kept in `AssistantMessage.usage` as `{"input", "output", "reasoning"}`. `reasoning` is already inside `output`. Home: [03](03-stream-parser.md#usage).
+The token count of one model call, kept in `AssistantMessage.usage` as `{"input", "output", "reasoning"}`. `reasoning` is already inside `output`. Home: [03](03-parse.md#usage).
 
 ## Agent loop
 The loop that calls the model, runs the tool calls it asks for, adds the results, and calls the model again until it stops asking (`agent_loop` in `agent`). Built in [05](05-agent-loop.md#agent_loop-the-loop).
@@ -72,10 +72,10 @@ The rule that, when `LocalEnv` has a `root`, a file path may not leave it. `_pat
 How `exec` stops a command: the shell starts in a new process group (`start_new_session=True`), and `run_kill` sends `SIGKILL` to the whole group until it is empty, so background children die too. Home: [09](09-exec-env.md#process-group-kill).
 
 ## Provider registry
-The dict `_PROVIDERS` in `ai` that maps a `Model.api` string (`anthropic-messages`, `openai-completions`, `openai-responses`) to a stream function. `register_provider` adds or replaces one; `ai.stream` looks it up. Home: [04](04-providers.md#1-pick-_providers-register_provider).
+The dict `_PROVIDERS` in `ai` that maps a `Model.api` string (`anthropic-messages`, `openai-completions`, `openai-responses`) to a stream function. `register_provider` adds or replaces one; `ai.stream` looks it up. Home: [01](01-pick-clean.md#1-pick-_providers-register_provider).
 
 ## Context overflow
-An error that says the request is bigger than the model's context window. Found by `is_context_overflow`; never retried as-is. Defined in [04](04-providers.md#extra-error-classification-is_retryable-is_context_overflow); handled in [17](17-overflow.md).
+An error that says the request is bigger than the model's context window. Found by `is_context_overflow`; never retried as-is. Defined in [04](04-label-test.md#extra-error-classification-is_retryable-is_context_overflow); handled in [17](17-overflow.md).
 
 ## Event
 A small dict with a `"type"` key (`agent_start`, `turn_start`, `message_update`, `message_end`, `tool_execution_start`, `turn_end`, `agent_end`, …) that the agent loop sends through `emit` so callers can watch a run. `Agent.subscribe` adds a listener. Home: [06](06-events-abort.md#events-one-stream-of-small-dicts).

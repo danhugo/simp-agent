@@ -33,7 +33,7 @@ Paths are under `packages/simp_agent/src/simp_agent/`.
 ## Which block is inside which
 
 - **`agent_loop()` is the whole Part.** It does blocks 1, 2, 5, 9 itself, and the hooks 6 and 8 inside `agent_loop()` itself.
-- **One model turn = `_llm_turn()`** = blocks 3 and 4. Inside block 4, `_stream()` wraps `stream_fn`. `stream_fn` is `ai.stream()` from Part 1 (or `FakeProvider` in tests, [02](02-fake-provider.md)).
+- **One model turn = `_llm_turn()`** = blocks 3 and 4. Inside block 4, `_stream()` wraps `stream_fn`. `stream_fn` is `ai.stream()` from Part 1 (or `FakeProvider` in tests, [04](04-label-test.md)).
 - **`run_tool()`** is block 7 only. The hooks (6, 8) are *around* it, in `agent_loop()`.
 - **The `Agent` class** ([06](06-events-abort.md)) is *outside* the loop. It keeps the history, the subscribers, the cancel flag and the two queues. Each `prompt()` builds a `LoopConfig` and calls `agent_loop()` once.
 - **Events** ([06](06-events-abort.md)) are not a block. Every block sends them through one `emit` function; `Agent` gives them to each subscriber.
@@ -96,6 +96,6 @@ If the user pressed Stop in step 8, the tool would see `ctx.cancel`, the loop wo
 
 ## Builds on / Next
 
-- Builds on: [Part 1 big picture](part-1-ai.md) · [04 Providers](04-providers.md).
+- Builds on: [Part 1 big picture](part-1-ai.md) · [04 Label + test the pipeline](04-label-test.md).
 - Chapters: [05 The agent loop](05-agent-loop.md) · [06 Events and abort](06-events-abort.md) · [07 Steering](07-steering.md) · [08 Hooks and approval](08-hooks-approval.md).
 - Next: [Part 3 big picture](part-3-coding.md), then [09 Execution environment](09-exec-env.md) gives tools a safe `env` (the `ToolContext.env` field).

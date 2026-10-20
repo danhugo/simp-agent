@@ -410,7 +410,7 @@ Real code: [packages/simp_agent/src/simp_agent/testing/env_conformance.py](../..
 
 (`self.run` is a small helper in the suite: it calls `env.exec` with the root as `cwd` and a fresh cancel event.) The command starts a background child that would write `late.txt` after 7 seconds, then sleeps 30. The timeout is 2 seconds. `time.monotonic()` is a [monotonic clock](glossary.md#monotonic-clock): a clock that only goes forward. The test checks: we got `None` and the early output `start`, we returned quickly, and for 8 seconds `late.txt` never appears. With the naive `p.kill()`, the background child would live and write the file.
 
-No [FakeProvider](02-fake-provider.md) here: the env has nothing to do with models. It is tested on its own.
+No [FakeProvider](04-label-test.md) here: the env has nothing to do with models. It is tested on its own.
 
 ```bash
 uv run pytest packages/simp_agent/tests/test_env.py

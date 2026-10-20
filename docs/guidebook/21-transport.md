@@ -375,7 +375,7 @@ async def test_reconnect_with_last_event_id_no_gaps_or_dups(env):
 
 What it checks:
 
-- `FakeProvider` ([02](02-fake-provider.md)) gives two simple replies. No real model.
+- `FakeProvider` ([04](04-label-test.md)) gives two simple replies. No real model.
 - A tab subscribes, sees part of the first run (only the first 3 durable events), then closes.
 - A second run happens while the tab is away.
 - The tab reconnects with the last `seq` it saw. Old part + replay = the full `run.log`, each `seq` **once**, **in order**.

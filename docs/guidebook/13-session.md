@@ -288,7 +288,7 @@ CLASS JsonlStore:                         // one finished message per line
 
 Key idea: append one line per message. Limit: a crash can lose only the line being written.
 
-**[JSONL](glossary.md#jsonl)** means one JSON object per line. Appending a line is cheap and safe: open in `"a"` mode, write, close. A crash can lose at most the line being written. `to_dict` / `from_dict` (from [01](01-messages.md)) turn messages into plain dicts and back. Files live at `~/.simp-agent/sessions/<cwd-slug>/<id>.jsonl` (see `session_dir`). The server has its own store on a database ([22](22-store-auth.md)); both follow the same two-method protocol.
+**[JSONL](glossary.md#jsonl)** means one JSON object per line. Appending a line is cheap and safe: open in `"a"` mode, write, close. A crash can lose at most the line being written. `to_dict` / `from_dict` (from [01](01-pick-clean.md)) turn messages into plain dicts and back. Files live at `~/.simp-agent/sessions/<cwd-slug>/<id>.jsonl` (see `session_dir`). The server has its own store on a database ([22](22-store-auth.md)); both follow the same two-method protocol.
 
 ## Test
 
@@ -317,7 +317,7 @@ async def test_store_gets_every_message_in_order():
 What it checks:
 
 - `ListStore` is a full `SessionStore` in 8 lines. No file needed.
-- `FakeProvider` ([02](02-fake-provider.md)) answers with a tool call to an unknown tool `nope`, then `ok`. The unknown tool still makes a tool result (an error), so the run has four messages.
+- `FakeProvider` ([04](04-label-test.md)) answers with a tool call to an unknown tool `nope`, then `ok`. The unknown tool still makes a tool result (an error), so the run has four messages.
 - The store got **every** message, **in order**, and equals the session history.
 - The last line is a resume: a new session built from `store.load()` has the same history.
 

@@ -25,7 +25,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-Real model APIs fail often and for a short time: `429 rate limit`, `529 overloaded`, `503 service unavailable`, a dropped connection. In [03](03-stream-parser.md) we saw that the stream does not raise in this case. It ends with an `AssistantMessage` whose `stop_reason` is `"error"` and whose `error` holds the text. The loop ([05](05-agent-loop.md)) then stops.
+Real model APIs fail often and for a short time: `429 rate limit`, `529 overloaded`, `503 service unavailable`, a dropped connection. In [03](03-parse.md) we saw that the stream does not raise in this case. It ends with an `AssistantMessage` whose `stop_reason` is `"error"` and whose `error` holds the text. The loop ([05](05-agent-loop.md)) then stops.
 
 So in the middle of the fizzbuzz task, one `429` ends the whole run. The user must type "continue" by hand. Most of these errors go away if you just wait a few seconds and try again.
 
@@ -95,7 +95,7 @@ Why: Ctrl-C must work at once, even when no model call is running.
 
 Why: the user should see "retrying", not a frozen screen.
 
-**Note — failed replies are already hidden.** We need nothing new for this. `transform_messages` in `ai` already drops assistant messages with `stop_reason` `"error"` or `"aborted"` ([04](04-providers.md)). The error stays in history (for the user and the store), but the model never sees it.
+**Note — failed replies are already hidden.** We need nothing new for this. `transform_messages` in `ai` already drops assistant messages with `stop_reason` `"error"` or `"aborted"` ([01](01-pick-clean.md#2-clean-transform_messages)). The error stays in history (for the user and the store), but the model never sees it.
 
 **Step 5 — move it into the session.** The loop lives in `AgentSession._run`, so `prompt()` and `continue_()` both get it for free.
 
@@ -123,7 +123,7 @@ FUNCTION is_retryable(error, kind):
 
 Two inputs decide:
 
-- **The error text.** Providers do not agree on error types, but the text almost always has `429`, a `5xx` code, "overloaded" or "timed out". A regex over the text works for all providers ([04](04-providers.md)) with no per-provider code.
+- **The error text.** Providers do not agree on error types, but the text almost always has `429`, a `5xx` code, "overloaded" or "timed out". A regex over the text works for all providers ([04](04-label-test.md#extra-error-classification-is_retryable-is_context_overflow)) with no per-provider code.
 - **The error kind.** `AssistantMessage.error_kind` can be `"fatal"`, `"budget"` or `"policy"`. These are **never** retried, even if the text looks retryable. For example, `stream()` sets `error_kind="fatal"` when there is no API key. The server sets `"budget"` when a user is over their limit ([23](23-limits.md)). The text alone cannot tell "the provider rate-limits you" from "our own budget stops you".
 
 A context overflow is also not retryable here: the same too-big request would fail again. It has its own path ([17](17-overflow.md)).
@@ -167,7 +167,7 @@ Step by step:
 
 **Exponential [backoff](glossary.md#backoff).** `delay = retry_base_delay * 2 ** (attempt - 1)`. With the defaults (`retry_base_delay=2.0`, `max_retries=3`) the waits are 2, 4 and 8 seconds. Each wait doubles, so a busy server gets more and more room.
 
-**Retry is `continue_()`, not a new prompt.** The error message stays in history (history is append-only, [13](13-session.md)). We do not resend the user text. `continue_()` asks the model again with the same history. Before the call, `transform_messages` in `ai` drops assistant turns with `stop_reason` `"error"` or `"aborted"` from what is sent ([04](04-providers.md)). So the model never sees its own failed reply.
+**Retry is `continue_()`, not a new prompt.** The error message stays in history (history is append-only, [13](13-session.md)). We do not resend the user text. `continue_()` asks the model again with the same history. Before the call, `transform_messages` in `ai` drops assistant turns with `stop_reason` `"error"` or `"aborted"` from what is sent ([01](01-pick-clean.md#2-clean-transform_messages)). So the model never sees its own failed reply.
 
 **Events.** `auto_retry_start` carries `attempt`, `max_attempts`, `delay` and the `error`. `auto_retry_end` carries `success` and `attempt`. Two apps use them:
 
@@ -253,7 +253,7 @@ Key idea: two flags, because during backoff no model call is running.
 
 What it checks:
 
-- `FakeProvider` ([02](02-fake-provider.md)) fails twice with a `429`, then answers `ok`. The model was called 3 times and the run ends with `DONE`.
+- `FakeProvider` ([04](04-label-test.md)) fails twice with a `429`, then answers `ok`. The model was called 3 times and the run ends with `DONE`.
 - Two `auto_retry_start` events, then one `auto_retry_end`.
 - Backoff doubles: the second delay is `0.002` (base `0.001` × 2). A tiny base keeps the test fast.
 - The third call did not include the two error messages.

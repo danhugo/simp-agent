@@ -176,7 +176,7 @@ FUNCTION should_compact(tokens, model, settings):
 Key idea: use the real token count from the provider when we have it; guess only the rest. Limit: chars/4 is only a rough guess.
 
 - `estimate` is a rough guess: 4 characters ≈ 1 token.
-- `estimate_tokens` prefers the real number. The last good assistant reply has `usage` from the provider ([04](04-providers.md)): input + output tokens of that call. Add the guess only for messages after it. It looks only **after** the last `CompactionEntry`, because usage from before was measured on the old, bigger view.
+- `estimate_tokens` prefers the real number. The last good assistant reply has `usage` from the provider ([03](03-parse.md)): input + output tokens of that call. Add the guess only for messages after it. It looks only **after** the last `CompactionEntry`, because usage from before was measured on the old, bigger view.
 - `should_compact` is true when tokens pass `context_window - reserve_tokens`.
 
 `CompactionSettings` has three fields: `enabled=True`, `reserve_tokens=16384` (room left for the reply and the summary), `keep_recent_tokens=20000` (how much recent history to keep word for word).

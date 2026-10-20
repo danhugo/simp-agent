@@ -138,7 +138,7 @@ Why: the store, auth and tools stay real. Then `ops.py`, `fakellm.py` and the la
 
 ### FakeLLM: a model that always says the same thing
 
-In [02](02-fake-provider.md) we learned that the agent never calls a model directly. It calls a `stream_fn`. So the server can take a fake one. `apps/server/src/simp_server/fakellm.py`:
+In [04](04-label-test.md) we learned that the agent never calls a model directly. It calls a `stream_fn`. So the server can take a fake one. `apps/server/src/simp_server/fakellm.py`:
 
 Real code: [fakellm.py](../../apps/server/src/simp_server/fakellm.py) — `stream`
 
