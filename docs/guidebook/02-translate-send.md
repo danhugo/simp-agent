@@ -133,19 +133,55 @@ Each provider has one function that turns our message list into its vendor's for
 | Tool call | entry in `tool_calls`, `arguments` as JSON string | own `function_call` item, `arguments` as JSON string | `tool_use` block, `input` as object |
 | Tool result | one `role: "tool"` message per result | one `function_call_output` item per result | `tool_result` block inside a **user** turn |
 | Thinking sent back | no, dropped | yes: saved `reasoning` item from `signature` | yes: `thinking` block with `signature` (redacted → `redacted_thinking`; unsigned → plain `text`) |
-| Special rule | `content: None` when only tool calls | `call_id\|item_id` split; text `signature`; role `developer` | merge same-role turns |
+| Special rule | `content: null` when only tool calls | `call_id\|item_id` split; text `signature`; role `developer` | merge same-role turns |
 
 Each special rule, and why it is there:
 
-**Chat Completions: `content` is `None`.** If an assistant turn has tool calls but no text (or only spaces), `to_openai` sends `content: None`, not `""`. Why: OpenAI-style servers expect no content at all next to `tool_calls`; an empty string can be rejected. (A turn with no text and no tool calls gets `""`.)
+**Chat Completions: `content` can be `null`.**
+
+- *Normal:* the assistant says something, so `content` is the text: `{"role": "assistant", "content": "Done."}`.
+- *Often the model only acts:* you say "Read README.md", it calls `read` with no words (thinking is dropped). We send `"content": null` next to `"tool_calls"`. Why: `null` means "said nothing"; some servers reject `""` there.
+- *Rare: no words and no tool call* (the model only thought, then hit the token limit). We still send the turn so the history keeps its user/assistant order: `{"role": "assistant", "content": ""}`.
+
+```text
+content = text IF text is not blank, ELSE null IF tool calls, ELSE ""
+```
 
 **Responses: three small tricks.**
 
-- *Two ids in one string.* A Responses tool call has two ids: `call_id` (links the call to its result) and the item id `fc_...` (names the item itself). Our `ToolCall` has only one `id` field, so the parser stores both as `call_id|item_id`. `to_input` splits it again: `call_id` goes on `function_call` and `function_call_output`, the item id goes back as `"id"` on `function_call` (only when the call came from this same model; for another model it is dropped or replaced by a hash).
-- *Text signature `{v, id, phase}`.* Why: when we send an old answer back, its message item should keep the same `id` (and `phase`) OpenAI gave it. So the parser saves them as small JSON in `TextContent.signature`. With no signature, `to_input` makes up an id (`msg_pi_<i>`).
-- *Role `developer`.* When the model has a reasoning effort set, the system prompt goes in with role `developer` instead of `system`, the role OpenAI uses for reasoning models.
+*Two ids in one string.*
 
-**Anthropic: merge turns.** Anthropic needs user and assistant turns to alternate. But `_to_anthropic` first makes one turn per message, and a tool result becomes a **user** turn. So when the model called 3 tools, we get 3 user turns in a row. Before the merge:
+- *Normal:* a tool call needs one id to link it to its result: `call_1`.
+- *Responses gives two:* `call_id` (links call and result) and the item id `fc_...` (names the item). Our `ToolCall` has only one `id`, so we store both: `"call_1|fc_abc"`.
+- *Sending back:* split at `|`. `call_id` goes on `function_call` and `function_call_output`; `fc_abc` goes back as `"id"` only for the same model.
+
+```text
+call_id, _, item_id = id.partition("|")   // no "|" → item_id is empty
+```
+
+*Text signature.*
+
+- *Normal:* text is just text.
+- *Responses:* each answer is a `message` item with its own `id` (and sometimes a `phase`). When we send the old answer back, it should keep that same id. So the parser saves `{"v": 1, "id": "msg_...", "phase": ...}` in `TextContent.signature`.
+- *No signature* (the text came from another vendor): we make up an id, `msg_pi_<i>`, and send no `phase`.
+
+```text
+id = signature.id IF signature, ELSE "msg_pi_<i>"
+```
+
+*Role `developer`.*
+
+- *Normal:* the system prompt goes in with role `system`.
+- *Reasoning model* (a reasoning effort is set): OpenAI wants role `developer` for it, so we use that.
+
+```text
+role = "developer" IF reasoning effort set, ELSE "system"
+```
+
+**Anthropic: merge turns.**
+
+- *Normal:* Anthropic needs user and assistant turns to take turns: user, assistant, user, ...
+- *The model calls 3 tools:* each tool result becomes its own **user** turn, so we get 3 user turns in a row. Anthropic rejects that:
 
 ```jsonc
 {"role": "assistant", "content": [ tool_use call_1, tool_use call_2, tool_use call_3 ]},
@@ -154,24 +190,17 @@ Each special rule, and why it is there:
 {"role": "user", "content": [ tool_result call_3 ]}
 ```
 
-After the merge, one user turn with 3 `tool_result` blocks:
+- *What we do:* join same-role turns that sit next to each other, so the 3 results become one user turn:
 
 ```jsonc
 {"role": "assistant", "content": [ tool_use call_1, tool_use call_2, tool_use call_3 ]},
 {"role": "user", "content": [ tool_result call_1, tool_result call_2, tool_result call_3 ]}
 ```
 
-The last step of `_to_anthropic` does this:
-
 Real code: [packages/simp_agent/src/simp_agent/ai/providers/anthropic.py](../../packages/simp_agent/src/simp_agent/ai/providers/anthropic.py) (`_to_anthropic`)
 
 ```text
-merged = empty list
-FOR EACH turn t in out:
-    IF the last merged turn has the same role as t:
-        ADD t's content to that last turn   // Anthropic needs user/assistant to alternate
-    ELSE:
-        ADD t to merged
+IF this turn has the same role as the last one: add its content to the last one, ELSE add it as a new turn
 ```
 
 ## 4 Send: call the API
