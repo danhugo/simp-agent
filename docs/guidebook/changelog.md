@@ -127,3 +127,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - Part 5 big picture page: part-5-system.md + img/part-5-system.svg (10 blocks, ch19-26); linked from README and ch19-26.
 - ch02 "Special rules": content null, Responses tricks and Anthropic merge rewritten as short stories (normal case, unusual case, what we do, 1-line pseudo-code).
 - ch02 special rules: every case now has a full real example (our object IN → exact JSON OUT, made by running the real code); old Chat Completions paragraph gets one too.
+- ch02 "4 Send": rewritten as a story (3 steps; settings as 3 questions with JSON examples); table removed; store:false now one link back to Translate.
