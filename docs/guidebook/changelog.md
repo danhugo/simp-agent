@@ -135,3 +135,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - ch02 "4 Send": rewritten as a story (3 steps; settings as 3 questions with JSON examples); table removed; store:false now one link back to Translate.
 - ch06: rewritten as 3 parts (events with a full example event list; abort as 3 Stop situations with what stops / history / model view; short Agent). One word: cancel event. nxt/stop introduced as a race before the code. Steps section and sequence diagram removed (repeated content).
 - ch09: each topic taught once (no step-by-step repeat); one name "path safety"; OS kill detail in a side note; EnvConformance cut to a short note; Builds line added.
+- ch08: fixed fact (a late "always" after Stop still runs the tool; only a late "allow" is aborted); approval taught as 5 situations (a)-(e) before code, same letters in code; "pi" references removed.
