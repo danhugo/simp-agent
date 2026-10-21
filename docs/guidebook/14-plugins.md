@@ -67,13 +67,7 @@ We fix the naive `Session` one problem at a time.
 
 **Step 1 — hooks are optional.** Do not call `p.tool_call(...)` directly. Look it up first with `getattr`, and skip the plugin if it has no such method:
 
-Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `_hook`
-
-```text
-fn = method named hook on plugin p, or nothing
-IF fn is nothing:
-    RETURN nothing          // plugin does not want this hook
-```
+(The full `_hook` is shown once, in [Real design](#a-plugin-is-any-object-hooks-are-optional-methods) below.)
 
 Key idea: a missing hook is skipped, not an error.
 
@@ -214,6 +208,8 @@ FUNCTION _before_tool_call(call, ctx):
 
 Key idea: an error in a safety hook means "no". Limit: plugins run before user approval.
 
+**Worked example: fail closed with `NoBash`.** Take the `NoBash` plugin from above, but with a bug: its `tool_call` raises `KeyError('name')` instead of returning a block. The model asks for `bash`. `_hook` re-raises (`isolate=False`), `_before_tool_call` catches it and returns `blocked by plugin NoBash (KeyError: 'name')`. The loop turns that into a tool result `User denied: blocked by plugin NoBash (KeyError: 'name')` ([ch 08](08-hooks-approval.md)). The `bash` tool never runs. With a working `NoBash`, the result is `User denied: blocked by plugin NoBash: no bash`.
+
 Here `isolate=False`. If a plugin's `tool_call` raises, the tool is **blocked**. Why? A `tool_call` hook is often a safety check. If the check crashes, running the tool anyway would be unsafe. So for this one hook, an error means "no". This is called **[fail closed](glossary.md#fail-closed)**. The first plugin that blocks wins. Plugins run before the user approval from [08](08-hooks-approval.md), so a blocked call never asks the user.
 
 **`tool_result` merges.** Each plugin can return a few fields, and they are merged with `dataclasses.replace`:
@@ -231,7 +227,7 @@ FUNCTION _after_tool_call(call, result, ctx):
 
 Key idea: each plugin changes only the fields it returns.
 
-**`input` can handle a command.** In `prompt()`, if a plugin returns `{"handled": True}`, the session returns `[]` and the model is never called. This is how a plugin can own a slash command like `/plan`.
+**`input` can handle a command.** In `prompt()`, if a plugin returns `{"handled": True}`, the session returns `[]` and the model is never called. This is how a plugin can handle its own slash command.
 
 ### PluginAPI: what a plugin may do
 
@@ -256,7 +252,7 @@ CLASS PluginAPI:                         // what a plugin may do with its sessio
 
 Key idea: a small, named surface, not the whole session.
 
-The full list: `register_tool`, `unregister_tool`, `add_prompt_section`, `remove_prompt_section`, `append_entry` ([CustomEntry](13-session.md)), `send_message` (steer, follow-up or a new prompt), `set_model`, `abort`, `get_messages`, `env`, `cwd`, and `emit` (send a custom event tagged with the plugin name). A small, named surface is easier to keep stable than "here is the whole session".
+The full method list is in [Reference · objects](ref-objects.md#pluginapi-methods). A small, named surface is easier to keep stable than "here is the whole session".
 
 ### Prompt sections
 
