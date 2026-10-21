@@ -1,6 +1,6 @@
 # Reference · The `ai` objects
 
-**Used by:** [01 Pick + Clean](01-pick-clean.md) · [02](02-translate-send.md) · [03](03-parse.md) · [05](05-agent-loop.md) · [13 Session](13-session.md) · [14](14-plugins.md) · [16](16-compaction.md) · [20 The server run](20-server-run.md) · [21](21-transport.md)
+**Used by:** [01 Pick + Clean](01-pick-clean.md) · [02](02-translate-send.md) · [03](03-parse.md) · [05](05-agent-loop.md) · [13 Session](13-session.md) · [14](14-plugins.md) · [16](16-compaction.md) · [20 The server run](20-server-run.md) · [21](21-transport.md) · [25](25-web-client.md)
 
 This page is a lookup page, not a chapter. Chapters introduce each object at the block that first uses it, and only the parts that block needs. Here is every field in one place, plus how history turns into JSON and back.
 
@@ -221,6 +221,23 @@ The full text of live events is saved later: text and thinking in `AssistantMess
 | `pending_approval` | `PendingApproval` (`call_id`, `tool`, `args`) or none |
 | `title` | the session title |
 | `plan_mode` | true if plan mode is on |
+
+## Web client `ChatState`
+
+The whole chat state of the browser client, from `apps/web/src/state.ts`. Chapter [25](25-web-client.md#the-reducer-statets) explains the reducer that fills it.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `lastSeq` | `number` | newest durable `seq` applied |
+| `runState` | `RunState["state"]` | `idle`, `running`, `waiting_approval`, `aborting` or `error` |
+| `items` | `Item[]` | finished user messages, assistant messages and notices |
+| `inFlight` | `InFlight` | the assistant message still streaming |
+| `toolOutputs` | `Record<string, string>` | live output per `call_id` |
+| `results` | `Record<string, ToolResult>` | tool results per `call_id` |
+| `decisions` | `Record<string, ApprovalResolved["decision"]>` | approval decision per `call_id` |
+| `pending` | `PendingApproval \| null` | approval the user must answer |
+| `title` | `string` | session title |
+| `planMode` | `boolean` | true if plan mode is on |
 
 ## Server store tables
 
