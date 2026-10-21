@@ -137,3 +137,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - ch09: each topic taught once (no step-by-step repeat); one name "path safety"; OS kill detail in a side note; EnvConformance cut to a short note; Builds line added.
 - ch08: fixed fact (a late "always" after Stop still runs the tool; only a late "allow" is aborted); approval taught as 5 situations (a)-(e) before code, same letters in code; "pi" references removed.
 - 2026-10-21: ch13 fix — jsonl sample, start() before sections, trimmed __init__, CustomEntry link, store.append, "hooks" wording.
+- 2026-10-21: ch13 re-cut to one pass (no Steps repeat): real 4-line .jsonl OUT first; Builds/Next lines; start() before sections; sections goal + one rule per line with why; __init__ trimmed; CustomEntry moved to ref-objects (append_entry); forward jumps cut.
