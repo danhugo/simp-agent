@@ -260,6 +260,8 @@ The result item only ever gets `call_id`. (One more case: if the message came fr
 
 Text items have their own id too, like tool call items: each answer text is a `message` item with an `id` (and sometimes a `phase`). But `TextContent` has no id field, so we borrow its `signature` field: the parser saves `{"v": 1, "id": ..., "phase": ...}` there. When we send the old answer back to the same model, it gets the same `id` and `phase` back. For another model, Clean in [chapter 1](01-pick-clean.md) already removed the signature, so Translate makes a new id `msg_pi_<i>` and sends no `phase`.
 
+`phase` tells which stage a message item is: `commentary` = talk in the middle of work ("Let me read the file first."), `final_answer` = the last answer to the user. It is optional; the parser saves it only if OpenAI sent it.
+
 ```text
 id = signature.id IF signature, ELSE "msg_pi_<i>"   // a new id we make up
 ```
@@ -279,7 +281,7 @@ AssistantMessage(
  "phase": "final_answer"}
 ```
 
-*Without signature.* The text was written by Claude (or by another model, and Clean already removed the signature). So there is no OpenAI id to keep, and no reasoning to pair with. We still send it as a `message` item, but with a new id we make up, `msg_pi_<n>`, and no `phase`.
+*Without signature.* The text was written by Claude (or by another model, and Clean already removed the signature). So there is no OpenAI id to keep, and no reasoning to pair with. We still send it as a `message` item, but with a new id we make up, `msg_pi_<n>`, and no `phase` (we do not know if it was commentary or a final answer, and a wrong guess is worse than none).
 
 ```python
 AssistantMessage(content=[TextContent("Hello!")])
