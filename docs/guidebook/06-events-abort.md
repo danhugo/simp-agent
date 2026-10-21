@@ -99,7 +99,7 @@ Each turn is `turn_start` … `turn_end`; the run is `agent_start` … `agent_en
 | `tool_execution_start` | `call` | before a tool runs (not for cut-off `length` calls) |
 | `tool_execution_update` | `call`, `text` | when a tool calls `ctx.on_update(text)` ([05](05-agent-loop.md#toolcontext-what-a-tool-gets)) |
 | `tool_execution_end` | `call`, `result` | after the tool, and after the `after_tool_call` hook ([08](08-hooks-approval.md)) |
-| `turn_end` | `message` | after the tool batch; also on error / abort |
+| `turn_end` | `message` | after the tool batch; also on error / abort (then `message` is the error / aborted message) |
 | `agent_end` | `messages` | last thing; `messages` = all new messages of this run |
 
 `message_update` carries the provider event as-is. The loop does not invent its own "text delta" type: the UI reads `event["type"]` (`text_delta`, `toolcall_delta`, …) from the [stream parser](03-parse.md). One vocabulary, not two.
@@ -313,7 +313,7 @@ FUNCTION Agent._run(prompts):
         cfg = LoopConfig(model, tools, stream_fn, ...)
         emit = a function that calls _emit_all(_subs, e)
         RETURN agent_loop(system_prompt, messages, prompts, cfg, emit, _cancel)
-    IF any error happens:        // e.g. a subscriber raised
+    IF an Exception happens:     // e.g. a subscriber raised
         ADD AssistantMessage(stop_reason="error", error="<type>: <text>") to messages
         RETURN messages from start
     FINALLY:
