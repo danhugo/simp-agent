@@ -69,7 +69,25 @@ OpenAI Chat Completions (`messages=to_openai(...)`):
 ]
 ```
 
-Plainly: Chat Completions does **not** send thinking back. `to_openai` reads only `m.text()` (text blocks joined) and `m.tool_calls()`; the thinking block is skipped. If the turn had no text, `content` would be `null`.
+Plainly: Chat Completions does **not** send thinking back. `to_openai` reads only the text blocks (joined) and the tool calls; the thinking block is skipped. So this assistant turn:
+
+```python
+AssistantMessage(content=[
+    ThinkingContent("User wants the file; call read"),
+    TextContent("Let me read it."),
+    ToolCall(id="call_1", name="read", arguments={"path": "README.md"}),
+])
+```
+
+becomes exactly this (no thinking anywhere):
+
+```json
+{"role": "assistant", "content": "Let me read it.",
+ "tool_calls": [{"id": "call_1", "type": "function",
+                 "function": {"name": "read", "arguments": "{\"path\": \"README.md\"}"}}]}
+```
+
+If the turn has no text, `content` is `null` — see the [special rules](#3-translate-our-messages--vendor-format) below for full examples.
 
 OpenAI Responses (`input=to_input(...)`):
 
@@ -135,66 +153,194 @@ Each provider has one function that turns our message list into its vendor's for
 | Thinking sent back | no, dropped | yes: saved `reasoning` item from `signature` | yes: `thinking` block with `signature` (redacted → `redacted_thinking`; unsigned → plain `text`) |
 | Special rule | `content: null` when only tool calls | `call_id\|item_id` split; text `signature`; role `developer` | merge same-role turns |
 
-Each special rule, and why it is there:
+Each special rule, and why it is there. Every example below is real: we built our object, ran the real function, and copied the JSON it printed.
 
 **Chat Completions: `content` can be `null`.**
-
-- *Normal:* the assistant says something, so `content` is the text: `{"role": "assistant", "content": "Done."}`.
-- *Often the model only acts:* you say "Read README.md", it calls `read` with no words (thinking is dropped). We send `"content": null` next to `"tool_calls"`. Why: `null` means "said nothing"; some servers reject `""` there.
-- *Rare: no words and no tool call* (the model only thought, then hit the token limit). We still send the turn so the history keeps its user/assistant order: `{"role": "assistant", "content": ""}`.
 
 ```text
 content = text IF text is not blank, ELSE null IF tool calls, ELSE ""
 ```
 
+*Case 1 — normal: the assistant says something.* `content` is the text.
+
+```python
+AssistantMessage(content=[TextContent("Done.")])
+```
+
+```json
+{"role": "assistant", "content": "Done."}
+```
+
+*Case 2 — often the model only acts:* you say "Read README.md", it calls `read` with no words. We send `"content": null` next to `"tool_calls"`. Why: `null` means "said nothing"; some servers reject `""` there.
+
+```python
+AssistantMessage(content=[ToolCall(id="call_1", name="read", arguments={"path": "README.md"})])
+```
+
+```json
+{"role": "assistant", "content": null,
+ "tool_calls": [{"id": "call_1", "type": "function",
+                 "function": {"name": "read", "arguments": "{\"path\": \"README.md\"}"}}]}
+```
+
+*Case 2b — thinking, then a tool call.* The thinking is dropped (Chat Completions never sends it back), so the result is exactly the same as case 2:
+
+```python
+AssistantMessage(content=[
+    ThinkingContent("User wants the file; call read"),
+    ToolCall(id="call_1", name="read", arguments={"path": "README.md"}),
+])
+```
+
+```json
+{"role": "assistant", "content": null,
+ "tool_calls": [{"id": "call_1", "type": "function",
+                 "function": {"name": "read", "arguments": "{\"path\": \"README.md\"}"}}]}
+```
+
+*Case 3 — rare: no words and no tool call.* The model only thought, then hit the token limit. Thinking is dropped, so nothing is left. We still send the turn so the history keeps its user/assistant order:
+
+```python
+AssistantMessage(content=[ThinkingContent("Let me think about the plan...")], stop_reason="length")
+```
+
+```json
+{"role": "assistant", "content": ""}
+```
+
 **Responses: three small tricks.**
 
-*Two ids in one string.*
+*Trick 1 — two ids in one string.*
 
-- *Normal:* a tool call needs one id to link it to its result: `call_1`.
-- *Responses gives two:* `call_id` (links call and result) and the item id `fc_...` (names the item). Our `ToolCall` has only one `id`, so we store both: `"call_1|fc_abc"`.
-- *Sending back:* split at `|`. `call_id` goes on `function_call` and `function_call_output`; `fc_abc` goes back as `"id"` only for the same model.
+A tool call needs one id to link it to its result. Responses gives two: `call_id` (links call and result) and the item id `fc_...` (names the item). Our `ToolCall` has only one `id`, so the parser stores both: `"call_1|fc_abc"`. When we send it back, we split at `|`:
 
 ```text
 call_id, _, item_id = id.partition("|")   // no "|" → item_id is empty
 ```
 
-*Text signature.*
+Our objects IN (the answer came from `gpt-5` on `openai-responses`):
 
-- *Normal:* text is just text.
-- *Responses:* each answer is a `message` item with its own `id` (and sometimes a `phase`). When we send the old answer back, it should keep that same id. So the parser saves `{"v": 1, "id": "msg_...", "phase": ...}` in `TextContent.signature`.
-- *No signature* (the text came from another vendor): we make up an id, `msg_pi_<i>`, and send no `phase`.
-
-```text
-id = signature.id IF signature, ELSE "msg_pi_<i>"
+```python
+AssistantMessage(
+    content=[ToolCall(id="call_1|fc_abc", name="read", arguments={"path": "README.md"})],
+    api="openai-responses", provider="openai", model="gpt-5",
+)
+ToolResultMessage(tool_call_id="call_1|fc_abc", tool_name="read", content="# simp-agent")
 ```
 
-*Role `developer`.*
+Sent to the **same model** (`gpt-5`): `fc_abc` goes back as `"id"`.
 
-- *Normal:* the system prompt goes in with role `system`.
-- *Reasoning model* (a reasoning effort is set): OpenAI wants role `developer` for it, so we use that.
+```json
+{"type": "function_call", "call_id": "call_1", "name": "read",
+ "arguments": "{\"path\": \"README.md\"}", "id": "fc_abc"}
+{"type": "function_call_output", "call_id": "call_1", "output": "# simp-agent"}
+```
+
+Sent to **another model** on the same API (`gpt-5-mini`): no `"id"`. Why: only the old model knows this id.
+
+```json
+{"type": "function_call", "call_id": "call_1", "name": "read",
+ "arguments": "{\"path\": \"README.md\"}"}
+{"type": "function_call_output", "call_id": "call_1", "output": "# simp-agent"}
+```
+
+The result item only ever gets `call_id`. (One more case: if the message came from a different API, the item id is turned into a short hash, e.g. `"id": "fc_93985a942abc4d6a"`.)
+
+*Trick 2 — text signature.*
+
+Each Responses answer is a `message` item with its own `id` (and sometimes a `phase`). When we send the old answer back, it should keep that id. So the parser saves `{"v": 1, "id": ..., "phase": ...}` in `TextContent.signature`.
 
 ```text
-role = "developer" IF reasoning effort set, ELSE "system"
+id = signature.id IF signature, ELSE "msg_pi_<i>"   // i = place of the message in the list
 ```
+
+*With signature* (from `gpt-5`, the message at place 1 after the user "Hi"):
+
+```python
+AssistantMessage(
+    content=[TextContent("Hello!", signature='{"v": 1, "id": "msg_68a1", "phase": "final_answer"}')],
+    api="openai-responses", provider="openai", model="gpt-5",
+)
+```
+
+```json
+{"type": "message", "role": "assistant", "status": "completed", "id": "msg_68a1",
+ "content": [{"type": "output_text", "text": "Hello!", "annotations": []}],
+ "phase": "final_answer"}
+```
+
+*Without signature* (the text came from another vendor; again place 1 after the user "Hi"): we make up the id `msg_pi_1` and send no `phase`.
+
+```python
+AssistantMessage(content=[TextContent("Hello!")])
+```
+
+```json
+{"type": "message", "role": "assistant", "status": "completed", "id": "msg_pi_1",
+ "content": [{"type": "output_text", "text": "Hello!", "annotations": []}]}
+```
+
+*Trick 3 — role `developer`.*
+
+```text
+role = "developer" IF compat.reasoning_effort is set (and not "none"), ELSE "system"
+```
+
+Same system prompt `"You are a coding agent."`, two models:
+
+```python
+Model(id="gpt-5", api="openai-responses")                                      # no reasoning
+Model(id="gpt-5", api="openai-responses", compat={"reasoning_effort": "medium"})  # reasoning on
+```
+
+```json
+{"role": "system", "content": "You are a coding agent."}
+{"role": "developer", "content": "You are a coding agent."}
+```
+
+Why: OpenAI wants role `developer` for the system prompt of a reasoning model.
 
 **Anthropic: merge turns.**
 
-- *Normal:* Anthropic needs user and assistant turns to take turns: user, assistant, user, ...
-- *The model calls 3 tools:* each tool result becomes its own **user** turn, so we get 3 user turns in a row. Anthropic rejects that:
+Anthropic needs user and assistant turns to take turns: user, assistant, user, ... But when the model calls 3 tools, each tool result first becomes its own **user** turn. Our objects IN:
 
-```jsonc
-{"role": "assistant", "content": [ tool_use call_1, tool_use call_2, tool_use call_3 ]},
-{"role": "user", "content": [ tool_result call_1 ]},
-{"role": "user", "content": [ tool_result call_2 ]},
-{"role": "user", "content": [ tool_result call_3 ]}
+```python
+AssistantMessage(content=[
+    ToolCall(id="call_1", name="read", arguments={"path": "a.py"}),
+    ToolCall(id="call_2", name="read", arguments={"path": "b.py"}),
+    ToolCall(id="call_3", name="read", arguments={"path": "c.py"}),
+])
+ToolResultMessage(tool_call_id="call_1", tool_name="read", content="text of a.py")
+ToolResultMessage(tool_call_id="call_2", tool_name="read", content="text of b.py")
+ToolResultMessage(tool_call_id="call_3", tool_name="read", content="text of c.py")
 ```
 
-- *What we do:* join same-role turns that sit next to each other, so the 3 results become one user turn:
+*Before merge* — 3 user turns in a row. Anthropic rejects this:
 
-```jsonc
-{"role": "assistant", "content": [ tool_use call_1, tool_use call_2, tool_use call_3 ]},
-{"role": "user", "content": [ tool_result call_1, tool_result call_2, tool_result call_3 ]}
+```json
+{"role": "assistant", "content": [
+  {"type": "tool_use", "id": "call_1", "name": "read", "input": {"path": "a.py"}},
+  {"type": "tool_use", "id": "call_2", "name": "read", "input": {"path": "b.py"}},
+  {"type": "tool_use", "id": "call_3", "name": "read", "input": {"path": "c.py"}}]}
+{"role": "user", "content": [
+  {"type": "tool_result", "tool_use_id": "call_1", "content": "text of a.py", "is_error": false}]}
+{"role": "user", "content": [
+  {"type": "tool_result", "tool_use_id": "call_2", "content": "text of b.py", "is_error": false}]}
+{"role": "user", "content": [
+  {"type": "tool_result", "tool_use_id": "call_3", "content": "text of c.py", "is_error": false}]}
+```
+
+*After merge* — what `_to_anthropic` really returns. Same-role turns next to each other are joined, so the 3 results become one user turn:
+
+```json
+{"role": "assistant", "content": [
+  {"type": "tool_use", "id": "call_1", "name": "read", "input": {"path": "a.py"}},
+  {"type": "tool_use", "id": "call_2", "name": "read", "input": {"path": "b.py"}},
+  {"type": "tool_use", "id": "call_3", "name": "read", "input": {"path": "c.py"}}]}
+{"role": "user", "content": [
+  {"type": "tool_result", "tool_use_id": "call_1", "content": "text of a.py", "is_error": false},
+  {"type": "tool_result", "tool_use_id": "call_2", "content": "text of b.py", "is_error": false},
+  {"type": "tool_result", "tool_use_id": "call_3", "content": "text of c.py", "is_error": false}]}
 ```
 
 Real code: [packages/simp_agent/src/simp_agent/ai/providers/anthropic.py](../../packages/simp_agent/src/simp_agent/ai/providers/anthropic.py) (`_to_anthropic`)

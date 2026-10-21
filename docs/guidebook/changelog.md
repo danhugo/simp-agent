@@ -122,3 +122,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - Pseudo-code fix: ch01-03, ch08 logic blocks now text pseudo + Real code lines.
 - Part 5 big picture page: part-5-system.md + img/part-5-system.svg (10 blocks, ch19-26); linked from README and ch19-26.
 - ch02 "Special rules": content null, Responses tricks and Anthropic merge rewritten as short stories (normal case, unusual case, what we do, 1-line pseudo-code).
+- ch02 special rules: every case now has a full real example (our object IN → exact JSON OUT, made by running the real code); old Chat Completions paragraph gets one too.
