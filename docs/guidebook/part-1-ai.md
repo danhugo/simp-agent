@@ -16,8 +16,8 @@ Read it left to right on the top row (the question goes out), then right to left
 |---|---|---|---|---|---|---|
 | 1 | Pick the driver | Look up `Model.api` in `_PROVIDERS` and get a stream function. Unknown api → `error` event. | `Model` | a stream function | `ai/__init__.py` · `stream()`, `_PROVIDERS` | [01](01-pick-clean.md#1-pick-_providers-register_provider) |
 | 2 | Clean | Drop error/aborted replies, skip compaction/custom entries, add a result for tool calls with no result, fix thinking blocks for this model. | `Context.messages` | clean `messages` (new `Context`) | `ai/__init__.py` · `transform_messages()` | [01](01-pick-clean.md#2-clean-transform_messages) |
-| 3 | Translate | Rewrite our messages and tools in the vendor's own JSON. | `Context` | vendor request | `ai/providers/*.py` · `_to_anthropic()`, `to_openai()`, `to_input()` + `request()`; tools are mapped inside `stream()` | [02](02-translate-send.md#3-translate--4-send-the-three-providers) |
-| 4 | Send | Open one HTTP stream to the vendor with the key. | vendor request | raw chunks | `ai/providers/*.py` · `stream()` | [02](02-translate-send.md#3-translate--4-send-the-three-providers) |
+| 3 | Translate | Rewrite our messages and tools in the vendor's own JSON. | `Context` | vendor request | `ai/providers/*.py` · `_to_anthropic()`, `to_openai()`, `to_input()` + `request()`; tools are mapped inside `stream()` | [02](02-translate-send.md#3-translate-our-messages--vendor-format) |
+| 4 | Send | Open one HTTP stream to the vendor with the key. | vendor request | raw chunks | `ai/providers/*.py` · `stream()` | [02](02-translate-send.md#4-send-call-the-api) |
 | 5 | Parse | Turn raw chunks into events, one per piece, and fill the `AssistantMessage`. | raw chunks | events | `ai/providers/*.py` · `parse()`; `stream()` adds `start` and the last `done`/`error` | [03](03-parse.md) |
 | 6 | Label | Write `api`, `provider`, `model` on every message an event carries, then pass each event on. | events | labelled events | `ai/__init__.py` · `stream()` | [04](04-label-test.md#the-entry-point-stream-runs-1-2-6) |
 

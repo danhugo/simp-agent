@@ -28,16 +28,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-Vendors differ a lot:
-
-| | OpenAI Chat Completions | OpenAI Responses | Anthropic Messages |
-|---|---|---|---|
-| System prompt | first message, role `system` | first input item, role `system` or `developer` | separate `system` field |
-| Tool call | `tool_calls` on the assistant message | `function_call` item | `tool_use` block |
-| Tool result | role `tool`, one per result | `function_call_output` item | `tool_result` block inside a **user** turn |
-| Thinking | `reasoning_content` text (read only, never sent back) | encrypted `reasoning` item | signed `thinking` block |
-
-**A real example.** Take one small chat in our format. The assistant turn has the common mix: some thinking, a short text, then a tool call.
+A real example shows how much vendors differ. Take one small chat in our format. The assistant turn has the common mix: some thinking, a short text, then a tool call.
 
 ```text
 system:    "You are a coding agent."
@@ -68,26 +59,6 @@ OpenAI Chat Completions (`messages=to_openai(...)`):
    "content": "# simp-agent ..."}                                   // tool result = its own role "tool"
 ]
 ```
-
-Plainly: Chat Completions does **not** send thinking back. `to_openai` reads only the text blocks (joined) and the tool calls; the thinking block is skipped. So this assistant turn:
-
-```python
-AssistantMessage(content=[
-    ThinkingContent("User wants the file; call read"),
-    TextContent("Let me read it."),
-    ToolCall(id="call_1", name="read", arguments={"path": "README.md"}),
-])
-```
-
-becomes exactly this (no thinking anywhere):
-
-```json
-{"role": "assistant", "content": "Let me read it.",
- "tool_calls": [{"id": "call_1", "type": "function",
-                 "function": {"name": "read", "arguments": "{\"path\": \"README.md\"}"}}]}
-```
-
-If the turn has no text, `content` is `null` — see the [special rules](#3-translate-our-messages--vendor-format) below for full examples.
 
 OpenAI Responses (`input=to_input(...)`):
 
@@ -127,35 +98,37 @@ Anthropic Messages (`system=...`, `messages=_to_anthropic(...)`):
 ]
 ```
 
-If the thinking was redacted, the block is `{"type": "redacted_thinking", "data": signature}` instead. If it has no signature (for example the answer was aborted), it is sent as a plain `text` block.
-
-The assistant turn side by side:
-
-| Our block | OpenAI Chat Completions | OpenAI Responses | Anthropic Messages |
-|---|---|---|---|
-| Thinking | dropped, not sent | saved `reasoning` item (from `signature`), own item | `thinking` block with `signature` (redacted → `redacted_thinking`) |
-| Text | `content` string | `message` item, `id`/`phase` from text `signature` | `text` block |
-| Tool call | `tool_calls` entry, `arguments` as JSON string | `function_call` item, `arguments` as JSON string | `tool_use` block, `input` as object |
-
 One chat, three very different shapes. This is why we need block 3 Translate.
 
 And sending can fail in many ways: network down, bad key, a 529 "overloaded". The [stream function](glossary.md#stream-function) rule says "never raise", so every failure must become an `error` event.
 
 ## 3 Translate: our messages → vendor format
 
-Each provider has one function that turns our message list into its vendor's format. You already saw the result for one chat in the [real example](#problem) above. This table puts the rules side by side, row by row:
+Translate maps our messages (`UserMessage`; `AssistantMessage` = thinking, text and tool calls; `ToolResultMessage`) to the JSON each API accepts. Most of the work is renaming fields. But each API has a few rules of its own, and those rules are what this section is about. We go API by API, from the simplest to the hardest. Each provider has one function for this: `to_openai`, `to_input`, `_to_anthropic`.
 
-| | Chat Completions (`to_openai`) | Responses (`to_input`) | Anthropic (`_to_anthropic`) |
-|---|---|---|---|
-| System prompt | first message, role `system` | first item, role `system` (`developer` when reasoning is on) | not a message: separate `system=` field |
-| Tool call | entry in `tool_calls`, `arguments` as JSON string | own `function_call` item, `arguments` as JSON string | `tool_use` block, `input` as object |
-| Tool result | one `role: "tool"` message per result | one `function_call_output` item per result | `tool_result` block inside a **user** turn |
-| Thinking sent back | no, dropped | yes: saved `reasoning` item from `signature` | yes: `thinking` block with `signature` (redacted → `redacted_thinking`; unsigned → plain `text`) |
-| Special rule | `content: null` when only tool calls | `call_id\|item_id` split; text `signature`; role `developer` | merge same-role turns |
+### Chat Completions (`to_openai`)
 
-Each special rule, and why it is there. Every example below is real: we built our object, ran the real function, and copied the JSON it printed.
+The simplest API: one JSON message per turn, and the system prompt is just the first message (role `system`). Four rules.
 
-**Chat Completions: `content` can be `null`.**
+**(a) Thinking: dropped.** This API has no place to send thinking back. So `to_openai` keeps only the text and the tool calls of an assistant turn; the thinking block is skipped.
+
+```python
+AssistantMessage(content=[
+    ThinkingContent("User wants the file; call read"),
+    TextContent("Let me read it."),
+    ToolCall(id="call_1", name="read", arguments={"path": "README.md"}),
+])
+```
+
+```json
+{"role": "assistant", "content": "Let me read it.",
+ "tool_calls": [{"id": "call_1", "type": "function",
+                 "function": {"name": "read", "arguments": "{\"path\": \"README.md\"}"}}]}
+```
+
+**(b) Tool call: an entry in `tool_calls`, `arguments` as a JSON string.** Look at the example above: `arguments` is not an object, it is a *string* that holds JSON (`json.dumps(c.arguments)`). This is what the API wants. (Anthropic, below, wants an object. Easy to mix up.)
+
+**(c) Only a tool call: `content` is `null`.**
 
 ```text
 content = text IF text is not blank, ELSE null IF tool calls, ELSE ""
@@ -183,7 +156,7 @@ AssistantMessage(content=[ToolCall(id="call_1", name="read", arguments={"path": 
                  "function": {"name": "read", "arguments": "{\"path\": \"README.md\"}"}}]}
 ```
 
-*Case 2b — thinking, then a tool call.* The thinking is dropped (Chat Completions never sends it back), so the result is exactly the same as case 2:
+*Case 2b — thinking, then a tool call.* The thinking is dropped (rule a), so the result is exactly the same as case 2:
 
 ```python
 AssistantMessage(content=[
@@ -208,9 +181,25 @@ AssistantMessage(content=[ThinkingContent("Let me think about the plan...")], st
 {"role": "assistant", "content": ""}
 ```
 
-**Responses: three small tricks.**
+**(d) Tool result: one role `tool` message per result.** Each result is its own message, linked to its call by `tool_call_id`. Never merged. So 3 parallel calls give 3 `tool` messages:
 
-The shared why: we send `store: false`, so OpenAI keeps nothing. So on every call we send the whole history back ourselves, and it must look like OpenAI's own earlier output. The three tricks below all come from this.
+```python
+ToolResultMessage(tool_call_id="call_1", tool_name="read", content="text of a.py")
+ToolResultMessage(tool_call_id="call_2", tool_name="read", content="text of b.py")
+ToolResultMessage(tool_call_id="call_3", tool_name="read", content="text of c.py")
+```
+
+```json
+{"role": "tool", "tool_call_id": "call_1", "content": "text of a.py"}
+{"role": "tool", "tool_call_id": "call_2", "content": "text of b.py"}
+{"role": "tool", "tool_call_id": "call_3", "content": "text of c.py"}
+```
+
+### Responses (`to_input`)
+
+The history is a flat list of **items**, each with an id, and we must replay them exactly.
+
+The shared why: we send `store: false`, so OpenAI keeps nothing. So on every call we send the whole history back ourselves, and it must look like OpenAI's own earlier output. The thinking replay and the three tricks below all come from this.
 
 First, some background on how Responses works, because the tricks only make sense with it. In Responses, the model's answer is a list of [**items**](glossary.md#item-responses), and each item has its own `id`: a reasoning item (`rs_...`), a text item called `message` (`msg_...`), and a tool call item `function_call` (`fc_...`, plus a separate `call_id`). The reasoning item is **encrypted** (its `encrypted_content`): we cannot read it, we can only send it back as it is. Each reasoning item is paired with the item that came right after it (the text or tool call it led to), and OpenAI matches the pair by their ids. So when we send the history back to the same model, every item must keep its original id. But our objects have no id field for text, and only one id field for tool calls. Tricks 1 and 2 fix exactly this.
 
@@ -218,6 +207,17 @@ First, some background on how Responses works, because the tricks only make sens
 [{"type": "reasoning", "id": "rs_1", "encrypted_content": "..."},
  {"type": "message", "id": "msg_68a1f0", "role": "assistant", "content": [...]},
  {"type": "function_call", "id": "fc_abc", "call_id": "call_1", "name": "read", "arguments": "..."}]
+```
+
+*Thinking: replay the saved reasoning item.* The parser saved the whole reasoning item, as JSON, in `ThinkingContent.signature`. `to_input` just loads it and puts it back as its own item. No signature → nothing is sent.
+
+```python
+ThinkingContent("User wants the file; call read",
+                signature='{"type": "reasoning", "id": "rs_1", "encrypted_content": "...", "summary": [...]}')
+```
+
+```json
+{"type": "reasoning", "id": "rs_1", "encrypted_content": "...", "summary": [...]}
 ```
 
 *Trick 1 — two ids in one string.*
@@ -300,7 +300,30 @@ role = "developer" IF reasoning effort set, ELSE "system"
 
 Tricks 1 and 2 keep old ids so replayed reasoning lines up; trick 3 uses the role reasoning models expect.
 
-**Anthropic: merge turns.**
+### Anthropic (`_to_anthropic`)
+
+Each turn is a list of typed **blocks**, and the system prompt is not a message at all: it goes in a separate `system=` field. Three rules.
+
+**(a) Thinking: a `thinking` block with its `signature`.** Anthropic checks the signature, so signed thinking goes back as it was. Redacted thinking goes back as `{"type": "redacted_thinking", "data": signature}`. Thinking with no signature (for example the answer was aborted) cannot be replayed as thinking, so it is sent as a plain `text` block. Blank unsigned thinking and empty text are dropped.
+
+```python
+AssistantMessage(content=[
+    ThinkingContent("User wants the file; call read", signature="EqQB..."),
+    ThinkingContent("Half a thought"),          # no signature: aborted
+    TextContent("Let me read it."),
+])
+```
+
+```json
+{"role": "assistant", "content": [
+  {"type": "thinking", "thinking": "User wants the file; call read", "signature": "EqQB..."},
+  {"type": "text", "text": "Half a thought"},
+  {"type": "text", "text": "Let me read it."}]}
+```
+
+**(b) Tool call: a `tool_use` block, `input` as an object.** Unlike OpenAI, the arguments are a real JSON object, not a string: `{"type": "tool_use", "id": "call_1", "name": "read", "input": {"path": "README.md"}}`.
+
+**(c) Tool result: a `tool_result` block inside a user turn; turns must alternate, so we merge.**
 
 Anthropic needs user and assistant turns to take turns: user, assistant, user, ... But when the model calls 3 tools, each tool result first becomes its own **user** turn. Our objects IN:
 
@@ -351,7 +374,7 @@ IF this turn has the same role as the last one: add its content to the last one,
 
 ## 4 Send: call the API
 
-Now each provider starts a streaming call with its SDK (`stream=True` for OpenAI, `client.messages.stream(...)` for Anthropic). The SDK is imported inside `stream`, so you only need the SDK you use. The request settings differ, again row by row (`compat` = small per-server switches on the `Model`; all keys in [ref-objects](ref-objects.md#request-objects-tool-context-model)):
+Now each provider starts a streaming call with its SDK (`stream=True` for OpenAI, `client.messages.stream(...)` for Anthropic). The SDK is imported inside `stream`, so you only need the SDK you use. The request settings differ, row by row (`compat` = small per-server switches on the `Model`; all keys in [ref-objects](ref-objects.md#request-objects-tool-context-model)):
 
 | | Chat Completions | Responses | Anthropic |
 |---|---|---|---|

@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-21
+- ch02 3 Translate rewritten as one story per API (Chat Completions rules a–d, Responses thinking replay + tricks, Anthropic rules a–c), each why → what → IN/OUT JSON; all three comparison tables removed; Problem keeps one sentence + the JSON example; part-1 links fixed. (checked at `e060d2e`)
 - ch02 trick 2: short note on what `phase` means (commentary / final_answer) and why we send none without a signature.
 - ch02 Responses: background before the tricks (items with own ids rs_/msg_/fc_, encrypted reasoning paired with the next item by id, small JSON); trick 2 says plainly TextContent has no id so we borrow `signature`; other model → msg_pi_<i>, no phase.
 - ch02 Responses tricks: open with the shared why (store:false → we resend history as OpenAI's own output); each trick's why ties back to it; closing one-line recap; developer role "preferred".
