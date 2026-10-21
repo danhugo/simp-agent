@@ -292,25 +292,11 @@ AssistantMessage(content=[TextContent("Hello!")])
  "content": [{"type": "output_text", "text": "Hello!", "annotations": []}]}
 ```
 
-*Trick 3 — role `developer`.*
+*Trick 3 — role `developer`.* For an OpenAI reasoning model (a reasoning effort is set), the system prompt is sent with role `developer` instead of `system`. That is OpenAI's preferred name for app instructions on these models.
 
 ```text
-role = "developer" IF compat.reasoning_effort is set (and not "none"), ELSE "system"
+role = "developer" IF reasoning effort set, ELSE "system"
 ```
-
-Same system prompt `"You are a coding agent."`, two models:
-
-```python
-Model(id="gpt-5", api="openai-responses")                                      # no reasoning
-Model(id="gpt-5", api="openai-responses", compat={"reasoning_effort": "medium"})  # reasoning on
-```
-
-```json
-{"role": "system", "content": "You are a coding agent."}
-{"role": "developer", "content": "You are a coding agent."}
-```
-
-Why: `developer` is OpenAI's newer name for app instructions, and it is the preferred role for reasoning models. So the code uses it when reasoning effort is set, else `system`.
 
 Tricks 1 and 2 keep old ids so replayed reasoning lines up; trick 3 uses the role reasoning models expect.
 
