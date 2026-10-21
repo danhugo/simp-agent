@@ -85,6 +85,8 @@ The fix for 1 and 2: record cost after **every** model call, in the store, and c
 
 ## Step by step: from naive to real
 
+Remember Ann from the Problem: she closes the tab and goes home, but her run keeps calling the model, and each call costs money. The steps below fix this, one problem at a time.
+
 **Step 1 — check before every call, not once.** Move the check inside the loop:
 
 Naive sketch (not in the repo):
@@ -181,7 +183,7 @@ Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.on_
 ```text
 u = {input: m.usage.input or 0, output: m.usage.output or 0}
 ...
-WAIT for store.add_usage(user_id, sid, model.id, u, cost = budget.cost(profile, u))
+WAIT for store.add_usage(user_id, sid, model.id, u.input, u.output, cost = budget.cost(profile, u))
 ```
 
 The row goes to the SQLite store from [22](22-store-auth.md), so the count survives a crash. The session title call records its usage the same way.
@@ -269,6 +271,12 @@ FUNCTION start(text, fresh = true):   // text: a prompt, or a coroutine factory 
 
 A new prompt starts a fresh run budget. A queued follow-up ([07](07-steering.md)) starts with `fresh=False`, so queueing cannot get around the run limit.
 
+Example:
+
+- 10:00 Ann sends a prompt. `run_start = 10:00`.
+- 10:02 Ann's queued follow-up starts. `run_start` stays `10:00`, so the follow-up's cost adds to the same run.
+- 10:10 Ann sends a new prompt. `run_start = 10:10`, and the run spend starts again from zero.
+
 When the guard refuses, the run ends in state `"error"`. The client sees why from the error text.
 
 ### Kill switch: one file
@@ -287,8 +295,8 @@ The admin uses the CLI:
 Real code: [server.py](../../apps/server/src/simp_server/server.py) — `main`
 
 ```text
-ADD CLI command "pause"  // kill switch: refuse every LLM call until resume
-ADD CLI command "resume" // lift the kill switch
+register subcommand "pause"  // kill switch: refuse every LLM call until resume
+register subcommand "resume" // lift the kill switch
 ...
 IF mode is "pause" or "resume":
     f = "<data_dir>/PAUSED"
