@@ -271,7 +271,7 @@ Key idea: the prompt asks, the hook enforces. State lives in history, so resume 
 It uses every main socket from [14](14-plugins.md):
 
 - **Two layers of defence.** A prompt section (order 1000, so last) *tells* the model to plan only. The `tool_call` hook *blocks* `write`, `edit` and `bash` if the model tries anyway. The prompt avoids wasted turns; the hook is the real guard. The model gets a tool result that says "User denied: blocked by plugin plan_mode: plan mode is on (read-only)", so it knows why.
-- **State as a CustomEntry.** `set_enabled` appends a `CustomEntry` with type `plan_mode` ([13](13-session.md)). It is saved but not sent to the model. On resume, `setup` finds the **last** such entry in history and restores the state. No extra file.
+- **State as a CustomEntry.** `set_enabled` appends a `CustomEntry` with type `plan_mode` ([ref-objects](ref-objects.md#two-history-entries-that-are-not-messages)). It is saved but not sent to the model. On resume, `setup` finds the **last** such entry in history and restores the state. No extra file.
 - **`config["enabled"]`** is only the start value for a new session.
 
 The app turns it on and off. The server has a `SetPlanMode` command that finds the `PlanMode` plugin in `session.plugins` and calls `set_enabled` ([21](21-transport.md)).

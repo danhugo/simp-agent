@@ -115,7 +115,7 @@ class CustomEntry:
 ```
 
 - A **[compaction entry](glossary.md#compaction-entry)**: "everything before `first_kept_index` is replaced by `summary`". History is append-only. Built in [ch 16](16-compaction.md).
-- A **[custom entry](glossary.md#custom-entry)**: plugin data kept in history, so it comes back on resume. Used in [ch 14](14-plugins.md).
+- A **[custom entry](glossary.md#custom-entry)**: plugin data kept in history, so it comes back on resume. A plugin adds one with `append_entry` (in `session/__init__.py`), which saves it to the store like a message. Used in [ch 14](14-plugins.md) and [ch 18](18-profiles-plugins.md).
 
 Both are saved like messages but never sent: Clean skips them ([ch 01](01-pick-clean.md#2-clean-transform_messages)).
 
