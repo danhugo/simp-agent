@@ -381,4 +381,4 @@ A fixed list of what to include; anything not on it is left out. The backup copi
 The settings of one `agent_loop()` run: model, tools, `stream_fn`, queues, hooks, `env`, `cwd`. Every hook has a "do nothing" default. See [05](05-agent-loop.md), [part-2-agent](part-2-agent.md).
 
 ## Agent (class)
-The thin object around `agent_loop()`. It keeps the history, subscribers, cancel flag and the steer / follow-up queues; `prompt()` runs the loop once. See [06](06-events-abort.md), [part-2-agent](part-2-agent.md).
+The thin object around `agent_loop()`. It keeps the history, subscribers, cancel event and the steer / follow-up queues; `prompt()` runs the loop once. See [06](06-events-abort.md), [part-2-agent](part-2-agent.md).
