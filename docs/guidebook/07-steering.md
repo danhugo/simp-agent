@@ -33,6 +33,52 @@ But the user still types while the agent works. A coding run can take minutes. I
 
 What is a safe point? The history must stay valid. The model asked for tools; each tool call must be followed by its tool result ([01](01-pick-clean.md)). If we put a user message **between** a tool call and its result, vendors reject the request. So "deliver now" really means "deliver at the next place where the history is complete".
 
+An example. The model asks for three tools: `read a.py`, `read b.py`, `edit c.py`. While `read a.py` runs, the user types "use d.py, not c.py".
+
+Wrong history (message put in at once):
+
+```text
+assistant: call_1 read a.py, call_2 read b.py, call_3 edit c.py
+user:      "use d.py, not c.py"        <- between calls and results
+tool:      result of call_1
+tool:      result of call_2
+tool:      result of call_3
+```
+
+The vendor rejects this request: the tool results no longer come right after the calls.
+
+Right history (message kept, then put in at the safe point):
+
+```text
+assistant: call_1 read a.py, call_2 read b.py, call_3 edit c.py
+tool:      result of call_1
+tool:      result of call_2
+tool:      result of call_3
+user:      "use d.py, not c.py"        <- safe point: every call has its result
+// next model call sees the message and changes plan
+```
+
+As a timeline:
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant L as Loop
+    participant T as Tools
+    L->>T: run call_1 (read a.py)
+    U->>L: steer("use d.py, not c.py")
+    Note over L: keep it in the queue
+    T-->>L: result 1
+    L->>T: run call_2 (read b.py)
+    T-->>L: result 2
+    L->>T: run call_3 (edit c.py)
+    T-->>L: result 3
+    Note over L: safe point: read the queue, add the message
+    L->>L: next model call sees results + message
+```
+
+Note the cost: all three tools still run, so `edit c.py` still happens. Steer changes the **next** decision. To stop the tools now, the user needs abort ([06](06-events-abort.md)). Below, we call each place where the loop checks the queue a **read point**.
+
 ## Naive version
 
 ```text
@@ -190,11 +236,11 @@ flowchart TD
    Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_llm_turn`)
 
    `prepare_next_turn` may be slow: it is where compaction runs ([16](16-compaction.md)), and when compaction runs, that is one more model call. A message typed during it goes into this turn, not the next. The docstring says it: "prepare_next_turn hook -> steering poll (the hook may be slow) -> …". The message is added to the history **and** to `view`, because `view` was built before the poll.
-3. **After the tool batch** (`has_calls, pending = bool(calls), config.get_steering()`). This is the main point. All tool results are in the history now, so a user message is safe here.
+3. **After the tool batch** (`has_calls, pending = bool(calls), config.get_steering()`). This is the main point, and the one in the example at the top. All tool results are in the history now, so a user message is safe here.
 
 Follow-ups are read at one point only: when the inner loop has ended.
 
-Note what steering does **not** do. It does not stop the tool that is running, and it does not skip the other tools in the batch. If the model asked for three tools and the user steers during the first, all three run, then the steer is sent. To stop a tool, the user needs [abort](glossary.md#abort). Steer changes the **next** decision; abort stops the **current** one.
+Note what steering does **not** do: it does not stop the running tool or skip the rest of the batch, as the example at the top showed. To stop a tool, the user needs [abort](glossary.md#abort).
 
 ### Errors and abort leave the queues alone
 

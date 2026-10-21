@@ -89,6 +89,9 @@ Stopping a run in the middle by setting one `asyncio.Event` (`cancel`, or `Agent
 ## Steer
 A user message typed while the agent works, meant to reach the model soon. `Agent.steer(text)` queues it; the loop reads it (through `LoopConfig.get_steering`) before the first turn, just before each model call, and after each tool batch. It never cuts a tool batch. Home: [07](07-steering.md#when-each-queue-is-read).
 
+## Safe point
+A place in the history where every tool call already has its tool result. Steering messages are added only here (the read points), so the request stays valid. Home: [07](07-steering.md#problem).
+
 ## Follow-up
 A user message queued to run after the agent would stop. `Agent.follow_up(text)` queues it; the loop reads it (through `LoopConfig.get_follow_up`) only when there are no tool calls and no steering left, and it continues the same run. Home: [07](07-steering.md#two-loops-inner-for-steering-outer-for-follow-ups).
 
