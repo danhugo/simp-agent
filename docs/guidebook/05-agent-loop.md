@@ -242,45 +242,48 @@ The other fields (`get_steering`, `get_follow_up`, `prepare_next_turn`, `before_
 
 ### `agent_loop`: the loop
 
-Here is the shape, with the steering and follow-up parts ([07](07-steering.md)) left as they are:
+First, a run in plain words. The user asks "What is in a.txt? Make it upper case." Three turns happen:
+
+| Turn | Model reply | Loop does | `has_calls` |
+|---|---|---|---|
+| 1 | call `read(path="a.txt")` | runs `read`, adds result `"hello"` | yes, so go on |
+| 2 | call `write(path="a.txt", text="HELLO")` | runs `write`, adds result `"ok"` | yes, so go on |
+| 3 | text "Done." (no calls) | nothing to run | no, so stop |
+
+The run returns seven new messages: the user prompt, then assistant + tool result for turns 1 and 2, then the final assistant message.
+
+Now the loop that does this. This is a small version: it leaves out steering and follow-ups ([07](07-steering.md)), tool events and abort ([06](06-events-abort.md)), and hooks ([08](08-hooks-approval.md)).
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
 
 ```text
 FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> new messages:
-    // Run until the assistant stops calling tools. Changes `messages`, returns the new ones.
-    ...
+    new = []                                   // only the messages from this run
+    FUNCTION add(m): append m to messages and to new; SEND message_start, message_end
     SEND event agent_start
     FOR EACH p in prompts: add(p)
-    pending = config.get_steering(); has_calls = yes; msg = nothing
-    REPEAT:
-        WHILE has_calls or pending:
-            SEND event turn_start
-            ...
-            msg = WAIT for _llm_turn(system_prompt, messages, config, cancel, send, add)
-            add(msg)
-            calls = the tool calls in msg
-            IF msg.stop_reason is "error" or "aborted":
-                RETURN _end(send, msg, new)
-            FOR EACH call in calls:
-                ...
-                IF msg.stop_reason is "length":   // args may be cut off: never run them
-                    result = error ToolResultMessage "Tool call was truncated (max tokens); not executed"
-                ELSE:
-                    ...
-                    ctx = ToolContext(cancel, config.env, config.cwd, on_update)
-                    ...
-                    result = WAIT for run_tool(_tools(config), call, ctx)
-                    ...
-                add(result)
-            ...
-            SEND event {turn_end, msg}
-            has_calls = (calls is not empty); pending = config.get_steering()
-        pending = config.get_follow_up()
-        IF no pending: STOP repeating
+    has_calls = yes
+    WHILE has_calls:                           // one pass = one turn
+        SEND event turn_start
+        msg = WAIT for _llm_turn(system_prompt, messages, config, cancel, send, add)
+        add(msg)
+        IF msg.stop_reason is "error" or "aborted":
+            SEND event turn_end, agent_end; RETURN new
+        calls = the tool calls in msg
+        FOR EACH call in calls:
+            IF msg.stop_reason is "length":    // args may be cut off: never run them
+                result = error ToolResultMessage "Tool call was truncated (max tokens); not executed"
+            ELSE:
+                ctx = ToolContext(cancel, config.env, config.cwd, on_update)
+                result = WAIT for run_tool(_tools(config), call, ctx)
+            add(result)
+        SEND event {turn_end, msg}
+        has_calls = (calls is not empty)
     SEND event {agent_end, new}
     RETURN new
 ```
+
+In the real code, the `while` sits inside one more loop for follow-ups, and `has_calls` is joined by "pending steering messages". [07](07-steering.md) adds those.
 
 Read it as the four steps from the Problem section:
 
@@ -311,7 +314,6 @@ One pass of the inner `while` is one [turn](glossary.md#turn): one model call pl
 - **Every tool call gets a result.** Unknown tool, bad args, crash, truncated: in every case the loop adds a `ToolResultMessage`. Providers reject a tool call with no result ([01](01-pick-clean.md#2-clean-transform_messages)), so this keeps the history sendable. (One exception: after an abort the remaining calls are skipped; `transform_messages` repairs that later, see [01](01-pick-clean.md#2-clean-transform_messages) and [06](06-events-abort.md).)
 - **Tools run one after another**, in the order the model gave, so results stay in the same order as the calls. (A design reason, not written in the code: two tools never edit the same file at the same time.)
 
-The parts marked `...` are: `tool_execution_*` events and abort ([06](06-events-abort.md)), steering and follow-ups ([07](07-steering.md)), and `before_tool_call` / `after_tool_call` ([08](08-hooks-approval.md)).
 
 ### `_llm_turn`: one model call
 
