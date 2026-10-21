@@ -379,43 +379,102 @@ IF this turn has the same role as the last one: add its content to the last one,
 
 ## 4 Send: call the API
 
-Now each provider starts a streaming call with its SDK (`stream=True` for OpenAI, `client.messages.stream(...)` for Anthropic). The SDK is imported inside `stream`, so you only need the SDK you use. The request settings differ, row by row (`compat` = small per-server switches on the `Model`; all keys in [ref-objects](ref-objects.md#request-objects-tool-context-model)):
+Translate gave us the request body: the messages in the vendor's format. Send does three more things, in the same order for all three vendors:
 
-| | Chat Completions | Responses | Anthropic |
-|---|---|---|---|
-| Request switches | `compat`: `max_tokens_field`, `include_usage` | `store: false`, `max_output_tokens` at least 16 | no switches: always sends `max_tokens`, `system`, `tools` |
-| Thinking on | `compat.reasoning_effort` → `reasoning_effort` | `compat.reasoning_effort` → `reasoning: {effort, summary: "auto"}` | `thinking_params(model)`: `thinking_budget` or `reasoning_effort` |
-| Reasoning kept between calls | no (thinking is not sent back) | `include: ["reasoning.encrypted_content"]` | the signed `thinking` block itself |
+1. **Add the other request settings** (answer length, thinking, and so on).
+2. **Open a streaming call** and pass each chunk to Parse (ch [03](03-parse.md)).
+3. **Turn every error into an event**, so the caller never has to catch an exception.
 
-**Chat Completions.** Some servers want `max_completion_tokens`, some fail on `stream_options`. `compat` handles that with a setting, not code:
+Only step 1 is really different per vendor. Steps 2 and 3 work the same way everywhere.
 
-Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) (`stream`)
-
-```text
-kw[ compat "max_tokens_field" or "max_tokens" ] = model.max_tokens
-IF compat include_usage (default yes):
-    kw.stream_options = {include_usage: true}
-IF compat reasoning_effort is set:
-    kw.reasoning_effort = that value
+```mermaid
+flowchart LR
+    T[Translate: messages] --> S1[1 add settings] --> S2[2 streaming call] -->|each chunk| P[Parse ch 03]
+    S2 -.->|any error| E[error event]
 ```
 
-**Responses.** We send `store: false`. Why: we keep the whole history ourselves and send it every time, so OpenAI should keep nothing. But then a reasoning model cannot see its own past reasoning. So we ask for `include: ["reasoning.encrypted_content"]`: OpenAI sends the reasoning item back encrypted, we save it in `ThinkingContent.signature`, and `to_input` sends it back next time.
+### 1. Settings: three questions
 
-Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_responses.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_responses.py) (`request`)
+Every request must answer three questions. The vendors ask them in different words. The settings come from the [model](glossary.md#model): `model.max_tokens` and `model.compat`, a small dict of per-server switches (all keys in [ref-objects](ref-objects.md#request-objects-tool-context-model)).
 
-```text
-kw = {model id, input = to_input(model, system prompt, messages), stream: true,
-      store: false, max_output_tokens: at least 16}
-IF the model has a reasoning effort:
-    kw.reasoning = {effort, summary: "auto"}
-    kw.include   = ["reasoning.encrypted_content"]   // so we can send it back later
+**a) How long may the answer be?**
+
+- **Chat Completions** wants `max_tokens`. But some servers (newer OpenAI models, for example) want the name `max_completion_tokens` instead. We do not write code for each server: `compat.max_tokens_field` just renames the key.
+
+  ```jsonc
+  {"max_tokens": 4096}                // default server
+  {"max_completion_tokens": 4096}     // server with compat.max_tokens_field = "max_completion_tokens"
+  ```
+
+- **Responses** wants `max_output_tokens`. Very small values can be refused by the API, so we send at least 16: `max(16, model.max_tokens)`.
+- **Anthropic** wants `max_tokens`, always. No switch needed.
+
+**b) Turn thinking on?**
+
+- **Chat Completions**: if `compat.reasoning_effort` is set, we send it as is (even `"none"`; the server decides).
+
+  ```json
+  {"reasoning_effort": "high"}
+  ```
+
+- **Responses**: if `compat.reasoning_effort` is set (and is not `"none"`), we send it inside `reasoning`. `summary: "auto"` asks OpenAI for a readable summary of the thinking, which Parse shows as thinking text.
+
+  ```json
+  {"reasoning": {"effort": "high", "summary": "auto"}}
+  ```
+
+- **Anthropic**: `thinking_params(model)` picks one of two ways, by which key is set. `compat.thinking_budget` gives a fixed token budget (for older models). `compat.reasoning_effort` gives "adaptive" thinking with an effort level (for newer models). If both are set, the budget wins. Neither set (or effort `"none"`): no thinking.
+
+  ```jsonc
+  {"thinking": {"type": "enabled", "budget_tokens": 8000}}                        // thinking_budget = 8000
+  {"thinking": {"type": "adaptive"}, "output_config": {"effort": "high"}}          // reasoning_effort = "high"
+  ```
+
+  (The budget way also sends the header `anthropic-beta: interleaved-thinking-2025-05-14`, so the model can think between tool calls.)
+
+**c) Keep the reasoning for the next turn?**
+
+A thinking model works better if, next turn, it can see what it thought before.
+
+- **Chat Completions**: no. This API has no way to send thinking back, which is why Translate drops it (see [Chat Completions](#chat-completions-to_openai)).
+- **Responses**: yes, but we must ask for it. We send `store: false` (why: see [Responses](#responses-to_input)), so OpenAI keeps nothing. So when thinking is on we also send:
+
+  ```json
+  {"include": ["reasoning.encrypted_content"]}
+  ```
+
+  OpenAI then returns the reasoning item encrypted. Parse saves it in `ThinkingContent.signature`. **This is where the reasoning item that Translate sends back comes from.**
+- **Anthropic**: nothing to ask. The `thinking` block comes with a `signature`, and sending that signed block back (Translate does) is enough.
+
+**Side note: token counts.** Chat Completions sends token usage in a stream only if we ask: `"stream_options": {"include_usage": true}`. We ask by default. Some servers fail on this key, so `compat.include_usage = false` turns it off. (Responses and Anthropic always send usage.)
+
+### 2. Call with stream
+
+Now we put the body and the settings together and open a streaming call. A full Chat Completions request, for one user message and one tool:
+
+```json
+{
+  "model": "gpt-4o",
+  "messages": [
+    {"role": "system", "content": "You are a coding agent."},
+    {"role": "user", "content": "Read README.md"}
+  ],
+  "stream": true,
+  "max_tokens": 4096,
+  "stream_options": {"include_usage": true},
+  "tools": [{"type": "function", "function": {
+    "name": "read", "description": "Read a file",
+    "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}}}]
+}
 ```
 
-**Anthropic.** `thinking_params(model)` turns thinking on. `compat.thinking_budget` gives a fixed token budget (older models); `compat.reasoning_effort` gives adaptive thinking with an effort level. Neither set: no thinking.
+Each provider uses its SDK for the call: `client.chat.completions.create(**kw)`, `client.responses.create(**kw)`, or `client.messages.stream(...)` for Anthropic. Every chunk (for Anthropic: every SDK event) that comes back goes straight to `parse` (ch [03](03-parse.md)).
 
-Real code: [packages/simp_agent/src/simp_agent/ai/providers/anthropic.py](../../packages/simp_agent/src/simp_agent/ai/providers/anthropic.py) (`thinking_params`)
+`parse` is a separate function so tests can feed it plain objects, with no network and no SDK client.
 
-**Same for all three: errors become events.** Every provider wraps the call in `try`/`except`, so a network error, a bad key or a 529 becomes an `error` [stream event](glossary.md#stream-event), not an exception. (Small difference: Anthropic puts the error on the partial message it was building, so any text so far is kept; the OpenAI providers send a new empty message.) In `openai_completions.py`:
+### 3. Errors become events
+
+A network error, a bad key, a server that is too busy (429): any of these must not crash the caller. Every provider wraps the call in `try`/`except` and turns the exception into an `error` [stream event](glossary.md#stream-event). In `openai_completions.py`:
 
 ```text
 TRY:
@@ -427,9 +486,9 @@ IF any exception:
 
 Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) (`stream`)
 
-The one exception: the SDK `import` sits just before the `try`, so a missing SDK raises `ImportError` — the only case that breaks "never raise".
+One small difference: Anthropic puts the error on the message it was already building, so any text received so far is kept. The OpenAI providers send a new, empty message.
 
-We split `parse` out of `stream` so tests can feed it plain objects with no network and no SDK client.
+The one exception: the SDK `import` sits just before the `try` (so you only need the SDK you use). A missing SDK raises `ImportError`, the only case that breaks "never raise".
 
 ## Test
 
@@ -462,7 +521,7 @@ uv run pytest -q tests/test_openai.py::test_message_conversion tests/test_openai
 - Each provider converts our messages to its own format; Anthropic merges same-role turns so user and assistant alternate.
 - `compat` holds small per-server switches (`max_tokens_field`, `include_usage`, `reasoning_effort`, `thinking_budget`), so odd servers need a setting, not new code.
 - OpenAI Responses keeps nothing on the server (`store: False`); we save the encrypted reasoning item in `ThinkingContent.signature` and send it back.
-- `stream` sends the request and turns every exception into an `error` event.
+- `stream` sends the request and turns every exception into an `error` event (only a missing SDK raises `ImportError`).
 
 **Builds on:** [01 Pick + Clean](01-pick-clean.md) · **Next:** [03 Parse](03-parse.md) — the server answers in many small chunks; next we glue them into one message.
 
