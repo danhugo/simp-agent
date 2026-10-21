@@ -103,9 +103,9 @@ Like `get_steering` in [07](07-steering.md), the loop only **asks** the caller. 
 ```text
 LoopConfig:
     before_tool_call(call, ctx)         -> none = run the tool; a string = deny with this reason
-                                           (sync or async; like pi beforeToolCall)
+                                           (sync or async)
     after_tool_call(call, result, ctx)  -> a new ToolResultMessage, or none = keep result
-                                           (also runs after a deny; like pi afterToolCall)
+                                           (also runs after a deny)
 ```
 
 Real code: [agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `LoopConfig`
@@ -113,7 +113,7 @@ Real code: [agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agen
 - `before_tool_call(call, ctx)` returns `None` ("go on") or a **string**: the reason to deny.
 - `after_tool_call(call, result, ctx)` returns a new `ToolResultMessage`, or `None` to keep the old one.
 
-Both get the [tool context](glossary.md#tool-context) `ctx` ([05](05-agent-loop.md)), so a hook can see the `cancel` event, the [execution environment](glossary.md#execution-environment) and the `cwd`. Both default to `None`: no hook, no change. The names and shapes follow pi's `beforeToolCall` / `afterToolCall`.
+Both get the [tool context](glossary.md#tool-context) `ctx` ([05](05-agent-loop.md)), so a hook can see the `cancel` event, the [execution environment](glossary.md#execution-environment) and the `cwd`. Both default to `None`: no hook, no change.
 
 "Sync or async" means a hook can be a plain function or an `async def`. The loop handles both with one small helper:
 
@@ -194,42 +194,55 @@ So a caller that uses `Agent` instead of `agent_loop` gets the same gate.
 
 [Tool approval](glossary.md#tool-approval) is **not** a feature of the loop. It is just one `before_tool_call`. The real one lives in `AgentSession` ([13](13-session.md)), which passes `before_tool_call=self._before_tool_call` to its `Agent`. We look at it now because it shows how to write a good hook (`packages/simp_agent/src/simp_agent/session/__init__.py`):
 
-```text
-approve = approve; needs_approval = {"bash", "write", "edit"}; always_allowed = {}   // approve None = allow all
-```
+The session keeps three things:
 
-Real code: [packages/simp_agent/src/simp_agent/session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) (`AgentSession`)
+- `approve`: a function that asks the human and returns their answer. `None` means "never ask, allow all" (the CLI's `--yes`, see [19](19-cli.md)).
+- `needs_approval = {"bash", "write", "edit"}`: only these tools ask. `read` never asks.
+- `always_allowed`: tool names the human answered `"always"` for. Empty at the start; kept for this session only.
+
+When a call reaches the hook, there are five situations. Read them first; the code below just checks them in order.
+
+| | Situation | Hook returns | Tool runs? |
+|---|---|---|---|
+| (a) | No need to ask: `approve` is `None`, or the tool is not in `needs_approval`, or it is in `always_allowed` | `None` | yes |
+| (b) | We ask, and the user presses Stop **before** any answer | `"aborted"` | no |
+| (c) | The answer is `"always"` | `None` (and remember the tool name) | yes, even if Stop was pressed just after the answer |
+| (d) | The answer is `"allow"`, but Stop was pressed just before the answer came | `"aborted"` | no |
+| (e) | The answer is `"allow"` and no Stop: run. Any other answer (`"deny"`, a typo, `""`): deny | `None` / `"denied"` | yes / no |
+
+Why (b): a browser approval may never answer. If the hook only waited for the answer, Stop could not end the run. So the hook waits for **whichever comes first**: the answer, or `ctx.cancel`.
+
+Why "anything else denies" in (e): a typo or an empty answer must be a "no", never a "yes" (fail closed).
+
+(c) vs (d) is a small corner of the real code: only an `"allow"` is checked against `ctx.cancel` again. An `"always"` that arrives after Stop still runs the tool, and then the loop sees `cancel` and ends the run ([06](06-events-abort.md)).
+
+Here is the code, with the same letters:
 
 ```text
 FUNCTION _before_tool_call(call, ctx):          // (approval part)
     IF approve is None OR call.name NOT IN needs_approval OR call.name IN always_allowed:
-        RETURN None                              // run it, no question
+        RETURN None                              // (a) run it, no question
     ask  = START approve(call)
     stop = START waiting for ctx.cancel
     WAIT for the first one of (ask, stop) to finish
     CANCEL stop
-    IF ask is not done:                          // aborted: a browser approval may never answer
+    IF ask is not done:                          // (b) Stop came first
         CANCEL ask
         WAIT for ask to finish its cleanup       // e.g. an "aborted" event, before the run ends
         RETURN "aborted"
     answer = result of ask
-    IF answer == "always":
+    IF answer == "always":                       // (c) no cancel check here
         ADD call.name to always_allowed
     ELSE IF answer != "allow" OR ctx.cancel is set:
-        RETURN "aborted" if ctx.cancel is set, else "denied"
-    RETURN None
+        RETURN "aborted" if ctx.cancel is set, else "denied"   // (d) or (e) deny
+    RETURN None                                  // (c) or (e) allow
 ```
 
 Real code: [packages/simp_agent/src/simp_agent/session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) (`AgentSession._before_tool_call`)
 
 (The part of this method before the approval part runs plugin `tool_call` hooks first; that is [14](14-plugins.md).)
 
-What it does:
-
-- **Ask only when needed.** No `approve` function → allow all (the CLI's `--yes`, see [19](19-cli.md)). Only `bash`, `write` and `edit` ask; `read` never does. A tool in `always_allowed` does not ask again.
-- **Three answers.** `"allow"` runs this call. `"always"` runs it and remembers the tool name for the rest of the session. Anything else denies, so a typo or an empty answer is a "no" (fail closed).
-- **Race the human against Stop.** The hook waits for **either** the answer **or** `ctx.cancel`. This fixes the "blocks forever" problem of the naive version. If the user presses Stop while the question is open, the hook cancels the question and returns `"aborted"`. Then the loop adds the deny result, sees `cancel` is set, and ends the run as in [06](06-events-abort.md).
-- **Late answers lose.** If an answer arrives but `cancel` is already set, it still returns `"aborted"`, not "run it".
+When the hook returns `"aborted"`, the loop adds the deny result, sees `cancel` is set, and ends the run as in [06](06-events-abort.md).
 
 This is why `ToolContext` is passed to the hook: without `ctx.cancel`, an approval could not be stopped.
 
@@ -266,7 +279,7 @@ The after-hook test changes a result (`apps/cli/tests/test_sockets.py`):
 
 The tool returns `"raw"`; the history keeps `"raw!"`. This also shows the hook works through `Agent`.
 
-Approval has its own tests in the same `test_cli.py`: `test_deny_skips_tool`, `test_always_asks_once_and_read_never_asks` (two `bash` calls ask once; `read` never asks), `test_no_approve_allows_all`, and `test_abort_while_asking_denies` (Stop is pressed, then a late `"allow"` arrives: the tool does not run and the run ends `aborted`). The other abort path, where the question is still open and gets cancelled, has no test at this commit.
+Approval has its own tests in the same `test_cli.py`: `test_deny_skips_tool`, `test_always_asks_once_and_read_never_asks` (two `bash` calls ask once; `read` never asks), `test_no_approve_allows_all`, and `test_abort_while_asking_denies` (situation (d): Stop is pressed, then a late `"allow"` arrives: the tool does not run and the run ends `aborted`). Situations (b) and (c) have no test at this commit.
 
 ```bash
 uv run pytest apps/cli/tests/test_cli.py apps/cli/tests/test_sockets.py
