@@ -229,28 +229,7 @@ POST Prompt("write fizzbuzz.py")        state idle
 
 **Why this fixes problem 2:** text that comes in while busy never calls `start()` again; [21 · The command queue](21-transport.md#the-command-queue) queues it as a steer or follow-up. One `Run`, one loop.
 
-**After a restart: `recover`.** The process can die in the middle of a run. When [22](22-store-auth.md#recover) loads the session again, the last saved `RunState` is still busy, but no loop runs. `recover()` closes the run in the log:
-
-1. Every `approval_request` with no `approval_resolved` gets `ApprovalResolved(decision="aborted")`.
-2. Every tool call in the last assistant message with no result gets an error tool result: "aborted: the server restarted before this tool finished". It is saved as a history message (`append`) and sent as a `ToolResult` event.
-3. The state becomes `error`, then a `Notice`: "interrupted: the server restarted during this run".
-
-Example. The run asked to use `bash` (call `c2`) and waits for the user. Then the server dies.
-
-```text
-log before (last rows):                 recover adds:
-  AssistantMessage, asks bash call c2     ApprovalResolved c2 "aborted"     seq 9
-  ApprovalRequest c2 bash                 (history row: tool result c2)    seq 10
-  RunState waiting_approval   seq 8       ToolResult c2, is_error=true      seq 11
-                                          RunState error                    seq 12
-  -- server dies --                       Notice warning "interrupted..."   seq 13
-```
-
-The history row at seq 10 uses the same counter, because `append` and the events share `self.seq` ([21 · seq](21-transport.md#seq-one-counter-for-everything)).
-
-Item 3 writes `self.info.run_state = "error"` directly, "bypassing check_transition on purpose". **Why:** `waiting_approval -> error` is not in the table; it is only legal here, after a crash. Item 2 matters for the model: providers reject a history where a tool call has no result. After `recover`, the user can press Continue.
-
-Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.recover`.
+**After a restart: `recover`.** If the process dies in the middle of a run, the saved state is still busy but no loop runs. When the session is loaded again, `Run.recover()` closes the run: open approvals and tool calls get "aborted" answers, and the state becomes `error`. Its home, with a full before/after example, is [22 · recover](22-store-auth.md#recover).
 
 ### gen_protocol → protocol.gen.ts
 

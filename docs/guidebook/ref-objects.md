@@ -221,3 +221,21 @@ The full text of live events is saved later: text and thinking in `AssistantMess
 | `pending_approval` | `PendingApproval` (`call_id`, `tool`, `args`) or none |
 | `title` | the session title |
 | `plan_mode` | true if plan mode is on |
+
+## Server store tables
+
+The full `SCHEMA` of simp-server's SQLite store, from `apps/server/src/simp_server/store.py`. Chapter [22](22-store-auth.md#sqlitestore-one-file-five-tables) explains each table where it is used; `usage` is used in [23](23-limits.md).
+
+```sql
+CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, name TEXT UNIQUE, token_sha256 TEXT UNIQUE, password TEXT,
+    disabled INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS tokens(token_sha256 TEXT PRIMARY KEY, user_id TEXT, created REAL);
+CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, user_id TEXT, title TEXT, profile TEXT, sandbox_ref TEXT,
+    created REAL, updated REAL);
+CREATE TABLE IF NOT EXISTS entries(session_id TEXT, user_id TEXT, seq INTEGER, type TEXT, json TEXT,
+    PRIMARY KEY(session_id, seq));
+CREATE TABLE IF NOT EXISTS usage(user_id TEXT, session_id TEXT, model TEXT, input INTEGER, output INTEGER, at REAL,
+    cost REAL DEFAULT 0);
+```
+
+`sessions.profile` names the model profile ([18](18-profiles-plugins.md)); `sessions.sandbox_ref` names the sandbox to open again ([24](24-docker-sandbox.md)).
