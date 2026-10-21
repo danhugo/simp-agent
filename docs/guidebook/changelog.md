@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-21
+- ch02 Responses tricks: open with the shared why (store:false → we resend history as OpenAI's own output); each trick's why ties back to it; closing one-line recap; developer role "preferred".
 - ch02 sections 3 Translate / 4 Send rewritten: one table per section compares Chat Completions / Responses / Anthropic row by row, special rules with their why (content None, call_id|item_id, text signature, developer role, Anthropic merge with before/after), store:false + encrypted reasoning why, shared try/except paragraph, ImportError last; "parser in ch 03" moved to OUT line. (checked at `a7d9eec`)
 
 ## 2026-10-20
