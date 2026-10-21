@@ -1,6 +1,6 @@
 # Reference · The `ai` objects
 
-**Used by:** [01 Pick + Clean](01-pick-clean.md) · [02](02-translate-send.md) · [03](03-parse.md) · [05](05-agent-loop.md) · [13 Session](13-session.md) · [14](14-plugins.md) · [16](16-compaction.md)
+**Used by:** [01 Pick + Clean](01-pick-clean.md) · [02](02-translate-send.md) · [03](03-parse.md) · [05](05-agent-loop.md) · [13 Session](13-session.md) · [14](14-plugins.md) · [16](16-compaction.md) · [20 The server run](20-server-run.md) · [21](21-transport.md)
 
 This page is a lookup page, not a chapter. Chapters introduce each object at the block that first uses it, and only the parts that block needs. Here is every field in one place, plus how history turns into JSON and back.
 
@@ -196,3 +196,28 @@ def test_entry_roundtrip_and_old_format():
 ```
 
 Exercise: build an `AssistantMessage` with thinking, text and a tool call; send it through `to_dict` → `json.dumps` → `json.loads` → `from_dict`; check `==`.
+
+## Server protocol messages
+
+These are not `ai` objects. They are the wire messages of simp-server, defined in `apps/server/src/simp_server/protocol.py`. Chapter [20](20-server-run.md#protocol-models) explains why they look this way; [21](21-transport.md) shows how they flow. Every model has a fixed `type` field (the snake_case name, like `follow_up` for `FollowUp`).
+
+| Group | Messages |
+|---|---|
+| Handshake | `Hello` (`hello`), `HelloError` (`hello_error`) |
+| Commands | `Prompt`, `Steer`, `FollowUp`, `Abort`, `Approve`, `Compact`, `Continue`, `SetPlanMode` |
+| Durable events (have `seq`, saved) | `UserMessage`, `AssistantMessage`, `ToolResult`, `ApprovalRequest`, `ApprovalResolved`, `RunState`, `Compaction`, `Notice`, `SessionTitle` |
+| Live events (no `seq`, not saved) | `TextDelta`, `ThinkingDelta`, `ToolOutput` |
+| Snapshot | `Snapshot` (`snapshot`) |
+
+The full text of live events is saved later: text and thinking in `AssistantMessage`, tool output in `ToolResult`.
+
+`Snapshot` fields:
+
+| Field | Meaning |
+|---|---|
+| `last_seq` | the last durable `seq` the server has |
+| `run_state` | `idle`, `running`, `waiting_approval`, `aborting` or `error` |
+| `in_flight` | `InFlight`: `msg_id`, `thinking`, `text`, `tool_outputs` streamed so far |
+| `pending_approval` | `PendingApproval` (`call_id`, `tool`, `args`) or none |
+| `title` | the session title |
+| `plan_mode` | true if plan mode is on |

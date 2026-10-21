@@ -39,7 +39,7 @@ The block numbers in the picture and the table are the same, in the order the st
 - [18 Part 4 · Profiles and built-in plugins](18-profiles-plugins.md) — Pick models by profile and ship two real plugins.
 - [Part 5 big picture: the system](part-5-system.md) — All blocks of Part 5, their IN and OUT, on one page.
 - [19 Part 5 · The CLI](19-cli.md) — Wrap the session in a terminal app.
-- [20 Part 5 · Server: the Run](20-server-run.md) — Run a session on a server with a typed protocol.
+- [20 Part 5 · The server run](20-server-run.md) — Run a session on a server with a typed protocol.
 - [21 Part 5 · Transport](21-transport.md) — Stream events to clients and take commands back.
 - [22 Part 5 · Store and auth](22-store-auth.md) — Save users, sessions and events durably.
 - [23 Part 5 · Limits](23-limits.md) — Stop runaway cost and free idle resources.

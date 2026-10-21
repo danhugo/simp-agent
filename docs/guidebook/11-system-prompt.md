@@ -18,7 +18,20 @@ In [10](10-coding-tools.md) we built seven tools. The model can now read, edit a
 - **where it is**,
 - **what this project expects** (tabs or spaces? which test command?).
 
- The text that tells it these things is the [system prompt](glossary.md#system-prompt).
+The text that tells it these things is the [system prompt](glossary.md#system-prompt). Here is the one we will build, for two tools in `/work/app`:
+
+```text
+You are an expert coding assistant. You help the user by reading files, running commands, editing code, and writing new files.
+
+Available tools:
+- read: Read a file ...
+- bash: Run a shell command ...
+
+Be concise. Use read before edit. Paths are relative to the working directory.
+
+Current date: 2026-10-13
+Current working directory: /work/app
+```
 
 Big picture of Part 3: [part-3-coding](part-3-coding.md).
 
@@ -77,7 +90,13 @@ Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/
 
 The list comes from the tools we pass in, so it can never name a tool that does not exist.
 
-**Step 2 — read through the env, not `open`.** In Docker the project is inside a container. `env.read_file` reads from the right place:
+**Step 2 — more than one file name.** Teams use different names. We try a list in order, and the first file found wins:
+
+```python
+CONTEXT_FILES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]
+```
+
+**Step 3 — read each name through the env, not `open`.** In Docker the project is inside a container. `env.read_file` reads from the right place:
 
 ```text
 path = cwd joined with name
@@ -85,7 +104,7 @@ RETURN path, ASK env to read the file at path   // not open()
 ```
 Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `load_context_file`
 
-**Step 3 — a missing file is normal.** Most folders have no `AGENTS.md`. We catch the error and go on:
+**Step 4 — a missing file is normal.** Most folders have no `AGENTS.md`. We catch the error and go on:
 
 ```text
 IF reading fails (file missing):
@@ -93,23 +112,7 @@ IF reading fails (file missing):
 ```
 Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `load_context_file`
 
-**Step 4 — more than one file name.** Teams use different names. We try a list in order, and the first file found wins:
-
-```python
-CONTEXT_FILES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]
-```
-
-**Step 5 — rebuild the prompt every turn.** Tools and plugins can change during a session. So the session stores the coding prompt as a function, and `_llm_turn` calls it before each model call:
-
-```text
-// in the session: store the prompt as a function, not a string
-ADD prompt section "coding" = FUNCTION(ctx): system_prompt(ctx.tools, ctx.cwd)
-...
-// in _llm_turn, before each model call:
-IF system_prompt is a function:
-    system_prompt = CALL it now          // fresh text every turn
-```
-Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.__init__`; [agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `_llm_turn`
+**Step 5 — rebuild the prompt every turn.** Tools and plugins can change during a session. So the prompt is passed to the loop as a **function**, not a string, and `_llm_turn` calls it before each model call (see [The loop calls the function every turn](#the-loop-calls-the-function-every-turn) below). Who stores that function and how is built in [13](13-session.md).
 
 The result is the real code below.
 
@@ -158,6 +161,8 @@ FUNCTION system_prompt(tools, cwd, context):
 
 Key idea: the tool list is built from the real tools, so it is never wrong.
 
+Note: the session never passes `context`. It adds the same `# Project Context` text as its own prompt section instead, so the file text can come and go by itself ([13](13-session.md)). The `context` argument is there for hosts that call `system_prompt` directly.
+
 Read it top to bottom; each line has a job:
 
 - **Role.** One sentence: an expert coding assistant that reads, runs, edits and writes. This pushes the model to act, not only talk.
@@ -168,20 +173,7 @@ Read it top to bottom; each line has a job:
 
 It is a plain function: same input, same text (except the date). That makes it easy to test and easy to replace.
 
-Example output with two tools in `/work/app`:
-
-```text
-You are an expert coding assistant. You help the user by reading files, running commands, editing code, and writing new files.
-
-Available tools:
-- read: Read a file ...
-- bash: Run a shell command ...
-
-Be concise. Use read before edit. Paths are relative to the working directory.
-
-Current date: 2026-10-13
-Current working directory: /work/app
-```
+The full output for two tools is shown at the top of this chapter.
 
 ### `CONTEXT_FILES` and `load_context_file`: the project file
 
