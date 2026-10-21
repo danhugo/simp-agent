@@ -75,6 +75,17 @@ Run the fizzbuzz task with this. It breaks in three ways:
 2. **Duplicate words after a reconnect.** Say the client has `"Let me w"` and the line drops. On reconnect the server sends the live state again. `text += ev.delta` adds `"rite"` on top of words it may already have. The user sees `"Let me wLet me write"`.
 3. **One screen, many writers.** Tool output, approvals and run state need their own `if` blocks that each poke the page. There is no single place that says "this is the state of the chat".
 
+## Two kinds of events
+
+Before we fix it, you need one fact about the server's events. They come in two kinds ([21](21-transport.md#step-by-step-from-naive-to-real) shows the server side), and each kind has its own way to spot a bad one:
+
+| Kind | Examples | Has | Saved by server? | How the client spots a bad one (dup or gap) |
+|---|---|---|---|---|
+| **[Durable event](glossary.md#durable-event)** | `user_message`, `assistant_message`, `tool_result`, `run_state` | `seq` (1, 2, 3 ...) | yes | `seq` is not bigger than the last one applied |
+| [Live event](glossary.md#live-event) (a "delta") | `text_delta`, `thinking_delta`, `tool_output` | [`offset`](glossary.md#offset) (position in the text) | no | `offset` is not the end of the text so far |
+
+Deltas are too many and too small to save, so they get no `seq`. Their full text is saved later inside the durable `assistant_message` or `tool_result`. The `snapshot` is neither kind: it replaces the live state (step 6). Steps 3 and 4 use `seq`; step 5 uses `offset`.
+
 ## Step by step: from naive to real
 
 We fix the three breaks one by one.
@@ -104,7 +115,7 @@ Why: a network chunk can stop in the middle of an event. The buffer holds the re
 headers: { "Last-Event-ID": String(lastSeq()) }
 ```
 
-Why: the server then sends only what we missed ([21 · Replay](21-transport.md#replay-after-then-snapshot-then-live) shows the server side). Wait 1 s, 2 s, 4 s ... up to 10 s between tries.
+Why: the server then sends only what we missed. Wait 1 s, 2 s, 4 s ... up to 10 s between tries.
 
 **Step 4 — one reducer for all events.** Put every change in one pure function. Skip durable events we already have:
 
@@ -117,7 +128,7 @@ if ("seq" in ev) {
 
 Why: one place says what the chat is. A repeated event does nothing.
 
-**Step 5 — check the offset of each delta.** Deltas have no `seq`. They have an `offset`:
+**Step 5 — check the offset of each delta.** Deltas use `offset` (see the table above):
 
 ```ts
 export function appendAt(cur: string, offset: number, delta: string): string {
@@ -144,7 +155,7 @@ The web app is React + Vite in `apps/web/`. Four ideas carry it:
 - `appendAt()` in `state.ts`: an offset check that drops dup and gap deltas.
 - `App.tsx` and `Chat.tsx`: wire the two together and draw the state.
 
-Types like `Protocol` and `PendingApproval` come from `apps/web/src/protocol.gen.ts`, generated from the server's protocol ([20](20-server-run.md)). Files: `main.tsx` (mount), `api.ts` (HTTP, token, `subscribe()`), `state.ts` (`ChatState`, `reduce()`, `appendAt()`, `canContinue()`), `App.tsx` (login, session list, wiring), `Chat.tsx` (drawing), `Files.tsx` (workspace files).
+Types like `PendingApproval` come from `protocol.gen.ts` (see the file list at the top).
 
 ### fetch-based SSE
 
@@ -224,22 +235,19 @@ The wait doubles each try (1 s, 2 s, 4 s ...) up to 10 s. `attempt` resets to 0 
 
 ### The reducer (state.ts)
 
-All chat state lives in one object, `ChatState`, in `apps/web/src/state.ts`:
+All chat state lives in one object, `ChatState`, in `apps/web/src/state.ts`. The four fields that matter most:
 
 ```ts
 export interface ChatState {
-  lastSeq: number;
-  runState: RunState["state"];
-  items: Item[];
-  inFlight: InFlight;
-  toolOutputs: Record<string, string>; // live output per call_id
-  results: Record<string, ToolResult>;
-  decisions: Record<string, ApprovalResolved["decision"]>;
-  pending: PendingApproval | null;
-  title: string;
-  planMode: boolean;
+  lastSeq: number;                 // newest durable seq applied
+  items: Item[];                   // finished messages and notices
+  inFlight: InFlight;              // the message still streaming
+  pending: PendingApproval | null; // approval the user must answer
+  // ... six more: see ref-objects
 }
 ```
+
+All ten fields are listed in [Reference · ChatState](ref-objects.md#web-client-chatstate).
 
 `items` holds finished things: user messages, assistant messages and notices. `inFlight` holds the assistant message that is still streaming. That split matters: finished messages never change, and the in-flight bubble is rebuilt from deltas.
 
@@ -287,11 +295,11 @@ const apply = (ev: ServerEvent) => {
 return subscribe(sid, () => ref.current.lastSeq, apply, setConn, onLogout);
 ```
 
-The state is kept in a ref as well as in React state. The ref gives `subscribe` the newest `lastSeq` at once, without waiting for React to re-render. The effect returns the close function from `subscribe`, so switching session closes the old stream. `apply` also refreshes the session list on `run_state`, `snapshot` and `session_title`, and can show a browser notification when a run waits for approval, ends or fails.
+The state is kept in a ref as well as in React state. The ref gives `subscribe` the newest `lastSeq` at once, without waiting for React to re-render. The effect returns the close function from `subscribe`, so switching session closes the old stream. `apply` also refreshes the session list on `run_state`, `snapshot` and `session_title`.
 
 ### appendAt
 
-Durable events have `seq`. Deltas (`text_delta`, `thinking_delta`, `tool_output`) do not. They are too many and too small to store. Instead each delta carries an `offset`: the position in the full text where it starts. The client uses one tiny rule:
+As [Two kinds of events](#two-kinds-of-events) said, deltas have no `seq`, only an `offset`: the position in the full text where the delta starts. The client uses one tiny rule:
 
 ```ts
 /** Append `delta` only when it starts exactly at the end of `cur`; anything else is a dup or a gap. */
