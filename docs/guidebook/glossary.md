@@ -324,7 +324,7 @@ Evicting runs that were not used for `idle_minutes`. Home: [23](23-limits.md#idl
 A pure function `(state, event) -> new state`. In the web client, `reduce()` is the only place chat state changes. Home: [25](25-web-client.md#the-reducer-statets).
 
 ## In-flight buffer
-Text of the assistant message that is still streaming, kept by the server `Run` (`self.inflight`) so a late or reloaded tab gets it in the snapshot. Home: [20](20-server-run.md).
+Text of the assistant message that is still streaming, kept by the server `Run` (`self.inflight`) so a late or reloaded tab gets it in the snapshot. Home: [21](21-transport.md#replay-after-then-snapshot-then-live).
 
 ## Gap / dup delta
 A delta that does not start at the end of the text: a skipped one (gap) or a repeated one (dup). The web client drops both; see [Offset](#offset). Home: [25](25-web-client.md#appendat).
