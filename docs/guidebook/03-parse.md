@@ -53,7 +53,7 @@ All three parsers yield the same [events](glossary.md#stream-event):
 | Event | Extra keys | When |
 |---|---|---|
 | `start` | `partial` | first, always |
-| `thinking_start` / `thinking_delta` / `thinking_end` | `delta` on delta | reasoning text |
+| `thinking_start` / `thinking_delta` / `thinking_end` | `thinking_delta` has `delta` | reasoning text |
 | `text_delta` | `delta` | each text piece |
 | `toolcall_start` | `name` | first piece of a new call |
 | `toolcall_delta` | `delta` | each argument piece |
@@ -93,7 +93,9 @@ The rest of this chapter builds the code that does this, one problem at a time.
 
 We start with OpenAI Chat Completions because most servers copy it (vLLM, llama.cpp, Ollama). Real code for every step: [openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) — `parse`.
 
-The frame: make an empty message, hand it out at once, then read chunks.
+We teach text first because it is the easiest; the real code reads usage, then thinking, then text, then tool calls in each chunk.
+
+The frame: make an empty message, hand it out at once, then read chunks. It also takes `compat`, a dict of small switches per server; it comes from the `Model` (all keys: [ref-objects](ref-objects.md#request-objects-tool-context-model)). `parse` uses it only in step 6.
 
 ```text
 FUNCTION parse(chunks, compat):
@@ -106,32 +108,46 @@ FUNCTION parse(chunks, compat):
     ... steps 5, 6 at the end ...
 ```
 
-We teach text first because it is the easiest; the real code reads usage, then thinking, then text, then tool calls in each chunk.
+### What one chunk holds
 
-`compat` is a dict of small switches per server; it comes from the `Model` (all keys: [ref-objects](ref-objects.md#request-objects-tool-context-model)).
+Each chunk carries one new piece in `chunk.choices[0].delta`. In the code and below we call it **`d`**. `d` can hold:
+
+- `d.content` — a piece of answer text, like `"Hel"`.
+- `d.reasoning_content` — a piece of thinking text (step 2).
+- `d.tool_calls` — pieces of tool calls (steps 3 and 4).
+
+The message we build, `msg`, holds a list of **parts** in order (`msg.content`), for example `[ThinkingContent, TextContent]`. Each piece is added to the right part. While we read chunks, this list only gets thinking and text parts; tool calls are added at the end (step 5).
 
 ### Step 1 — text
 
 **Problem.** "Hello" can come as `"Hel"` then `"lo"`. We want one `TextContent("Hello")`, not two, and the UI wants each piece now.
 
-**What we do.** Add to the last part if it is the same kind; else start a new part. Send each piece as `text_delta`.
+**What we do.** Normally, `"Hel"` and `"lo"` go into the same text part, and each piece is sent at once as `text_delta`. But some models think first (step 2). Then the last part is a `ThinkingContent`, and the first text piece tells us thinking is over. So we send `thinking_end` (the UI closes its "thinking…" box), and start a new text part.
+
+| Piece in `d` | `msg.content` after | Events sent |
+|---|---|---|
+| `reasoning_content = "Let me look"` | `[ThinkingContent("Let me look")]` | `thinking_start`, `thinking_delta` |
+| `content = "Hel"` | `[ThinkingContent(...), TextContent("Hel")]` | `thinking_end`, `text_delta "Hel"` |
+| `content = "lo"` | `[ThinkingContent(...), TextContent("Hello")]` | `text_delta "lo"` (same part) |
+
+The code, as a recap:
 
 ```text
-IF d.content:
-    IF the last part of msg is not a TextContent:
-        IF msg has parts: SEND event {thinking_end}    // thinking is over
+IF d.content:                                          // d has a text piece
+    IF the last part of msg is not a TextContent:      // first text piece
+        IF msg has parts: SEND event {thinking_end}    // it was thinking; thinking is over
         ADD a new empty TextContent to msg
     ADD d.content to the last part
     SEND event {text_delta, d.content}
 ```
 
-`"Hel"`, `"lo"` → events `text_delta "Hel"`, `text_delta "lo"` → `content = [TextContent("Hello")]`.
+With no thinking: `"Hel"`, `"lo"` → events `text_delta "Hel"`, `text_delta "lo"` → `content = [TextContent("Hello")]`.
 
 ### Step 2 — thinking
 
 **Problem.** Some models send reasoning text before the answer, and each server names the field differently: `reasoning_content`, `reasoning` or `reasoning_text`.
 
-**What we do.** Take the first of the three that has text, and use the same "join the last part" rule with `ThinkingContent`:
+**What we do.** Take the first of the three that has text; call it `r`. Then use the same "join the last part" rule with `ThinkingContent`. A new thinking part sends `thinking_start` first, so the UI can open its "thinking…" box:
 
 ```text
 r = the first non-empty of d.reasoning_content, d.reasoning, d.reasoning_text
@@ -157,7 +173,7 @@ There is no "thinking stopped" signal in Chat Completions. We only know thinking
 
 **Problem.** The arguments are a JSON string cut anywhere. Only the first piece has `id` and `name`; later pieces have just `index` and a bit of `arguments`.
 
-**What we do.** Keep one entry per [tool call](glossary.md#tool-call) in `calls`. A new call sends `toolcall_start`; each argument piece is *added up* (never parsed yet) and sent as `toolcall_delta`.
+**What we do.** `d.tool_calls` is a list; we call each piece in it `tc`. Keep one entry per [tool call](glossary.md#tool-call) in `calls` (the list made in the frame); `cur` is the entry this piece belongs to. A new call sends `toolcall_start`; each argument piece is *added up* (never parsed yet) and sent as `toolcall_delta`.
 
 ```text
 FOR EACH tool-call piece tc in d.tool_calls:
@@ -218,7 +234,7 @@ We do **not** throw the call away. When the loop runs the tool, `{"_raw": ...}` 
 
 **Problem.** The server says why it stopped in `finish_reason`, in its own words. We need one of our five (`stop | tool_use | length | error | aborted`, from `AssistantMessage`). And sometimes the server sends nothing.
 
-**What we do.** In the loop, remember the last `finish_reason` seen (`finish = choice.finish_reason or finish`). At the end, map it with `_STOP`:
+**What we do.** In the loop, remember the last `finish_reason` seen (`finish = choice.finish_reason or finish`, where `choice` is `chunk.choices[0]`). At the end, map it with `_STOP`, a small dict in the code from the server's word to ours:
 
 ```text
 _STOP: stop, end -> stop · length -> length · tool_calls, function_call -> tool_use
@@ -305,7 +321,7 @@ response.completed                    status: completed, usage: {input_tokens: 7
 
 Real code: [anthropic.py](../../packages/simp_agent/src/simp_agent/ai/providers/anthropic.py) — `parse` and `stream`.
 
-**What is different.** The `anthropic` SDK's `client.messages.stream(...)` already reads the raw events and builds the full message for us. It also gives easy helper events: `text`, `thinking`, `signature`, `input_json` (with `partial_json`). So `parse` only **forwards** events for the UI; it never parses JSON or maps stop reasons itself.
+**What is different.** The `anthropic` SDK's `client.messages.stream(...)` already reads the raw events and builds the full message for us. It also gives easy helper events: `text`, `thinking`, `signature`, `input_json` (with `partial_json`). It also passes on the raw `content_block_start` (a new part begins: text, thinking or tool call) and `content_block_stop` (that part is complete). So `parse` only **forwards** events for the UI; it never parses JSON or maps stop reasons itself.
 
 **Why we still keep partial text.** `parse` adds `text` and `thinking` pieces to `msg` as they come. If the run is aborted mid-stream, that partial message is all we have.
 
@@ -323,7 +339,7 @@ get_final_message()  stop_reason: tool_use, usage: {7, 3}            → done
 
 ## Test
 
-`packages/simp_agent/tests/test_openai.py` tests `parse` with fake chunks built from `SimpleNamespace`. No network, no API key. Three small helpers. Two make chunks:
+`packages/simp_agent/tests/test_openai.py` tests `parse` with fake chunks built from `SimpleNamespace`. No network, no API key. `NS` is short for `SimpleNamespace`: an object whose fields we set by hand, so `NS(content="Hi")` acts like a real `delta`. There are three small helpers. `tc` makes one tool-call piece, and `ch` makes one chunk:
 
 ```python
 def tc(index=None, id=None, name=None, args=None):
