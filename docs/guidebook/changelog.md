@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-21
+- ch07: Problem now has a safe-point example (steer during tool 1 of 3): wrong vs right history and a timeline; "read point" named there; later repeat cut to a back-link. Glossary: new "Safe point". (checked at `8e6e4b1`)
 - ch03: short Responses text example ("Hi!") before the tool call example; Anthropic stop_reason sentence split into a 3-item list. ch04: IN→OUT stamp example + why; error-classification "Extra" shrunk to one short section linking ch15/17 (glossary + ch15 links now point to ch17); StopIteration detail simplified; exercise on is_retryable removed; run note says "after ch 05". (checked at `0a7b0b7`)
 - ch05: agent loop now starts with a 3-turn example table, then a small loop with no `...` and no names used before they are defined.
 - ch03 context before code: new "What one chunk holds" (`d`, its three fields, `msg` parts); Step 1 told as a story with a 3-row thinking→text table, `thinking_end` reason given, code last as recap; `compat` explained before the frame code; `r`, `tc`, `cur`, `choice`, `_STOP`, `NS` introduced before use. (checked at `e5d7620`)
