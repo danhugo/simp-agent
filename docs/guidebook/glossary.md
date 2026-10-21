@@ -5,6 +5,9 @@ Terms are added here as chapters define them. Each entry links to the chapter th
 ## Coding agent
 A program that takes a task in plain words, asks a language model what to do, runs the tools the model asks for (read, write, run commands), and repeats until done. Home: [00](00-overview.md).
 
+## Item (Responses)
+One piece of an OpenAI Responses answer, with its own id: a reasoning item (`rs_...`, encrypted), a text `message` item (`msg_...`) or a `function_call` item (`fc_...`). See [chapter 2](02-translate-send.md).
+
 ## Layer
 One folder of the `simp_agent` library (`ai`, `agent`, `coding`, `session`, `plugins`, `testing`). A layer imports only layers to its left; `test_layers.py` checks this. Home: [00](00-overview.md#the-layer-map).
 

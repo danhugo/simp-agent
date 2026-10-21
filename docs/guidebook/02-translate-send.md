@@ -212,6 +212,14 @@ AssistantMessage(content=[ThinkingContent("Let me think about the plan...")], st
 
 The shared why: we send `store: false`, so OpenAI keeps nothing. So on every call we send the whole history back ourselves, and it must look like OpenAI's own earlier output. The three tricks below all come from this.
 
+First, some background on how Responses works, because the tricks only make sense with it. In Responses, the model's answer is a list of [**items**](glossary.md#item-responses), and each item has its own `id`: a reasoning item (`rs_...`), a text item called `message` (`msg_...`), and a tool call item `function_call` (`fc_...`, plus a separate `call_id`). The reasoning item is **encrypted** (its `encrypted_content`): we cannot read it, we can only send it back as it is. Each reasoning item is paired with the item that came right after it (the text or tool call it led to), and OpenAI matches the pair by their ids. So when we send the history back to the same model, every item must keep its original id. But our objects have no id field for text, and only one id field for tool calls. Tricks 1 and 2 fix exactly this.
+
+```json
+[{"type": "reasoning", "id": "rs_1", "encrypted_content": "..."},
+ {"type": "message", "id": "msg_68a1f0", "role": "assistant", "content": [...]},
+ {"type": "function_call", "id": "fc_abc", "call_id": "call_1", "name": "read", "arguments": "..."}]
+```
+
 *Trick 1 — two ids in one string.*
 
 A tool call needs one id to link it to its result. Responses gives two: `call_id` (links call and result) and the item id `fc_...` (names the item). Our `ToolCall` has only one `id` field, so the parser packs both: `"call_1|fc_abc"`. Why keep the item id: so replayed reasoning lines up with the item that came after it. For another model the item id is dropped (code: `if item_id and not other_model`). When we send it back, we split at `|`:
@@ -250,7 +258,7 @@ The result item only ever gets `call_id`. (One more case: if the message came fr
 
 *Trick 2 — text signature.*
 
-Each Responses answer is a `message` item with its own `id` (and sometimes a `phase`). Same idea as trick 1, for answer text: when we send the old answer back to the same model, it gets the same `id` and `phase` back. So the parser saves `{"v": 1, "id": ..., "phase": ...}` in `TextContent.signature`.
+Text items have their own id too, like tool call items: each answer text is a `message` item with an `id` (and sometimes a `phase`). But `TextContent` has no id field, so we borrow its `signature` field: the parser saves `{"v": 1, "id": ..., "phase": ...}` there. When we send the old answer back to the same model, it gets the same `id` and `phase` back. For another model, Clean in [chapter 1](01-pick-clean.md) already removed the signature, so Translate makes a new id `msg_pi_<i>` and sends no `phase`.
 
 ```text
 id = signature.id IF signature, ELSE "msg_pi_<i>"   // i = place of the message in the list
