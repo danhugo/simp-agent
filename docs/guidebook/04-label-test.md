@@ -276,7 +276,7 @@ The `error` rule matters. To test retry, a test writes `AssistantMessage(stop_re
 
 #### What the fake does *not* do
 
-- It does not stream text bit by bit. Tests of the stream parser use their own event lists (ch [03](03-parse.md)).
+- It does not stream text bit by bit. Tests of the stream parser feed it fake chunks (ch [03](03-parse.md)).
 - It does not set `api`, `provider` and `model` on the message. `ai.stream` does that for real providers; the fake is passed in *instead of* `ai.stream`.
 - It does not check the API key. A test that needs "no key" behaviour tests `ai.stream` itself ([above](#the-entry-point-stream-runs-1-2-6)).
 
