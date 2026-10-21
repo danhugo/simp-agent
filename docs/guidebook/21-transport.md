@@ -83,7 +83,12 @@ It works while the network is perfect. It breaks when:
 
 We fix the four breaks one by one.
 
-**Step 1: number the events.** Give each saved event a [`seq`](glossary.md#seq), and keep a log.
+**Step 1: number the events.** First we split events into two kinds:
+
+- **[Durable events](glossary.md#durable-event)**: user message, assistant message, tool result, approval request and answer, run state, notices. They are saved and have a `seq`.
+- **[Live events](glossary.md#live-event)**: `text_delta`, `thinking_delta`, `tool_output`. They are small pieces of an unfinished message. They are **not** saved and have no `seq`.
+
+Then we give each durable event a [`seq`](glossary.md#seq), and keep a log.
 
 ```python
     def send(self, ev: dict) -> None:
@@ -169,12 +174,7 @@ Note the `id:` line. It is only there when the event has a `seq`. That is the ke
 
 ### seq: one counter for everything
 
-Events are of two kinds:
-
-- **[Durable events](glossary.md#durable-event)**: user message, assistant message, tool result, approval request and answer, run state, notices. They are saved and have a `seq`.
-- **[Live events](glossary.md#live-event)**: `text_delta`, `thinking_delta`, `tool_output`. They are small pieces of an unfinished message. They are **not** saved and have no `seq`.
-
-`seq` is a number that goes up by one for each saved row. `Run.durable` makes a durable event:
+Only durable events get a `seq` (the two kinds are in Step 1 above). `seq` is a number that goes up by one for each saved row. `Run.durable` makes a durable event:
 
 ```text
 FUNCTION durable(cls, fields):
@@ -187,7 +187,7 @@ FUNCTION durable(cls, fields):
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.durable`.
 
-It adds the event to the in-memory `log`, sends it to live clients, and saves it. The `Run` is also the `SessionStore` of its `AgentSession` ([13](13-session.md)). Its `append` uses the **same** counter:
+It adds the event to the in-memory `log`, sends it to live clients, and saves it. The store has one more kind of row. The agent itself must save its own core messages (the list the model sees, [13](13-session.md)), so it can resume later. These rows have the type `"msg"`. They are not protocol events, and tabs never see them. The `Run` is also the `SessionStore` of its `AgentSession`, so its `append` saves them, with the **same** counter:
 
 ```text
 // SessionStore for AgentSession: core messages share the seq counter with protocol events
@@ -202,14 +202,7 @@ So core messages (`"msg"` rows, used to resume the agent) and protocol events li
 
 ### Replay: `after`, then snapshot, then live
 
-When a tab connects, it says "I have seen up to seq N". It can do this with `?after=N`, or with the [`Last-Event-ID`](glossary.md#last-event-id) header that our client sends on every connect ([25](25-web-client.md#fetch-based-sse)):
-
-```text
-after = the ?after=N value, ELSE the Last-Event-ID header, ELSE 0
-first, q = run.subscribe(after)
-```
-
-`Run.subscribe` builds the answer:
+When a tab connects, it says "I have seen up to seq N". `Run.subscribe(after)` builds the answer:
 
 ```text
 FUNCTION subscribe(after):
@@ -229,6 +222,25 @@ Three parts, in this order:
 1. **Missed events:** every log event with `seq > after`. No gaps.
 2. **A [snapshot](glossary.md#snapshot):** the state right now. `last_seq`, `run_state`, the pending approval, and `in_flight`.
 3. **Live:** the queue `q`, for everything after.
+
+**Example.** The log has durable events with seq 1 to 5. The model is in the middle of a reply: "Hello " has streamed so far. A tab reconnects with `after=3`. It gets:
+
+```text
+first = [ event seq 4,
+          event seq 5,
+          snapshot(last_seq = 5, run_state = "running",
+                   in_flight.text = "Hello ", pending_approval = none) ]
+q     = a new queue; the next text delta arrives here
+```
+
+The tab already had 1 to 3, so nothing comes twice. It shows "Hello " from the snapshot and adds the next deltas after it.
+
+The SSE route finds `after` and calls `subscribe`. The tab gives N with `?after=N`, or with the [`Last-Event-ID`](glossary.md#last-event-id) header that our client sends on every connect ([25](25-web-client.md#fetch-based-sse)):
+
+```text
+after = the ?after=N value, ELSE the Last-Event-ID header, ELSE 0
+first, q = run.subscribe(after)
+```
 
 The docstring says "No await here". That matters. asyncio only switches tasks at an `await`. With no `await`, no new event can be sent between "copy the log" and "add the queue". So nothing is missed and nothing comes twice.
 
