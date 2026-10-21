@@ -1,4 +1,4 @@
-# 20 Part 5 · Server: the Run
+# 20 Part 5 · The server run
 
 **Goal:** Run a session on a server with a typed protocol.
 
@@ -62,125 +62,67 @@ It works for one happy fizzbuzz run. It breaks when:
 1. **The run is long.** The request hangs for minutes. Proxies and browsers time out. The user sees nothing until the end: no live text.
 2. **Two prompts come at once.** Both call `s.prompt()` on the same session. Two loops now share one message list.
 3. **The body is any dict.** `{"txt": "hi"}` gives a `KeyError` and a 500. Nothing tells the browser what shapes exist.
-4. **The tab reloads.** The answer of the running request is lost. There is no way to say "give me what I missed".
-5. **Approval** ([08](08-hooks-approval.md)) cannot work: the request is blocked, so the user has no way to send "allow".
-
-## Step by step: from naive to real
-
-**Step 1 — one fixed list of messages.** Give every message a model with a `type` field, and forbid unknown fields:
-
-```text
-BASE MODEL _M for every message:
-    unknown field     -> error           // extra="forbid"
-    fields with a default -> "required" in the schema
-```
-
-Why: `{"txt": "hi"}` now fails with a clear error. This fixes problem 3.
-
-**Step 2 — one owner per conversation.** A `Run` holds the `AgentSession` and its state. Only one place can start a loop:
-
-```text
-IF the run is not busy:
-    start a run with c.text
-```
-
-Why: a second prompt cannot start a second loop. This fixes problem 2.
-
-**Step 3 — run in the background.** `start()` makes a task and returns at once:
-
-```text
-start _run(fn) as a background task       // do not wait for it
-```
-
-Why: the request no longer waits for the run. This fixes problem 1.
-
-**Step 4 — numbered events.** Each saved event gets a `seq` number. Why: a tab that reconnects can ask for "everything after seq N". This fixes problem 4. The full replay story is in [21 · seq](21-transport.md#seq-one-counter-for-everything).
-
-**Step 5 — wait for the user.** The run waits on a future. A later `Approve` command sets it:
-
-```text
-decision = WAIT for the answer future
-```
-
-Why: the run is not blocked inside one HTTP request. This fixes problem 5.
-
-**Step 6 — a state table.** Every state change goes through `check_transition`. Then we generate the TypeScript types from the same models, so the browser cannot drift. The real code below is these six steps together.
+4. **The tab reloads.** The answer of the running request is lost. There is no way to say "give me what I missed". (Fixed in [21](21-transport.md).)
+5. **Approval** ([08](08-hooks-approval.md)) cannot work: the request is blocked, so the user has no way to send "allow". (Fixed in [21](21-transport.md).)
 
 ## Real design
 
-The server lives in `apps/server/src/simp_server/`. This chapter covers three parts: the protocol models, the `Run` and its state machine, and the code generator that writes the TypeScript side. Streaming to the browser is [21](21-transport.md). Storage and login are [22](22-store-auth.md).
+The server lives in `apps/server/src/simp_server/`. We build it in four steps. Each step fixes one or more of the naive problems above.
 
-### Entry point
+This chapter owns the **messages** and the **Run's state**. Two other chapters own the rest:
 
-`apps/server/src/simp_server/__main__.py` is small. It looks at the first word and picks a mode:
-
-```text
-FUNCTION main():
-    IF the args are exactly "build-sandbox":
-        build the sandbox image and EXIT
-    IF the first arg is one of: run, seed, passwd, users, revoke,
-                                rotate, backup, pause, resume:
-        RETURN server.main()                  // the real server
-    fake.main()                               // `simp-server fake ...`
-```
-
-Real code: [apps/server/src/simp_server/__main__.py](../../apps/server/src/simp_server/__main__.py), function `main`.
-
-`simp-server run` starts the real server in `server.py`. Anything else falls to a fake server (`fake.py`) that plays a scripted run with no model.
+- [21 Transport](21-transport.md): the `seq` counter, replay after a reconnect, the command queue (Prompt / Steer / FollowUp while busy), approval over the wire, and how library events become live and durable events. That fixes problems 4 and 5.
+- [22 Store and auth](22-store-auth.md): where the log is saved, and how a session is loaded again.
 
 ### Protocol models
 
-`apps/server/src/simp_server/protocol.py` is the single source of truth for the wire. Every message is a Pydantic model. They all share one base:
+*Step 1.*
+
+**Problem 3:** the body is any dict, and the browser does not know which shapes exist.
+
+**What we do:** `apps/server/src/simp_server/protocol.py` is the single source of truth for the wire. Every message is a Pydantic model, and they all share one base:
 
 ```text
 BASE MODEL _M for every message:
-    unknown field     -> error           // extra="forbid"
+    unknown field         -> error           // extra="forbid"
     fields with a default -> "required" in the schema
 ```
 
 Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_server/protocol.py), class `_M`.
 
-`extra="forbid"` means an unknown field is an error, not a silent drop. The second option marks default fields as "required" in the schema, so TypeScript can trust they exist.
+**Why:** `extra="forbid"` turns `{"type": "prompt", "txt": "hi"}` into a clear error, not a silent drop. The second rule marks default fields as "required" in the schema, so TypeScript can trust that they are always there.
 
-Every model has a `type` field with a fixed `Literal` value, like `type: Literal["prompt"] = "prompt"`. That field is the **[discriminator](glossary.md#discriminator)**: one field whose value says which model the JSON is. The union types use it:
+Every model has a `type` field with one fixed value, like `type: Literal["prompt"] = "prompt"`. That field is the **[discriminator](glossary.md#discriminator)**: one field whose value says which model the JSON is.
 
 ```text
 Command = ONE OF Prompt, Steer, FollowUp, Abort, Approve,
                  Compact, Continue, SetPlanMode
           (pick which one by the "type" field)
-server_event = a parser for ServerEvent
-command      = a parser for Command
 ```
 
-Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_server/protocol.py), `Command`, `server_event`, `command`.
+Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_server/protocol.py), `Command`.
 
-Pydantic reads `type` first and checks only that one model.
+Example: IN `{"type": "prompt", "text": "write fizzbuzz.py"}` → Pydantic reads `type`, checks only the `Prompt` model → OUT `Prompt(text="write fizzbuzz.py")`.
 
-There are three groups of messages.
+There are three groups of messages:
 
-**Handshake.** The browser sends `Hello(protocol_version=...)`. `check_hello` answers with a `Hello` or a `HelloError` that lists the supported versions (`SUPPORTED_VERSIONS = {1}`). An old tab learns early that the server changed.
+- **Handshake.** The browser sends `Hello(protocol_version=...)`. `check_hello` answers with a `Hello`, or a `HelloError` that lists the supported versions (`SUPPORTED_VERSIONS = {1}`). Why: an old tab learns at once that the server changed.
+- **Commands** (browser to server). Each maps to a session feature you already know: steering and follow-up ([07](07-steering.md)), abort ([06](06-events-abort.md)), approval ([08](08-hooks-approval.md)), compaction ([16](16-compaction.md)), plan mode ([18](18-profiles-plugins.md)).
+- **Server events** (server to browser). A **[durable event](glossary.md#durable-event)** has a `seq` number and is saved. A **[live event](glossary.md#live-event)** is a streaming piece of text: no `seq`, not saved; the full text is saved later in `AssistantMessage` and `ToolResult`. A **[snapshot](glossary.md#snapshot)** says "where we are now" to a tab that (re)connects.
 
-**Commands** (browser to server): `Prompt`, `Steer`, `FollowUp`, `Abort`, `Approve`, `Compact`, `Continue`, `SetPlanMode`. They map one to one to session features you already know: steering and follow-up ([07](07-steering.md)), abort ([06](06-events-abort.md)), approval ([08](08-hooks-approval.md)), compaction ([16](16-compaction.md)), plan mode ([18](18-profiles-plugins.md)).
-
-**Server events** come in two kinds, plus a snapshot:
-
-- **[Durable event](glossary.md#durable-event)**: has a `seq`, is saved (`UserMessage`, `AssistantMessage`, `ToolResult`, `ApprovalRequest`, `ApprovalResolved`, `RunState`, `Compaction`, `Notice`, `SessionTitle`).
-- **[Live event](glossary.md#live-event)**: no `seq`, not saved (`TextDelta`, `ThinkingDelta`, `ToolOutput`). The full text is saved later in `AssistantMessage` (text, thinking) and `ToolResult` (tool output).
-- **[Snapshot](glossary.md#snapshot)**: "where we are now" (`last_seq`, `run_state`, `in_flight`, `pending_approval`, `title`, `plan_mode`).
-
-How `seq`, replay and the snapshot work together is in [21 · Replay](21-transport.md#replay-after-then-snapshot-then-live).
+The full list of event names and every `Snapshot` field is in [ref-objects · Server protocol messages](ref-objects.md#server-protocol-messages). How they are used is [21](21-transport.md).
 
 ### Run state machine
 
-The run state is one of five names:
+*Step 2.*
+
+**Problem:** the user can press "abort" twice, or answer an approval that is already gone. The server must know what is allowed *now*.
+
+**What we do:** the run state is one of five names, and the legal moves live in one table next to the models:
 
 ```text
 RunStateName = ONE OF "idle", "running", "waiting_approval", "aborting", "error"
-```
 
-And the legal moves live in one table, next to the models:
-
-```text
 TRANSITIONS (from -> allowed next states):
     idle             -> running
     running          -> waiting_approval, aborting, idle, error
@@ -210,32 +152,37 @@ stateDiagram-v2
     error --> idle
 ```
 
-Why a table? With a table, a wrong move like `idle -> waiting_approval` raises at once instead of leaving the UI in a strange state.
+**Why a table:** a wrong move like `idle -> waiting_approval` raises at once, on the server. Without it, the UI would just show a strange state and nobody would know why.
 
 ### The Run
 
-`apps/server/src/simp_server/server.py` has `class Run`. Its docstring: "AgentSession + durable protocol log + in-flight buffers." One `Run` exists per open conversation. `SessionManager.get()` creates it on first use and keeps it in `self.runs`.
+*Step 3.*
 
-The constructor builds an `AgentSession` and passes **itself** as the store:
+**Problems 1 and 2:** a run takes minutes, and two prompts must never start two loops on one session.
+
+**What we do:** one owner per conversation. `apps/server/src/simp_server/server.py` has `class Run`. Its docstring: "AgentSession + durable protocol log + in-flight buffers." `SessionManager.get()` makes one `Run` per open conversation on first use and keeps it in `self.runs`.
+
+The constructor builds an `AgentSession` and passes **itself** in three places:
 
 ```text
 session = new AgentSession(model,
-              store    = this Run,             // Run has append()
-              env      = env,
-              stream_fn = guarded_stream,
+              store       = this Run,             // Run has append()
+              env         = env,
+              stream_fn   = guarded_stream,       // budget check, see 23
               get_api_key = the manager's key for this model,
-              approve  = this Run's approve,
-              ...)
+              approve     = this Run's approve,
+              messages    = the saved history,
+              plugins     = redact_secrets, plan_mode + the profile's plugins)
 session sends each event to this Run's on_event
 ```
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.__init__`.
 
-So the `Run` is a `SessionStore` ([13](13-session.md)): it has `append`. It is also the approval callback (`approve`) and an event subscriber (`on_event`). That is the whole link between the library and the server. The library does not know a server exists.
+So the `Run` is the session's `SessionStore` ([13](13-session.md)), its approval callback ([08](08-hooks-approval.md)) and an event subscriber ([06](06-events-abort.md)). **Why:** that is the whole link between the library and the server. The library does not know a server exists. What `approve` and `on_event` do is [21](21-transport.md).
 
-**One seq counter for everything.** `Run.append` and `Run.durable` share one `self.seq`. `durable()` builds the model first, so a wrong field fails on the server. Details in [21 · seq](21-transport.md#seq-one-counter-for-everything).
+The state is one field, `self.info.run_state`. A run is **busy** when the state is `running`, `waiting_approval` or `aborting`.
 
-**Changing state.** Every state change goes through one method:
+**Changing state.** Every change goes through one method:
 
 ```text
 FUNCTION set_state(s):
@@ -246,71 +193,72 @@ FUNCTION set_state(s):
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.set_state`.
 
-So every change is checked, and every change is a durable `RunState` event. A tab that reconnects can read the state from the log.
+**Why:** every change is checked, and every change is in the log. A tab that comes back reads the state from the log.
 
-**Starting a run.** `start()` sets `running` and puts the work in a background task:
+**Starting a run.** `start()` sets `running`, then puts the work in a background task and returns:
 
 ```text
-set_state("running")
-run_id = 8 random hex chars
-...
-IF text is a function: fn = text           // continue, compact
-ELSE:                  fn = "session.prompt(text)"
-start _run(fn) as a background task, and RETURN at once
+FUNCTION start(text, fresh = true):
+    IF fresh: run_start = now               // the run budget clock (23)
+    set_state("running")
+    run_id = 8 random hex chars             // for the logs
+    IF text is a function: fn = text        // Continue and Compact pass a function
+    ELSE:                  fn = "call session.prompt(text)"   // called later, in the task
+    start _run(fn) as a background task     // do not wait for it
 ```
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.start`.
 
-This fixes naive problem 1: the HTTP request returns at once, and the run goes on without it. `_turn()` runs `fn`, then sets `idle`, or `error` if the last assistant message has `stop_reason == "error"`. `_run()` has a `finally` that moves a stuck busy run to `error`, so a session is never stuck "running" after a crash.
+The background task does two jobs:
 
-**Routing commands.** `Run.command()` decides what each command means now:
+- `_turn(fn)` runs `fn`. If `fn` raises, the error becomes an error `Notice`. When it ends, it sets the next state: `idle` after an abort (with a "run aborted" notice), `error` if the last assistant message has `stop_reason == "error"`, else `idle`. If a follow-up came in after the loop stopped, it starts the next run at once.
+- `_run(fn)` wraps `_turn` in a `finally`. If the run is still busy there (a crash, a failed store write, a cancel), it writes `RunState(error)` and a "run stopped unexpectedly" notice. **Why:** a session is never stuck "running" after a crash.
 
-```text
-IF c is Prompt, FollowUp or Steer:
-    IF not busy:
-        start a run with c.text
-    ELSE IF steer queue + follow-up queue >= MAX_QUEUED:
-        FAIL with HTTP 429 "messages already queued"
-    ELSE IF c is Steer:
-        session.steer(c.text)
-    ELSE:
-        session.follow_up(c.text)
-```
-
-Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.command`.
-
-`busy` means `running`, `waiting_approval` or `aborting`. When idle, any text starts a run. When busy, it is queued as a steer or follow-up ([07](07-steering.md)), up to `MAX_QUEUED = 20`. This fixes naive problem 2: there is never a second loop. `Approve` needs a matching pending `call_id`, else 409. `Compact` and `Continue` give 409 while busy.
-
-**Events to protocol.** `on_event()` turns library events ([06](06-events-abort.md)) into protocol events. Deltas grow `self.inflight` (the [in-flight buffer](glossary.md#in-flight-buffer)) and go out as live events with an `offset`. A finished assistant message becomes a durable `AssistantMessage`. Usage is recorded for cost limits ([23](23-limits.md)).
-
-**Approval over the network.** `approve()` is the callback the session calls before a risky tool ([08](08-hooks-approval.md)):
+Example, the fizzbuzz prompt on an idle run:
 
 ```text
-answer  = a new empty future
-pending = PendingApproval(call_id, tool, args)
-TRY:
-    SEND durable event ApprovalRequest(call_id, tool, args)
-    IF state is "running": set_state("waiting_approval")
-    decision = WAIT for answer          // a later Approve command fills it
-IF the wait is cancelled (abort):
-    pending = none
-    SEND durable event ApprovalResolved(call_id, decision = "aborted")
-    stop here (pass the cancel on)
+POST Prompt("write fizzbuzz.py")        state idle
+  set_state("running")                  check idle -> running: ok
+  log: RunState(state="running")        seq 1 (a new session)
+  background task starts, POST returns  (problem 1 fixed)
+... the agent writes fizzbuzz.py, events stream (21) ...
+  _turn ends, last stop_reason="stop"
+  set_state("idle")                     check running -> idle: ok
+  log: RunState(state="idle")           seq N  (messages in between use the same counter)
 ```
 
-Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.approve`.
+**Why this fixes problem 2:** text that comes in while busy never calls `start()` again; [21 · The command queue](21-transport.md#the-command-queue) queues it as a steer or follow-up. One `Run`, one loop.
 
-The run waits on a future. A later `Approve` command (a new HTTP request) calls `self.answer.set_result(...)`. This fixes naive problem 5. If the user aborts, the wait is cancelled and the log still gets a closing `ApprovalResolved` with `"aborted"`. Every request in the log has an answer.
+**After a restart: `recover`.** The process can die in the middle of a run. When [22](22-store-auth.md#recover) loads the session again, the last saved `RunState` is still busy, but no loop runs. `recover()` closes the run in the log:
 
-**After a restart.** If the last saved state was busy, the process died mid-run. `recover()` closes open approvals as `aborted`, adds an error `ToolResult` for each tool call with no result, then sets `error`. It writes `self.info.run_state = "error"` directly, "bypassing check_transition on purpose", because `waiting_approval -> error` is not in the table.
+1. Every `approval_request` with no `approval_resolved` gets `ApprovalResolved(decision="aborted")`.
+2. Every tool call in the last assistant message with no result gets an error tool result: "aborted: the server restarted before this tool finished". It is saved as a history message (`append`) and sent as a `ToolResult` event.
+3. The state becomes `error`, then a `Notice`: "interrupted: the server restarted during this run".
 
-**Reconnect.** `subscribe(after)` sends saved events after `after`, then a `Snapshot`, then live events (this fixes naive problem 4); see [21 · Replay](21-transport.md#replay-after-then-snapshot-then-live).
+Example. The run asked to use `bash` (call `c2`) and waits for the user. Then the server dies.
+
+```text
+log before (last rows):                 recover adds:
+  AssistantMessage, asks bash call c2     ApprovalResolved c2 "aborted"     seq 9
+  ApprovalRequest c2 bash                 (history row: tool result c2)    seq 10
+  RunState waiting_approval   seq 8       ToolResult c2, is_error=true      seq 11
+                                          RunState error                    seq 12
+  -- server dies --                       Notice warning "interrupted..."   seq 13
+```
+
+The history row at seq 10 uses the same counter, because `append` and the events share `self.seq` ([21 · seq](21-transport.md#seq-one-counter-for-everything)).
+
+Item 3 writes `self.info.run_state = "error"` directly, "bypassing check_transition on purpose". **Why:** `waiting_approval -> error` is not in the table; it is only legal here, after a crash. Item 2 matters for the model: providers reject a history where a tool call has no result. After `recover`, the user can press Continue.
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.recover`.
 
 ### gen_protocol → protocol.gen.ts
 
-The browser needs the same types in TypeScript. We generate them, so they cannot drift.
+*Step 4.*
 
-`protocol.py` has a root model only for this job:
+**Problem 3, browser side:** the browser is TypeScript. If someone renames a Python field, the browser breaks in silence.
+
+**What we do:** generate the TypeScript types from the same models. `protocol.py` has a root model only for this job:
 
 ```text
 MODEL Protocol:      // used only to make the schema; pulls every wire type into one document
@@ -338,9 +286,15 @@ FUNCTION generate():
 
 Real code: [apps/server/src/simp_server/gen_protocol.py](../../apps/server/src/simp_server/gen_protocol.py), function `generate`.
 
-Run as a script, it writes `apps/web/src/protocol.gen.ts`. With `--check`, it only compares and exits with an error if the file is stale. The output file starts with the banner comment and an `interface Protocol` that lists every event and command.
+Run as a script, it writes `apps/web/src/protocol.gen.ts`. With `--check`, it only compares and exits with an error if the file is stale.
 
-Now the web client ([25](25-web-client.md)) imports these types. If you rename a Python field, the TS build fails. This fixes naive problem 3 on both sides.
+**Why:** the web client ([25](25-web-client.md)) imports these types. Rename a Python field and the TS build fails, so the two sides cannot drift.
+
+### Starting the server
+
+`apps/server/src/simp_server/__main__.py` looks at the first word. `simp-server run` starts the real server in `server.py`. The other words (`seed`, `passwd`, `users`, `revoke`, `rotate`, `backup`, `pause`, `resume`) are admin commands from [22](22-store-auth.md) and [23](23-limits.md). `build-sandbox` builds the sandbox image ([24](24-docker-sandbox.md)). Anything else runs a fake server (`fake.py`) that plays a scripted run with no model.
+
+Real code: [apps/server/src/simp_server/__main__.py](../../apps/server/src/simp_server/__main__.py), function `main`.
 
 ## Test
 
@@ -377,10 +331,12 @@ uv run pytest apps/server/tests/test_protocol.py -q
 ## Recap
 
 - `protocol.py` holds every wire message as a Pydantic model with `extra="forbid"` and a `type` discriminator.
-- Durable events have a `seq` and are saved. Live deltas have no `seq`. A `Snapshot` fills the gap on reconnect.
+- Durable events have a `seq` and are saved. Live deltas have no `seq`. How they flow is [21](21-transport.md).
 - Run state is `idle`, `running`, `waiting_approval`, `aborting` or `error`. `check_transition` enforces the `TRANSITIONS` table.
 - `Run` owns one `AgentSession`. It is its store, its approval callback and its event subscriber.
-- `start()` runs the work in a background task. `command()` starts, queues, aborts or approves.
+- `set_state()` is the only way to change state; each change is checked and logged as `RunState`.
+- `start()` runs the work in a background task; `_run()` never leaves a run stuck busy.
+- `recover()` closes a run that was busy when the server died, and sets `error`.
 - `gen_protocol.py` writes `apps/web/src/protocol.gen.ts` from the schema; `test_no_ts_drift` catches drift.
 
 **Builds on:** [19 The CLI](19-cli.md) · **Next:** [21 Transport](21-transport.md)
