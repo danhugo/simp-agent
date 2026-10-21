@@ -2,6 +2,9 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-10-21
+- ch02 sections 3 Translate / 4 Send rewritten: one table per section compares Chat Completions / Responses / Anthropic row by row, special rules with their why (content None, call_id|item_id, text signature, developer role, Anthropic merge with before/after), store:false + encrypted reasoning why, shared try/except paragraph, ImportError last; "parser in ch 03" moved to OUT line. (checked at `a7d9eec`)
+
 ## 2026-10-20
 - ch02 "Vendors differ" example: assistant turn now has thinking + text + tool call (same model); 3 request JSONs show thinking dropped (Chat Completions), reasoning item resent (Responses), signed thinking block (Anthropic); new Thinking/Text/Tool call × vendor table.
 - ch02 "Vendors differ": one real chat shown in our format and as Chat Completions / Responses / Anthropic request JSON, with notes on each difference. (checked at `01f2da8`)

@@ -123,37 +123,45 @@ One chat, three very different shapes. This is why we need block 3 Translate.
 
 And sending can fail in many ways: network down, bad key, a 529 "overloaded". The [stream function](glossary.md#stream-function) rule says "never raise", so every failure must become an `error` event.
 
-## 3 Translate / 4 Send: the three providers
+## 3 Translate: our messages → vendor format
 
-All three have the same plan: **convert** our messages, **call** the SDK with `stream=True`, **parse** events, and catch every exception into an `error` event. Each one imports its SDK inside `stream`, so you only need the SDK you use. (Note: the import sits just before the `try`, so a missing SDK raises `ImportError` — the one case that breaks "never raise".)
+Each provider has one function that turns our message list into its vendor's format. You already saw the result for one chat in the [real example](#problem) above. This table puts the rules side by side, row by row:
 
-**OpenAI Chat Completions** (`openai_completions.py`). This is the format most local servers copy. `to_openai` puts the system prompt first, sends tool results as one `role: "tool"` message each, and sends `content: None` for an assistant turn that only has tool calls. `stream` reads `compat` (small per-server switches on the `Model`; all keys in [ref-objects](ref-objects.md#request-objects-tool-context-model)):
+| | Chat Completions (`to_openai`) | Responses (`to_input`) | Anthropic (`_to_anthropic`) |
+|---|---|---|---|
+| System prompt | first message, role `system` | first item, role `system` (`developer` when reasoning is on) | not a message: separate `system=` field |
+| Tool call | entry in `tool_calls`, `arguments` as JSON string | own `function_call` item, `arguments` as JSON string | `tool_use` block, `input` as object |
+| Tool result | one `role: "tool"` message per result | one `function_call_output` item per result | `tool_result` block inside a **user** turn |
+| Thinking sent back | no, dropped | yes: saved `reasoning` item from `signature` | yes: `thinking` block with `signature` (redacted → `redacted_thinking`; unsigned → plain `text`) |
+| Special rule | `content: None` when only tool calls | `call_id\|item_id` split; text `signature`; role `developer` | merge same-role turns |
 
-Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) (`stream`)
+Each special rule, and why it is there:
 
-```text
-kw[ compat "max_tokens_field" or "max_tokens" ] = model.max_tokens
-IF compat include_usage (default yes):
-    kw.stream_options = {include_usage: true}
-IF compat reasoning_effort is set:
-    kw.reasoning_effort = that value
+**Chat Completions: `content` is `None`.** If an assistant turn has tool calls but no text (or only spaces), `to_openai` sends `content: None`, not `""`. Why: OpenAI-style servers expect no content at all next to `tool_calls`; an empty string can be rejected. (A turn with no text and no tool calls gets `""`.)
+
+**Responses: three small tricks.**
+
+- *Two ids in one string.* A Responses tool call has two ids: `call_id` (links the call to its result) and the item id `fc_...` (names the item itself). Our `ToolCall` has only one `id` field, so the parser stores both as `call_id|item_id`. `to_input` splits it again: `call_id` goes on `function_call` and `function_call_output`, the item id goes back as `"id"` on `function_call` (only when the call came from this same model; for another model it is dropped or replaced by a hash).
+- *Text signature `{v, id, phase}`.* Why: when we send an old answer back, its message item should keep the same `id` (and `phase`) OpenAI gave it. So the parser saves them as small JSON in `TextContent.signature`. With no signature, `to_input` makes up an id (`msg_pi_<i>`).
+- *Role `developer`.* When the model has a reasoning effort set, the system prompt goes in with role `developer` instead of `system`, the role OpenAI uses for reasoning models.
+
+**Anthropic: merge turns.** Anthropic needs user and assistant turns to alternate. But `_to_anthropic` first makes one turn per message, and a tool result becomes a **user** turn. So when the model called 3 tools, we get 3 user turns in a row. Before the merge:
+
+```jsonc
+{"role": "assistant", "content": [ tool_use call_1, tool_use call_2, tool_use call_3 ]},
+{"role": "user", "content": [ tool_result call_1 ]},
+{"role": "user", "content": [ tool_result call_2 ]},
+{"role": "user", "content": [ tool_result call_3 ]}
 ```
 
-Some servers want `max_completion_tokens`, some fail on `stream_options`. `compat` handles that without code. The parser is in ch [03](03-parse.md).
+After the merge, one user turn with 3 `tool_result` blocks:
 
-**OpenAI Responses** (`openai_responses.py`). The newer OpenAI API. We send `store: False`, so OpenAI keeps nothing between calls. To let a reasoning model see its own past reasoning, we ask for `include: ["reasoning.encrypted_content"]` and save the whole reasoning item as JSON in `ThinkingContent.signature`. `to_input` puts it back in the input as-is. Text parts also keep a small JSON signature (`{v, id, phase}`) so their item id goes back the same. A tool call id is stored as `call_id|item_id` in one string; `to_input` splits it again. With reasoning on, the system prompt uses role `developer`. The request is built in `request`:
-
-Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_responses.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_responses.py) (`request`)
-
-```text
-kw = {model id, input = to_input(model, system prompt, messages), stream: true,
-      store: false, max_output_tokens: at least 16}
-IF the model has a reasoning effort:
-    kw.reasoning = {effort, summary: "auto"}
-    kw.include   = ["reasoning.encrypted_content"]   // so we can send it back later
+```jsonc
+{"role": "assistant", "content": [ tool_use call_1, tool_use call_2, tool_use call_3 ]},
+{"role": "user", "content": [ tool_result call_1, tool_result call_2, tool_result call_3 ]}
 ```
 
-**Anthropic Messages** (`anthropic.py`). `_to_anthropic` sends a tool result as a `tool_result` block in a **user** turn. Anthropic needs user and assistant turns to alternate, so the last step merges turns next to each other with the same role:
+The last step of `_to_anthropic` does this:
 
 Real code: [packages/simp_agent/src/simp_agent/ai/providers/anthropic.py](../../packages/simp_agent/src/simp_agent/ai/providers/anthropic.py) (`_to_anthropic`)
 
@@ -166,11 +174,45 @@ FOR EACH turn t in out:
         ADD t to merged
 ```
 
-So three tool results become one user turn. Thinking is turned on by `thinking_params(model)`: `compat.thinking_budget` gives a fixed token budget (older models); `compat.reasoning_effort` gives adaptive thinking with an effort level.
+## 4 Send: call the API
 
-### Send: the wrapper `stream`
+Now each provider starts a streaming call with its SDK (`stream=True` for OpenAI, `client.messages.stream(...)` for Anthropic). The SDK is imported inside `stream`, so you only need the SDK you use. The request settings differ, again row by row (`compat` = small per-server switches on the `Model`; all keys in [ref-objects](ref-objects.md#request-objects-tool-context-model)):
 
-`parse` only reads chunks (ch [03](03-parse.md)). The `stream` function in each provider file makes the HTTP request and calls `parse`. In `openai_completions.py`:
+| | Chat Completions | Responses | Anthropic |
+|---|---|---|---|
+| Request switches | `compat`: `max_tokens_field`, `include_usage` | `store: false`, `max_output_tokens` at least 16 | no switches: always sends `max_tokens`, `system`, `tools` |
+| Thinking on | `compat.reasoning_effort` → `reasoning_effort` | `compat.reasoning_effort` → `reasoning: {effort, summary: "auto"}` | `thinking_params(model)`: `thinking_budget` or `reasoning_effort` |
+| Reasoning kept between calls | no (thinking is not sent back) | `include: ["reasoning.encrypted_content"]` | the signed `thinking` block itself |
+
+**Chat Completions.** Some servers want `max_completion_tokens`, some fail on `stream_options`. `compat` handles that with a setting, not code:
+
+Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) (`stream`)
+
+```text
+kw[ compat "max_tokens_field" or "max_tokens" ] = model.max_tokens
+IF compat include_usage (default yes):
+    kw.stream_options = {include_usage: true}
+IF compat reasoning_effort is set:
+    kw.reasoning_effort = that value
+```
+
+**Responses.** We send `store: false`. Why: we keep the whole history ourselves and send it every time, so OpenAI should keep nothing. But then a reasoning model cannot see its own past reasoning. So we ask for `include: ["reasoning.encrypted_content"]`: OpenAI sends the reasoning item back encrypted, we save it in `ThinkingContent.signature`, and `to_input` sends it back next time.
+
+Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_responses.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_responses.py) (`request`)
+
+```text
+kw = {model id, input = to_input(model, system prompt, messages), stream: true,
+      store: false, max_output_tokens: at least 16}
+IF the model has a reasoning effort:
+    kw.reasoning = {effort, summary: "auto"}
+    kw.include   = ["reasoning.encrypted_content"]   // so we can send it back later
+```
+
+**Anthropic.** `thinking_params(model)` turns thinking on. `compat.thinking_budget` gives a fixed token budget (older models); `compat.reasoning_effort` gives adaptive thinking with an effort level. Neither set: no thinking.
+
+Real code: [packages/simp_agent/src/simp_agent/ai/providers/anthropic.py](../../packages/simp_agent/src/simp_agent/ai/providers/anthropic.py) (`thinking_params`)
+
+**Same for all three: errors become events.** Every provider wraps the call in `try`/`except`, so a network error, a bad key or a 529 becomes an `error` [stream event](glossary.md#stream-event), not an exception. (Small difference: Anthropic puts the error on the partial message it was building, so any text so far is kept; the OpenAI providers send a new empty message.) In `openai_completions.py`:
 
 ```text
 TRY:
@@ -182,7 +224,9 @@ IF any exception:
 
 Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) (`stream`)
 
-A network error or a 401 becomes an `error` event, not an exception. We split `parse` out of `stream` so tests can feed it plain objects with no network and no `openai` client.
+The one exception: the SDK `import` sits just before the `try`, so a missing SDK raises `ImportError` — the only case that breaks "never raise".
+
+We split `parse` out of `stream` so tests can feed it plain objects with no network and no SDK client.
 
 ## Test
 
@@ -219,4 +263,4 @@ uv run pytest -q tests/test_openai.py::test_message_conversion tests/test_openai
 
 **Builds on:** [01 Pick + Clean](01-pick-clean.md) · **Next:** [03 Parse](03-parse.md) — the server answers in many small chunks; next we glue them into one message.
 
-**OUT →** raw chunks from the vendor are the IN of block 5 Parse (ch 03).
+**OUT →** raw chunks from the vendor are the IN of block 5 Parse — the parser is in [ch 03](03-parse.md).
