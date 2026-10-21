@@ -2,8 +2,7 @@
 
 **Goal:** Keep a conversation across turns and save it.
 
-**Builds on:** [12 Evals](12-evals.md) · **Next:** [14 Plugins](14-plugins.md)
-
+**Builds on:** [12 Evals](12-evals.md) · §§
 ## Where we are
 
 ```mermaid
@@ -60,7 +59,7 @@ We fix the naive version one problem at a time. Each step is small.
 
 ```text
 ON each agent event e:
-    IF e is "message_end": save(e.message)    // save right away, not at the end
+    IF e is "message_end": store.append(e.message)    // save right away, not at the end
 ```
 Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._on_agent_event`
 
@@ -112,10 +111,8 @@ Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/sessio
 
 ```text
 CLASS AgentSession:
-    FUNCTION __init__(model, tools, store, env, cwd, get_api_key, system_prompt, stream_fn,
-                      auto_compact, max_retries, retry_base_delay, approve, messages,
-                      plugins, plugin_config):
-        ...
+    FUNCTION __init__(model, tools, store, env, cwd, system_prompt, messages, ...):
+                                                // more arguments come in ch 14-17
         self.agent = NEW Agent(
             prompt   = self._build_prompt,          // a function, rebuilt every turn
             tools    = TOOLS if tools is None, else tools,
@@ -128,13 +125,32 @@ CLASS AgentSession:
 
 Key idea: the session owns one Agent and plugs into its hooks; it does not copy the loop.
 
-**[AgentSession](glossary.md#agentsession)** does not copy the loop. It *owns* one `Agent` and plugs into its sockets:
+**[AgentSession](glossary.md#agentsession)** does not copy the loop. It *owns* one `Agent` and plugs into its hooks:
 
 - `prepare_next_turn=self._prepare` — runs before each model call. Compaction lives here ([16](16-compaction.md)).
 - `before_tool_call` / `after_tool_call` — the hooks from [08](08-hooks-approval.md). The session uses them for approval and plugins ([14](14-plugins.md)).
 - `self._build_prompt` is passed where a string prompt would go. The system prompt is rebuilt every turn from **prompt sections** ([below](#prompt-sections-the-system-prompt-rebuilt-every-turn)).
 
 Good defaults keep the call short. `tools=None` means the coding tools (`TOOLS`), `env=None` means `LocalEnv()` ([09](09-exec-env.md)), `system_prompt=None` means the coding prompt from [11](11-system-prompt.md). The other arguments (`max_retries`, `auto_compact`, `plugins`) belong to the next chapters.
+
+### start(): runs once, before the first prompt
+
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `start`
+
+```text
+FUNCTION start():
+    IF already started: RETURN           // runs only once
+    mark as started
+    IF default prompt AND (cf = WAIT for load_context_file(env, cwd)) is found:
+        add_prompt_section("context_file", "# Project Context ## <path> <text>", 10)   // sections: next part
+    ...                                  // plugin setup, see ch 14
+```
+
+Reading the [context file](glossary.md#context-file) (`AGENTS.md`, [11](11-system-prompt.md)) needs async env IO, and `__init__` cannot `await`. So the session reads it in `start()`, which `prompt` and `continue_` call first. The `_started` flag makes it run only once. Order 10 puts the context file right after the coding text (order 0) and before plugin sections (default 100). It is read **once per session**: if you edit `AGENTS.md` mid-session, it has no effect until a new session. The rest of `start()` sets up plugins ([14](14-plugins.md)).
+
+The `context` argument of `system_prompt` is not used by the session. The session adds the same `# Project Context` text as its own section instead, so it can come and go by itself.
+
+`test_session.py::test_context_file_in_system_prompt` checks this: it writes `AGENTS.md` with `use tabs` and checks that the first system prompt contains it.
 
 ### Prompt sections: the system prompt, rebuilt every turn
 
@@ -179,25 +195,6 @@ FUNCTION _build_prompt():
 - **The caller can replace it.** If the app passes its own `system_prompt` string, it becomes the `"base"` section. Then the coding prompt and the context file are not added. Our tests do this with `system_prompt="s"`.
 
 `_build_prompt` runs before **every** model call, so plugins ([14](14-plugins.md)) can change the prompt between turns.
-
-### start(): runs once, before the first prompt
-
-Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `start`
-
-```text
-FUNCTION start():
-    IF already started: RETURN           // runs only once
-    mark as started
-    IF default prompt AND (cf = WAIT for load_context_file(env, cwd)) is found:
-        add_prompt_section("context_file", "# Project Context ## <path> <text>", 10)
-    ...                                  // plugin setup, see ch 14
-```
-
-Reading the [context file](glossary.md#context-file) (`AGENTS.md`, [11](11-system-prompt.md)) needs async env IO, and `__init__` cannot `await`. So the session reads it in `start()`, which `prompt` and `continue_` call first. The `_started` flag makes it run only once. Order 10 puts the context file right after the coding text (order 0) and before plugin sections (default 100). It is read **once per session**: if you edit `AGENTS.md` mid-session, it has no effect until a new session. The rest of `start()` sets up plugins ([14](14-plugins.md)).
-
-The `context` argument of `system_prompt` is not used by the session. The session adds the same `# Project Context` text as its own section instead, so it can come and go by itself.
-
-`test_session.py::test_context_file_in_system_prompt` checks this: it writes `AGENTS.md` with `use tabs` and checks that the first system prompt contains it.
 
 ### Saving: one listener
 
@@ -267,7 +264,7 @@ FUNCTION append_entry(type, data):        // saved + replayed on resume, never s
     RETURN entry
 ```
 
-A **[CustomEntry](glossary.md#custom-entry)** (in `ai/__init__.py`) is app or plugin data kept in history: `type`, `data`, `role="custom"`. It is saved and comes back on resume, but it is never sent to the model. Plan mode uses it to remember "on/off" across resume ([18](18-profiles-plugins.md)). Fields: [ref-objects](ref-objects.md#two-history-entries-that-are-not-messages).
+A [CustomEntry](glossary.md#custom-entry) is saved and comes back on resume, but is never sent to the model. Fields: [ref-objects](ref-objects.md#two-history-entries-that-are-not-messages). Real use: plan mode in [18](18-profiles-plugins.md).
 
 ### JsonlStore: the real store in the CLI
 
@@ -288,7 +285,15 @@ CLASS JsonlStore:                         // one finished message per line
 
 Key idea: append one line per message. Limit: a crash can lose only the line being written.
 
-**[JSONL](glossary.md#jsonl)** means one JSON object per line. Appending a line is cheap and safe: open in `"a"` mode, write, close. A crash can lose at most the line being written. `to_dict` / `from_dict` ([ref-objects](ref-objects.md#going-to-json-and-back)) turn messages into plain dicts and back. Files live at `~/.simp-agent/sessions/<cwd-slug>/<id>.jsonl` (see `session_dir`). The server has its own store on a database ([22](22-store-auth.md)); both follow the same two-method protocol.
+**[JSONL](glossary.md#jsonl)** means one JSON object per line. After the fizzbuzz run, the file looks like this (shortened):
+
+```text
+{"role": "user", "content": "write fizzbuzz.py", ...}
+{"role": "assistant", "content": [{"type": "tool_call", "name": "write", ...}], ...}
+{"role": "tool_result", "tool_call_id": "c1", "content": "wrote fizzbuzz.py", ...}
+{"role": "assistant", "content": "Done.", ...}
+```
+ Appending a line is cheap and safe: open in `"a"` mode, write, close. A crash can lose at most the line being written. `to_dict` / `from_dict` ([ref-objects](ref-objects.md#going-to-json-and-back)) turn messages into plain dicts and back. Files live at `~/.simp-agent/sessions/<cwd-slug>/<id>.jsonl` (see `session_dir`). The server has its own store on a database ([22](22-store-auth.md)); both follow the same two-method protocol.
 
 ## Test
 
@@ -329,7 +334,7 @@ uv run pytest packages/simp_agent/tests/test_session.py::test_store_gets_every_m
 
 ## Why this way
 
-> **Own the agent, save on every message.** `AgentSession` wraps `Agent` instead of growing it. The loop stays small and testable ([05](05-agent-loop.md)); the session adds the "long-lived" features on top through the agent's sockets. Saving on each `message_end` with a two-method `SessionStore` makes history crash safe and lets each app pick its own storage. The cost: the app must call `store.load()` and pass `messages=` itself.
+> **Own the agent, save on every message.** `AgentSession` wraps `Agent` instead of growing it. The loop stays small and testable ([05](05-agent-loop.md)); the session adds the "long-lived" features on top through the agent's hooks. Saving on each `message_end` with a two-method `SessionStore` makes history crash safe and lets each app pick its own storage. The cost: the app must call `store.load()` and pass `messages=` itself.
 
 ## Exercises
 
@@ -345,4 +350,4 @@ uv run pytest packages/simp_agent/tests/test_session.py::test_store_gets_every_m
 - The system prompt is a table of prompt sections; `_build_prompt` joins them every turn, and `start()` adds the context file once.
 - `JsonlStore` in the CLI is the real file store: one JSON line per entry.
 
-**Builds on:** [12 Evals](12-evals.md) · **Next:** [14 Plugins](14-plugins.md)
+**Builds on:** [12 Evals](12-evals.md) · **Next:** [14 Plugins](14-plugins.md) — plugins use the session's hooks and prompt sections.
