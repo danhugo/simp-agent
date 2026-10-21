@@ -239,3 +239,15 @@ CREATE TABLE IF NOT EXISTS usage(user_id TEXT, session_id TEXT, model TEXT, inpu
 ```
 
 `sessions.profile` names the model profile ([18](18-profiles-plugins.md)); `sessions.sandbox_ref` names the sandbox to open again ([24](24-docker-sandbox.md)).
+
+## `PluginAPI` methods
+
+The handle a plugin gets in `setup` ([ch 14](14-plugins.md)). Code: `packages/simp_agent/src/simp_agent/session/__init__.py` — `PluginAPI`.
+
+- `register_tool`, `unregister_tool` — add or remove a tool (same name replaces)
+- `add_prompt_section`, `remove_prompt_section` — system prompt parts
+- `append_entry` — save a [CustomEntry](13-session.md)
+- `send_message` — steer, follow-up or a new prompt
+- `set_model`, `abort`
+- `get_messages`, `env`, `cwd`
+- `emit` — send a custom event tagged with the plugin name
