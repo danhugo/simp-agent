@@ -22,7 +22,7 @@ In [01](01-pick-clean.md) we built Pick and Clean, in [02](02-translate-send.md)
 
 Code in this chapter (commit `2fc2776`):
 
-- `packages/simp_agent/src/simp_agent/ai/__init__.py` — `stream`, `is_retryable`, `is_context_overflow`
+- `packages/simp_agent/src/simp_agent/ai/__init__.py` — `stream`
 - `packages/simp_agent/src/simp_agent/testing/__init__.py` — `FakeProvider`
 - `packages/simp_agent/tests/test_core.py` — tests that use the fake
 
@@ -51,6 +51,15 @@ It does three jobs for every provider, so no provider repeats them:
 2. Clean the history with `transform_messages` (block 2, ch [01](01-pick-clean.md#2-clean-transform_messages)).
 3. **Stamp** each message with `api`, `provider` and `model`. Later, `transform_messages` reads these stamps to know who wrote a turn.
 
+What the stamp looks like (IN → OUT):
+
+```text
+from the provider:  AssistantMessage(content=[text "hi"])
+after ai.stream:    AssistantMessage(content=[text "hi"], api="anthropic-messages", provider="anthropic", model="claude-x")
+```
+
+Why: on the next turn the user may switch model. Clean then uses these three fields to see who wrote this turn and what it must change (ch [01](01-pick-clean.md#2-clean-transform_messages)).
+
 ```mermaid
 flowchart LR
     L["agent loop"] -->|"model, context, api_key"| S["ai.stream"]
@@ -66,41 +75,9 @@ flowchart LR
 
 > **Why this way:** the shared work — unknown api, history cleaning, stamping — lives once in `ai.stream`. Each provider only converts and parses.
 
-## Extra: error classification: `is_retryable`, `is_context_overflow`
+## Errors are plain text
 
-Providers turn every failure into `AssistantMessage.error`, a string. Two small functions read that string:
-
-Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`is_retryable`, `is_context_overflow`)
-
-```text
-FUNCTION is_context_overflow(error):
-    RETURN true IF error matches _OVERFLOW
-
-NON_RETRYABLE = {fatal, budget, policy}
-
-FUNCTION is_retryable(error, kind):
-    IF kind is in NON_RETRYABLE:
-        RETURN false   // our own code knows better than the text
-    RETURN true IF not an overflow AND error matches _RETRYABLE
-```
-
-- `_OVERFLOW` matches the ways vendors say "too long": `prompt is too long`, `maximum context length`, `context_length_exceeded`, `too many tokens`, and so on. This is a [context overflow](glossary.md#context-overflow).
-- `_RETRYABLE` matches short-lived problems: HTTP `429` or `5xx`, `overloaded`, `rate limit`, `connection`, `timed out`, `stream ended`.
-- An overflow is **never** retryable: sending the same too-long request again fails again.
-- `error_kind` (`fatal`, `budget`, `policy`) beats the text. Our own code sets it when it knows better — like the missing API key in ch [01](01-pick-clean.md#1-pick-_providers-register_provider).
-
-The session uses them in this order (`session/__init__.py`): overflow first → compact once and try again, if auto-compact is on (ch [17](17-overflow.md)); else retryable → wait and retry, up to `max_retries` (ch [15](15-retry.md)); else give up.
-
-```mermaid
-flowchart TD
-    E["error string + error_kind"] --> K{"kind in fatal/budget/policy?"}
-    K -->|yes| N["not retryable"]
-    K -->|no| O{"is_context_overflow?"}
-    O -->|yes| C["compact (ch 17)"]
-    O -->|no| R{"matches _RETRYABLE?"}
-    R -->|yes| T["retry with backoff (ch 15)"]
-    R -->|no| N
-```
+Providers turn every failure into `AssistantMessage.error`, a string. When our own code knows the cause, it also sets `error_kind` (`fatal`, `budget` or `policy`), like the missing API key in ch [01](01-pick-clean.md#1-pick-_providers-register_provider). Later, the session reads that string to choose: shrink the history and try again ([context overflow](glossary.md#context-overflow), ch [17](17-overflow.md)), wait and retry (ch [15](15-retry.md)), or give up. Nothing in this chapter needs that yet.
 
 ## Testing the pipeline without a real model
 
@@ -214,7 +191,7 @@ sequenceDiagram
     Note over L: no tool call → stop
 ```
 
-`replies` is stored as an iterator, and `next(self.replies)` takes the next one. If the code under test calls the model more times than the script has replies, `next` raises `StopIteration`. Inside an async generator Python turns that into `RuntimeError: async generator raised StopIteration`, so the test fails with a `RuntimeError`. That is on purpose: an extra call is a bug in the code under test, and the test should fail loudly.
+`replies` is stored as an iterator, and `next(self.replies)` takes the next one. If the test calls the model more times than there are replies, the fake fails the test on purpose (Python shows this as a `RuntimeError`). An extra call is a bug in the code under test.
 
 #### The instance is the function
 
@@ -311,7 +288,7 @@ The fake can also stand in for `ai.stream` directly. Note one difference: `ai.st
 
 > **Forward note: the fake inside the loop.** Most real tests pass the fake to the agent loop as `stream_fn`. For example, `tests/test_core.py` scripts "call the `echo` tool, then say ok" as `run(call("echo", x="a"), DONE)`. We build the loop and this `run` helper in ch [05](05-agent-loop.md), and use a reply function to steer mid-call in ch [07](07-steering.md).
 
-Run tests that use the fake (they use the loop from ch [05](05-agent-loop.md); you can run them now, and they pass):
+Run tests that use the fake (they use the loop from ch [05](05-agent-loop.md), so read them after ch 05):
 
 ```bash
 cd packages/simp_agent
@@ -330,15 +307,14 @@ uv run pytest -q tests/test_core.py::test_no_tool_call_one_turn \
 ## Exercises
 
 1. Register your own provider with `register_provider("echo", fn)` where `fn` yields one `done` event with the last user text. Call `ai.stream` with `Model(api="echo")`. Which fields did `ai.stream` set (stamp) on the message?
-2. Call `ai.is_retryable("Error code: 529 overloaded")` and `ai.is_retryable("x", "fatal")`. Explain each answer.
-3. Script a fake with three replies: text, error, text. Call it three times and print the end event type of each. Then call it a fourth time: what error do you get, and why?
-4. Use a reply function to answer with the number of messages in the context (`len(ctx.messages)`).
+2. Script a fake with three replies: text, error, text. Call it three times and print the end event type of each. Then call it a fourth time: what error do you get, and why?
+3. Use a reply function to answer with the number of messages in the context (`len(ctx.messages)`).
 
 ## Recap
 
 - `ai.stream` runs Pick and Clean, calls the stream function, then **labels** every message with `api`, `provider`, `model`. Later, Clean reads these labels.
 - `ai.stream` never raises: an unknown `api` is an `error` event.
-- `is_context_overflow` and `is_retryable` turn an error string into "compact", "retry" or "give up".
+- Errors are plain strings; ch 15 and 17 read them to retry or compact.
 - The loop takes the stream function as a setting (`stream_fn`), so tests can swap in a fake.
 - `FakeProvider(*replies)` plays scripted replies in order; a reply can be a message or a function of the context.
 - It records each call in `calls`, `ctxs`, `messages` (copied), `api_keys` and `models`.
@@ -346,6 +322,6 @@ uv run pytest -q tests/test_core.py::test_no_tool_call_one_turn \
 
 **Builds on:** [03 Parse](03-parse.md) · **Next:** [05 The agent loop](05-agent-loop.md) — the loop that calls `ai.stream` and runs the tools the model asks for.
 
-**Built on by:** [05](05-agent-loop.md) (calls `ai.stream`; loop tests use the fake) · [06](06-events-abort.md) · [07](07-steering.md) · [15](15-retry.md) (`is_retryable`, error replies) · [16](16-compaction.md) (summary replies) · [17](17-overflow.md) (`is_context_overflow`) · [23](23-limits.md) (counting calls)
+**Built on by:** [05](05-agent-loop.md) (calls `ai.stream`; loop tests use the fake) · [06](06-events-abort.md) · [07](07-steering.md) · [15](15-retry.md) (error replies) · [16](16-compaction.md) (summary replies) · [17](17-overflow.md) (reads `error`) · [23](23-limits.md) (counting calls)
 
 **OUT →** labelled events from `ai.stream()` are the IN of the agent loop (ch 05).

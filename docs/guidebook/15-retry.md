@@ -123,7 +123,7 @@ FUNCTION is_retryable(error, kind):
 
 Two inputs decide:
 
-- **The error text.** Providers do not agree on error types, but the text almost always has `429`, a `5xx` code, "overloaded" or "timed out". A regex over the text works for all providers ([04](04-label-test.md#extra-error-classification-is_retryable-is_context_overflow)) with no per-provider code.
+- **The error text.** Providers do not agree on error types, but the text almost always has `429`, a `5xx` code, "overloaded" or "timed out". A regex over the text works for all providers with no per-provider code.
 - **The error kind.** `AssistantMessage.error_kind` can be `"fatal"`, `"budget"` or `"policy"`. These are **never** retried, even if the text looks retryable. For example, `stream()` sets `error_kind="fatal"` when there is no API key. The server sets `"budget"` when a user is over their limit ([23](23-limits.md)). The text alone cannot tell "the provider rate-limits you" from "our own budget stops you".
 
 A context overflow is also not retryable here: the same too-big request would fail again. It has its own path ([17](17-overflow.md)).
