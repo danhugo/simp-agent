@@ -133,3 +133,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - ch02 special rules: every case now has a full real example (our object IN → exact JSON OUT, made by running the real code); old Chat Completions paragraph gets one too.
 - ch02 "4 Send": rewritten as a story (3 steps; settings as 3 questions with JSON examples); table removed; store:false now one link back to Translate.
 - ch06: rewritten as 3 parts (events with a full example event list; abort as 3 Stop situations with what stops / history / model view; short Agent). One word: cancel event. nxt/stop introduced as a race before the code. Steps section and sequence diagram removed (repeated content).
+- ch09: each topic taught once (no step-by-step repeat); one name "path safety"; OS kill detail in a side note; EnvConformance cut to a short note; Builds line added.

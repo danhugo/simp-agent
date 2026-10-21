@@ -69,7 +69,7 @@ The object a tool gets when it runs (`ToolContext`): `cancel`, `env`, `cwd`, `on
 The one object (`ExecutionEnv`, default `LocalEnv`) through which tools read files and run commands. Given to tools in the tool context. Defined in [05](05-agent-loop.md#toolcontext-what-a-tool-gets); built in [09](09-exec-env.md).
 
 ## Path safety
-The rule that, when `LocalEnv` has a `root`, a file path may not leave it. `_path` resolves `..` and symlinks first, then raises `PermissionError` if the path is outside the root. Files only: `exec` is not fenced. Home: [09](09-exec-env.md#path-safety).
+The rule that, when `LocalEnv` has a `root`, a file path may not leave it. `_path` resolves `..` and symlinks first, then raises `PermissionError` if the path is outside the root. Files only: `exec` is not checked. Home: [09](09-exec-env.md#path-safety).
 
 ## Process-group kill
 How `exec` stops a command: the shell starts in a new process group (`start_new_session=True`), and `run_kill` sends `SIGKILL` to the whole group until it is empty, so background children die too. Home: [09](09-exec-env.md#process-group-kill).
@@ -330,7 +330,7 @@ A delta that does not start at the end of the text: a skipped one (gap) or a rep
 A secret sent in the header `Authorization: Bearer <token>` on every call to the server. See [Token (auth)](#token-auth). Home: [22](22-store-auth.md).
 
 ## Monotonic clock
-A clock that only goes forward (`time.monotonic()`). Changing the computer's time does not move it, so it is safe for measuring how long something took. Used in [09](09-exec-env.md), [10](10-coding-tools.md) and [23](23-limits.md).
+A clock that only goes forward (`time.monotonic()`). Changing the computer's time does not move it, so it is safe for measuring how long something took. Used in [10](10-coding-tools.md) and [23](23-limits.md).
 
 ## Offset
 The position in the full text where a delta starts. `appendAt()` uses it to drop repeated (dup) and skipped (gap) deltas. Home: [25](25-web-client.md#appendat).
