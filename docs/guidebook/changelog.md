@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-21
+- ch25: new "Two kinds of events" (seq vs offset) before the steps; repeated file list and mid-step ch21 jump removed; ChatState shows 4 fields, all 10 now in ref-objects "Web client ChatState"; browser-notification detail dropped. (checked at `99d5e6f`)
 - ch21: durable/live defined once (Step 1); `"msg"` rows explained before `append`; snapshot worked example (seq 1-5, after=3); `subscribe` shown before the `first, q` call. (checked at `b51ef3b`)
 - ch07: Problem now has a safe-point example (steer during tool 1 of 3): wrong vs right history and a timeline; "read point" named there; later repeat cut to a back-link. Glossary: new "Safe point". (checked at `8e6e4b1`)
 - ch03: short Responses text example ("Hi!") before the tool call example; Anthropic stop_reason sentence split into a 3-item list. ch04: IN→OUT stamp example + why; error-classification "Extra" shrunk to one short section linking ch15/17 (glossary + ch15 links now point to ch17); StopIteration detail simplified; exercise on is_retryable removed; run note says "after ch 05". (checked at `0a7b0b7`)
