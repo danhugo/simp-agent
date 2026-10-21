@@ -210,9 +210,11 @@ AssistantMessage(content=[ThinkingContent("Let me think about the plan...")], st
 
 **Responses: three small tricks.**
 
+The shared why: we send `store: false`, so OpenAI keeps nothing. So on every call we send the whole history back ourselves, and it must look like OpenAI's own earlier output. The three tricks below all come from this.
+
 *Trick 1 — two ids in one string.*
 
-A tool call needs one id to link it to its result. Responses gives two: `call_id` (links call and result) and the item id `fc_...` (names the item). Our `ToolCall` has only one `id`, so the parser stores both: `"call_1|fc_abc"`. When we send it back, we split at `|`:
+A tool call needs one id to link it to its result. Responses gives two: `call_id` (links call and result) and the item id `fc_...` (names the item). Our `ToolCall` has only one `id` field, so the parser packs both: `"call_1|fc_abc"`. Why keep the item id: so replayed reasoning lines up with the item that came after it. For another model the item id is dropped (code: `if item_id and not other_model`). When we send it back, we split at `|`:
 
 ```text
 call_id, _, item_id = id.partition("|")   // no "|" → item_id is empty
@@ -248,7 +250,7 @@ The result item only ever gets `call_id`. (One more case: if the message came fr
 
 *Trick 2 — text signature.*
 
-Each Responses answer is a `message` item with its own `id` (and sometimes a `phase`). When we send the old answer back, it should keep that id. So the parser saves `{"v": 1, "id": ..., "phase": ...}` in `TextContent.signature`.
+Each Responses answer is a `message` item with its own `id` (and sometimes a `phase`). Same idea as trick 1, for answer text: when we send the old answer back to the same model, it gets the same `id` and `phase` back. So the parser saves `{"v": 1, "id": ..., "phase": ...}` in `TextContent.signature`.
 
 ```text
 id = signature.id IF signature, ELSE "msg_pi_<i>"   // i = place of the message in the list
@@ -298,7 +300,9 @@ Model(id="gpt-5", api="openai-responses", compat={"reasoning_effort": "medium"})
 {"role": "developer", "content": "You are a coding agent."}
 ```
 
-Why: OpenAI wants role `developer` for the system prompt of a reasoning model.
+Why: `developer` is OpenAI's newer name for app instructions, and it is the preferred role for reasoning models. So the code uses it when reasoning effort is set, else `system`.
+
+Tricks 1 and 2 keep old ids so replayed reasoning lines up; trick 3 uses the role reasoning models expect.
 
 **Anthropic: merge turns.**
 
