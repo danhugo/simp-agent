@@ -27,90 +27,73 @@ Code in this chapter (commit `2fc2776`):
 - `packages/simp_agent/src/simp_agent/ai/providers/anthropic.py` — `parse`
 - `packages/simp_agent/tests/test_openai.py` — parser tests with fake chunks
 
-We start with the OpenAI Chat Completions format because it is the one most servers copy (vLLM, llama.cpp, Ollama). The other two providers (`anthropic.py`, `openai_responses.py`) follow the same plan with their own input format; they come [at the end](#the-other-two-vendors).
+## Problem and goal
 
-## Problem
-
-When you ask a server for `stream=True`, you get a list of **chunks** over time. Each chunk has a tiny `delta`. For the answer "Hello" you might get:
+When you ask a server for `stream=True`, you get a list of **chunks** over time. Each chunk has a tiny `delta`. Here is a real answer: the model says "Hi" and then calls `read` with `{"path": "a"}` (each line is one chunk, cut to the `choices[0]` part):
 
 ```text
-chunk 1: delta.content = "Hel"
-chunk 2: delta.content = "lo",  finish_reason = "stop"
-```
-
-A tool call is worse. Its arguments are a JSON string, and the server cuts that string anywhere. This is what the server really sends for one call to `read` with `{"path": "a"}` (each line is one chunk, cut to the `choices[0]` part):
-
-```text
-chunk 1: delta = {role: "assistant", content: null,
-                  tool_calls: [{index: 0, id: "call_1", type: "function",
+chunk 1: delta = {role: "assistant", content: "Hi"}
+chunk 2: delta = {tool_calls: [{index: 0, id: "call_1", type: "function",
                                 function: {name: "read", arguments: ""}}]}
-chunk 2: delta = {tool_calls: [{index: 0, function: {arguments: "{\"pa"}}]}
-chunk 3: delta = {tool_calls: [{index: 0, function: {arguments: "th\": \"a\"}"}}]}
-chunk 4: delta = {}                          finish_reason = "tool_calls"
-chunk 5: choices = []                        usage = {prompt_tokens: 7, completion_tokens: 3, ...}
+chunk 3: delta = {tool_calls: [{index: 0, function: {arguments: "{\"pa"}}]}
+chunk 4: delta = {tool_calls: [{index: 0, function: {arguments: "th\": \"a\"}"}}]}
+chunk 5: delta = {}                          finish_reason = "tool_calls"
+chunk 6: choices = []                        usage = {prompt_tokens: 7, completion_tokens: 3, ...}
 ```
 
-No single chunk holds valid JSON. Only the first piece has the `id`, `type` and `name`. Later pieces have just `index` and a bit of `arguments`. The `index` tells you which call the bit belongs to. `finish_reason` comes in its own chunk with an empty `delta`. Usage comes in one more chunk at the very end, with `choices` empty. The server sends it only because we ask with `stream_options: {"include_usage": true}` (`openai_completions.py:119-120`). The rest of simp-agent wants none of this. The agent loop (ch [05](05-agent-loop.md)) wants one `AssistantMessage` with clean `TextContent` and `ToolCall` parts, a `stop_reason`, and `usage`.
-
-So we need two things at once:
+No single chunk holds valid JSON. Only the first tool piece has the `id` and `name`. `finish_reason` comes in its own chunk, and usage in one more chunk with `choices` empty. The rest of simp-agent wants none of this. So `parse` must turn these chunks into two things at once:
 
 1. **Live events**, so a UI can print text as it arrives.
-2. **One final message**, so the loop can act on it.
+2. **One final [`AssistantMessage`](glossary.md#assistantmessage)**, so the agent loop (ch [05](05-agent-loop.md)) can act on it: clean `TextContent` and `ToolCall` parts, a `stop_reason`, and `usage`.
 
-## Naive version
+### The events
 
-The first idea: add up text, add up arguments, parse at the end.
+All three parsers yield the same [events](glossary.md#stream-event):
 
-```text
-FUNCTION parse(chunks):
-    text = "", args = "", call_id = none, name = none
-    FOR EACH chunk (wait for each one):
-        d = the new part of the chunk
-        IF d has text:
-            ADD it to text
-            SEND event {text_delta, the new text}     // UI shows it now
-        FOR EACH tool-call piece in d:
-            keep the first id and the first name
-            ADD the piece's arguments to args          // JSON comes in pieces
-    msg = assistant message with text
-    IF there was a call_id:
-        turn args from JSON text into an object
-        ADD ToolCall(call_id, name, object) to msg
-    SEND event {done, msg}
-```
+| Event | Extra keys | When |
+|---|---|---|
+| `start` | `partial` | first, always |
+| `thinking_start` / `thinking_delta` / `thinking_end` | `delta` on delta | reasoning text |
+| `text_delta` | `delta` | each text piece |
+| `toolcall_start` | `name` | first piece of a new call |
+| `toolcall_delta` | `delta` | each argument piece |
+| `toolcall_end` | — | once per call, when its arguments are complete |
+| `done` / `error` | `message` | last, always exactly one |
 
-It works for "Hello" and for one tool call. Then it breaks:
+Only `start`, `done` and `error` carry a message. `partial` and `message` are the **same object**: we build it while we read. The loop needs only the last event; the middle ones are for people watching (ch [06](06-events-abort.md)). `thinking_end` does not always come (see below), so a UI must not wait for it.
 
-- **The usage chunk.** `chunk.choices[0]` raises `IndexError` on the last chunk, which has an empty `choices` list. A stream function [must never raise](01-pick-clean.md#out-the-shape-of-a-model-call).
-- **Two tool calls at once.** Models often call two tools in one answer (`index` 0 and `index` 1). The naive code glues both argument strings into one, so `json.loads` fails.
-- **Bad JSON.** If the model writes broken arguments, `json.loads` raises and the whole call is lost.
-- **No stop reason.** We always say `done`, even if the server stopped because it ran out of tokens, or the stream was cut off.
-- **Thinking.** Some models send "reasoning" text before the answer. We drop it.
+### The goal, worked out
 
-## Step by step: from naive to real
-
-**Step 1 — skip chunks with no choices.** Fixes the `IndexError`:
+For the six chunks above, `parse` must yield:
 
 ```text
-FOR each chunk:
-    IF chunk has no choices: SKIP it
+{type: start, partial: msg}
+{type: text_delta,     delta: "Hi"}          // chunk 1
+{type: toolcall_start, name: "read"}         // chunk 2
+{type: toolcall_delta, delta: "{\"pa"}       // chunk 3
+{type: toolcall_delta, delta: "th\": \"a\"}"}  // chunk 4
+                                             // chunk 5: only remembers finish_reason
+                                             // chunk 6: only sets usage
+{type: toolcall_end}                         // after the last chunk
+{type: done, message: msg}
 ```
 
-Real code: [openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) — `parse`
+and `msg` at the end is:
 
-**Step 2 — one entry per tool call.** Keep a list `calls` and find the entry for each piece by `index` (then by `id`). Each call gets its own argument string, so the arguments of two calls are never mixed.
+```text
+AssistantMessage(
+    content     = [TextContent("Hi"), ToolCall("call_1", "read", {"path": "a"})],
+    stop_reason = "tool_use",
+    usage       = {input: 7, output: 3, reasoning: 0})
+```
 
-**Step 3 — parse JSON once, safely.** At the end, `json.loads` each call in `try`; bad text becomes `{"_raw": ...}` instead of an exception.
+The rest of this chapter builds the code that does this, one problem at a time.
 
-**Step 4 — map `finish_reason`.** Remember the last one seen; turn it into our `stop_reason`, and end with `error` when it is missing or unknown.
+## Build the Chat Completions parser
 
-**Step 5 — thinking.** Read the reasoning field and keep it as a `ThinkingContent` before the text.
+We start with OpenAI Chat Completions because most servers copy it (vLLM, llama.cpp, Ollama). Real code for every step: [openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) — `parse`.
 
-The real `parse` is these five steps together. We walk through it in four parts: text, tool calls, stop reasons, usage.
-
-## Real design
-
-The whole function has one job: read chunks, keep a growing message, yield events. The start:
+The frame: make an empty message, hand it out at once, then read chunks.
 
 ```text
 FUNCTION parse(chunks, compat):
@@ -118,38 +101,37 @@ FUNCTION parse(chunks, compat):
     calls = empty list          // tool calls still being built: {index, id, name, args}
     finish = none               // last finish_reason seen
     SEND event {start, partial = msg}
+    FOR EACH chunk (wait for each one):
+        ... usage first, then steps 2, 1, 3, 4 ...
+    ... steps 5, 6 at the end ...
 ```
 
-Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) (`parse`)
+We teach text first because it is the easiest; the real code reads usage, then thinking, then text, then tool calls in each chunk.
 
-`msg` is the message we build. `start` hands it out at once as `partial`, the same object that will be in `done` later. `calls` holds tool calls that are still being built. `finish` remembers the last finish reason seen. `compat` is a dict of small switches per server; it comes from the `Model` (all keys: [ref-objects](ref-objects.md#request-objects-tool-context-model)).
+`compat` is a dict of small switches per server; it comes from the `Model` (all keys: [ref-objects](ref-objects.md#request-objects-tool-context-model)).
 
-```mermaid
-flowchart TD
-    C[chunk] --> U{has usage?}
-    U -->|yes| SU[set msg.usage]
-    C --> R{reasoning text?} -->|yes| TH[ThinkingContent + thinking_delta]
-    C --> T{content?} -->|yes| TX[TextContent + text_delta]
-    C --> K{tool_calls?} -->|yes| TC[find or add entry in calls + toolcall_delta]
-    E[end of chunks] --> J[parse JSON → ToolCall + toolcall_end]
-    J --> S[map finish_reason → stop_reason]
-    S --> D[done or error event]
-```
+### Step 1 — text
 
-### Text deltas
+**Problem.** "Hello" can come as `"Hel"` then `"lo"`. We want one `TextContent("Hello")`, not two, and the UI wants each piece now.
+
+**What we do.** Add to the last part if it is the same kind; else start a new part. Send each piece as `text_delta`.
 
 ```text
-IF d has text:
+IF d.content:
     IF the last part of msg is not a TextContent:
         IF msg has parts: SEND event {thinking_end}    // thinking is over
         ADD a new empty TextContent to msg
-    ADD the text to the last part
-    SEND event {text_delta, the text}
+    ADD d.content to the last part
+    SEND event {text_delta, d.content}
 ```
 
-The rule is: **add to the last part if it is the same kind; else start a new part.** So "Hel" + "lo" becomes one `TextContent("Hello")`, not two. We also yield the small piece as a `text_delta`, so a UI can print it now.
+`"Hel"`, `"lo"` → events `text_delta "Hel"`, `text_delta "lo"` → `content = [TextContent("Hello")]`.
 
-Thinking works the same way, just before it. The server may name the field `reasoning_content`, `reasoning` or `reasoning_text`, so the code tries all three:
+### Step 2 — thinking
+
+**Problem.** Some models send reasoning text before the answer, and each server names the field differently: `reasoning_content`, `reasoning` or `reasoning_text`.
+
+**What we do.** Take the first of the three that has text, and use the same "join the last part" rule with `ThinkingContent`:
 
 ```text
 r = the first non-empty of d.reasoning_content, d.reasoning, d.reasoning_text
@@ -161,110 +143,112 @@ IF r:
     SEND event {thinking_delta, r}
 ```
 
-When the first text arrives after thinking, the text branch yields `thinking_end`. The message keeps the parts in order: thinking first, then text. (`ThinkingContent` fields: [ref-objects](ref-objects.md#content-blocks).)
-
-### Tool-call assembly from deltas
-
-This is the hard part. A tool call arrives in pieces, and the pieces of several calls can arrive mixed together, before any of them is finished. Each piece must be matched to the right call.
+Chunks `reasoning_content="Let me"`, `reasoning_content=" look"`, `content="Hi"` give:
 
 ```text
-FOR EACH tool-call piece tc in d:
-    cur = the entry in calls with the same index
-    IF none: cur = the entry in calls with the same id
-    IF still none:                                   // a new call
+thinking_start, thinking_delta "Let me", thinking_delta " look",
+thinking_end, text_delta "Hi"
+→ content = [ThinkingContent("Let me look"), TextContent("Hi")]
+```
+
+There is no "thinking stopped" signal in Chat Completions. We only know thinking is over when text starts, so `thinking_end` comes from the text branch. If the model thinks and then only calls a tool, no `thinking_end` is sent. (`ThinkingContent` fields: [ref-objects](ref-objects.md#content-blocks).)
+
+### Step 3 — one tool call
+
+**Problem.** The arguments are a JSON string cut anywhere. Only the first piece has `id` and `name`; later pieces have just `index` and a bit of `arguments`.
+
+**What we do.** Keep one entry per [tool call](glossary.md#tool-call) in `calls`. A new call sends `toolcall_start`; each argument piece is *added up* (never parsed yet) and sent as `toolcall_delta`.
+
+```text
+FOR EACH tool-call piece tc in d.tool_calls:
+    cur = the entry in calls for this piece      // step 4 says how
+    IF none:                                     // a new call
         cur = {index, id (or make "call_" + 12 hex), name = "", args = ""}
         ADD cur to calls
         SEND event {toolcall_start, name}
-    IF tc has a function part:
-        keep the first name seen
-        IF it has arguments:
-            ADD them to cur.args                     // only add up, never parse here
-            SEND event {toolcall_delta, the arguments}
+    keep the first name seen
+    IF tc has arguments:
+        ADD them to cur.args
+        SEND event {toolcall_delta, the arguments}
 ```
 
-How a piece finds its call:
+This is chunks 2–4 of the example: `toolcall_start "read"`, then two `toolcall_delta`s, and `cur.args` grows to `{"path": "a"}`. If the server gave no `id`, we make one, because the tool result must point back to it later (`ToolResultMessage.tool_call_id`, see [ref-objects](ref-objects.md#messages)).
 
-1. **By `index`** — the OpenAI way. Piece with `index: 1` belongs to call 1.
+### Step 4 — two tool calls at once
+
+**Problem.** Models often call two tools in one answer, and the pieces come mixed:
+
+```text
+chunk a: tool_calls: [{index: 0, id: "c1", function: {name: "read", arguments: "{\"path\":"}}]
+chunk b: tool_calls: [{index: 1, id: "c2", function: {name: "read", arguments: "{\"path\":"}}]
+chunk c: tool_calls: [{index: 0, function: {arguments: " \"a\"}"}}]}
+chunk d: tool_calls: [{index: 1, function: {arguments: " \"b\"}"}}]}
+```
+
+If we kept one `args` string, we would get `{"path": {"path": "a"} "b"}` — broken.
+
+**What we do.** Find the right entry for each piece:
+
+1. **By `index`** — the OpenAI way. A piece with `index: 1` belongs to call 1.
 2. **By `id`** — some servers send no `index`, but repeat the `id`.
-3. **Neither matches** — it is a new call. If the server gave no `id`, we make one (`call_` + 12 hex chars), because the tool result must point back to it later (see `ToolResultMessage.tool_call_id` in [ref-objects](ref-objects.md#messages)).
+3. **Neither matches** — it is a new call (step 3).
 
-The `name` is kept from the first piece that has one. The argument text is only *added up* here, never parsed. We cannot parse until the stream ends.
+So chunk c goes to call 0 and chunk d to call 1: `c1.args = {"path": "a"}`, `c2.args = {"path": "b"}`. Events: `toolcall_start`, `toolcall_delta`, `toolcall_start`, `toolcall_delta`, `toolcall_delta`, `toolcall_delta`. The deltas carry no index, so a UI only sees "more argument text".
 
-After the last chunk, each call is parsed once:
+### Step 5 — end of stream: parse the JSON safely
+
+**Problem.** We can only parse when the stream ends. And the model may write broken JSON; `json.loads` would raise, and a stream function [must never raise](01-pick-clean.md#out-the-shape-of-a-model-call).
+
+**What we do.** After the last chunk, parse each call once:
 
 ```text
 FOR EACH c in calls:                       // after the last chunk
     TRY: args = JSON object from c.args (empty text -> {})
     IF that fails, or it is not an object:
-        args = {"_raw": c.args}            // schema check fails later -> model gets an error result
+        args = {"_raw": c.args}
     ADD ToolCall(c.id, c.name, args) to msg
     SEND event {toolcall_end}
 ```
 
-Note what happens with bad JSON. We do **not** throw the call away and we do **not** raise. We keep the raw text as `{"_raw": ...}`. Later, when the loop runs the tool, the arguments fail the tool's schema check, and the model gets an error result saying "Invalid arguments" (ch [05](05-agent-loop.md)). The model sees its mistake and can try again. `json.JSONDecodeError` is a `ValueError`, so one `except` covers both broken JSON and JSON that is not an object (like `[1, 2]`).
+Example: `c.args = '{"path": '` (cut off) → `ToolCall("c1", "read", {"_raw": '{"path": '})`.
 
-Empty arguments (`""`) count as `{}`, because some servers send nothing for a tool with no parameters.
+We do **not** throw the call away. When the loop runs the tool, `{"_raw": ...}` fails the tool's schema check, and the model gets an error result "Invalid arguments" (ch [05](05-agent-loop.md)). The model sees its mistake and can try again. Empty arguments (`""`) count as `{}`, because some servers send nothing for a tool with no parameters. `[1, 2]` is valid JSON but not an object, so it also becomes `_raw`.
 
-### Stop reasons
+### Step 6 — why did it stop? `finish_reason` → `stop_reason`
 
-The server says *why* it stopped in `finish_reason`. Each server uses its own words. We map them to our five words (`stop | tool_use | length | error | aborted`, from `AssistantMessage`, see [ref-objects](ref-objects.md#messages)):
+**Problem.** The server says why it stopped in `finish_reason`, in its own words. We need one of our five (`stop | tool_use | length | error | aborted`, from `AssistantMessage`). And sometimes the server sends nothing.
 
-```text
-stop reason map (server word -> our word):
-    stop, end             -> stop
-    length                -> length
-    tool_calls, function_call -> tool_use
-```
-
-Real code: [openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) — `_STOP`
-
-At the end of `parse`:
+**What we do.** In the loop, remember the last `finish_reason` seen (`finish = choice.finish_reason or finish`). At the end, map it with `_STOP`:
 
 ```text
+_STOP: stop, end -> stop · length -> length · tool_calls, function_call -> tool_use
+
 IF finish is none:
     IF compat.supports_finish_reason (default yes):
         stop_reason = error, error = "Stream ended without finish_reason"
     ELSE:
         stop_reason = tool_use IF there are calls ELSE stop
-ELSE IF finish is in _STOP:
-    stop_reason = _STOP[finish]
-ELSE:
-    stop_reason = error, error = "Provider finish_reason: " + finish
+ELSE IF finish is in _STOP:  stop_reason = _STOP[finish]
+ELSE:                        stop_reason = error, error = "Provider finish_reason: " + finish
 IF stop_reason is stop AND there are calls:      // vLLM/Ollama send "stop" with tool calls
     stop_reason = tool_use
 SEND event {error IF stop_reason is error ELSE done, msg}
 ```
 
-Four cases:
+Why each case:
 
-| Server sent | We set | Why |
-|---|---|---|
-| a known word | the mapped word | normal case |
-| an unknown word (e.g. `content_filter`) | `error` + message | we do not guess what it means |
-| nothing | `error` "Stream ended without finish_reason" | the connection was probably cut; the answer may be half |
-| nothing, but `compat["supports_finish_reason"]` is `False` | `tool_use` or `stop` | some servers never send it; trust what we got |
+- **Unknown word** (e.g. `content_filter`) → `error`. We do not guess what it means.
+- **Nothing** → `error`. The connection was probably cut; the answer may be half.
+- **Nothing, but `supports_finish_reason` is `False`** → some servers never send it, so trust what we got: `"Hi"` alone gives `stop`.
+- **`stop` with tool calls** → `tool_use`. This keeps `stop_reason` true for UIs and saved history. (The loop itself runs tools from `tool_calls()`, not from `stop_reason`.)
 
-Plus one fix: vLLM and Ollama say `stop` even when they called a tool. If we have tool calls, the stop reason becomes `tool_use`. This keeps `stop_reason` true for UIs, events and saved history. The loop itself runs tools from `tool_calls()`, not from `stop_reason` (ch [05](05-agent-loop.md)).
-
-The last event is `error` when the stop reason is `error`, else `done`. That keeps the [stream function](glossary.md#stream-function) contract from [01](01-pick-clean.md#out-the-shape-of-a-model-call): the end event always holds the full message, and nothing is raised.
+The last event is `error` when the stop reason is `error`, else `done`. That is the [stream function](glossary.md#stream-function) contract from [01](01-pick-clean.md#out-the-shape-of-a-model-call): the end event always holds the full message, and nothing is raised.
 
 ### Usage
 
-**[Usage](glossary.md#usage)** is the token count for one call. It is needed for cost limits (ch [23](23-limits.md)) and for knowing when to compact (ch [16](16-compaction.md)).
+**Problem.** **[Usage](glossary.md#usage)** (the token count for one call) is needed for cost limits (ch [23](23-limits.md)) and for knowing when to compact (ch [16](16-compaction.md)). It comes in a last chunk with `choices = []` — so `chunk.choices[0]` would raise `IndexError`. Some servers put it on the choice instead.
 
-```text
-FUNCTION _usage(u):
-    RETURN {input = u.prompt_tokens or 0,
-            output = u.completion_tokens or 0,
-            reasoning = u.completion_tokens_details.reasoning_tokens or 0}
-            // reasoning is already inside output
-```
-
-Real code: [packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py) (`_usage`)
-
-`reasoning` is for information only: it is already inside `output`, so do not add it twice.
-
-Usage can come in two places, so `parse` checks both:
+**What we do.** This runs first for every chunk:
 
 ```text
 usage = chunk.usage
@@ -276,98 +260,66 @@ IF no usage yet: usage = choice.usage
 IF usage: msg.usage = _usage(usage)
 finish = choice.finish_reason, or keep the old one
 d = choice.delta; IF d is none: go to next chunk
+
+FUNCTION _usage(u):
+    RETURN {input = u.prompt_tokens or 0,
+            output = u.completion_tokens or 0,
+            reasoning = u.completion_tokens_details.reasoning_tokens or 0}
 ```
 
-The "no choices → go to next chunk" step is also the fix for the naive `IndexError`: the final usage-only chunk has no choices. The server only sends that chunk when asked; `stream` (ch [02](02-translate-send.md)) asks with `stream_options={"include_usage": True}` unless `compat["include_usage"]` is `False`.
+Chunk 6 of the example (`choices = []`, `prompt_tokens: 7, completion_tokens: 3`) → `msg.usage = {input: 7, output: 3, reasoning: 0}`. `reasoning` is for information only: it is already inside `output`, so do not add it twice. The server sends the usage chunk only when asked; `stream` (ch [02](02-translate-send.md)) asks with `stream_options={"include_usage": True}` unless `compat["include_usage"]` is `False`.
+
+That is the whole `parse`. Run the six chunks from the top through these steps and you get exactly the events and message of [the goal](#the-goal-worked-out).
 
 ## The other two vendors
 
-Parse also exists in the other two providers, `anthropic.py` and `openai_responses.py`. They yield the same events.
+Same plan, same events, same kind of final message. Only the input is different.
 
-**OpenAI Responses.** `parse` here works like the one above, but on Responses [SSE](glossary.md#sse) events. Here is the same tool call as above (`read` with `{"path": "a"}`), cut to the events and fields we use:
+### OpenAI Responses: named events
 
-```text
-event: response.output_item.added
-data: {"output_index": 0, "item": {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "read", "arguments": ""}}
+Real code: [openai_responses.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_responses.py) — `parse`.
 
-event: response.function_call_arguments.delta
-data: {"item_id": "fc_1", "output_index": 0, "delta": "{\"pa"}
+**What is different.** Responses sends named [SSE](glossary.md#sse) events, and the answer is a list of [items](glossary.md#item-responses). Each item has a clear start (`response.output_item.added`) and end (`response.output_item.done`). So most of our hard work above disappears:
 
-event: response.function_call_arguments.delta
-data: {"item_id": "fc_1", "output_index": 0, "delta": "th\": \"a\"}"}
+- **No matching by index.** Items come one after another, so `parse` keeps just one "current" part.
+- **Clear ends.** `thinking_end` and `toolcall_end` come from the item's `.done` event, not guessed.
+- **Full arguments at the end.** The `.done` event carries the whole `arguments` string, so we parse that (and fall back to the pieces we added up).
+- **The `.done` item wins.** For text and thinking too, the full text in the `.done` item replaces what we added up from pieces.
+- **Stop reason from status.** `response.completed` → `tool_use` if the message has a `ToolCall`, else `stop`; `incomplete` because of `max_output_tokens` → `length`; anything else (`failed`, or an `error` event) → `error`. No `response.completed` at all → `error` "Stream ended without response.completed".
+- **Two ids.** A tool call item has a `call_id` and an item id (`fc_...`). We keep both as `ToolCall.id = "call_1|fc_1"`; ch 02 explains why ([Trick 1](02-translate-send.md#responses-to_input)).
 
-event: response.output_item.done
-data: {"output_index": 0, "item": {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "read", "arguments": "{\"path\": \"a\"}"}}
-
-event: response.completed
-data: {"response": {"status": "completed", "usage": {"input_tokens": 7, "output_tokens": 3, ...}}}
-```
-
-Where each event is handled in `openai_responses.py`:
-
-| Event | Line | What `parse` does |
-|---|---|---|
-| `response.output_item.added` | 79-88 | new `ToolCall` with id `call_id\|id` and `name`; emits `toolcall_start` |
-| `response.function_call_arguments.delta` | 105-108 | adds `delta` to a buffer; emits `toolcall_delta` |
-| `response.output_item.done` | 109, 119-121 | parses the full `arguments` (falls back to the buffer); emits `toolcall_end` |
-| `response.completed` | 123-131 | reads `usage`; stop reason is `tool_use` because the message has a `ToolCall` |
-
-Unlike Chat Completions, the `.done` event carries the whole arguments string, so we do not have to trust the string we built from the pieces.
-
-**Anthropic Messages.** The same tool call from Anthropic looks like this (cut to the fields we use):
+The same `read` call:
 
 ```text
-event: message_start
-data: {"type": "message_start", "message": {"id": "msg_1", "role": "assistant", "content": [], "usage": {"input_tokens": 7, "output_tokens": 1}}}
-
-event: content_block_start
-data: {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "toolu_1", "name": "read", "input": {}}}
-
-event: content_block_delta
-data: {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "{\"pa"}}
-
-event: content_block_delta
-data: {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "th\": \"a\"}"}}
-
-event: content_block_stop
-data: {"type": "content_block_stop", "index": 0}
-
-event: message_delta
-data: {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 3}}
-
-event: message_stop
-data: {"type": "message_stop"}
+response.output_item.added            item: {type: function_call, id: "fc_1", call_id: "call_1", name: "read"}
+                                        → toolcall_start "read"
+response.function_call_arguments.delta  delta: "{\"pa"        → toolcall_delta
+response.function_call_arguments.delta  delta: "th\": \"a\"}"  → toolcall_delta
+response.output_item.done             item: {..., arguments: "{\"path\": \"a\"}"}
+                                        → ToolCall("call_1|fc_1", "read", {"path": "a"}), toolcall_end
+response.completed                    status: completed, usage: {input_tokens: 7, output_tokens: 3}
+                                        → stop_reason tool_use, done
 ```
 
-We do not read these raw events one by one. `client.messages.stream(...)` from the `anthropic` SDK reads them, builds the message for us, and also gives extra helper events: for each `input_json_delta` it gives an `input_json` event with `partial_json`, and for each `text_delta` a `text` event. Where each one is handled in `anthropic.py`:
+### Anthropic: the SDK builds the message
 
-| Event | Line | What we do |
-|---|---|---|
-| `message_start` | (SDK) | SDK keeps `usage.input_tokens` |
-| `content_block_start` (`tool_use`) | 71-79 | emits `toolcall_start` with `name` |
-| `content_block_delta` (`input_json_delta`) | 88-89 | via the SDK's `input_json` event: emits `toolcall_delta` with `partial_json` |
-| `content_block_stop` | 90-92 | emits `toolcall_end` (the SDK adds the finished block as `ev.content_block`) |
-| `message_delta` | (SDK) | SDK keeps `stop_reason` and `usage.output_tokens` |
-| `message_stop` | (SDK), 116-119 | stream ends; `get_final_message()` gives `stop_reason` (`tool_use`) and `usage` |
+Real code: [anthropic.py](../../packages/simp_agent/src/simp_agent/ai/providers/anthropic.py) — `parse` and `stream`.
 
-During streaming, `parse` keeps partial text on `msg` (useful if the run is aborted). At the end, the provider rebuilds `msg.content` from the SDK's `get_final_message()`, which has the complete, signed blocks.
+**What is different.** The `anthropic` SDK's `client.messages.stream(...)` already reads the raw events and builds the full message for us. It also gives easy helper events: `text`, `thinking`, `signature`, `input_json` (with `partial_json`). So `parse` only **forwards** events for the UI; it never parses JSON or maps stop reasons itself.
 
+**Why we still keep partial text.** `parse` adds `text` and `thinking` pieces to `msg` as they come. If the run is aborted mid-stream, that partial message is all we have.
 
-## Events at a glance
+**At the end** `stream` calls `get_final_message()` and takes from it the complete content (including signed thinking blocks), `stop_reason` (mapped: `end_turn`/`stop_sequence` → `stop`, `tool_use` → `tool_use`, `max_tokens` → `length`; an unknown word falls back to `stop`, because the SDK already checked the stream) and `usage` (only `input` and `output`, no `reasoning`). Then it yields `done`. Here `start` is sent by `stream`, not by `parse`.
 
-| Event | Extra keys | When |
-|---|---|---|
-| `start` | `partial` | first, always |
-| `thinking_start` / `thinking_delta` / `thinking_end` | `delta` on delta | reasoning text |
-| `text_delta` | `delta` | each text piece |
-| `toolcall_start` | `name` | first piece of a new call |
-| `toolcall_delta` | `delta` | each argument piece |
-| `toolcall_end` | — | after the stream, once per call |
-| `done` / `error` | `message` | last, always exactly one |
+The same `read` call:
 
-Note: `thinking_end` comes only when text follows the thinking. A UI must not wait for it.
-
-Only `start`, `done` and `error` carry a message. The loop needs only the last event; the middle ones are for people watching (ch [06](06-events-abort.md)).
+```text
+content_block_start  {type: tool_use, id: "toolu_1", name: "read"}  → toolcall_start "read"
+input_json           partial_json: "{\"pa"                           → toolcall_delta
+input_json           partial_json: "th\": \"a\"}"                    → toolcall_delta
+content_block_stop   (tool_use)                                      → toolcall_end
+get_final_message()  stop_reason: tool_use, usage: {7, 3}            → done
+```
 
 ## Test
 
@@ -395,7 +347,7 @@ async def run(chunks, compat=None):
 
 `parse` reads chunks with `async for`, so `gen` turns a plain list into an async iterator. `oc` is `simp_agent.ai.providers.openai_completions`.
 
-The tool-call example from the Problem section, as a test:
+The tool-call example from the Problem section (without the text, arguments cut in three pieces), as a test:
 
 ```python
 async def test_tool_call_split_and_usage_chunk():
@@ -410,7 +362,7 @@ async def test_tool_call_split_and_usage_chunk():
     assert m.usage == {"input": 7, "output": 3, "reasoning": 0}
 ```
 
-Other tests in the file cover each naive failure:
+Other tests in the file cover each step:
 
 - `test_text_only` — "Hel" + "lo" gives one text "Hello".
 - `test_parallel_by_index_and_by_id` — two calls by `index`; and a server with no `index` that is matched by `id`, plus a made-up `call_` id.
@@ -442,15 +394,14 @@ uv run pytest packages/simp_agent/tests/test_openai.py packages/simp_agent/tests
 
 ## Recap
 
-- A real model streams small **deltas**; `parse` glues them into one `AssistantMessage` and yields live events on the way.
+- A real model streams small **deltas**; `parse` glues them into one `AssistantMessage` and yields live events on the way. `partial` and the final `message` are the same object.
 - Text and thinking pieces join the last part of the same kind.
 - Tool-call pieces are matched to a call by `index`, then by `id`; arguments are parsed once, at the end. Bad JSON becomes `{"_raw": ...}`.
 - `finish_reason` maps to our `stop_reason`; a missing or unknown one is an `error`. `stop` with tool calls becomes `tool_use`.
 - Usage can come in a chunk with no choices.
 - It never raises; the last event is always `done` or `error`.
-
-- OpenAI Responses and Anthropic follow the same plan on their own [SSE](glossary.md#sse) events; Anthropic takes the final, signed blocks from the SDK's `get_final_message()`.
+- OpenAI Responses has clear item start/end events and keeps tool ids as `call_id|item_id`; Anthropic forwards the SDK's events and takes the final, signed blocks from the SDK's `get_final_message()`.
 
 **Builds on:** [02 Translate + Send](02-translate-send.md) · **Next:** [04 Label + test the pipeline](04-label-test.md) — `ai.stream` labels every message, and we test the whole pipeline without a real model.
 
-**OUT →** events are the IN of block 6 Label (ch 04).
+**OUT →** events are the IN of block 6 Label (ch [04](04-label-test.md)).
