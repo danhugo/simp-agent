@@ -304,6 +304,16 @@ Real code: [openai_responses.py](../../packages/simp_agent/src/simp_agent/ai/pro
 - **Stop reason from status.** `response.completed` → `tool_use` if the message has a `ToolCall`, else `stop`; `incomplete` because of `max_output_tokens` → `length`; anything else (`failed`, or an `error` event) → `error`. No `response.completed` at all → `error` "Stream ended without response.completed".
 - **Two ids.** A tool call item has a `call_id` and an item id (`fc_...`). We keep both as `ToolCall.id = "call_1|fc_1"`; ch 02 explains why ([Trick 1](02-translate-send.md#responses-to_input)).
 
+A short text answer "Hi!" first:
+
+```text
+response.output_item.added       item: {type: message, id: "msg_1"}   → new TextContent (no event)
+response.output_text.delta       delta: "Hi"                          → text_delta "Hi"
+response.output_text.delta       delta: "!"                           → text_delta "!"
+response.output_item.done        item: {..., content: [{text: "Hi!"}]} → text = "Hi!" (the full text wins)
+response.completed               status: completed                    → stop_reason stop, done
+```
+
 The same `read` call:
 
 ```text
@@ -325,7 +335,13 @@ Real code: [anthropic.py](../../packages/simp_agent/src/simp_agent/ai/providers/
 
 **Why we still keep partial text.** `parse` adds `text` and `thinking` pieces to `msg` as they come. If the run is aborted mid-stream, that partial message is all we have.
 
-**At the end** `stream` calls `get_final_message()` and takes from it the complete content (including signed thinking blocks), `stop_reason` (mapped: `end_turn`/`stop_sequence` → `stop`, `tool_use` → `tool_use`, `max_tokens` → `length`; an unknown word falls back to `stop`, because the SDK already checked the stream) and `usage` (only `input` and `output`, no `reasoning`). Then it yields `done`. Here `start` is sent by `stream`, not by `parse`.
+**At the end** `stream` calls `get_final_message()` and takes from it the complete content (including signed thinking blocks), `stop_reason` and `usage`. Then it yields `done`.
+
+- `stop_reason` is mapped: `end_turn`/`stop_sequence` → `stop`, `tool_use` → `tool_use`, `max_tokens` → `length`.
+- An unknown word falls back to `stop`. Why: the SDK already checked the stream, so it did not break.
+- `usage` has only `input` and `output`, no `reasoning`.
+
+Here `start` is sent by `stream`, not by `parse`.
 
 The same `read` call:
 
