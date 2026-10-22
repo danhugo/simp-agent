@@ -91,6 +91,6 @@ You log in to the web app and type "write fizzbuzz.py" in a new session.
 
 ## Builds on / Next
 
-- Builds on: [Part 4 big picture](part-4-session.md) and [13 Sessions](13-session.md)–[18 Profiles and built-in plugins](18-profiles-plugins.md).
+- Builds on: [Part 4 big picture](13-0-part-4-session.md) and [13 Sessions](13-session.md)–[18 Profiles and built-in plugins](18-profiles-plugins.md).
 - Chapters: [19 The CLI](19-cli.md) · [20 The server run](20-server-run.md) · [21 Transport](21-transport.md) · [22 Store and auth](22-store-auth.md) · [23 Limits](23-limits.md) · [24 Docker sandbox](24-docker-sandbox.md) · [25 Web client](25-web-client.md) · [26 System tests and deploy](26-system-tests-deploy.md).
 - Next: [27 Choices, limits and extending](27-limits-choices-extend.md).

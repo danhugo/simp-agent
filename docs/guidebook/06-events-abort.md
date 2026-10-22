@@ -11,7 +11,7 @@ flowchart LR
     ai --> agent["agent ★ events, abort, Agent (this chapter)"] --> coding --> session --> plugins --> testing
 ```
 
-Big picture of Part 2: [part-2-agent](part-2-agent.md).
+Big picture of Part 2: [part-2-agent](05-0-part-2-agent.md).
 
 In [05](05-agent-loop.md) we built `agent_loop`. It calls the model, runs tools, and returns the new messages. But while it runs, it is a black box. A user interface wants to show text **as it arrives**, show "running bash…" while a tool works, and offer a **Stop** button.
 

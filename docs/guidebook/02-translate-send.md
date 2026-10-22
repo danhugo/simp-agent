@@ -16,7 +16,7 @@ flowchart LR
 
 **Builds:** blocks 3, 4 · **IN:** `Model`, clean `Context`, `api_key` · **OUT:** raw chunks
 
-Big picture of Part 1: [part-1-ai](part-1-ai.md).
+Big picture of Part 1: [part-1-ai](01-0-part-1-ai.md).
 
 In [01](01-pick-clean.md), Pick chose a [stream function](glossary.md#stream-function) by `model.api`, and Clean fixed the history. Now we go inside the stream function. It has three jobs: **Translate** our messages into the vendor's JSON, **Send** them over HTTP, and **Parse** what comes back. This chapter does the first two, for all three built-in [providers](glossary.md#provider). Parse is ch [03](03-parse.md).
 

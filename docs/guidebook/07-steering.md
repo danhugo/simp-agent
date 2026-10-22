@@ -11,7 +11,7 @@ flowchart LR
     ai --> agent["agent ★ steer / follow_up queues (this chapter)"] --> coding --> session --> plugins --> testing
 ```
 
-Big picture of Part 2: [part-2-agent](part-2-agent.md).
+Big picture of Part 2: [part-2-agent](05-0-part-2-agent.md).
 
 In [06](06-events-abort.md) the user got a **Stop** button. But stop is a hard tool. Often the user does not want to stop. They want to say "wait, use the other file" while the agent is still running a tool. Or they want to queue "now write the tests" for when the current job is done.
 

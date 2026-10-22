@@ -15,7 +15,7 @@ flowchart LR
 
 *This chapter adds the `store` and `auth` of the `server` app (marked).*
 
-Big picture of Part 5: [part-5-system](part-5-system.md).
+Big picture of Part 5: [part-5-system](19-0-part-5-system.md).
 
 Code in this chapter (commit `2fc2776`):
 
@@ -69,7 +69,7 @@ It works for one happy demo. It breaks when:
 
 ## Real design
 
-Each break of the naive version has one fix, and each fix has one section below. We follow the path of a request in [Part 5](part-5-system.md): first **Auth** (who are you?), then **Load** (find and rebuild your session), then **Events** (save what happens).
+Each break of the naive version has one fix, and each fix has one section below. We follow the path of a request in [Part 5](19-0-part-5-system.md): first **Auth** (who are you?), then **Load** (find and rebuild your session), then **Events** (save what happens).
 
 | Break | Fix | Section |
 |---|---|---|

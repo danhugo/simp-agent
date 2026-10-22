@@ -24,16 +24,16 @@ One entry in a conversation: `UserMessage`, `AssistantMessage` or `ToolResultMes
 Everything sent to a model in one request: system prompt, messages and tools (class `Context` in `ai`). Home: [01](01-pick-clean.md#in-model-and-context).
 
 ## Model
-Which model to call and how (class `Model` in `ai`): `id`, `provider`, `api`, `max_tokens`, `context_window`, `base_url`, `api_key_env`, `compat`. `api` picks the provider. Home: [01](01-pick-clean.md#in-model-and-context); all fields: [ref-objects](ref-objects.md#request-objects-tool-context-model); overview: [Part 1](part-1-ai.md).
+Which model to call and how (class `Model` in `ai`): `id`, `provider`, `api`, `max_tokens`, `context_window`, `base_url`, `api_key_env`, `compat`. `api` picks the provider. Home: [01](01-pick-clean.md#in-model-and-context); all fields: [ref-objects](ref-objects.md#request-objects-tool-context-model); overview: [Part 1](01-0-part-1-ai.md).
 
 ## Tool
 What the model is told about one tool (class `Tool` in `ai`): `name`, `description`, `parameters` (JSON schema). Home: [ref-objects](ref-objects.md#request-objects-tool-context-model).
 
 ## AssistantMessage
-The model's reply: `content` blocks (`TextContent`, `ThinkingContent`, `ToolCall`), `stop_reason`, `usage`, `error`, `error_kind`, and `api`/`provider`/`model` stamped by `ai.stream`. Home: [01](01-pick-clean.md#what-is-inside-messages), fields: [ref-objects](ref-objects.md#messages); overview: [Part 1](part-1-ai.md).
+The model's reply: `content` blocks (`TextContent`, `ThinkingContent`, `ToolCall`), `stop_reason`, `usage`, `error`, `error_kind`, and `api`/`provider`/`model` stamped by `ai.stream`. Home: [01](01-pick-clean.md#what-is-inside-messages), fields: [ref-objects](ref-objects.md#messages); overview: [Part 1](01-0-part-1-ai.md).
 
 ## Stream event
-One dict yielded by a stream function: `start`, `text_delta`, `thinking_start/delta/end`, `toolcall_start/delta/end`, then `done` or `error` with the final `AssistantMessage`. Not the same as an agent [event](#event). Home: [03](03-parse.md); overview: [Part 1](part-1-ai.md).
+One dict yielded by a stream function: `start`, `text_delta`, `thinking_start/delta/end`, `toolcall_start/delta/end`, then `done` or `error` with the final `AssistantMessage`. Not the same as an agent [event](#event). Home: [03](03-parse.md); overview: [Part 1](01-0-part-1-ai.md).
 
 ## Compaction entry
 A history marker (`CompactionEntry`) that says "messages before `first_kept_index` are replaced by this summary". Never sent to the model as-is. Defined in [ref-objects](ref-objects.md#two-history-entries-that-are-not-messages); built in [16](16-compaction.md).
@@ -384,10 +384,10 @@ A `ponytail:` code comment that marks a known shortcut and names its limit and t
 A fixed list of what to include; anything not on it is left out. The backup copies only the database, `settings.toml`, `workspaces` and `sandboxes`, so `.env` never goes in. Home: [26](26-system-tests-deploy.md).
 
 ## LoopConfig
-The settings of one `agent_loop()` run: model, tools, `stream_fn`, queues, hooks, `env`, `cwd`. Every hook has a "do nothing" default. See [05](05-agent-loop.md), [part-2-agent](part-2-agent.md).
+The settings of one `agent_loop()` run: model, tools, `stream_fn`, queues, hooks, `env`, `cwd`. Every hook has a "do nothing" default. See [05](05-agent-loop.md), [part-2-agent](05-0-part-2-agent.md).
 
 ## Agent (class)
-The thin object around `agent_loop()`. It keeps the history, subscribers, cancel event and the steer / follow-up queues; `prompt()` runs the loop once. See [06](06-events-abort.md), [part-2-agent](part-2-agent.md).
+The thin object around `agent_loop()`. It keeps the history, subscribers, cancel event and the steer / follow-up queues; `prompt()` runs the loop once. See [06](06-events-abort.md), [part-2-agent](05-0-part-2-agent.md).
 
 ## SDK
 Software development kit: the official library a vendor gives for its API, for example the Python package `anthropic`. Home: [03](03-parse.md#anthropic-the-sdk-builds-the-message).

@@ -16,7 +16,7 @@ flowchart LR
 
 **Builds:** blocks 1, 2 · **IN:** `Model`, `Context` · **OUT:** a stream function, clean `messages`
 
-Big picture of Part 1: [part-1-ai](part-1-ai.md).
+Big picture of Part 1: [part-1-ai](01-0-part-1-ai.md).
 
 Code in this chapter (commit `2fc2776`):
 

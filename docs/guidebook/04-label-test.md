@@ -16,7 +16,7 @@ flowchart LR
 
 **Builds:** block 6, and a test fake for blocks 3–5 · **IN:** events · **OUT:** labelled events
 
-Big picture of Part 1: [part-1-ai](part-1-ai.md).
+Big picture of Part 1: [part-1-ai](01-0-part-1-ai.md).
 
 In [01](01-pick-clean.md) we built Pick and Clean, in [02](02-translate-send.md) Translate and Send, and in [03](03-parse.md) Parse. This chapter adds the last block, **Label**, and the one function that ties them all together: `ai.stream`. Then it shows how to test all of this without a real model, using a fake [provider](glossary.md#provider).
 

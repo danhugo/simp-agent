@@ -15,7 +15,7 @@ flowchart LR
 
 *This chapter builds the first app: `apps/cli` (marked). It only uses the library; the library does not know it exists.*
 
-Big picture of Part 5: [part-5-system](part-5-system.md).
+Big picture of Part 5: [part-5-system](19-0-part-5-system.md).
 
 Code in this chapter (commit `2fc2776`):
 
