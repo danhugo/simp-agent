@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-22
 
+- ch05 Steps 1-3: each snippet now starts with `FUNCTION run_tool(call, ctx):`; new paragraph says RETURN gives the result back to `agent_loop` (after hook, history, next turn); Step 4 caller is `result = WAIT for run_tool(call, ctx)`. (checked at `6b7eaa4`, agent/__init__.py:74, :176)
 - ch05 "naive → real" rewritten as prose with one running example ("What is in README.md?"): each failure told as a story, each fix shows the text the model now receives; happy path, KeyError, provider, err()/is_error, JSON Schema, LoopConfig, FakeProvider, ctx/on_update explained at first use; ctx introduced before ctx.cancel; summary table at the end. "Stop rule"/"Errors end the run" bullets turned into prose. (checked at `d90fc58`)
 - ch05: "run" now defined at first use (Problem); Step 4 links back and lists the 3 ways the loop stops.
 - ch05 Step 4: "end the run" replaced by what `_end()` really does; `length` check shown inside the tool-call loop (it does not stop the loop). New glossary "Run", linked at first use in 01, 03, 05-0, 05, 06, 07, 08.
