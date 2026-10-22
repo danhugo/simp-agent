@@ -37,7 +37,7 @@ Each step can go wrong. The model can ask for a tool that does not exist. It can
 
 Three words we use from here on, from big to small. A **[run](glossary.md#run-agent)** is everything from the user's message until the loop stops (normally `agent_start` … `agent_end`). In this chapter one run is one call to `agent_loop()`; later the `Agent` class starts a run with `agent.prompt()` or `agent.continue_()` ([06](06-events-abort.md)). A run has one or more **[turns](glossary.md#turn)**. A turn is one model call plus the tools that call asked for. Inside a turn, the model can make zero or more **[tool calls](glossary.md#tool-call)**: each one asks for one tool, and we *execute* that tool once. So in this book the noun "run" always means the whole run, never one tool and never one model call. For a tool we say "execute the tool", and for the model we say "model call" or "turn".
 
-Take the example below, "Summarize README.md". It is one run with two turns. In turn 1 the model asks for `read`, and the `read` tool executes. In turn 2 the model answers with text and asks for nothing, so the run ends.
+Take the example below: the user asks "What is in README.md?". It is one run with two turns. In turn 1 the model asks for `read`, and the `read` tool executes. In turn 2 the model answers with text and asks for nothing, so the run ends.
 
 ```mermaid
 flowchart LR
