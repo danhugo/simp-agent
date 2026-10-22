@@ -35,6 +35,8 @@ The model cannot do anything by itself. It only writes text and tool calls. Some
 
 Each step can go wrong. The model can ask for a tool that does not exist. It can send bad arguments. The tool can crash. The provider can fail. The loop must handle all of these **without crashing**, because a crash loses the whole run.
 
+A word we use from here on: a **[run](glossary.md#run-agent)** is one call to the loop, from the user's new prompt until the loop returns (normally `agent_start` … `agent_end`). A run has many **[turns](glossary.md#turn)**; a turn is one model call plus its tools. In this chapter one run is one call to `agent_loop()`; later the `Agent` class starts a run with `agent.prompt()` or `agent.continue_()` ([06](06-events-abort.md)).
+
 ## Naive version
 
 ```text
@@ -98,7 +100,7 @@ IF tool.execute raised an error e:
 
 **Step 4 — check `stop_reason`.** We stop on `error` or `aborted` on purpose, and we never run cut-off calls.
 
-First, one word: a **[run](glossary.md#run-agent)** is one call to `agent.prompt()`: from the user's message until the loop stops (normally `agent_start` … `agent_end`). `agent.continue_()` also starts a run. In this chapter that is one call to `agent_loop()`; the `Agent` class with `prompt()` comes in [06](06-events-abort.md).
+(A [run](#problem) is one call to the loop, as defined in Problem.) The loop stops in only three ways: `error`/`aborted` (via `_end`), the cancel flag set after the tools (via `_end`), or no more tool calls, steering or follow-up (`agent_end` at the end).
 
 ```text
 IF msg.stop_reason is "error" or "aborted":
