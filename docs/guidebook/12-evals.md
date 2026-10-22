@@ -42,6 +42,7 @@ wrote /path/to/simp-agent/evals/results/20261013-101500-sol.json
 > **What you need before [13](13-session.md), [18](18-profiles-plugins.md), [22](22-store-auth.md):**
 > `AgentSession` ([13](13-session.md)): `s.prompt(text)` runs the agent until it stops; `s.subscribe(fn)` calls `fn(event)` for every [event](glossary.md#event); `s.abort()` stops it now.
 > `build_model(profile)` ([18](18-profiles-plugins.md)) turns a [profile](glossary.md#profile) into a model; `load_settings` / `take_keys` ([22](22-store-auth.md)) read the server's `settings.toml` and API keys.
+> A profile is a named model plus prices in the server's `settings.toml` ([18](18-profiles-plugins.md)).
 
 Here we only use them; you can read this chapter first and come back.
 
@@ -244,7 +245,7 @@ keys = take_keys(settings)
 RUN run_all(profile name, that profile, keys, task names from --tasks or all)
 ```
 
-The harness reads the same `settings.toml` as the server ([22](22-store-auth.md)), from `--home` (default `$SIMP_SERVER_HOME` or `~/.simp-server`). It reads keys from `<data_dir>/.env` and the process env. `data_dir` is `--home` unless settings change it. So you eval exactly the profiles you serve. Run it like this:
+The harness reads the same `settings.toml` as the server ([22](22-store-auth.md)), from `--home` (default `$SIMP_SERVER_HOME` or `~/.simp-server`). So you eval exactly the profiles you serve. Run it like this:
 
 ```bash
 uv run python evals/run.py --profile sol

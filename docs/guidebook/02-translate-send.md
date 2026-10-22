@@ -199,13 +199,6 @@ ToolResultMessage(tool_call_id="call_3", tool_name="read", content="text of c.py
 
 The history is a flat list of **items**, each with an id, and we must replay them exactly.
 
-Responses can keep the chat for you: send `store: true`, then next time send only the new message plus `previous_response_id`. We do **not** use this. We send `store: false`, so OpenAI forgets everything after each call, and we send the whole history every time. Why: the history must be ours, so we can save it, compact it, or send it to another model. The cost: the old items we send back must look exactly like what OpenAI made (same ids, same encrypted reasoning). Otherwise OpenAI cannot match them. Tricks 1 and 2 do exactly that.
-
-```text
-store: true   call 2 = { previous_response_id: "resp_1", input: [new user message] }
-store: false  call 2 = { store: false, input: [user msg 1, rs_..., msg_..., new user message] }
-```
-
 First, some background on how Responses works, because the tricks only make sense with it. In Responses, the model's answer is a list of [**items**](glossary.md#item-responses), and each item has its own `id`: a reasoning item (`rs_...`), a text item called `message` (`msg_...`), and a tool call item `function_call` (`fc_...`, plus a separate `call_id`). The reasoning item is **encrypted** (its `encrypted_content`): we cannot read it, we can only send it back as it is. Each reasoning item is paired with the item that came right after it (the text or tool call it led to), and OpenAI matches the pair by their ids. So when we send the history back to the same model, every item must keep its original id. But our objects have no id field for text, and only one id field for tool calls. Tricks 1 and 2 fix exactly this.
 
 ```json
@@ -213,6 +206,14 @@ First, some background on how Responses works, because the tricks only make sens
  {"type": "message", "id": "msg_68a1f0", "role": "assistant", "content": [...]},
  {"type": "function_call", "id": "fc_abc", "call_id": "call_1", "name": "read", "arguments": "..."}]
 ```
+
+Responses can keep the chat for you: send `store: true`, then next time send only the new message plus `previous_response_id`. We do **not** use this. We send `store: false`, so OpenAI forgets everything after each call, and we send the whole history every time. Why: the history must be ours, so we can save it, compact it, or send it to another model. The cost: the old items we send back must look exactly like what OpenAI made (same ids, same encrypted reasoning). Otherwise OpenAI cannot match them. Tricks 1 and 2 do exactly that.
+
+```text
+store: true   call 2 = { previous_response_id: "resp_1", input: [new user message] }
+store: false  call 2 = { store: false, input: [user msg 1, rs_..., msg_..., new user message] }
+```
+
 
 *Thinking: replay the saved reasoning item.* The parser saved the whole reasoning item, as JSON, in `ThinkingContent.signature`. `to_input` just loads it and puts it back as its own item. No signature → nothing is sent.
 
@@ -297,7 +298,7 @@ AssistantMessage(content=[TextContent("Hello!")])
  "content": [{"type": "output_text", "text": "Hello!", "annotations": []}]}
 ```
 
-*Trick 3 — role `developer`.* For an OpenAI reasoning model (a reasoning effort is set), the system prompt is sent with role `developer` instead of `system`. That is OpenAI's preferred name for app instructions on these models.
+*Trick 3 — role `developer`.* For an OpenAI reasoning model (`compat.reasoning_effort` is set; see Settings below), the system prompt is sent with role `developer` instead of `system`. That is OpenAI's preferred name for app instructions on these models.
 
 ```text
 role = "developer" IF reasoning effort set, ELSE "system"
