@@ -203,13 +203,13 @@ Here is the whole path in one table:
 | Cannot test without a real model | Step 5 |
 | Tool cannot see the folder, Stop, or report progress | Step 6 |
 
-The result is the real design below.
-
 ## Real design
+
+The six steps fixed the naive loop. Now we put them together as real code, piece by piece, in the order the code builds them (not the order of the steps). First the tool itself: the naive loop only had a name and an `execute` function, and the real one is `AgentTool`. Next comes what each tool gets (`ToolContext`, Step 6) and the function that executes one call safely (`run_tool`, Steps 1–3). Then the settings (`LoopConfig`, Step 5). Last, the loop that uses them all (`agent_loop`, Step 4) and the model call inside it (`_llm_turn`).
 
 ### Tools: `AgentTool`
 
-From [01](01-pick-clean.md), `ai.Tool` is only a description for the model: `name`, `description`, `parameters` (a JSON schema). The `ai` layer never executes tools. The `agent` layer adds the code:
+This is the tool from the naive loop, made real. Why do we need a new class? From [01](01-pick-clean.md), `ai.Tool` is only a description for the model: `name`, `description`, `parameters` (a JSON schema). The `ai` layer never executes tools. But the loop must also have the code that executes the tool. So `AgentTool` is `ai.Tool` plus `execute`:
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`AgentTool`)
 
@@ -226,6 +226,8 @@ CLASS AgentTool(ai.Tool):          // name, description, parameters + the code
 Because `AgentTool` **is** an `ai.Tool`, we can pass the same list to the model (as descriptions) and to the loop (to execute them).
 
 ### `ToolContext`: what a tool gets
+
+This is Step 6 in real code: the one object each tool call gets.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`ToolContext`)
 
@@ -249,6 +251,8 @@ A tool should not reach for globals. Everything it needs comes in this one objec
 Why one object and not four arguments? We can add a field later without changing every tool. And the same tool code works on a laptop or in a Docker sandbox ([24](24-docker-sandbox.md)): only `env` changes.
 
 ### `run_tool`: one call, never raises
+
+This is Steps 1–3 in real code: the same three checks, in one function.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`run_tool`)
 
@@ -294,6 +298,8 @@ Three more details:
 
 ### `LoopConfig`: the settings
 
+This is Step 5 in real code: `stream_fn` and the other settings are inputs to the loop, not fixed inside it.
+
 `agent_loop` takes many settings. They live in one dataclass, `LoopConfig`. Here are the ones this chapter uses:
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`LoopConfig`)
@@ -319,6 +325,8 @@ CLASS LoopConfig:
 The other fields (`get_steering`, `get_follow_up`, `prepare_next_turn`, `before_tool_call`, `after_tool_call`, `convert_to_llm`, `transform_context`, `declared_tools`) all have "do nothing" defaults. Later chapters fill them in. That is why the loop in this chapter can stay small: the hooks exist, but they are empty.
 
 ### `agent_loop`: the loop
+
+This is the main loop from the naive version, with the Step 4 check of `stop_reason` and the pieces above plugged in.
 
 First, a run in plain words. The user asks "What is in a.txt? Make it upper case." Three turns happen:
 
@@ -396,6 +404,8 @@ Some other points:
 
 
 ### `_llm_turn`: one model call
+
+This is the model call inside the loop: the line `msg = WAIT for _llm_turn(...)` in `agent_loop` above. It is also where Step 5's `stream_fn` is called.
 
 `_llm_turn` builds the request and streams one answer. Its core:
 
