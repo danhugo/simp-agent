@@ -15,7 +15,7 @@ One piece of an OpenAI Responses answer, with its own id: a reasoning item (`rs_
 One folder of the `simp_agent` library (`ai`, `agent`, `coding`, `session`, `plugins`, `testing`). A layer imports only layers to its left; `test_layers.py` checks this. Home: [00](00-overview.md#the-layer-map).
 
 ## Tool call
-A request from the model to run one named tool with arguments (class `ToolCall` in `ai`). Home: [00](00-overview.md); built in [01](01-pick-clean.md).
+A request from the model to execute one named tool with arguments (class `ToolCall` in `ai`). Home: [00](00-overview.md); built in [01](01-pick-clean.md).
 
 ## Message
 One entry in a conversation: `UserMessage`, `AssistantMessage` or `ToolResultMessage` (all in `ai`). Each has a `role` field so it can be saved to JSON and loaded back with `to_dict` / `from_dict` ([JSON round trip](ref-objects.md#going-to-json-and-back)). Home: [01](01-pick-clean.md#what-is-inside-messages); all fields: [ref-objects](ref-objects.md).
@@ -57,13 +57,13 @@ One small piece of a streamed model answer (a bit of text, thinking, or tool-cal
 The token count of one model call, kept in `AssistantMessage.usage` as `{"input", "output", "reasoning"}`. `reasoning` is already inside `output`. Home: [03](03-parse.md#usage).
 
 ## Agent loop
-The loop that calls the model, runs the tool calls it asks for, adds the results, and calls the model again until it stops asking (`agent_loop` in `agent`). Built in [05](05-agent-loop.md#agent_loop-the-loop).
+The loop that calls the model, executes the tool calls it asks for, adds the results, and calls the model again until it stops asking (`agent_loop` in `agent`). Built in [05](05-agent-loop.md#agent_loop-the-loop).
 
 ## History
 The list of all messages in one chat so far: user questions, model replies, tool results. The `Agent` keeps it (`agent.messages`) and sends it to the model every turn, because the model remembers nothing between calls. See [Part 2 big picture](05-0-part-2-agent.md).
 
 ## Run (agent)
-One call to `agent.prompt()` (or `agent.continue_()`): from the user's message until the loop stops, normally `agent_start` … `agent_end`. One run can have many [turns](#turn); queued follow-ups stay in the same run ([07](07-steering.md)). Not the same as the server [Run](#run) object. Home: [05](05-agent-loop.md#problem).
+Everything from the user's message until the loop stops: one call to `agent.prompt()` (or `agent.continue_()`), or one `agent_loop` call; normally `agent_start` … `agent_end`. One run has one or more [turns](#turn), and a turn has zero or more [tool calls](#tool-call). The noun "run" means only this whole run: a tool *executes*, and the model makes a *model call*. (`run_tool` executes one tool call; it is not a whole run.) Queued follow-ups stay in the same run ([07](07-steering.md)). Not the same as the server [Run](#run) object. Home: [05](05-agent-loop.md#problem).
 
 ## Turn
 One pass of the agent loop: one model call plus the tool calls it asked for. Starts with a `turn_start` event, ends with `turn_end`. Home: [05](05-agent-loop.md#agent_loop-the-loop).
