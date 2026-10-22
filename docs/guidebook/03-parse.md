@@ -43,6 +43,8 @@ When you ask a server for `stream=True`, you get a list of **chunks** over time.
 
 `usage` is **not** inside `choices`. It sits on the chunk itself, next to `choices`.
 
+Only Chat Completions has `choices`. OpenAI Responses and Anthropic send named events instead (see [The other two vendors](#the-other-two-vendors) below).
+
 Here is a real answer: the model says "Hi" and then calls `read` with `{"path": "a"}`. Each line is one chunk. To keep the lines short, they show only `choices[0]`:
 
 ```text
