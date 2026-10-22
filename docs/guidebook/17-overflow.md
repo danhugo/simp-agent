@@ -35,6 +35,15 @@ So sometimes the provider answers: "prompt is too long: 210000 tokens > 200000 m
 
 This is a **[context overflow](glossary.md#context-overflow)**.
 
+Where chapter 16 ends and this chapter starts:
+
+| | When | How it knows | What it does |
+|---|---|---|---|
+| Prevent: auto compaction ([16](16-compaction.md)) | before each model call, in `_prepare` | `should_compact` on an estimate | compact, then call |
+| Repair: overflow recovery (this chapter) | after a failed call, in `_run` | `is_context_overflow` on the provider error | compact once, then `continue_()` |
+
+The first one is the normal path and avoids most errors. The second one is the safety net when the guess was wrong.
+
 ## Naive version
 
 ```text
@@ -53,69 +62,21 @@ It fixes one overflow for one provider. It breaks when:
 1. **Each provider says it differently.** Anthropic says "prompt is too long", OpenAI says "maximum context length" or "context_length_exceeded".
 2. **Endless loop.** If compaction cannot make it small enough (one huge turn, see the `find_cut` limit in [16](16-compaction.md)), it compacts and fails forever, paying for a summary each time.
 3. **Compaction fails.** If `compact()` fails, it still continues and fails again.
-4. **Retry and overflow may mix.** Today the retry pattern (`_RETRYABLE`, [15](15-retry.md)) does not match "too many tokens". But a future pattern, or a number like `529` inside an overflow text, could match. Then an overflow would be retried with backoff for nothing.
 
-## Step by step: from naive to real
+We also add one guard: an overflow must never go to the retry path of [15](15-retry.md). Retrying an overflow sends the same too-big request again, so we make sure it is never retried.
 
-We start from the naive loop and fix one problem per step.
-
-### Step 1: one detector for all providers
-
-Replace `"too long" in ...` with one regex in `ai`:
-
-```text
-FUNCTION is_context_overflow(error):
-    RETURN true IF the _OVERFLOW pattern is found in error (empty if missing)
-```
-Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `is_context_overflow`
-
-**Why:** each provider has its own wording. One function in `ai` hides that. The session does not need to know which provider it talks to. `error or ""` handles a missing error text.
-
-### Step 2: keep overflow out of retry
-
-```text
-// inside is_retryable(error):
-RETURN NOT is_context_overflow(error) AND the _RETRYABLE pattern is found in error
-```
-Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `is_retryable`
-
-**Why:** this is a safety guard, not a fix for a real clash: today `_RETRYABLE` does not match any overflow text. But retry with backoff ([15](15-retry.md)) sends the same big request again, so it can never work. With this check an overflow is never retryable, even if the patterns change. Each error has exactly one fix.
-
-### Step 3: try only once
-
-```text
-overflowed = false, attempt = 0
-...
-IF auto_compact is on AND NOT overflowed AND is_context_overflow(last.error):
-    overflowed = true                     // never compact twice in one run
-```
-Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `Session._run`
-
-**Why:** if one compaction is not enough, a second one with the same settings will not help. The flag stops the endless loop and the repeated cost of summary calls.
-
-### Step 4: stop if compaction fails
-
-```text
-IF WAIT for compact() returns false:
-    STOP                                  // same view would overflow again
-```
-Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `Session._run`
-
-**Why:** `compact()` returns `False` on any failure. Calling the model again with the same view would only give the same overflow.
-
-### Step 5: share the loop with retry
-
-Put the overflow branch first inside the same `while` as retry, with one `continue_()` at the end. That is the real `_run` below.
-
-**Why:** one loop handles "the last message is an error". Overflow and retry can then follow each other in one run, and every exit path is a plain `break`.
+| Problem | Fix | Section |
+|---|---|---|
+| 1. many wordings | one regex in `ai` | [Detecting overflow](#detecting-overflow) |
+| guard: no retry | `is_retryable` says no for overflow | [Detecting overflow](#detecting-overflow) |
+| 2. endless loop | an `overflowed` flag: compact once per run | [Compact and continue, once](#compact-and-continue-once) |
+| 3. compaction fails | `compact()` returns `False` → stop | [Compact and continue, once](#compact-and-continue-once) |
 
 ## Real design
 
 ### Detecting overflow
 
-In `packages/simp_agent/src/simp_agent/ai/__init__.py`:
-
-Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `_OVERFLOW`, `is_context_overflow`
+Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `_OVERFLOW`, `is_context_overflow`, `is_retryable`
 
 ```text
 _OVERFLOW = one regex, ignore case, any of:
@@ -125,60 +86,39 @@ _OVERFLOW = one regex, ignore case, any of:
 
 FUNCTION is_context_overflow(error):
     RETURN true IF _OVERFLOW is found in (error or "")   // no text -> false
-```
 
-Key idea: one regex hides each provider's wording. Limit: a new wording from a provider needs a new pattern.
-
-Same idea as `is_retryable` in [15](15-retry.md): one regex over the error text covers the known wordings of all providers. `error or ""` makes it safe when there is no text.
-
-And `is_retryable` excludes it on purpose:
-
-Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `is_retryable`
-
-```text
 FUNCTION is_retryable(error, kind):
-    ...
-    IF is_context_overflow(error): RETURN false   // overflow has its own fix
-    RETURN true IF _RETRYABLE is found in (error or "")
+    IF kind is in NON_RETRYABLE: RETURN false            // some error kinds are never retried, see 15
+    RETURN NOT is_context_overflow(error) AND _RETRYABLE is found in (error or "")
 ```
 
-Key idea: an error is overflow or retryable, never both.
+- One regex hides each provider's wording. The session does not need to know which provider it talks to.
+- `error or ""` makes both safe when there is no error text: they return `false`.
+- So an error is an overflow or retryable, never both. Each has its own fix.
+- Limit: a new wording from a provider needs a new pattern.
 
-So an error is either an overflow or a retryable error, never both. Each has its own fix.
+### Compact and continue, once
 
-### Compact and retry, once
+The loop in `AgentSession._run` was built in [15](15-retry.md#the-retry-loop-in-_run). Here is only the overflow branch. It is the first branch of the loop.
 
-In `packages/simp_agent/src/simp_agent/session/__init__.py`, the first branch of the loop in `_run` (we saw the retry branch in [15](15-retry.md)):
-
-Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `_run`
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._run`
 
 ```text
-FUNCTION _run(start):
-    a = self.agent
-    self._abort = new abort event
-    new = WAIT for start()
-    overflowed = false, attempt = 0
-    WHILE last message is an assistant error:
-        IF self.auto_compact AND NOT overflowed AND is_context_overflow(last.error):
-            // overflow: compact once and continue
-            // (error stays in history; the LLM view drops it)
-            overflowed = true
-            IF NOT (WAIT for self.compact()): STOP loop
-        ELSE IF is_retryable(last.error, last.error_kind) AND attempt < self.max_retries:
-            ...   // retry with backoff, chapter 15
-        ELSE:
-            STOP loop
-        ADD (WAIT for a.continue_()) to new
-    ...
+overflowed = false, attempt = 0
+WHILE last message is an assistant error:
+    IF self.auto_compact AND NOT overflowed AND is_context_overflow(last.error):
+        overflowed = true                  // never compact twice in one run
+        IF NOT (WAIT for self.compact()): STOP loop
+    ELSE IF ...retryable...:               // retry with backoff, chapter 15
+        ...
+    ELSE:
+        STOP loop
+    ADD (WAIT for a.continue_()) to new
 ```
 
-Key idea: one loop handles every error turn; overflow gets one compaction only. Limit: compaction uses normal settings, so if the recent part alone is too big, the run stops with the error.
-
-Read it line by line:
-
-- **`self.auto_compact`** — if the app turned off auto compaction, it also gets no overflow recovery. One switch for both.
-- **`not overflowed`** — only **once** per run. If the call after compaction overflows again, the next pass skips this branch. The error is not retryable either, so it falls to `else: break`. The run stops with the error. No endless loop, no repeated summary cost.
-- **`if not await self.compact(): break`** — if compaction fails (for example "nothing to compact", or the summary call fails), stop. Do not call the model again with the same big view.
+- **`self.auto_compact`** — if the app turns off auto compaction, it also gets no overflow recovery. One switch for both.
+- **`not overflowed`** — only **once** per run. If one compaction is not enough, a second one with the same settings will not help. The flag stops the endless loop and the repeated cost of summary calls.
+- **`if not await self.compact(): break`** — `compact()` ([16](16-compaction.md#in-the-session)) turns every failure into `False`: "nothing to compact" and "summary call failed". Calling the model again with the same view would only give the same overflow, so we stop.
 - **`a.continue_()`** — same as retry: no new user text, just call the model again.
 
 Why does `continue_()` now work? Two things:
@@ -186,61 +126,16 @@ Why does `continue_()` now work? Two things:
 1. `compact()` appended a `CompactionEntry` ([16](16-compaction.md)). `build_view` now sends the summary plus recent messages, not the full history.
 2. The overflow error message stays in history (append-only), but `transform_messages` drops error turns from what is sent ([01](01-pick-clean.md#2-clean-transform_messages)). So the model does not see "prompt is too long" either.
 
-Note that `compact()` here runs with the session's normal settings. It does not try to cut harder. If the recent part alone (`keep_recent_tokens`) is still too big, the second call overflows and the run stops. That is a clear error for the user, better than a loop.
+Clients see `compaction_start` and `compaction_end` events, as in [16](16-compaction.md). An overflow recovery looks the same as auto compaction in the UI. The only difference is the error turn before it.
 
-### Exact order of checks
+### Overflow edge cases
 
-Each pass of the `while` loop does this:
+The full order of checks for both branches is in [15](15-retry.md#order-of-checks-and-edge-cases). The cases that matter for overflow:
 
-1. **Is the last message an assistant error?** If not (success, or the last message is a user/tool message), the loop ends.
-2. **Overflow branch.** All three must be true: `self.auto_compact`, `not overflowed`, `ai.is_context_overflow(last.error)`. Then set the flag, call `compact()`, and `break` if it returns `False`.
-3. **Retry branch.** `ai.is_retryable(last.error, last.error_kind)` and `attempt < self.max_retries`. Note: `error_kind` in `NON_RETRYABLE` (`"fatal"`, `"budget"`, `"policy"`) is checked first inside `is_retryable`.
-4. **Else:** `break`.
-5. If no `break` happened: `new += await a.continue_()`, and loop again.
-
-Edge cases that follow from this order:
-
-- **Second overflow.** `overflowed` is `True`, so step 2 is skipped. Step 3 is false (overflow is never retryable). Step 4 breaks. The run ends with the overflow error as the last message.
-- **`auto_compact=False`.** Step 2 is skipped. Step 3 is false. So an overflow ends the run at once. No retry is wasted on it.
-- **Abort.** `self._abort` is a new `asyncio.Event` for each run. An abort during retry backoff breaks the loop. The overflow branch has no wait, so abort there is handled by the next model call ([06](06-events-abort.md)).
-- **Error text missing.** `last.error` may be `None`. Both functions use `error or ""`, so they return `False` and the loop breaks.
-
-### What `compact()` does here
-
-`AgentSession.compact()` is the same method used by the `/compact` command and by auto compaction:
-
-Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `compact`
-
-```text
-FUNCTION compact():
-    ...
-    TRY:
-        stream_fn = a.stream_fn with the API key options
-        entry = WAIT for compact(a.messages, a.model, stream_fn, self.compaction, self._context)
-    IF any error:
-        SEND event compaction_end with the error (tokens_after = tokens_before)
-        RETURN false            // caller stops, no new model call
-    ADD entry to a.messages
-```
-
-Key idea: every failure becomes `False`, so the overflow branch has one simple exit.
-
-The pure `compact` in `packages/simp_agent/src/simp_agent/agent/compaction.py` raises `RuntimeError("nothing to compact")` when `find_cut` returns `None`. The method turns any exception into `False`. So "nothing to cut" and "summary call failed" both end the overflow branch with `break`.
-
-Clients see `compaction_start` and `compaction_end` events, just like in [16](16-compaction.md). An overflow recovery looks the same as auto compaction in the UI. The only difference is the error turn before it.
-
-### Overflow and retry in one run
-
-The two counters are separate: `overflowed` is a flag, `attempt` counts retries. A run can do both: overflow → compact → a `429` on the next call → retry with backoff → done. `auto_retry_end` is only sent if a retry happened (`if attempt:`).
-
-### How it fits with chapter 16
-
-| | When | How it knows | What it does |
-|---|---|---|---|
-| Auto compaction ([16](16-compaction.md)) | before each model call, in `_prepare` | `should_compact` on an estimate | compact, then call |
-| Overflow recovery (this chapter) | after a failed call, in `_run` | `is_context_overflow` on the provider error | compact once, then `continue_()` |
-
-The first one is the normal path and avoids most errors. The second one is the safety net when the guess was wrong.
+- **Second overflow.** `overflowed` is `True`, so the overflow branch is skipped. Overflow is never retryable, so the loop breaks. The run ends with the overflow error as the last message.
+- **`auto_compact=False`.** The overflow branch is skipped, retry says no, so an overflow ends the run at once. No retry is wasted on it.
+- **Recent part too big.** `compact()` uses the normal settings; it does not cut harder. If the recent part alone (`keep_recent_tokens`) is still too big, the second call overflows and the run stops. A clear error is better than a loop.
+- **Overflow, then a 429.** The two counters are separate: `overflowed` is a flag, `attempt` counts retries. Overflow → compact → `429` → retry with backoff → done works in one run.
 
 ## Test
 
@@ -292,7 +187,7 @@ uv run pytest packages/simp_agent/tests/test_queues_compaction.py -k overflow -q
 - `is_retryable` is false for overflow, so the two paths never mix.
 - In `_run`: on overflow, `compact()` once, then `continue_()`. If compaction fails, or it overflows again, stop.
 - The error stays in history but is dropped from the view.
-- Order: overflow branch, then retry branch, then `break`. A second overflow always ends the run.
+- The overflow branch comes first. A second overflow always ends the run.
 - Auto compaction ([16](16-compaction.md)) prevents; overflow recovery repairs.
 
 **Builds on:** [16 Compaction](16-compaction.md) · **Next:** [18 Profiles and built-in plugins](18-profiles-plugins.md)
