@@ -25,7 +25,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-Real model APIs fail often and for a short time: `429 rate limit`, `529 overloaded`, `503 service unavailable`, a dropped connection. In [03](03-parse.md) we saw that the stream does not raise in this case. It ends with an `AssistantMessage` whose `stop_reason` is `"error"` and whose `error` holds the text. The loop ([05](05-agent-loop.md)) then stops.
+Real model APIs fail often and for a short time: `429 rate limit`, `529 overloaded`, `503 service unavailable`, a dropped connection. In [03](03-parse.md) we saw that the stream does not raise in this case (errors are plain text, [04](04-label-test.md#errors-are-plain-text)). It ends with an `AssistantMessage` whose `stop_reason` is `"error"` and whose `error` holds the text. The loop ([05](05-agent-loop.md)) then stops.
 
 So in the middle of the fizzbuzz task, one `429` ends the whole run. The user must type "continue" by hand. Most of these errors go away if you just wait a few seconds and try again.
 
@@ -213,7 +213,7 @@ FUNCTION abort():
     SET the session's own abort event     // stops the backoff wait
     TELL the agent to abort               // stops a running model call
 ```
-Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `Session.abort`
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.abort`
 
 Why a separate event? During backoff the agent is **not** running. There is no model call to cancel, so `agent.abort()` alone would do nothing. The session needs its own flag for its own wait. `_run` makes a fresh `asyncio.Event()` at the start of each run, so an old abort does not stop the next prompt.
 
@@ -241,15 +241,28 @@ Some edge cases that follow from this code:
 
 `packages/simp_agent/tests/test_session.py::test_retry_429_twice_then_ok`:
 
-Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.abort`
+Real code: [test_session.py](../../packages/simp_agent/tests/test_session.py) — `test_retry_429_twice_then_ok`
 
 ```text
-FUNCTION abort():
-    SET self._abort                        // stops a backoff wait
-    self.agent.abort()                     // stops a running model call
+stream = FakeProvider(429 error, 429 error, DONE)   // fails twice, then ok
+s = session(stream, retry_base_delay=0.001)
+COLLECT every "auto_retry_*" event
+AWAIT s.prompt("hi")
+CHECK model called 3 times AND last message is DONE
+CHECK events = start, start, end
+CHECK second delay is 0.002 AND end.success
+CHECK the 3rd call saw no error messages
 ```
 
-Key idea: two flags, because during backoff no model call is running.
+Key idea: a fake that fails on purpose lets us test retry with no network.
+
+A timeline of this run (with the real base delay of 2 s):
+
+```text
+t=0s   call 1 → 429 error     → auto_retry_start(attempt 1, delay 2s)
+t=2s   call 2 → 429 error     → auto_retry_start(attempt 2, delay 4s)
+t=6s   call 3 → "ok"          → auto_retry_end(success=True)
+```
 
 What it checks:
 
