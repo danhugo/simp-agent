@@ -345,7 +345,9 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 ```text
 FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> new messages:
     new = []                                   // only the messages from this run
-    FUNCTION add(m): append m to messages and to new; SEND message_start, message_end
+    FUNCTION send(event): emit(event)          // give the event to the subscribers
+    // add is called for the user's prompts, the model's reply and tool results
+    FUNCTION add(message): append message to messages and to new; SEND message_start, message_end
     SEND event agent_start
     FOR EACH p in prompts: add(p)
     has_calls = yes
@@ -360,6 +362,7 @@ FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> n
             IF msg.stop_reason is "length":    // args may be cut off: never execute them
                 result = error ToolResultMessage "Tool call was truncated (max tokens); not executed"
             ELSE:
+                on_update = FUNCTION (text): SEND event tool_execution_update for this call
                 ctx = ToolContext(cancel, config.env, config.cwd, on_update)
                 result = WAIT for run_tool(_tools(config), call, ctx)
             add(result)
@@ -368,6 +371,8 @@ FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> n
     SEND event {agent_end, new}
     RETURN new
 ```
+
+Every message goes through `add`, so the history (`messages`) and the events always match: a listener sees `message_end` for exactly the messages the loop keeps.
 
 In the real code, the `while` sits inside one more loop for follow-ups, and `has_calls` is joined by "pending steering messages". [07](07-steering.md) adds those.
 
