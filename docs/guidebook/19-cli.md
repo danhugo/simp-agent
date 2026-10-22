@@ -36,13 +36,7 @@ A person at a terminal needs more:
 - Press Ctrl-C to stop a run, without killing the program.
 - Say yes or no before the agent runs `bash` or writes a file ([08](08-hooks-approval.md)).
 
-The CLI is the thin layer that does this. It lives in `apps/cli/src/simp_cli/` and has three files:
-
-| File | What it does |
-|---|---|
-| `__init__.py` | Settings, `JsonlStore`, pure input logic, print mode, `main()` |
-| `components.py` | Turns messages and events into lines of text to show |
-| `repl.py` | The interactive app built on `prompt_toolkit` |
+The CLI is the thin layer that does this. It lives in `apps/cli/src/simp_cli/` (the three files are listed at the top).
 
 ## Naive version
 
@@ -71,60 +65,9 @@ It works for one fizzbuzz turn. It breaks when:
 5. **No approval.** The agent runs `bash` with no question.
 6. **Each line makes a new event loop.** `asyncio.run` is called again and again on one session. Async state from the last run is gone.
 
-The real CLI fixes each point. It also splits into two modes: a simple **print mode** for one task, and a full **REPL** for chat.
-
-## Step by step: from naive to real
-
-**Step 1: stream and print full lines.** Print deltas as they come, but keep a buffer and print only full lines.
-
-```text
-split buf at each new line
-the last piece (not finished yet) stays in buf
-FOR EACH finished line: PRINT it
-```
-
-Why: the answer shows while it runs, and files or pipes get clean lines. This is `LinePrinter`.
-
-**Step 2: handle Ctrl-C.** Call `session.abort()` instead of dying.
-
-```text
-WHEN Ctrl-C (SIGINT) comes: call session.abort()     // do not kill the program
-```
-
-Why: the run stops cleanly and the program lives on.
-
-**Step 3: save the session.** Use one `JsonlStore` file per working folder, and load it as `messages=`.
-
-```text
-store = JsonlStore(file "<sid>.jsonl" in session_dir(cwd))
-session = AgentSession(model, tools, store, messages = store.load(), ...)
-```
-
-Why: `-c` and `--resume ID` can open the same chat later.
-
-**Step 4: ask before risky tools.** Pass `approve=` to the session. Anything but yes is "deny".
-
-```text
-IF -y was given: approve = none      // never ask
-ELSE:            approve = ask
-```
-
-Why: `bash`, `write` and `edit` need a human answer. `-y` turns the question off.
-
-**Step 5: run the agent as a task.** Start the run with `asyncio.ensure_future` and keep one event loop.
-
-```text
-FUNCTION start(run):
-    start run as a background task, and RETURN at once    // do not wait
-```
-
-Why: the input line stays alive, so you can type while the agent works.
-
-**Step 6: route each line.** One pure function decides what a line means (`route`, shown below). Then the REPL wires it to the session.
-
-Why: it is easy to test without a terminal.
-
 ## Real design
+
+The real CLI fixes each break above; each section says which one. It also splits into two modes: a simple **print mode** for one task, and a full **REPL** for chat.
 
 ### main: pick a mode
 
@@ -144,13 +87,18 @@ Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__ini
 
 `pyproject.toml` maps the command to this function: `simp-agent = "simp_cli:main"`.
 
-Before the mode, `main` builds the model. `resolve_config` takes a profile from `~/.simp-agent/settings.json` and puts CLI flags on top. Profiles are explained in [18](18-profiles-plugins.md). One CLI rule matters here: keys never come from the file.
+### Keys come from the environment
 
-```text
-REMOVE "api_key" from cfg, if it is there     // keys never come from the file
-```
+Before it picks a mode, `main` builds the model. `resolve_config` takes a profile from `~/.simp-agent/settings.json` ([18](18-profiles-plugins.md)) and puts CLI flags on top. One CLI rule matters here: **an API key is never read from the file**. Why: a settings file is easy to share or commit by mistake.
 
-Only the name of an environment variable (`api_key_env`) can be in settings. `env_api_key(model)` is the CLI's `get_api_key`: it reads that variable, then falls back to `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. Providers never read the environment themselves ([01](01-pick-clean.md#1-pick-_providers-register_provider)); the app does.
+So `resolve_config` removes `"api_key"` from the profile. The file can only name an environment variable, `api_key_env`. Example:
+
+- settings: `{"api_key_env": "MY_KEY"}`, and `$MY_KEY` is set → the key is `$MY_KEY`.
+- `$MY_KEY` not set → `OPENAI_API_KEY` for OpenAI-style APIs (or `"dummy"`, for servers with no key), else `ANTHROPIC_API_KEY`.
+
+Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__init__.py), functions `resolve_config` and `env_api_key`.
+
+`env_api_key(model)` is the CLI's `get_api_key`. Providers never read the environment themselves ([01](01-pick-clean.md#1-pick-_providers-register_provider)); the app does.
 
 ### Sessions on disk
 
@@ -164,9 +112,13 @@ FUNCTION session_dir(cwd):
 
 Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__init__.py), function `session_dir`.
 
+Example: working in `/Users/a/proj` → sessions live in `~/.simp-agent/sessions/Users-a-proj/`, one `<id>.jsonl` file per session. This fixes break 4 (nothing saved).
+
 So `-c` / `--continue` means "the latest session **for this folder**". `latest_session(cwd)` picks the file with the newest modified time. `--resume ID` opens one session by id. A new session gets `uuid.uuid4().hex[:8]` as its id.
 
 ### Print mode
+
+Print mode fixes breaks 1, 3 and 5: it streams, Ctrl-C only aborts, and it asks before risky tools.
 
 `run(task, model, args)` is print mode. The heart of it:
 
@@ -206,42 +158,6 @@ Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__ini
 
 Thinking text is dim, but only when `self.out.isatty()`. In a pipe there are no **[ANSI codes](glossary.md#ansi-codes)**. Tool calls print as `> bash: ...`, and tool errors as `  ! ...`.
 
-### Components
-
-The REPL shows richer output. It uses small **[components](glossary.md#component)** in `components.py`. A component is any object with `render(width) -> list[str]`:
-
-```text
-COMPONENT UserMsg(text):
-    FUNCTION render(width):
-        RETURN the lines of "> " + text in bold, drawn at this width
-```
-
-Real code: [apps/cli/src/simp_cli/components.py](../../apps/cli/src/simp_cli/components.py), class `UserMsg`.
-
-`_render` uses `rich` to draw into a string, not into the real terminal. So `render` is pure: a test can call `render(80)` and read the lines.
-
-There are four components: `UserMsg`, `AssistantMsg`, `ToolCall` and `Notice`. Some details:
-
-- `AssistantMsg` shows plain text while streaming and Markdown only when `done`. The comment says why: "half-done markdown jumps around".
-- `ToolCall` shows at most `TOOL_LINES = 12` lines of output, then `… (N more lines)`.
-- A `CompactionEntry` ([16](16-compaction.md)) shows as the notice `— earlier history compacted —`.
-
-`Chat` turns messages and events into components. It has two places:
-
-- `live`: components still changing (the streaming answer, tools waiting for a result).
-- `commit(c)`: a finished component. It goes to normal terminal scrollback, once.
-
-The key method is `on_message`:
-
-```text
-FUNCTION on_message(m):     // one finished message
-    // called by live message_end AND by resume replay
-```
-
-Real code: [apps/cli/src/simp_cli/components.py](../../apps/cli/src/simp_cli/components.py), method `Chat.on_message`.
-
-Live events call it on `message_end`. Resume calls it too, through `replay(messages)`. One path for both means a resumed fizzbuzz session looks the same as when it ran live. `test_replay_equals_live` in `apps/cli/tests/test_tui.py` checks exactly this.
-
 ### The REPL
 
 `repl.py` builds a `prompt_toolkit` `Application`. It is **not** full screen. The layout has three rows:
@@ -271,7 +187,55 @@ FUNCTION start(run):
 
 Real code: [apps/cli/src/simp_cli/repl.py](../../apps/cli/src/simp_cli/repl.py), method `Repl.start`.
 
-So the input line stays alive while the agent works. This fixes points 1, 2 and 6 of the naive version: one event loop, streaming, and typing during a run.
+So the input line stays alive while the agent works. This fixes breaks 1, 2 and 6 of the naive version: one event loop, streaming, and typing during a run.
+
+### Components
+
+The `live` row above is filled with small **[components](glossary.md#component)** from `components.py`. A component is any object with `render(width) -> list[str]`:
+
+```text
+COMPONENT UserMsg(text):
+    FUNCTION render(width):
+        RETURN the lines of "> " + text in bold, drawn at this width
+```
+
+Real code: [apps/cli/src/simp_cli/components.py](../../apps/cli/src/simp_cli/components.py), class `UserMsg`.
+
+`_render` uses `rich` to draw into a string, not into the real terminal. So `render` is pure: a test can call `render(80)` and read the lines.
+
+There are four components: `UserMsg`, `AssistantMsg`, `ToolCall` and `Notice`. Some details:
+
+- `AssistantMsg` shows plain text while streaming and Markdown only when `done`. The comment says why: "half-done markdown jumps around".
+- `ToolCall` shows at most `TOOL_LINES = 12` lines of output, then `… (N more lines)`.
+- A `CompactionEntry` ([16](16-compaction.md)) shows as the notice `— earlier history compacted —`.
+
+`Chat` turns messages and events into components. It has two places:
+
+- `live`: components still changing (the streaming answer, tools waiting for a result).
+- `commit(c)`: a finished component. It goes to normal terminal scrollback, once.
+
+The key method is `on_message`. It takes one finished message:
+
+```text
+FUNCTION on_message(m):     // called by live message_end AND by resume replay
+    IF m is a user message:   commit UserMsg(m)
+    IF m is an assistant message:
+        drop the streaming component from live
+        commit AssistantMsg(m), if it has something to show
+        FOR EACH tool call in m: ADD a ToolCall to live      // waits for its result
+    IF m is a tool result:    take its ToolCall out of live, add the result, commit it
+    IF m is a compaction:     commit Notice("— earlier history compacted —")
+```
+
+Real code: [apps/cli/src/simp_cli/components.py](../../apps/cli/src/simp_cli/components.py), method `Chat.on_message`.
+
+Example, fizzbuzz. One assistant message comes in: text "I will write it." and a call `write(path="fizzbuzz.py")`.
+
+- Scrollback gets the lines of `I will write it.` (now Markdown, as it is done).
+- `live` gets a `ToolCall` for `write: fizzbuzz.py`, still waiting.
+- Then the tool result message comes in. The same `ToolCall` leaves `live`, gets the result, and goes to scrollback once.
+
+Live events call it on `message_end`. Resume calls it too, through `replay(messages)`. One path for both means a resumed fizzbuzz session looks the same as when it ran live. `test_replay_equals_live` in `apps/cli/tests/test_tui.py` checks exactly this.
 
 ### Routing input
 
@@ -338,12 +302,13 @@ Anything else is `"deny"`. The safe answer is the default.
 FUNCTION ask(call):     // blocking input is fine: nothing else runs while a tool waits
     PRINT "? " + describe_call(call)
     REMOVE the Ctrl-C handler for now     // so Ctrl-C raises inside input()
-    ...
+    TRY:   RETURN approval_answer(input("Allow? [y/N/a] "))
+    IF Ctrl-C:        call session.abort(); RETURN "deny"
+    IF input ended:   RETURN "deny"
+    ALWAYS at the end: put the Ctrl-C handler back (it calls session.abort)
 ```
 
 Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__init__.py), function `ask` inside `run`.
-
-It removes the Ctrl-C handler for a moment, so Ctrl-C raises `KeyboardInterrupt` in `input()`. Then it calls `session.abort()` and returns `"deny"`. End of input (`EOFError`) is also `"deny"`. The `finally` puts the handler back.
 
 **In the REPL**, a blocking `input()` would freeze the screen. So `approve` is async and waits on a future:
 
@@ -416,4 +381,3 @@ uv run pytest apps/cli/tests/test_cli.py apps/cli/tests/test_tui.py -q
 - `route` decides what a line means; `approval_answer` turns `y` / `a` / anything into allow / always / deny.
 
 **Builds on:** [18 Profiles and built-in plugins](18-profiles-plugins.md) · **Next:** [20 The server run](20-server-run.md)
-
