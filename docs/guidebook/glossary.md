@@ -267,7 +267,7 @@ The event sent after a (re)connect with `last_seq`, run state, in-flight text an
 A standard JSON format that describes data shapes. Used here to generate TypeScript types. Home: [20](20-server-run.md#gen_protocol--protocolgents).
 
 ## SSE
-Server-Sent Events: one long HTTP response where the server writes events as text blocks. Our browser client reads them with `fetch`, not `EventSource`, because `EventSource` cannot send the `Authorization` header ([25](25-web-client.md#fetch-based-sse)). Home: [21](21-transport.md#sse-out-post-in).
+Server-Sent Events: one long HTTP response where the server writes events as text blocks. Our browser client reads them with `fetch`, not `EventSource`, because `EventSource` cannot send the `Authorization` header ([25](25-web-client.md#fetch-based-sse)). Home: [21](21-transport.md#sse-out-post-in). OpenAI Responses names each event in its `type` ([03](03-parse.md#openai-responses-named-events)).
 
 ## `seq`
 A number that grows by one for each saved row of a session. Clients use it to ask for the events they missed. Home: [21](21-transport.md#seq-one-counter-for-everything).
@@ -388,9 +388,6 @@ The settings of one `agent_loop()` run: model, tools, `stream_fn`, queues, hooks
 
 ## Agent (class)
 The thin object around `agent_loop()`. It keeps the history, subscribers, cancel event and the steer / follow-up queues; `prompt()` runs the loop once. See [06](06-events-abort.md), [part-2-agent](part-2-agent.md).
-
-## SSE
-A simple way for a server to send many small messages over one open HTTP answer. Each message is one event. OpenAI Responses names each event in its `type`. Home: [03](03-parse.md#openai-responses-named-events).
 
 ## SDK
 Software development kit: the official library a vendor gives for its API, for example the Python package `anthropic`. Home: [03](03-parse.md#anthropic-the-sdk-builds-the-message).
