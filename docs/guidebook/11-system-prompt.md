@@ -78,39 +78,13 @@ Where it breaks:
 
 We fix the naive version one problem at a time. Each step is small.
 
-**Step 1 — build the tool list, cwd and date into the text.** The model should not guess. So the base text is made by a function from the real tools and the real folder:
+**Step 1 — build the tool list, cwd and date into the text.** The model should not guess. So the base text is made by a function from the real tools and the real folder. See [`system_prompt`](#system_prompt-the-base-text) below.
 
-```text
-FUNCTION system_prompt(tools, cwd, context):
-    tool_list = one line "- name: description" FOR EACH tool
-    ...
-    RETURN out + "Current date: TODAY" + "Current working directory: CWD"
-```
-Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `system_prompt`
+**Step 2 — more than one file name.** Teams use different names. We try a list in order, and the first file found wins. See [`CONTEXT_FILES`](#context_files-and-load_context_file-the-project-file) below.
 
-The list comes from the tools we pass in, so it can never name a tool that does not exist.
+**Step 3 — read each name through the env, not `open`.** In Docker the project is inside a container. `env.read_file` reads from the right place.
 
-**Step 2 — more than one file name.** Teams use different names. We try a list in order, and the first file found wins:
-
-```python
-CONTEXT_FILES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]
-```
-
-**Step 3 — read each name through the env, not `open`.** In Docker the project is inside a container. `env.read_file` reads from the right place:
-
-```text
-path = cwd joined with name
-RETURN path, ASK env to read the file at path   // not open()
-```
-Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `load_context_file`
-
-**Step 4 — a missing file is normal.** Most folders have no `AGENTS.md`. We catch the error and go on:
-
-```text
-IF reading fails (file missing):
-    SKIP to the next file name
-```
-Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `load_context_file`
+**Step 4 — a missing file is normal.** Most folders have no `AGENTS.md`. We catch the error and go on to the next name.
 
 **Step 5 — rebuild the prompt every turn.** Tools and plugins can change during a session. So the prompt is passed to the loop as a **function**, not a string, and `_llm_turn` calls it before each model call (see [The loop calls the function every turn](#the-loop-calls-the-function-every-turn) below). Who stores that function and how is built in [13](13-session.md).
 
@@ -208,10 +182,6 @@ Why each part:
 
 The session does not call `system_prompt` once. It keeps a small table of **[prompt sections](glossary.md#prompt-section)**: each has an id, an order, and a value (a string or a function of `ctx`). Before every model call it sorts them, skips empty ones and joins them. In short:
 
-- The default coding prompt is a section at order 0. Its value is a function that calls `system_prompt` with the **current** tools and cwd, so the tool list is never out of date.
-- The context file is a section at order 10, read once in `start()`, before the first prompt.
-- If the host passes its own `system_prompt` string, it replaces both. Our tests do this with `system_prompt="s"`.
-
 > **Look ahead.** How the session stores, orders and rebuilds sections (`add_prompt_section`, `_build_prompt`, `start()`) is built in [13](13-session.md). Here we only need one fact: the prompt the loop gets can be a **function**.
 
 ### The loop calls the function every turn
@@ -278,8 +248,7 @@ uv run pytest packages/simp_agent/tests/test_session.py -k context_file
 
 - [System prompt](glossary.md#system-prompt) = role + tool list + three rules + optional project context + date and cwd, made by `coding.system_prompt(tools, cwd)`.
 - [Context file](glossary.md#context-file): the first of `CONTEXT_FILES` found in `cwd`, read through `env.read_file`; missing is fine; only one, only `cwd`.
-- The session keeps [prompt sections](glossary.md#prompt-section) (id, order, string or function) and joins them in `_build_prompt`. Coding text is order 0, the context file is order 10, added once in `start()`.
-- Passing your own `system_prompt` string replaces both.
+- The session rebuilds the prompt from [prompt sections](glossary.md#prompt-section) before every model call ([13](13-session.md)).
 - `_llm_turn` accepts a function and calls it before each model call.
 
 **Builds on:** [10 Coding tools](10-coding-tools.md) · **Next:** [12 Evals](12-evals.md) — now that the agent has tools and a prompt, measure how well it does real tasks.
