@@ -314,10 +314,10 @@ Where each thing comes from, in the three APIs:
 | What we need | Chat Completions | OpenAI Responses | Anthropic (through the SDK) |
 |---|---|---|---|
 | a text piece | `choices[0].delta.content` | `response.output_text.delta` event | `text` event |
-| a tool-arg piece | `delta.tool_calls[i].function.arguments` | `response.function_call_arguments.delta` event | `input_json` event (`partial_json`) |
+| a tool-arg piece | `choices[0].delta.tool_calls[i].function.arguments` | `response.function_call_arguments.delta` event | `input_json` event (`partial_json`) |
 | the end of a part | not sent; we guess it | `response.output_item.done` event | `content_block_stop` event |
-| the stop reason | `finish_reason` | `status` of `response.completed` / `incomplete` / `failed` | `stop_reason` of `get_final_message()` |
-| the usage | last chunk, `choices = []` | `usage` of `response.completed` | `usage` of `get_final_message()` |
+| the stop reason | `choices[0].finish_reason` | `status` of `response.completed` / `incomplete` / `failed` | `stop_reason` of `get_final_message()` |
+| the usage | `chunk.usage` (last chunk, `choices = []`) | `usage` of `response.completed` | `usage` of `get_final_message()` |
 
 ### OpenAI Responses: named events
 
