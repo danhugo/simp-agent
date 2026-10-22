@@ -27,7 +27,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-In [06](06-events-abort.md) we saw that `Agent` allows **one run at a time**. A second `prompt()` during a run raises `RuntimeError`. That rule is right: two loops writing to one history would mix their messages.
+In [06](06-events-abort.md) we saw that `Agent` allows **one [run](glossary.md#run-agent) at a time**. A second `prompt()` during a run raises `RuntimeError`. That rule is right: two loops writing to one history would mix their messages.
 
 But the user still types while the agent works. A coding run can take minutes. In that time the user may see the agent go the wrong way, or think of the next task. We need a way to take their text **now** and deliver it **at a safe point** later.
 

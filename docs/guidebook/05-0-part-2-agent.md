@@ -61,7 +61,7 @@ At each step: where the thing comes from, who does it, and what it is. Then the 
 
 **All the time, the agent tells the UI what happens.** At each moment (run started, new words came, tool started, tool ended, run ended) the loop sends a small note called an [event](glossary.md#event), and the `Agent` passes it to everyone who listens. The UI listens to these notes and draws them: the words as they arrive, a "reading README.md…" line. The agent does not draw anything itself.
 
-**How the run ends.** Normally: the model replies with no tool calls. It also ends if the model call fails (`error`) or if the user presses Stop (`aborted`).
+**How the [run](glossary.md#run-agent) ends.** (One run = one call to `agent.prompt()`, from the user's message until the loop stops.) Normally: the model replies with no tool calls. It also ends if the model call fails (`error`) or if the user presses Stop (`aborted`).
 
 ## What each chapter adds
 
@@ -90,7 +90,7 @@ Read the top row left to right (build the question, ask the model), then the bot
 | 2 | Take steering | Add messages the user typed while the agent worked. They are read after block 1 and after each turn, and added after `turn_start`. | steering queue | history | `agent/__init__.py` · `agent_loop()` → `config.get_steering()` | [07](07-steering.md) |
 | 3 | Build the view | Run `prepare_next_turn`, poll steering once more, add a "Tools added / removed" note if tools changed, clean the messages, make a `Context`. | history | `Context` | `agent/__init__.py` · `_llm_turn()` | [05](05-agent-loop.md), [07](07-steering.md); the hook is filled in [16](16-compaction.md) |
 | 4 | Call the model | Call `stream_fn` (normally `ai.stream()`), send each event on as `message_update`, keep the final message. Stop closes the stream. | `Context` | `AssistantMessage` | `agent/__init__.py` · `_llm_turn()`, `_stream()` | [05](05-agent-loop.md), [06](06-events-abort.md) |
-| 5 | Check the reply | `error` or `aborted` → end the run. `length` → every tool call gets an error result and does not run. | `AssistantMessage` | tool calls | `agent/__init__.py` · `agent_loop()` | [05](05-agent-loop.md), [06](06-events-abort.md) |
+| 5 | Check the reply | `error` or `aborted` → stop the loop: `_end()` sends `turn_end` + `agent_end` and returns the new messages. `length` → every tool call gets an error result and does not run. | `AssistantMessage` | tool calls | `agent/__init__.py` · `agent_loop()` | [05](05-agent-loop.md), [06](06-events-abort.md) |
 | 6 | Before hook | Ask "may this call run?". `None` = run it. A string = deny, and the result is `"User denied: <reason>"`. | `ToolCall`, `ToolContext` | `None` or a reason | `agent/__init__.py` · `LoopConfig.before_tool_call` | [08](08-hooks-approval.md) |
 | 7 | Run the tool | Find the tool by name, fix the args (`prepare_arguments`), check them against the schema, call `execute`. Never raises: every problem becomes an error result. | `ToolCall`, `ToolContext` | `ToolResultMessage` | `agent/__init__.py` · `run_tool()` | [05](05-agent-loop.md) |
 | 8 | After hook | May return a new result to replace the old one. Runs after a deny too. | call, result, `ToolContext` | `ToolResultMessage` | `agent/__init__.py` · `LoopConfig.after_tool_call` | [08](08-hooks-approval.md) |

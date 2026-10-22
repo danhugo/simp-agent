@@ -210,7 +210,7 @@ When a call reaches the hook, there are five situations. Read them first; the co
 | (d) | The answer is `"allow"`, but Stop was pressed just before the answer came | `"aborted"` | no |
 | (e) | The answer is `"allow"` and no Stop: run. Any other answer (`"deny"`, a typo, `""`): deny | `None` / `"denied"` | yes / no |
 
-Why (b): a browser approval may never answer. If the hook only waited for the answer, Stop could not end the run. So the hook waits for **whichever comes first**: the answer, or `ctx.cancel`.
+Why (b): a browser approval may never answer. If the hook only waited for the answer, Stop could not end the [run](glossary.md#run-agent). So the hook waits for **whichever comes first**: the answer, or `ctx.cancel`.
 
 Why "anything else denies" in (e): a typo or an empty answer must be a "no", never a "yes" (fail closed).
 
