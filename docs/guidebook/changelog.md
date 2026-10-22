@@ -2,6 +2,9 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-10-22
+- ch24: Problem told as a story (Alice and Bob, many sessions per user; old "one session per user" fixed); steps 3-4 point to the real code instead of repeating it; sandbox slot defined at Step 5; "Real code" lines always before the code block; new setsid/pid worked example (`4711` → `kill -9 -- -4711`). (checked at `6070f41`)
+
 ## 2026-10-21
 - ch25: new "Two kinds of events" (seq vs offset) before the steps; repeated file list and mid-step ch21 jump removed; ChatState shows 4 fields, all 10 now in ref-objects "Web client ChatState"; browser-notification detail dropped. (checked at `99d5e6f`)
 - ch21: durable/live defined once (Step 1); `"msg"` rows explained before `append`; snapshot worked example (seq 1-5, after=3); `subscribe` shown before the `first, q` call. (checked at `b51ef3b`)
