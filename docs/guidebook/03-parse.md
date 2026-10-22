@@ -29,7 +29,21 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem and goal
 
-When you ask a server for `stream=True`, you get a list of **chunks** over time. Each chunk has a tiny `delta`. Here is a real answer: the model says "Hi" and then calls `read` with `{"path": "a"}` (each line is one chunk, cut to the `choices[0]` part):
+When you ask a server for `stream=True`, you get a list of **chunks** over time. Here is one full raw chunk:
+
+```json
+{"choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hi"}, "finish_reason": null}]}
+```
+
+**[`choices`](glossary.md#choices)** is the list of answers. We ask for only one answer, so we always read `choices[0]`. Each choice holds:
+
+- `delta` — the new piece of the answer (text or a tool-call piece);
+- `finish_reason` — why the model stopped; it is `null` until the end;
+- `index` — the place of this answer in the list (always `0` for us).
+
+`usage` is **not** inside `choices`. It sits on the chunk itself, next to `choices`.
+
+Here is a real answer: the model says "Hi" and then calls `read` with `{"path": "a"}`. Each line is one chunk. To keep the lines short, they show only `choices[0]`:
 
 ```text
 chunk 1: delta = {role: "assistant", content: "Hi"}
@@ -40,6 +54,8 @@ chunk 4: delta = {tool_calls: [{index: 0, function: {arguments: "th\": \"a\"}"}}
 chunk 5: delta = {}                          finish_reason = "tool_calls"
 chunk 6: choices = []                        usage = {prompt_tokens: 7, completion_tokens: 3, ...}
 ```
+
+Chunk 6 is different: it has no answer piece, so `choices` is empty, and it only carries `usage` (see [Usage](#usage) below).
 
 No single chunk holds valid JSON. Only the first tool piece has the `id` and `name`. `finish_reason` comes in its own chunk, and usage in one more chunk with `choices` empty. The rest of simp-agent wants none of this. So `parse` must turn these chunks into two things at once:
 
@@ -110,7 +126,7 @@ FUNCTION parse(chunks, compat):
 
 ### What one chunk holds
 
-Each chunk carries one new piece in `chunk.choices[0].delta`. In the code and below we call it **`d`**. `d` can hold:
+Each chunk carries one new piece in `chunk.choices[0].delta` (the chunk shape is [above](#problem-and-goal)). In the code and below we call it **`d`**. `d` can hold:
 
 - `d.content` — a piece of answer text, like `"Hel"`.
 - `d.reasoning_content` — a piece of thinking text (step 2).

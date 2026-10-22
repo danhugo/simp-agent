@@ -194,7 +194,7 @@ ThinkingContent(thinking, signature, redacted)  // the model's reasoning
 ToolCall(id, name, arguments)                   // a request to run a tool
 ```
 
-A `ToolResultMessage` answers the `ToolCall` with the same id. The history may also hold two markers that are **not** messages: a [compaction entry](glossary.md#compaction-entry) (ch [16](16-compaction.md)) and a [custom entry](glossary.md#custom-entry) (ch [14](14-plugins.md)).
+A `ToolResultMessage` answers the `ToolCall` with the same id. The history may also hold two markers that are **not** messages: a [compaction entry](glossary.md#compaction-entry) (ch [16](16-compaction.md)) and a [custom entry](glossary.md#custom-entry) (ch [14](14-plugins.md)). A compaction entry is a summary that replaces old messages; a custom entry is plugin data that is saved but never sent.
 
 ### What can be broken
 
