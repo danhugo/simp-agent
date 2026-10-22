@@ -22,6 +22,8 @@ The model may ask for another tool, and another. Only when the model stops askin
 
 ## The core loop in 4 steps
 
+![The core loop in 4 steps, with the README.md example and what each chapter adds](img/part-2-loop.svg)
+
 1. **Ask** the model.
 2. If it wants tools, **run** them.
 3. **Give** it the results.

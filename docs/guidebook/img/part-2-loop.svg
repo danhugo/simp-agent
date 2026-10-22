@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/></marker><filter id="s" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.12"/></filter></defs>
+<rect width="1400" height="900" fill="#f8fafc"/>
+<text x="700" y="44" font-size="28" fill="#0f172a" font-weight="700" text-anchor="middle">The core loop in 4 steps</text>
+<text x="700" y="72" font-size="15" fill="#64748b" text-anchor="middle">Example: the user asks "What is in README.md?".  Yellow cards = the data on each arrow.  Purple tags = what each chapter adds.</text>
+<!-- user in / answer out -->
+<rect x="40" y="120" width="230" height="70" rx="14" fill="#fff" stroke="#94a3b8" stroke-width="2" filter="url(#s)"/>
+<text x="155" y="150" font-size="18" fill="#0f172a" font-weight="700" text-anchor="middle">The user (app)</text>
+<text x="155" y="174" font-size="14" fill="#334155" text-anchor="middle">types a question</text>
+<!-- Agent box -->
+<rect x="320" y="110" width="1040" height="760" rx="22" fill="#e0e7ff" stroke="#6366f1" stroke-width="2.5" filter="url(#s)"/>
+<text x="345" y="825" font-size="20" fill="#312e81" font-weight="700">Agent</text>
+<text x="345" y="850" font-size="14" fill="#3730a3">keeps the history (all messages) and runs the loop</text>
+<!-- steps -->
+<g font-size="20" font-weight="700" text-anchor="middle">
+<rect x="720" y="190" width="260" height="80" rx="16" fill="#dbeafe" stroke="#2563eb" stroke-width="2.5"/>
+<text x="850" y="225" fill="#1e3a8a">1. Ask the model</text>
+<text x="850" y="252" font-size="14" font-weight="normal" fill="#334155">send the history</text>
+<rect x="1060" y="430" width="260" height="80" rx="16" fill="#dbeafe" stroke="#2563eb" stroke-width="2.5"/>
+<text x="1190" y="465" fill="#1e3a8a">2. Run the tools</text>
+<text x="1190" y="492" font-size="14" font-weight="normal" fill="#334155">if the model wants them</text>
+<rect x="720" y="680" width="260" height="80" rx="16" fill="#dbeafe" stroke="#2563eb" stroke-width="2.5"/>
+<text x="850" y="715" fill="#1e3a8a">3. Give back the results</text>
+<text x="850" y="742" font-size="14" font-weight="normal" fill="#334155">add them to the history</text>
+<rect x="380" y="430" width="260" height="80" rx="16" fill="#dbeafe" stroke="#2563eb" stroke-width="2.5"/>
+<text x="510" y="465" fill="#1e3a8a">4. Repeat</text>
+<text x="510" y="492" font-size="14" font-weight="normal" fill="#334155">with the new history</text>
+</g>
+<!-- arrows -->
+<path d="M270,155 C520,155 600,230 712,230" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<path d="M980,230 C1150,230 1190,330 1190,422" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<path d="M1190,510 C1190,620 1120,720 988,720" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<path d="M720,720 C560,720 510,620 510,518" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#b)"/>
+<path d="M610,430 C610,340 640,260 712,250" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-dasharray="8 6" marker-end="url(#g)"/>
+<path d="M720,258 C560,262 420,262 288,262" fill="none" stroke="#16a34a" stroke-width="2.5" marker-end="url(#g)"/>
+<!-- data cards -->
+<g font-size="14" fill="#334155" text-anchor="middle">
+<rect x="400" y="190" width="230" height="30" rx="8" fill="#fef9c3" stroke="#ca8a04"/>
+<text x="515" y="210">"What is in README.md?"</text>
+<rect x="1010" y="290" width="270" height="48" rx="8" fill="#fef9c3" stroke="#ca8a04"/>
+<text x="1145" y="310">reply: a tool call</text>
+<text x="1145" y="329" font-family="Menlo, monospace">read("README.md")</text>
+<rect x="1030" y="600" width="210" height="48" rx="8" fill="#fef9c3" stroke="#ca8a04"/>
+<text x="1135" y="620">tool result:</text>
+<text x="1135" y="639">the file text</text>
+<rect x="390" y="590" width="250" height="48" rx="8" fill="#fef9c3" stroke="#ca8a04"/>
+<text x="515" y="610">history now: question,</text>
+<text x="515" y="629">tool call, file text</text>
+<rect x="620" y="330" width="130" height="30" rx="8" fill="#dcfce7" stroke="#16a34a"/>
+<text x="685" y="350">ask again</text>
+</g>
+<!-- final answer -->
+<rect x="40" y="220" width="240" height="90" rx="14" fill="#fef9c3" stroke="#ca8a04" stroke-width="2" filter="url(#s)"/>
+<text x="160" y="250" font-size="16" fill="#0f172a" font-weight="700" text-anchor="middle">Final answer</text>
+<text x="160" y="274" font-size="14" fill="#334155" text-anchor="middle">"README.md says …"</text>
+<text x="160" y="296" font-size="13" fill="#64748b" text-anchor="middle">(no tool calls → stop)</text>
+<!-- chapter tags -->
+<g font-size="13" fill="#4c1d95">
+<rect x="990" y="140" width="350" height="44" rx="10" fill="#ede9fe" stroke="#7c3aed"/>
+<text x="1002" y="158" font-weight="700">06 events + Stop</text>
+<text x="1002" y="176">the UI watches each step; Stop ends the run</text>
+<rect x="1000" y="525" width="200" height="44" rx="10" fill="#ede9fe" stroke="#7c3aed"/>
+<text x="1012" y="543" font-weight="700">05 run tools safely</text>
+<text x="1012" y="561">problems → error results</text>
+<rect x="1000" y="370" width="340" height="44" rx="10" fill="#ede9fe" stroke="#7c3aed"/>
+<text x="1012" y="388" font-weight="700">08 before / after hook</text>
+<text x="1012" y="406">ask "allow this?" before a tool runs</text>
+<rect x="335" y="370" width="265" height="44" rx="10" fill="#ede9fe" stroke="#7c3aed"/>
+<text x="347" y="388" font-weight="700">07 steering / follow-up</text>
+<text x="347" y="406">the user types while the agent works</text>
+</g>
+</svg>
