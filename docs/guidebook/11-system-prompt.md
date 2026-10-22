@@ -176,7 +176,7 @@ Why each part:
 - **Reads through `env.read_file`.** This is the rule from [09](09-exec-env.md): all IO goes through the env. So the same code reads from the local disk or from inside a container.
 - **Missing file is normal.** `OSError` (file not found, and so on) just means "try the next name". If none exists, it returns `None` and the prompt has no project section.
 - **Returns the path too.** The path goes into the prompt as a heading, so the model (and a human reading the log) knows where the rules came from.
-- **Only `cwd`.** It does not walk up to parent folders and has no global file in the home folder. The `ponytail:` comment marks this as a known limit ([27](27-limits-choices-extend.md)).
+- **Only `cwd`.** It does not walk up to parent folders and has no global file in the home folder. This is a known limit ([27](27-limits-choices-extend.md)).
 
 ### Prompt sections: building the prompt every turn
 
