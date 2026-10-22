@@ -206,6 +206,6 @@ We follow this task as the system grows:
 - simp-agent is a loop: model → tool calls → tool results → model, until done.
 - The library has six layers, `ai` ← `agent` ← `coding` ← `session` ← `plugins` ← `testing`; the apps sit on top.
 - `test_layers.py` enforces "import only downward".
-- We build bottom up, one capability per chapter, with the fizzbuzz task as the running example.
+- We build bottom up, one capability per chapter, with small running examples (README, `a.txt`, `shape.py`), then the fizzbuzz task from Part 4 on.
 
 **Builds on:** — · **Next:** [01 Pick + Clean](01-pick-clean.md)
