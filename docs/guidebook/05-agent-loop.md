@@ -82,12 +82,15 @@ We fix the naive loop one problem at a time, with the same README.md example. Ea
 
 First, one small helper. When something goes wrong with a tool call, `run_tool` uses `err(text)` to build the answer. It makes a normal `ToolResultMessage` for that call, with the error text as its content and `is_error=True`. The `is_error` flag marks the result as a failure, so the provider and the UI can show it as one. The important part is that it is still a normal tool result. It goes into the history, and the model reads it on the next turn like any other result.
 
+`RETURN` here gives the result back to `agent_loop`, which called `result = WAIT for run_tool(call, ctx)`. `agent_loop` runs the after hook ([08](08-hooks-approval.md)), adds the result to the history, and the model reads it on the next turn.
+
 **Step 1 — find the tool safely.** Instead of a dict lookup, we search the list of tools. If no tool has that name, we return an error result instead of crashing:
 
 ```text
-tool = FIND the tool in tools whose name is call.name, or nothing
-IF tool is nothing:
-    RETURN err("Tool <call.name> not found")
+FUNCTION run_tool(call, ctx):
+    tool = FIND the tool in tools whose name is call.name, or nothing
+    IF tool is nothing:
+        RETURN err("Tool <call.name> not found")
 ```
 
 Back to the typo. The model asked for `raed`. The run does not crash any more. The history now holds a tool result with the text `Tool raed not found`. On the next turn the model reads it, sees its mistake, and calls `read({"path": "README.md"})`. The run goes on.
@@ -95,9 +98,11 @@ Back to the typo. The model asked for `raed`. The run does not crash any more. T
 **Step 2 — check the arguments.** Each tool already describes its arguments with a **[JSON Schema](glossary.md#json-schema)** in its `parameters` field: a small JSON document that says "`path` is a string and it is required". The model uses this schema to know what to send. We use the same schema to check what it sent, with the `jsonschema` Python library, before the tool runs:
 
 ```text
-CHECK call.arguments against tool.parameters    // jsonschema.validate
-IF the check fails:
-    RETURN err("Invalid arguments for <call.name>: <what is wrong>")
+FUNCTION run_tool(call, ctx):
+    ...
+    CHECK call.arguments against tool.parameters    // jsonschema.validate
+    IF the check fails:
+        RETURN err("Invalid arguments for <call.name>: <what is wrong>")
 ```
 
 So for `read({})` the tool never runs. The model gets the text `Invalid arguments for read: 'path' is a required property`. That is clear enough that on the next turn it sends `{"path": "README.md"}`.
@@ -105,11 +110,13 @@ So for `read({})` the tool never runs. The model gets the text `Invalid argument
 **Step 3 — catch tool errors.** We wrap the tool call in `try`, and turn any exception into text. The tool now also gets a second argument, a `ctx` (a `ToolContext`: the extra object each tool gets, see Step 6). Step 6 explains `ctx` fully; here we only need one part of it, `ctx.cancel`, which is set when the user presses Stop.
 
 ```text
-TRY:
-    RETURN ToolResultMessage(call.id, call.name, WAIT for tool.execute(call.arguments, ctx))
-IF it raised an error e:
-    IF ctx.cancel is set: RETURN err("Interrupted by the user")
-    ELSE: RETURN err("<error type>: <e>")
+FUNCTION run_tool(call, ctx):
+    ...
+    TRY:
+        RETURN ToolResultMessage(call.id, call.name, WAIT for tool.execute(call.arguments, ctx))
+    IF it raised an error e:
+        IF ctx.cancel is set: RETURN err("Interrupted by the user")
+        ELSE: RETURN err("<error type>: <e>")
 ```
 
 Why check `ctx.cancel`? When the user presses Stop, a running command is killed, and that also shows up as an exception. The model should hear "the user stopped this", not a confusing low-level error.
@@ -129,7 +136,7 @@ FOR call IN msg.tool_calls:
         result = error ToolResultMessage(call.id, call.name,
                  "Tool call was truncated (max tokens); not executed")
     ELSE:
-        result = run_tool(call, ctx)    // Steps 1-3
+        result = WAIT for run_tool(call, ctx)    // Steps 1-3
     ADD result to history
 ```
 
