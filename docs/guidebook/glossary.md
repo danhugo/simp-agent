@@ -59,6 +59,9 @@ The token count of one model call, kept in `AssistantMessage.usage` as `{"input"
 ## Agent loop
 The loop that calls the model, runs the tool calls it asks for, adds the results, and calls the model again until it stops asking (`agent_loop` in `agent`). Built in [05](05-agent-loop.md#agent_loop-the-loop).
 
+## History
+The list of all messages in one chat so far: user questions, model replies, tool results. The `Agent` keeps it (`agent.messages`) and sends it to the model every turn, because the model remembers nothing between calls. See [Part 2 big picture](05-0-part-2-agent.md).
+
 ## Turn
 One pass of the agent loop: one model call plus the tool calls it asked for. Starts with a `turn_start` event, ends with `turn_end`. Home: [05](05-agent-loop.md#agent_loop-the-loop).
 
