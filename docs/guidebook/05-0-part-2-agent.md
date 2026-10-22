@@ -2,25 +2,23 @@
 
 **In one sentence:** Part 2 teaches the program to keep asking the model, running the tools it asks for, until the model gives a final answer. That program is the [agent loop](glossary.md#agent-loop).
 
-Read this page before [05](05-agent-loop.md). Come back to it any time you get lost in [05](05-agent-loop.md)–[08](08-hooks-approval.md). It adds no new facts. The story comes first; the map (picture and tables) is at the end.
+Read this page before [05](05-agent-loop.md). Come back to it any time you get lost in [05](05-agent-loop.md)–[08](08-hooks-approval.md). It adds no new facts. The plain walk-through comes first; the map (picture and tables) is at the end.
 
-## The story: Ann asks about a file
+## Example: the user asks about a file
 
-Ann opens the app and types: **"What is in README.md?"**
+The user types in the app: **"What is in README.md?"**
 
-After Part 1 we can do one thing: send Ann's question to the model and get **one** reply back. That is like phoning a friend who cannot see your computer.
+After Part 1 we can do one thing: send this question to the model and get **one** reply back. But the model cannot see the user's files. It only knows the tools the app gave it (here one tool, `read`). So its reply is not the answer. It is a request: "please run the `read` tool with `path = README.md`".
 
-The friend says: *"I can't see it. Please read README.md for me and tell me what it says."*
+Somebody must then:
 
-That reply is not the answer. It is a request. Somebody must:
+1. run `read` and get the file text,
+2. send the text back to the model,
+3. and wait for the model to answer again.
 
-1. open README.md,
-2. tell the text to the friend,
-3. and wait for the friend to answer again.
+The model may ask for another tool, and another. Only when the model stops asking and just writes text do we have the answer.
 
-The friend may ask for another file, and another. Only when the friend stops asking and just talks do we have Ann's answer.
-
-**That "somebody" is the agent loop.** Part 1 is the phone. Part 2 is the person who holds the phone, does the jobs the friend asks for, and calls back.
+**That "somebody" is the agent loop.** Part 1 talks to the model once. Part 2 runs the tools the model asks for and calls the model again, until it is done.
 
 ## The core loop in 4 steps
 
@@ -41,36 +39,36 @@ while True:
 
 That is all. Chapters 05–08 add safety and control around these five lines.
 
-## Walk Ann's question through the loop
+## Walk the question through the loop
 
 At each step: where the thing comes from, who does it, and what it is. Then the code name.
 
-**1. Ann's text becomes a message.** Ann types in the app. The app (the UI) takes the text and hands it to the agent. The **agent** is the code we build in Part 2: it runs the loop above, between the app and the model. The app calls it like this: `agent.prompt("What is in README.md?")`. The text is the **prompt**. The agent wraps it in a `UserMessage` (a [message](glossary.md#message) from the user, Part 1).
+**1. The user's text becomes a message.** The user types in the app. The app (the UI) takes the text and hands it to the agent. The **agent** is the code we build in Part 2: it runs the loop above, between the app and the model. The app calls it like this: `agent.prompt("What is in README.md?")`. The text is the **prompt**. The agent wraps it in a `UserMessage` (a [message](glossary.md#message) from the user, Part 1).
 
-**2. The message goes into the history.** The [history](glossary.md#history) is the list of all messages in this chat so far: Ann's questions, the model's replies, the tool results. The model remembers nothing between calls, so we must send it the history every time. The `Agent` object keeps this list (`agent.messages`) so it lives from one question to the next. See [Agent (class)](glossary.md#agent-class).
+**2. The message goes into the history.** The [history](glossary.md#history) is the list of all messages in this chat so far: the user's questions, the model's replies, the tool results. The model remembers nothing between calls, so we must send it the history every time. The `Agent` object keeps this list (`agent.messages`) so it lives from one question to the next. See [Agent (class)](glossary.md#agent-class).
 
-**3. The agent builds what the model will see.** It takes the history, the system prompt (the fixed instructions the app gives the model before any chat, like "You are a helpful coding helper") and the list of tools Ann's app gave it (here: `read`). It puts them in one package: the [view](glossary.md#view-llm-view), stored as a [Context](glossary.md#context) (Part 1). In Part 2 the view is (almost) the whole history: the app may trim or change it a little before it is sent.
+**3. The agent builds what the model will see.** It takes the history, the system prompt (the fixed instructions the app gives the model before any chat, like "You are a helpful coding helper") and the list of tools the app gave it (here: `read`). It puts them in one package: the [view](glossary.md#view-llm-view), stored as a [Context](glossary.md#context) (Part 1). In Part 2 the view is (almost) the whole history: the app may trim or change it a little before it is sent.
 
 **4. The agent asks the model.** It sends the `Context` to the model and gets the answer back as a stream, a little at a time. The function that does this is `ai.stream()` from Part 1. Words come back piece by piece. At the end there is one full reply from the model, an `AssistantMessage`. Here it holds no text, only a **tool call**: "run `read` with `path = README.md`". A [tool call](glossary.md#tool-call) is the model's written request to run a tool. The model cannot run anything itself; it can only ask.
 
 **5. The agent runs the tool.** The agent finds the tool named `read` in its list, checks the arguments (the inputs in the call, here `path`: are they there and of the right type?), and runs it. The file text comes back as a **tool result**: a message that says "here is what `read` gave", called a `ToolResultMessage`. If the tool fails, the result just says so (an error result). The loop does not crash.
 
-**6. The result goes into the history, and we ask again.** Now the history has 3 messages: Ann's question, the model's tool call, the file text. The agent goes back to step 3 and asks the model again. One trip from step 3 to here is one [turn](glossary.md#turn).
+**6. The result goes into the history, and we ask again.** Now the history has 3 messages: the user's question, the model's tool call, the file text. The agent goes back to step 3 and asks the model again. One trip from step 3 to here is one [turn](glossary.md#turn).
 
 **7. The model answers.** This time the model has the file, so it writes plain text: "README.md says …". No tool calls. The loop stops. `agent.prompt()` gives back the new messages.
 
 **All the time, the agent tells the UI what happens.** At each moment (run started, new words came, tool started, tool ended, run ended) the loop sends a small note called an [event](glossary.md#event), and the `Agent` passes it to everyone who listens. The UI listens to these notes and draws them: the words as they arrive, a "reading README.md…" line. The agent does not draw anything itself.
 
-**How the run ends.** Normally: the model replies with no tool calls. It also ends if the model call fails (`error`) or if Ann presses Stop (`aborted`).
+**How the run ends.** Normally: the model replies with no tool calls. It also ends if the model call fails (`error`) or if the user presses Stop (`aborted`).
 
 ## What each chapter adds
 
 The 5 lines above work, but real use needs more. Each chapter adds one thing to the same loop.
 
 - **[05 The agent loop](05-agent-loop.md): run tools safely.** The model may ask for a tool that does not exist, or send bad arguments, or the tool may crash. 05 builds the loop so each problem becomes an error result the model can read and fix. It also builds the [agent tool](glossary.md#agent-tool) (a tool that can run) and the [tool context](glossary.md#tool-context) it gets.
-- **[06 Events and abort](06-events-abort.md): let the UI watch, let Ann stop.** 06 builds the `Agent` class and the events, so the UI can show each step live. It also adds a Stop button: Ann presses it, the agent [aborts](glossary.md#abort), the model stream closes, tools are told to stop, the run ends `aborted`.
-- **[07 Steering](07-steering.md): let Ann type while the agent works.** Ann sees the agent reading the file and types "only the first line". She should not have to wait. 07 keeps her message in a queue and adds it at a [safe point](glossary.md#safe-point), before the next model call: a [steer](glossary.md#steer). A [follow-up](glossary.md#follow-up) is a message that waits until the agent would stop.
-- **[08 Hooks and approval](08-hooks-approval.md): let the app ask before a tool runs.** Some tools are dangerous (delete a file, run a command). 08 adds a [tool hook](glossary.md#tool-hook) before and after each tool. The app can use the "before" hook to ask Ann "allow this?" ([tool approval](glossary.md#tool-approval)). If she says no, the model gets "User denied: …" as the result.
+- **[06 Events and abort](06-events-abort.md): let the UI watch, let the user stop.** 06 builds the `Agent` class and the events, so the UI can show each step live. It also adds a Stop button: the user presses it, the agent [aborts](glossary.md#abort), the model stream closes, tools are told to stop, the run ends `aborted`.
+- **[07 Steering](07-steering.md): let the user type while the agent works.** The user sees the agent reading the file and types "only the first line". They should not have to wait. 07 keeps the message in a queue and adds it at a [safe point](glossary.md#safe-point), before the next model call: a [steer](glossary.md#steer). A [follow-up](glossary.md#follow-up) is a message that waits until the agent would stop.
+- **[08 Hooks and approval](08-hooks-approval.md): let the app ask before a tool runs.** Some tools are dangerous (delete a file, run a command). 08 adds a [tool hook](glossary.md#tool-hook) before and after each tool. The app can use the "before" hook to ask the user "allow this?" ([tool approval](glossary.md#tool-approval)). If the user says no, the model gets "User denied: …" as the result.
 
 ## Map for later
 
@@ -152,7 +150,7 @@ Messages (`UserMessage`, `AssistantMessage`, `ToolResultMessage`, `ToolCall`) co
 
 ### The worked example with all blocks
 
-Ann's story again, now with block numbers and events.
+The same question again, now with block numbers and events.
 
 1. The app calls `agent.prompt("What is in README.md?")`. `Agent` builds a `LoopConfig` and calls `agent_loop()`.
 2. **Start:** the `UserMessage` goes into the history. Events: `agent_start`, `message_start`, `message_end`.
@@ -164,9 +162,9 @@ Ann's story again, now with block numbers and events.
 8. **Run the tool:** `read` is found, args pass the schema, `execute` returns the file text → `ToolResultMessage`.
 9. **After hook:** keeps the result. Events: `tool_execution_end`, then the result is added (`message_start`, `message_end`), then `turn_end`.
 10. **Next or stop?** There was a tool call → next turn. While the tool ran, the user called `agent.steer("only the first line")`. Block 2 adds that message now, before the next model call.
-11. The model answers with text (only the first line, as Ann asked), `stop_reason="stop"`. No tool calls, no steering, no follow-up → `agent_end`. `prompt()` returns the new messages.
+11. The model answers with text (only the first line, as the user asked), `stop_reason="stop"`. No tool calls, no steering, no follow-up → `agent_end`. `prompt()` returns the new messages.
 
-If Ann pressed Stop while `read` ran (block 7), the tool would see `ctx.cancel` and return an error result ("Interrupted by the user"). The loop adds that result, then an `AssistantMessage` with `stop_reason="aborted"`, and ends.
+If the user pressed Stop while `read` ran (block 7), the tool would see `ctx.cancel` and return an error result ("Interrupted by the user"). The loop adds that result, then an `AssistantMessage` with `stop_reason="aborted"`, and ends.
 
 ## Builds on / Next
 
