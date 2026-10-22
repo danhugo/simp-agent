@@ -388,3 +388,15 @@ The settings of one `agent_loop()` run: model, tools, `stream_fn`, queues, hooks
 
 ## Agent (class)
 The thin object around `agent_loop()`. It keeps the history, subscribers, cancel event and the steer / follow-up queues; `prompt()` runs the loop once. See [06](06-events-abort.md), [part-2-agent](part-2-agent.md).
+
+## SSE
+A simple way for a server to send many small messages over one open HTTP answer. Each message is one event. OpenAI Responses names each event in its `type`. Home: [03](03-parse.md#openai-responses-named-events).
+
+## SDK
+Software development kit: the official library a vendor gives for its API, for example the Python package `anthropic`. Home: [03](03-parse.md#anthropic-the-sdk-builds-the-message).
+
+## Signed thinking
+A thinking block that carries a `signature` from Anthropic. It must be sent back unchanged in the next request. Home: [03](03-parse.md#anthropic-the-sdk-builds-the-message).
+
+## `get_final_message()`
+An Anthropic SDK method. After the stream ends, it returns the full message the SDK built from all events: content, `stop_reason`, `usage`. Home: [03](03-parse.md#anthropic-the-sdk-builds-the-message).
