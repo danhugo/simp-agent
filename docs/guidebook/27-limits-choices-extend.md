@@ -19,9 +19,9 @@ flowchart LR
     style apps fill:#ffd54f,stroke:#333,stroke-width:2px
 ```
 
-*This chapter looks at the whole system (everything marked). It adds no new code.*
+*This chapter looks at the whole system (everything marked).*
 
-Code in this chapter (commit `2fc2776`). This chapter adds no code; it points back to:
+Code in this chapter (commit `2fc2776`). Nothing new is added to the repo; the chapter points back to this existing code:
 
 - `packages/simp_agent/src/simp_agent/ai/__init__.py` — `register_provider`, `is_retryable`, `is_context_overflow`
 - `packages/simp_agent/src/simp_agent/agent/__init__.py` — `AgentTool`
@@ -43,7 +43,7 @@ But three questions are still open:
 
 If you do not know the answers, you will add features in the wrong place. The core grows. The layer rule ([00](00-overview.md#the-one-rule-import-only-downward)) breaks. Tests get harder.
 
-This chapter answers the three questions. It uses only code you have already seen, at commit `2fc2776`.
+This chapter answers the three questions.
 
 ## Naive version
 
@@ -80,46 +80,7 @@ It works for one app. It breaks when:
 2. **The tool cannot react to the session.** It cannot add a line to the system prompt, block other tools, or save its own state. It is just a function.
 3. **You cannot turn it on or off by name.** There is no switch in a profile ([18](18-profiles-plugins.md)).
 
-The fix is not a bigger core. It is to use the sockets the core already has.
-
-## Step by step: from naive to real
-
-**Step 1: wrap the tool in a plugin.** A plugin is any object with a `name` and a `setup` method. `setup` gets a `PluginAPI` and registers the tool there, not in each app.
-
-```text
-CLASS CountLines:
-    name = "count_lines"
-    FUNCTION setup(api, config):
-        api.register_tool(count_lines tool)   // one place, not each app
-```
-Real code: none yet — this is a sketch
-
-Why: the tool now lives in one place. The session is built with `plugins=[CountLines()]`.
-
-**Step 2: let the plugin change the prompt.** `PluginAPI` can add a section to the system prompt.
-
-```text
-// inside setup:
-api.add_prompt_section("count_lines", "Use count_lines for file sizes.")
-```
-Real code: none yet — this is a sketch
-
-Why: a plain function cannot do this. A plugin can, and the section is rebuilt every turn.
-
-**Step 3: keep state in a custom entry.** `await api.append_entry(type, data)` saves data in the history. It is saved and replayed on resume, and it is never sent to the model.
-
-Why: the plugin keeps its state after a restart. `PlanMode` does exactly this for its on/off switch.
-
-**Step 4: turn it on by name.** Add the class to `known` in `build_plugins`.
-
-```text
-known = map of name -> plugin class    // "redact_secrets", "plan_mode", add "count_lines"
-```
-Real code: [plugins/__init__.py](../../packages/simp_agent/src/simp_agent/plugins/__init__.py) — `build_plugins`
-
-Why: a profile can now list the name, and the CLI and the server both get it. No copy in each app.
-
-**Step 5: know the limits and the choices.** Before you grow the system, learn which choices to keep and which limits are on purpose. That is the real design below.
+The fix is not a bigger core. It is to use the sockets the core already has. Below we first look at the choices behind the core, then at its limits, and last we build `count_lines` again the right way: as a plugin ([Part 3](#part-3-extend-it-yourself)).
 
 ## Real design
 
@@ -129,15 +90,15 @@ simp-agent copies many ideas from **[pi](glossary.md#pi)**, another small coding
 
 Here are the main choices. Each one was taught in an earlier chapter; the link says where.
 
-| Choice | What it means | Taught in |
-|---|---|---|
-| Layers, import only downward | Six folders; `test_layers.py` checks the rule | [00](00-overview.md) |
-| A fake model from day one | `FakeProvider` makes every layer testable with no network | [04](04-label-test.md) |
-| `stream()` never raises | Errors become an `error` event with a final message | [02](02-translate-send.md), [04](04-label-test.md) |
-| Providers never read the environment | The app gives the key through `get_api_key` | [01](01-pick-clean.md#1-pick-_providers-register_provider) |
-| History is append-only | Compaction adds a `CompactionEntry`; it never deletes | [13](13-session.md), [16](16-compaction.md) |
-| Core only classifies errors | `is_retryable`, `is_context_overflow`; the session decides | [15](15-retry.md), [17](17-overflow.md) |
-| Everything is a plugin | Store, sandbox, auth, providers, tools, agent plugins | [14](14-plugins.md), [22](22-store-auth.md) |
+| Choice | What it means | Why | Taught in |
+|---|---|---|---|
+| Layers, import only downward | Six folders; `test_layers.py` checks the rule | A change in a high layer cannot break a low one | [00](00-overview.md) |
+| A fake model from day one | `FakeProvider` makes every layer testable with no network | Tests are fast, free and give the same result each time | [04](04-label-test.md) |
+| `stream()` never raises | Errors become an `error` event with a final message | The loop has one path for good and bad answers | [02](02-translate-send.md), [04](04-label-test.md) |
+| Providers never read the environment | The app gives the key through `get_api_key` | The core has no hidden input; the app owns secrets | [01](01-pick-clean.md#1-pick-_providers-register_provider) |
+| History is append-only | Compaction adds a `CompactionEntry`; it never deletes | Nothing is lost; resume and audit see everything | [13](13-session.md), [16](16-compaction.md) |
+| Core only classifies errors | `is_retryable`, `is_context_overflow`; the session decides | Policy can change without touching `ai` | [15](15-retry.md), [17](17-overflow.md) |
+| Everything is a plugin | Store, sandbox, auth, providers, tools, agent plugins | New features plug in; the core stays small | [14](14-plugins.md), [22](22-store-auth.md) |
 
 Two of these are worth one more look, because they shape how you extend the system.
 
@@ -242,7 +203,7 @@ Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__
 
 Write one async generator that yields the same events as the built-in ones ([01](01-pick-clean.md#out-the-shape-of-a-model-call), [03](03-parse.md)). It must not raise. Then set `api` in a profile to your new name.
 
-**A plugin.** This is the fix from the steps above. A **[plugin](glossary.md#plugin)** ([14](14-plugins.md)) is any object with a `name` and some optional hook methods. In `setup` it gets a **[PluginAPI](glossary.md#pluginapi)**. From `packages/simp_agent/src/simp_agent/session/__init__.py`:
+**A plugin.** This is the fix for the [naive version](#naive-version). A **[plugin](glossary.md#plugin)** ([14](14-plugins.md)) is any object with a `name` and some optional hook methods. In `setup` it gets a **[PluginAPI](glossary.md#pluginapi)**. From `packages/simp_agent/src/simp_agent/session/__init__.py`:
 
 ```text
 CLASS PluginAPI:      // what a plugin can do with its session
@@ -254,7 +215,30 @@ CLASS PluginAPI:      // what a plugin can do with its session
 ```
 Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `PluginAPI`
 
-So a `count_lines` plugin can register its tool, add a prompt line, and save its own state as a [custom entry](glossary.md#custom-entry). `PlanMode` in `plugins/plan_mode.py` is a full example: it adds a prompt section, blocks `write`, `edit` and `bash`, and keeps its on/off state in a custom entry, so it survives a resume.
+`append_entry` really is never sent to the model: `build_view` in `agent/compaction.py` drops every `CustomEntry` before the request is built.
+
+Now build `count_lines` from the [naive version](#naive-version) again, as a plugin. Only the middle part changes: the tool moves into `setup`, and the session gets `plugins=[CountLines()]` instead of `tools`.
+
+```python
+class CountLines:
+    name = "count_lines"
+
+    async def setup(self, api, config):
+        api.register_tool(AgentTool("count_lines", "Count lines in a file", {"type": "object"}, count_lines))
+        api.add_prompt_section("count_lines", "Use count_lines for file sizes.")
+
+# in main(), same FakeProvider as before:
+s = AgentSession(Model(), [], stream_fn=model, system_prompt="s", plugins=[CountLines()])
+await s.prompt("How long is fizzbuzz.py?")
+print(s.messages[-1].content[0].text)
+print(model.ctxs[0].system_prompt)
+# fizzbuzz.py has 15 lines
+# s
+#
+# Use count_lines for file sizes.
+```
+
+The tool works, and the prompt line is in the first request. The plugin could also save its own state as a [custom entry](glossary.md#custom-entry). `PlanMode` in `plugins/plan_mode.py` is a full example: it adds a prompt section, blocks `write`, `edit` and `bash`, and keeps its on/off state in a custom entry, so it survives a resume.
 
 To turn a plugin on by name, add it to `build_plugins` in `packages/simp_agent/src/simp_agent/plugins/__init__.py`:
 
@@ -268,16 +252,6 @@ Real code: [plugins/__init__.py](../../packages/simp_agent/src/simp_agent/plugin
 
 Then both the CLI and the server can switch it on through a profile ([18](18-profiles-plugins.md)). No copy in each app.
 
-Tools may change between turns. When they do, the agent adds a note to history, so the model knows. From `agent/__init__.py`:
-
-Real code: [agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `_llm_turn`
-
-```text
-IF tool names changed since last turn:
-    ADD UserMessage "<system-reminder>Tools added: ...; removed: ..." to history
-    // so the model knows the tool list changed
-```
-
 **Rules for extending.** Keep these, and the system stays healthy:
 
 - Put new code in the highest layer that works. A plugin is better than a change to `agent`.
@@ -287,7 +261,7 @@ IF tool names changed since last turn:
 
 ## Test
 
-This chapter adds no code, so it has no new test. But one existing test shows the main extend path: a plugin that adds a tool. It is `test_plugin_setup_events_and_api` in `apps/cli/tests/test_sockets.py`:
+This chapter adds no code to the repo, so it has no new test. But one existing test shows the main extend path: a plugin that adds a tool. It is `test_plugin_setup_events_and_api` in `apps/cli/tests/test_sockets.py`:
 
 ```python
 async def test_plugin_setup_events_and_api():
@@ -332,7 +306,7 @@ For the other sockets, see the tests in their chapters: providers in [01](01-pic
 
 ## Exercises
 
-1. Write the plugin from the Step 1 and Step 2 pseudo-code in Python. Run it with `FakeProvider`, as in the naive version. Print `model.ctxs[0].system_prompt`: is your prompt line there? (The code in this chapter was run at `2fc2776` and printed `fizzbuzz.py has 15 lines`.)
+1. Put the `CountLines` class in a new file in `plugins/`, import it in `plugins/__init__.py`, and add `count_lines` to `known` in `build_plugins`, then call `build_plugins(["count_lines"])`. Do you get a `CountLines` object? Now a profile can turn it on by name ([18](18-profiles-plugins.md)).
 2. Pick one limit from Part 2 (for example, tools run one by one). Say which layer you would change, and which socket (if any) could do it without a core change.
 
 ## Recap
@@ -340,6 +314,7 @@ For the other sockets, see the tests in their chapters: providers in [01](01-pic
 - The main choices: layers, a fake model, `stream()` never raises, providers never read env, append-only history, the core only classifies errors, and "everything is a plugin".
 - Known limits at `2fc2776`: tools run one by one, one huge turn cannot be compacted, three provider APIs, one machine, soft budgets, no login rate limit, `LocalSandbox` is not isolation, and no web, MCP or sub-agent tools yet.
 - To extend: `register_provider` for models, `AgentTool` for tools, a plugin with `PluginAPI` for session behaviour, and `Sandbox` / `Store` / `Auth` for the server.
+- The `CountLines` plugin moves the naive tool into `setup`, with no change to the core.
 - `test_plugin_setup_events_and_api` shows a plugin adding a tool with no change to the core.
 
 **Builds on:** [26 System tests and deploy](26-system-tests-deploy.md) · **Next:** —
