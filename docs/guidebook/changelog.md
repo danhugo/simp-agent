@@ -2,6 +2,10 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-10-22
+
+- ch16: merged "Step by step" into Real design (taught once); added full worked example (10 messages → find_cut=6 with token counts → history → model view); removed repeats; glossary duplicate `CompactionEntry` entry removed, part-4 link fixed to `#compaction-entry`. Checked against `agent/compaction.py`.
+
 ## 2026-10-21
 - ch25: new "Two kinds of events" (seq vs offset) before the steps; repeated file list and mid-step ch21 jump removed; ChatState shows 4 fields, all 10 now in ref-objects "Web client ChatState"; browser-notification detail dropped. (checked at `99d5e6f`)
 - ch21: durable/live defined once (Step 1); `"msg"` rows explained before `append`; snapshot worked example (seq 1-5, after=3); `subscribe` shown before the `first, q` call. (checked at `b51ef3b`)
