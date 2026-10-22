@@ -29,6 +29,8 @@ The friend may ask for another file, and another. Only when the friend stops ask
 3. **Give** it the results.
 4. **Repeat** until it just answers.
 
+A simple sketch, not the real code:
+
 ```python
 while True:
     reply = ask_model(history)
@@ -43,15 +45,15 @@ That is all. Chapters 05–08 add safety and control around these five lines.
 
 At each step: where the thing comes from, who does it, and what it is. Then the code name.
 
-**1. Ann's text becomes a message.** Ann types in the app. The app (the UI) takes the text and hands it to the agent: `agent.prompt("What is in README.md?")`. The text is the **prompt**. The agent wraps it in a `UserMessage` (a [message](glossary.md#message) from the user, Part 1).
+**1. Ann's text becomes a message.** Ann types in the app. The app (the UI) takes the text and hands it to the agent. The **agent** is the code we build in Part 2: it runs the loop above, between the app and the model. The app calls it like this: `agent.prompt("What is in README.md?")`. The text is the **prompt**. The agent wraps it in a `UserMessage` (a [message](glossary.md#message) from the user, Part 1).
 
 **2. The message goes into the history.** The [history](glossary.md#history) is the list of all messages in this chat so far: Ann's questions, the model's replies, the tool results. The model remembers nothing between calls, so we must send it the history every time. The `Agent` object keeps this list (`agent.messages`) so it lives from one question to the next. See [Agent (class)](glossary.md#agent-class).
 
-**3. The agent builds what the model will see.** It takes the history, the system prompt and the list of tools Ann's app gave it (here: `read`). It puts them in one package: the [view](glossary.md#view-llm-view), stored as a [Context](glossary.md#context) (Part 1). In Part 2 the view is simply the whole history.
+**3. The agent builds what the model will see.** It takes the history, the system prompt (the fixed instructions the app gives the model before any chat, like "You are a helpful coding helper") and the list of tools Ann's app gave it (here: `read`). It puts them in one package: the [view](glossary.md#view-llm-view), stored as a [Context](glossary.md#context) (Part 1). In Part 2 the view is (almost) the whole history: the app may trim or change it a little before it is sent.
 
-**4. The agent asks the model.** It sends the `Context` with `ai.stream()` from Part 1. Words come back piece by piece. At the end there is one full reply from the model, an `AssistantMessage`. Here it holds no text, only a **tool call**: "run `read` with `path = README.md`". A [tool call](glossary.md#tool-call) is the model's written request to run a tool. The model cannot run anything itself; it can only ask.
+**4. The agent asks the model.** It sends the `Context` to the model and gets the answer back as a stream, a little at a time. The function that does this is `ai.stream()` from Part 1. Words come back piece by piece. At the end there is one full reply from the model, an `AssistantMessage`. Here it holds no text, only a **tool call**: "run `read` with `path = README.md`". A [tool call](glossary.md#tool-call) is the model's written request to run a tool. The model cannot run anything itself; it can only ask.
 
-**5. The agent runs the tool.** The agent finds the tool named `read` in its list, checks the arguments, and runs it. The file text comes back as a **tool result**: a message that says "here is what `read` gave", called a `ToolResultMessage`. If the tool fails, the result just says so (an error result). The loop does not crash.
+**5. The agent runs the tool.** The agent finds the tool named `read` in its list, checks the arguments (the inputs in the call, here `path`: are they there and of the right type?), and runs it. The file text comes back as a **tool result**: a message that says "here is what `read` gave", called a `ToolResultMessage`. If the tool fails, the result just says so (an error result). The loop does not crash.
 
 **6. The result goes into the history, and we ask again.** Now the history has 3 messages: Ann's question, the model's tool call, the file text. The agent goes back to step 3 and asks the model again. One trip from step 3 to here is one [turn](glossary.md#turn).
 
