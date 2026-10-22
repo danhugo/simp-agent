@@ -159,7 +159,7 @@ Types like `PendingApproval` come from `protocol.gen.ts` (see the file list at t
 
 ### fetch-based SSE
 
-`api.ts` first wraps `fetch` once, so every call carries the token:
+The login form posts to `/api/login` and stores the returned token in `localStorage`. `api.ts` then wraps `fetch` once, so every call carries the token:
 
 ```ts
 export const getToken = () => localStorage.getItem("simp.token") ?? "";

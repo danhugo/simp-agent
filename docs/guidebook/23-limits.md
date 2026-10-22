@@ -85,7 +85,7 @@ The fix for 1 and 2: record cost after **every** model call, in the store, and c
 
 ## Step by step: from naive to real
 
-Remember Ann from the Problem: she closes the tab and goes home, but her run keeps calling the model, and each call costs money. The steps below fix this, one problem at a time.
+Remember Ann from the Problem: her tests keep failing, the model makes about fifty calls, and nobody watches the bill. Each call costs money. The steps below fix this, one problem at a time.
 
 **Step 1 — check before every call, not once.** Move the check inside the loop:
 

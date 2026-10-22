@@ -177,7 +177,7 @@ The cut ([16](16-compaction.md)) only lands on a user or assistant message. So i
 
 **7. `LocalSandbox` is not isolation.** Its docstring says: *"Not isolation: DockerSandbox replaces it."* The server refuses to start with `LocalSandbox` and more than one active user, unless `allow_local_sandbox = true` is set ([24](24-docker-sandbox.md)).
 
-**8. Missing tools and features.** No web fetch or search tool, no MCP, no skills, no memory, no sub-agents. All of these are in the roadmap as stage 4, "capabilities via plugins".
+**8. Missing tools and features.** No web fetch or search tool, no MCP, no skills, no memory, no sub-agents. All of these are on the roadmap as later work: "capabilities via plugins".
 
 Notice the pattern. Most limits are in the apps or in "later" lists. The core loop is complete for its job. That is the point of a small core: limits are easy to see, and easy to fix in one place.
 
