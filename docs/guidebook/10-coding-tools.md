@@ -64,47 +64,14 @@ Where it breaks:
 - **`bash` keeps the start of the output.** For a test run, the important part (the failures, the summary) is at the **end**.
 - **`bash` hides the exit code,** so the model cannot tell pass from fail.
 
-## Step by step: from naive to real
+The rest of the chapter fixes each of these:
 
-We fix the naive tools one problem at a time. Each step is small.
-
-**Step 1 — all IO goes through `ctx.env`.** `open` and `subprocess` skip the fence, Docker and Stop from [09](09-exec-env.md). So every tool asks the env instead:
-
-```text
-lines = ASK ctx.env to read the file at the full path, split into lines
-```
-Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `read`
-
-**Step 2 — paths start at `ctx.cwd`.** The Python process folder is not the session folder. `_path` joins the two; an absolute path stays as is:
-
-```text
-RETURN ctx.cwd joined with path      // an absolute path stays as is
-```
-Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `_path`
-
-**Step 3 — `read` cuts the file and says how to go on.** A 5 MB file must not fill the context. We cut with `truncate_head` and tell the model the next call:
-
-```text
-ADD to out: "[N more lines; use offset=END+1 to continue]"
-```
-Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `read`
-
-**Step 4 — `edit` needs exactly one match.** Zero matches or many matches are errors, not a silent "ok". The model reads the count and fixes its call:
-
-```text
-IF n is not exactly 1:
-    FAIL with "edits[i].old_text must match exactly once in PATH, found n matches"
-```
-Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `edit`
-
-**Step 5 — `bash` keeps the end and shows the exit code.** Test failures and summaries are at the end, and the model must know pass from fail:
-
-```text
-RETURN tail(output + "[exit code: CODE]")    // keep the end, show pass/fail
-```
-Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `make_bash`
-
-The result is the real code below.
+| Problem | Fixed in |
+|---|---|
+| Skips `ctx.env`; wrong base folder | [The shape of every tool](#the-shape-of-every-tool) |
+| `read` returns the whole file | [Truncation](#truncation-truncate_head-and-truncate_tail), [`read`](#read) |
+| `edit` replaces every match | [`edit`](#edit) |
+| `bash` keeps the start, hides the exit code | [`bash`](#group-3--run-bash) |
 
 ## Real design
 
@@ -122,7 +89,7 @@ FUNCTION _path(ctx, path):
     RETURN ctx.cwd joined with path     // an absolute path stays as is
 ```
 
-Key idea: one schema shape and one path rule for all tools.
+So all tools share one schema shape and one path rule:
 
 - `_obj` builds the JSON schema for a tool's arguments. `additionalProperties: False` tells the model not to invent extra fields.
 - `_path` makes a path relative to `ctx.cwd`. If the model gives an absolute path, `os.path.join` keeps it as is. The fence is **not** here: it is in the env ([path safety](glossary.md#path-safety), [09](09-exec-env.md#path-safety)). A tool only joins; the env decides if the path is allowed.
@@ -149,9 +116,7 @@ FUNCTION _cut(lines, max_lines, max_bytes):
     RETURN kept
 ```
 
-Key idea: keep whole lines under two limits. Limit: one very long first line means zero lines kept.
-
-[Truncation](glossary.md#truncation) keeps **whole lines** under **two** limits: at most 2000 lines and at most 50 KB. Two limits, because one is not enough: 2000 short lines are fine, but 10 lines of minified JavaScript can be 1 MB. The `+ 1` counts the newline between lines. A half line is never kept, so the model never sees a broken line.
+[Truncation](glossary.md#truncation) keeps **whole lines** under **two** limits: at most 2000 lines and at most 50 KB. Two limits, because one is not enough: 2000 short lines are fine, but 10 lines of minified JavaScript can be 1 MB. The `+ 1` counts the newline between lines. A half line is never kept, so the model never sees a broken line. The price: if the very first line is over 50 KB, zero lines are kept (`head` below handles this).
 
 There are two directions:
 
@@ -166,8 +131,6 @@ FUNCTION truncate_tail(text):            // bash: the end matters most
     kept = _cut(lines of text in REVERSE order), then REVERSE back
     RETURN kept joined, _info(text, kept)
 ```
-
-Key idea: tail is just head on reversed lines.
 
 `truncate_tail` just reverses the lines, cuts, and reverses back. Both return the text and an info dict: `truncated`, `total_lines`, `total_bytes`, `kept_lines`.
 
@@ -191,9 +154,7 @@ FUNCTION tail(text):
     RETURN out
 ```
 
-Key idea: every cut comes with a note for the model.
-
-The note is the important part. A model that sees "showing first 2000 of 9000 lines" knows the answer is not complete and can ask again in a narrower way. A model that sees a silent cut thinks it saw everything. Note also the odd case in `head`: if the very first line is over 50 KB, zero lines fit, so `head` says so and suggests `head -c`.
+The note is the important part. A model that sees "showing first 2000 of 9000 lines" knows the answer is not complete and can ask again in a narrower way. A model that sees a silent cut thinks it saw everything. For the zero-lines case, `head` suggests `head -c`.
 
 ```mermaid
 flowchart LR
@@ -202,7 +163,11 @@ flowchart LR
     which -- "bash" --> T["keep last lines<br/>note at the start"]
 ```
 
-### `read`
+### Group 1 — look and read: `read`, `ls`, `grep`, `find`
+
+These four tools never change anything. They all keep the **start** of their output (`head`), because for a file or a list of matches the first lines matter most.
+
+#### `read`
 
 Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `read`
 
@@ -227,7 +192,88 @@ Step by step:
 5. Work out where we **really** stopped: the end of the slice, the end of the file, or where the byte limit cut — we stop at the first of these three.
 6. If lines are left, add a **continue hint**: `[N more lines; use offset=M to continue]`. This is not a generic "truncated" note; it tells the model the exact next call.
 
-### `write`
+#### `ls`
+
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `list_dir`, `ls`
+
+```text
+FUNCTION list_dir(ctx, path):
+    IF ctx.env has list_dir:
+        RETURN WAIT for ctx.env.list_dir(path)
+    code, out = WAIT for ctx.env.exec("ls -1Ap <quoted path>", ctx.cwd, ...)
+    IF code != 0: ERROR (OSError) with the output
+    RETURN non-empty lines of out        // folders end with "/"
+
+FUNCTION ls(args, ctx):
+    names = list_dir(ctx, _path(ctx, path or ".")), sorted ignoring case
+    limit = args.limit or 500
+    out = first `limit` names joined, or "(empty directory)"
+    IF more names than limit:
+        ADD "[limit of N entries shown; raise limit for more]"
+    RETURN head(out)
+```
+
+`list_dir` uses an env method called `list_dir` if the env has one. `LocalEnv` from [09](09-exec-env.md) does not (its method is named `list`), so in practice it runs `ls -1Ap` through `ctx.env.exec`: one name per line (`-1`), dotfiles but not `.` and `..` (`-A`), a `/` after folders (`-p`). Running through `exec` means the same code works in a Docker env ([24](24-docker-sandbox.md)). The path goes through `shlex.quote`, so a name with spaces or `;` cannot break the command.
+
+`ls` sorts case-insensitively, keeps `limit` entries (default 500), says how many were hidden, and finally passes through `head` for the byte limit. An empty folder says `(empty directory)` instead of an empty string, so the model does not wonder if the tool failed.
+
+#### `grep` and `find`
+
+Both search tools follow the same plan: build an argv, try a fast modern program, fall back to the classic one.
+
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `_run`
+
+```text
+FUNCTION _run(ctx, primary, fallback):
+    code, out = WAIT for ctx.env.exec(quoted primary, ...)
+    IF code == 127:                      // 127 = "command not found"
+        code, out = WAIT for ctx.env.exec(quoted fallback, ...)
+    RETURN code, out
+```
+
+Exit code 127 is what a shell returns for "command not found". So: `rg` (ripgrep) if installed, else `grep`; `fd` if installed, else `find`. The fast tools respect `.gitignore`, so they skip `node_modules` and build folders. The fallbacks work everywhere, but do not skip those folders. `shlex.join` quotes every argument, so a pattern like `it's "x"` reaches the program as one safe argument.
+
+The output goes through one shared helper:
+
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `_limited`
+
+```text
+FUNCTION _limited(code, out, limit, empty):
+    IF code is not 0 and not 1:          // 1 = "no matches", not an error
+        ERROR (RuntimeError) with the output, or "exit code CODE" if empty
+    lines = non-empty lines of out
+    text = first `limit` lines joined, or `empty`
+    IF more lines than limit:
+        ADD "[LIMIT results limit reached; refine the pattern or raise limit]"
+    RETURN head(text)
+```
+
+For `grep` and `rg`, exit code 1 means "no matches", not "error". So 0 and 1 are both fine, and anything else (a bad regex, a missing folder) is raised. No results gives a clear text (`No matches found` / `No files found`). Too many results gives a note that asks the model to narrow the search.
+
+One more guard, for both tools:
+
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `_search_path`
+
+```text
+FUNCTION _search_path(args):
+    path = args.path or "."
+    IF path starts with "-":             // rg --pre=, find -delete would read it as an option
+        ERROR "path must not start with '-': path (use ./path)"
+    RETURN path
+```
+
+Quoting stops the shell from reading the path as code, but the **program** can still read it as an option. A path of `--pre=evil` makes `rg` run a program; `-delete` makes `find` delete files. So a path may not start with `-`.
+
+`grep` maps its arguments to flags for both programs.
+The mapping is: `ignore_case` → `-i`, `literal` → `-F` (else plain `grep` gets `-E` for extended regex, like `rg`), `context` → `-C<n>`, `glob` → `--glob` or `--include=`. The pattern goes after `-e` and the path after `--`, so neither can be read as a flag. Default limit: 100 lines.
+
+`find` runs `fd --glob --color=never --hidden -- <pattern> <path>`, or `find <path> -name <pattern>`. Default limit: 1000 files.
+
+### Group 2 — change: `write` and `edit`
+
+These two change files. `write` makes a whole new file; `edit` changes part of an old one.
+
+#### `write`
 
 Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `write`
 
@@ -239,7 +285,7 @@ FUNCTION write(args, ctx):
 
 One line of work. The env already makes parent folders ([09](09-exec-env.md#localenv-this-machine)), so the tool description can promise "Makes parent dirs." The result is short on purpose: the model already knows the content it sent; echoing it back would only waste context.
 
-### `edit`
+#### `edit`
 
 `edit` changes part of a file. It is the most careful tool, because a wrong edit silently breaks code.
 
@@ -268,6 +314,44 @@ FUNCTION edit(args, ctx):
     RETURN "Successfully replaced K block(s) in path."
 ```
 
+**Example.** `shape.py` has two bugs:
+
+```python
+def area(w, h):
+    return w * w
+
+def name():
+    return "box"
+```
+
+The model calls `edit` with `old_text="return"`, `new_text="x"`. `return` is in the file twice, so the tool refuses and the file is not touched. The model gets an error result:
+
+```text
+ValueError: edits[0].old_text must match exactly once in shape.py, found 2 matches
+```
+
+It tries again with two edits, each with enough text to be unique:
+
+```json
+{"path": "shape.py", "edits": [
+  {"old_text": "return w * w", "new_text": "return w * h"},
+  {"old_text": "\"box\"",      "new_text": "\"square\""}]}
+```
+
+Result, and the new file:
+
+```text
+Successfully replaced 2 block(s) in shape.py.
+```
+
+```python
+def area(w, h):
+    return w * h
+
+def name():
+    return "square"
+```
+
 The rules, and why:
 
 - **Two ways to call it.** One change: `old_text` + `new_text`. Many changes in one file: an `edits` list. Both can be given; the single one goes first. Many small edits in one call save turns.
@@ -286,84 +370,9 @@ flowchart TD
     C -- no --> D["replace from last span to first"] --> W["write file once"]
 ```
 
-### `ls`
+### Group 3 — run: `bash`
 
-Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `list_dir`, `ls`
-
-```text
-FUNCTION list_dir(ctx, path):
-    IF ctx.env has list_dir:
-        RETURN WAIT for ctx.env.list_dir(path)
-    code, out = WAIT for ctx.env.exec("ls -1Ap <quoted path>", ctx.cwd, ...)
-    IF code != 0: ERROR (OSError) with the output
-    RETURN non-empty lines of out        // folders end with "/"
-
-FUNCTION ls(args, ctx):
-    names = list_dir(ctx, _path(ctx, path or ".")), sorted ignoring case
-    limit = args.limit or 500
-    out = first `limit` names joined, or "(empty directory)"
-    IF more names than limit:
-        ADD "[limit of N entries shown; raise limit for more]"
-    RETURN head(out)
-```
-
-`list_dir` uses an env method called `list_dir` if the env has one. `LocalEnv` from [09](09-exec-env.md) does not (its method is named `list`), so in practice it runs `ls -1Ap` through `ctx.env.exec`: one name per line (`-1`), dotfiles but not `.` and `..` (`-A`), a `/` after folders (`-p`). Running through `exec` means the same code works in a Docker env ([24](24-docker-sandbox.md)). The path goes through `shlex.quote`, so a name with spaces or `;` cannot break the command.
-
-`ls` sorts case-insensitively, keeps `limit` entries (default 500), says how many were hidden, and finally passes through `head` for the byte limit. An empty folder says `(empty directory)` instead of an empty string, so the model does not wonder if the tool failed.
-
-### `grep` and `find`
-
-Both search tools follow the same plan: build an argv, try a fast modern program, fall back to the classic one.
-
-Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `_run`
-
-```text
-FUNCTION _run(ctx, primary, fallback):
-    code, out = WAIT for ctx.env.exec(quoted primary, ...)
-    IF code == 127:                      // 127 = "command not found"
-        code, out = WAIT for ctx.env.exec(quoted fallback, ...)
-    RETURN code, out
-```
-
-Exit code 127 is what a shell returns for "command not found". So: `rg` (ripgrep) if installed, else `grep`; `fd` if installed, else `find`. The fast tools respect `.gitignore`, so they skip `node_modules` and build folders. The fallbacks work everywhere, but do not skip those folders. `shlex.join` quotes every argument, so a pattern like `it's "x"` reaches the program as one safe argument.
-
-The output goes through one shared helper:
-
-Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `_limited`
-
-```text
-FUNCTION _limited(code, out, limit, empty):
-    IF code is not 0 and not 1:          // 1 = "no matches", not an error
-        ERROR (RuntimeError) with the output
-    lines = non-empty lines of out
-    text = first `limit` lines joined, or `empty`
-    IF more lines than limit:
-        ADD "[limit results limit reached; refine the pattern or raise limit]"
-    RETURN head(text)
-```
-
-For `grep` and `rg`, exit code 1 means "no matches", not "error". So 0 and 1 are both fine, and anything else (a bad regex, a missing folder) is raised. No results gives a clear text (`No matches found` / `No files found`). Too many results gives a note that asks the model to narrow the search.
-
-One more guard, for both tools:
-
-Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `_search_path`
-
-```text
-FUNCTION _search_path(args):
-    path = args.path or "."
-    IF path starts with "-":             // rg --pre=, find -delete would read it as an option
-        ERROR "path must not start with '-': path (use ./path)"
-    RETURN path
-```
-
-Quoting stops the shell from reading the path as code, but the **program** can still read it as an option. A path of `--pre=evil` makes `rg` run a program; `-delete` makes `find` delete files. So a path may not start with `-`.
-
-`grep` maps its arguments to flags for both programs.
-The mapping is: `ignore_case` → `-i`, `literal` → `-F` (else plain `grep` gets `-E` for extended regex, like `rg`), `context` → `-C<n>`, `glob` → `--glob` or `--include=`. The pattern goes after `-e` and the path after `--`, so neither can be read as a flag. Default limit: 100 lines.
-
-`find` runs `fd --glob --color=never --hidden -- <pattern> <path>`, or `find <path> -name <pattern>`. Default limit: 1000 files.
-
-### `bash`
+`bash` runs any command: tests, builds, `git`. It keeps the **end** of its output (`tail`).
 
 Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `make_bash`
 
@@ -384,8 +393,6 @@ FUNCTION make_bash(max_timeout_s):       // no default timeout
         RETURN tail(out + "[Command timed out after <timeout> seconds]")
     RETURN bash
 ```
-
-Key idea: exec does the hard work; bash only adds the ending note. Limit: no timeout unless the model or host sets one.
 
 `start` uses a [monotonic clock](glossary.md#monotonic-clock) (a clock that only goes forward), so the time shown is right even if the system time changes.
 
