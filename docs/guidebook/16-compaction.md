@@ -50,69 +50,70 @@ It keeps the call small. It breaks badly:
 3. **Counting messages is not counting tokens.** 20 small messages are fine; 20 file reads are not.
 4. **History is lost.** If we cut `agent.messages` itself, the saved session loses data too.
 
-## Step by step: from naive to real
-
-We fix the four problems one at a time. Each step is small.
-
-**Step 0: naive.** `messages[-keep:]`. Fast, but it forgets the task and can break pairs.
-
-**Step 1: count tokens, not messages.** Fixes problem 3.
-
-```text
-FUNCTION estimate(message):
-    n = number of characters in the message
-    RETURN n / 4                          // about 4 characters per token
-```
-Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `estimate`
-
-A rough guess: 4 characters is about 1 token. Now "too big" means tokens, so 20 file reads count as big.
-
-**Step 2: decide when, using the window.** Still problem 3.
-
-```text
-FUNCTION should_compact(tokens, model, settings):
-    RETURN settings.enabled
-       AND tokens > model.context_window - settings.reserve_tokens
-```
-Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `should_compact`
-
-We act before the limit, not at it. `reserve_tokens` leaves room for the reply and the summary.
-
-**Step 3: cut only on a user or assistant message.** Fixes problem 2.
-
-```text
-ok = every index j after start WHERE messages[j] is a user or assistant message
-before = the indexes in ok that are at or before i    // safe cut points
-```
-Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `find_cut`
-
-`start` is the `first_kept_index` of the last compaction (0 if there was none). `i` is where the walk back stopped: `find_cut` starts at the end and goes back until it has about `keep_recent_tokens`. Then it moves the cut to a safe message. A tool result is never the first kept message, so it never loses its call.
-
-**Step 4: summarize the old part instead of dropping it.** Fixes problem 1.
-
-```text
-summary = WAIT for summarize(old messages, previous summary)   // a model call
-```
-Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `summarize`
-
-The model writes a summary in a fixed format. The first section lists every user request, so the task is not lost.
-
-**Step 5: append a marker, do not cut history.** Fixes problem 4.
-
-```text
-RETURN CompactionEntry(summary + list of read and modified files, cut, read, mod)
-```
-Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `compact`
-
-`compact` returns a `CompactionEntry`. The session appends it. `build_view` uses it to make the smaller list for the model. Full history stays in memory and in the store.
-
-**Step 6: be exact about files, and incremental.** The model can forget details, so code adds `<read-files>` and `<modified-files>`. Next time, `summarize` gets only the new old messages plus the `previous` summary, so we never re-read old text.
-
-**Step 7: wire it in the session.** `_prepare` runs before every model call, checks `should_compact`, and returns `build_view(...)`. The sections below show the real code for each step.
-
 ## Real design
 
 The idea: when the history is near the limit, ask the model to **summarize** the old part. Keep the summary and the recent messages. This is **[compaction](glossary.md#compaction)**.
+
+First the goal. Here is one full example, from the history we have to what the model sees. The sections after it build each piece, in this order: the marker that keeps history safe (problem 4), when to compact (problem 3), where to cut (problem 2), and how to summarize (problem 1).
+
+### The goal: 10 messages in, a smaller view out
+
+Say `keep_recent_tokens` is 3000 (small, so the example is short; the default is 20000). The history has 10 messages. Tokens are `estimate` = characters / 4.
+
+| index | message | tokens |
+|---|---|---|
+| 0 | `UserMessage` "write fizzbuzz.py ..." | 10 |
+| 1 | `AssistantMessage`, tool call `write(path="fizzbuzz.py", ...)` | 300 |
+| 2 | `ToolResultMessage` "wrote fizzbuzz.py" | 5 |
+| 3 | `UserMessage` "add tests" | 5 |
+| 4 | `AssistantMessage`, tool call `read(path="fizzbuzz.py")` | 10 |
+| 5 | `ToolResultMessage` (the file text) | 300 |
+| 6 | `AssistantMessage`, tool call `bash(command="pytest")` | 20 |
+| 7 | `ToolResultMessage` (long pytest output) | 2000 |
+| 8 | `UserMessage` "add a CLI" | 5 |
+| 9 | `AssistantMessage` "Sure, here is the plan ..." | 1000 |
+
+**Where to cut** (`find_cut(messages, 0, 3000)`). Walk back from the end and add tokens:
+
+```text
+i=9  total = 1000
+i=8  total = 1005
+i=7  total = 3005   >= 3000, stop. i = 7
+```
+
+Index 7 is a tool result. If we kept 7 but not 6, the result would lose its call. So the cut moves back to the last user or assistant message at or before 7: index **6**. The cut is 6.
+
+**What gets summarized.** Messages 0..5 (`messages[0:6]`) go to the summary model as one text. From their tool calls, code finds: read `fizzbuzz.py`, modified `fizzbuzz.py`. A modified file is not also listed as read, so read-only is empty.
+
+**What history holds after.** Nothing is removed. One entry is added at index 10:
+
+```text
+0..9  the same 10 messages
+10    CompactionEntry(summary="## User Requests ...\n\n<modified-files>\nfizzbuzz.py\n</modified-files>",
+                      first_kept_index=6, read_files=[], modified_files=["fizzbuzz.py"])
+```
+
+**What the model sees** (`build_view`):
+
+```text
+[0] UserMessage("The conversation history before this point was compacted into the following summary:
+                 <summary> ## User Requests (chronological) 1. write fizzbuzz.py 2. add tests ...
+                 <modified-files> fizzbuzz.py </modified-files> </summary>")
+[1] message 6   bash(pytest) call
+[2] message 7   its result
+[3] message 8   "add a CLI"
+[4] message 9   the plan
+```
+
+Messages 0..5 (630 tokens) become one summary, and 3025 tokens are kept word for word. Here the saving is small because the example is small; in a real session the old part is many times bigger than the kept part. The task list is in the summary, the call/result pair 6-7 is whole, and the store still has all 10 messages.
+
+```mermaid
+flowchart LR
+    H["history 0..9"] --> C["find_cut = 6"]
+    C --> S["summarize 0..5"]
+    S --> E["append CompactionEntry(first_kept_index=6)"]
+    E --> V["view: [summary] + 6..9"]
+```
 
 All the pure logic is in `packages/simp_agent/src/simp_agent/agent/compaction.py`. It knows nothing about sessions, so it can be tested alone (layer rule, [00](00-overview.md)).
 
@@ -175,7 +176,6 @@ FUNCTION should_compact(tokens, model, settings):
 
 Key idea: use the real token count from the provider when we have it; guess only the rest. Limit: chars/4 is only a rough guess.
 
-- `estimate` is a rough guess: 4 characters ≈ 1 token.
 - `estimate_tokens` prefers the real number. The last good assistant reply has `usage` from the provider ([03](03-parse.md)): input + output tokens of that call. Add the guess only for messages after it. It looks only **after** the last `CompactionEntry`, because usage from before was measured on the old, bigger view.
 - `should_compact` is true when tokens pass `context_window - reserve_tokens`.
 
@@ -200,7 +200,7 @@ FUNCTION find_cut(messages, start, keep_tokens):
 
 Key idea: the cut is always on a user or assistant message, so a tool call and its result stay together. Limit: one huge turn cannot be cut.
 
-Walk back from the end until about `keep_tokens` are kept. Then move the cut to a user or assistant message at or before that point. A cut **never** lands on a tool result, so a tool call and its result stay together. `start` is the previous entry's `first_kept_index`, so a new cut is always after the old one. The `ponytail:` comment names a known limit: one single huge turn cannot be cut.
+Walk back from the end until about `keep_tokens` are kept. Then move the cut to a user or assistant message at or before that point. `start` is the previous entry's `first_kept_index`, so a new cut is always after the old one. The `ponytail:` comment names a known limit: one single huge turn cannot be cut.
 
 ### serialize_conversation: what the summarizer reads
 
@@ -223,7 +223,7 @@ FUNCTION serialize_conversation(messages):
 
 Key idea: one plain text block, not a chat, so the model summarizes instead of answering.
 
-Why one text and not the real messages? If you send the chat as chat, the model tends to **continue** it ("Sure, I will add tests now"). As one block of text inside `<conversation>` tags, with a system prompt that says "Do NOT continue the conversation", it summarizes. Tool results are cut to `TOOL_RESULT_MAX = 2000` characters and tool arguments to `ARG_MAX = 500`: the summary needs what happened, not every byte of a file. Thinking is skipped.
+Why one text and not the real messages? If you send the chat as chat, the model tends to **continue** it ("Sure, I will add tests now"). As one block of text inside `<conversation>` tags, with a system prompt that says "Do NOT continue the conversation", it summarizes. Tool results are cut to `TOOL_RESULT_MAX = 2000` characters and tool arguments to `ARG_MAX = 500`: the summary needs what happened, not every byte of a file.
 
 ### summarize: incremental
 
@@ -248,7 +248,6 @@ Key idea: first time a full summary, later only new messages plus the old summar
 - The first time, it uses `SUMMARIZATION_PROMPT`: a fixed format with `## User Requests (chronological)`, `## Goal`, `## Progress`, `## Next Steps` and more. The first section says "EVERY request the user made ... Never drop one". That fixes the "model forgets the task" problem.
 - The next time, it sends only the **new** old messages plus the previous summary, with `UPDATE_SUMMARIZATION_PROMPT` ("PRESERVE all existing information"). This is an **[incremental summary](glossary.md#incremental-summary)**: we never re-read what was already summarized.
 - `max_tokens` is capped at 80% of `reserve_tokens`, so the summary always fits in the room we kept.
-- A cut-off (`"length"`) or failed reply raises. A half summary is worse than none.
 
 ### File tracking
 
@@ -265,7 +264,7 @@ FUNCTION file_lists(messages, prev):
 
 Key idea: file lists come from code, not from the model, so they are exact.
 
-From the `path` argument of `read`, `write` and `edit` calls ([10](10-coding-tools.md)), the code builds two lists: files only read, and files changed. They merge with the previous entry's lists. `format_files` appends them to the summary as `<read-files>` and `<modified-files>` blocks. The model may lose details in a summary, but it will always know that `fizzbuzz.py` was modified. This is done in code, not by the model, so it is exact.
+From the `path` argument of `read`, `write` and `edit` calls ([10](10-coding-tools.md)), the code builds two lists: files only read, and files changed. They merge with the previous entry's lists. `format_files` appends them to the summary as `<read-files>` and `<modified-files>` blocks. The model may lose details in a summary, but it will always know that `fizzbuzz.py` was modified.
 
 ### compact: putting it together
 
@@ -286,7 +285,7 @@ FUNCTION compact(messages, model, stream_fn, settings, redact):
 
 Key idea: pure function; it returns a new entry and never changes `messages`.
 
-`compact` returns an entry; it does not change `messages`. The `redact` argument lets the session pass the plugin `context` chain ([14](14-plugins.md)), so a secret masked for the model is also masked for the summary model.
+The `redact` argument lets the session pass the plugin `context` chain ([14](14-plugins.md)), so a secret masked for the model is also masked for the summary model.
 
 ### In the session
 

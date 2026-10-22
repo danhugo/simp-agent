@@ -188,9 +188,6 @@ The most tokens a model can read in one call (`Model.context_window`). Home: [16
 ## Compaction
 Replacing old history in the model's view with a summary. Home: [16](16-compaction.md).
 
-## CompactionEntry
-Same as [Compaction entry](#compaction-entry).
-
 ## View (LLM view)
 The message list actually sent to the model, built from history by `build_view` and the plugin `context` chain. Home: [16](16-compaction.md).
 
