@@ -23,7 +23,27 @@ Code in this chapter (commit `2fc2776`):
 - `evals/tasks/*.toml` — four [eval tasks](glossary.md#eval-task): `read_answer`, `fizzbuzz`, `fix_bug`, `refactor_rename`
 - `evals/test_run.py` — tests for the harness itself, with the FakeProvider
 
-`evals/run.py` imports `AgentSession` and `build_model`. We build those in [13](13-session.md) and [18](18-profiles-plugins.md). `main()` also uses `load_settings` and `take_keys` from the server ([22](22-store-auth.md)). Here we only use them; you can read this chapter first and come back.
+## What you will get
+
+One command runs every task and prints one line per task, then a total:
+
+```bash
+uv run python evals/run.py --profile sol
+```
+
+```text
+read_answer     PASS     2 turns       300/30       $0.0004  1.2s
+total           1/1      2 turns       300/30       $0.0004  1.2s
+wrote /path/to/simp-agent/evals/results/20261013-101500-sol.json
+```
+
+(Shown with one task for short; the real run has four lines plus the total.) `sol` must be a profile in your server's `settings.toml` (see [main](#main-reuse-the-servers-settings)); else it stops with `no profile 'sol'`.
+
+> **What you need before [13](13-session.md), [18](18-profiles-plugins.md), [22](22-store-auth.md):**
+> `AgentSession` ([13](13-session.md)): `s.prompt(text)` runs the agent until it stops; `s.subscribe(fn)` calls `fn(event)` for every [event](glossary.md#event); `s.abort()` stops it now.
+> `build_model(profile)` ([18](18-profiles-plugins.md)) turns a [profile](glossary.md#profile) into a model; `load_settings` / `take_keys` ([22](22-store-auth.md)) read the server's `settings.toml` and API keys.
+
+Here we only use them; you can read this chapter first and come back.
 
 ## Problem
 
@@ -59,54 +79,16 @@ This works once. Where it breaks:
 - **Nothing saved.** Next week you cannot compare.
 - **Cannot be tested** without a real model and a key.
 
-## Step by step: from naive to real
+The rest of the chapter fixes each of these:
 
-We fix the naive script one problem at a time. Each step is small.
-
-**Step 1 — tasks are TOML files.** Adding a task should not mean editing Python. `load_tasks` reads every file in `evals/tasks/` and uses the file name as the task name:
-
-```text
-FOR each file f in evals/tasks/*.toml, sorted:
-    tasks[f.stem] = { name: f.stem } + the TOML fields of f   // file name = task name
-```
-Real code: [evals/run.py](../../evals/run.py) — `load_tasks`
-
-**Step 2 — limits on turns and time.** A model that loops forever must not run (and spend money) forever. We stop at `MAX_TURNS` turns, or after `TIMEOUT_S` seconds:
-
-```text
-IF turns >= MAX_TURNS:
-    error = "hit MAX_TURNS turns"
-    ABORT the session                     // stop the loop
-...
-WAIT for s.prompt(task.prompt), at most TIMEOUT_S seconds
-```
-Real code: [evals/run.py](../../evals/run.py) — `run_task`
-
-**Step 3 — count the cost.** PASS alone hides 3 turns vs 30. We listen to `message_end` events and add up turns and tokens. We do not change the agent:
-
-```text
-IF event is "message_end" AND its message is from the assistant:
-    turns  = turns + 1
-    input  = input + message input tokens     // 0 if missing
-    output = output + message output tokens   // 0 if missing
-```
-Real code: [evals/run.py](../../evals/run.py) — `run_task` (inner `on_event`)
-
-**Step 4 — the right `python`.** `python` in the shell may be a different Python. The check gets `$PYTHON`, set to the Python running the harness:
-
-```python
-env={**os.environ, "PYTHON": sys.executable}
-```
-
-**Step 5 — save the numbers.** `run_all` writes one JSON file per run, so you can compare next week:
-
-```python
-f = out_dir / f"{time.strftime('%Y%m%d-%H%M%S')}-{profile_name}.json"
-```
-
-**Step 6 — the model can be swapped.** `run_all` and `run_task` take `stream_fn` (default `ai.stream`). Tests pass a FakeProvider, so no key is needed.
-
-The result is the real code below.
+| Problem | Fixed in |
+|---|---|
+| One task, in code | [A task is a TOML file](#a-task-is-a-toml-file) |
+| No limits | [Counting and limits through events](#counting-and-limits-through-events) |
+| No cost numbers | [Counting and limits](#counting-and-limits-through-events), [The check](#the-check) |
+| Wrong `python` | [The check](#the-check) |
+| Nothing saved | [run_all](#run_all-the-table-and-the-file) |
+| Cannot be tested | [Test](#test) |
 
 ## Real design
 
@@ -213,7 +195,7 @@ FUNCTION on_event(e):
         r.answer = message text          // keep the last text
         IF message has error: r.error = it
         IF r.turns >= MAX_TURNS:
-            r.error = "hit 25 turns"
+            r.error = "hit {MAX_TURNS} turns"   // MAX_TURNS = 25
             s.abort()                    // stop a runaway agent
 ```
 
@@ -247,13 +229,7 @@ Then cost: `(input * price_in + output * price_out) / 1e6`. Prices in the profil
 
 ### run_all: the table and the file
 
-`run_all` runs the tasks **one by one** and prints one line each, then a total:
-
-```
-read_answer     PASS     2 turns       300/30       $0.0004  1.2s
-total           1/1      2 turns       300/30       $0.0004  1.2s
-wrote /path/to/simp-agent/evals/results/20261013-101500-sol.json
-```
+`run_all` runs the tasks **one by one** and prints one line each, then a total (the output in [What you will get](#what-you-will-get)). A task that hit a limit gets its error at the end of its line, like `(hit 25 turns)`.
 
 It then writes `evals/results/<date-time>-<profile>.json` with every row and the total. That folder is in `.gitignore`: results are yours, not the repo's. If the profile has no `price_in` / `price_out`, it warns that cost will show `$0`.
 
