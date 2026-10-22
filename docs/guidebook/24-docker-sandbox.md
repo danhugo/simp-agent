@@ -28,7 +28,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-Picture a shared server. Alice and Bob both log in ([22](22-store-auth.md)). Each of them can open many sessions ([20](20-server-run.md)), and each session is one agent with its own folder. Alice asks her agent: "write `fizzbuzz.py` and run it". The agent calls `bash` with `python fizzbuzz.py`. Where does that command run, and what else can it touch?
+Picture a shared server. Ann and Bob both log in ([22](22-store-auth.md)). Each of them can open many sessions ([20](20-server-run.md)), and each session is one agent with its own folder. Ann asks her agent: "write `fizzbuzz.py` and run it". The agent calls `bash` with `python fizzbuzz.py`. Where does that command run, and what else can it touch?
 
 The `bash` tool ([10](10-coding-tools.md)) runs any shell command. Today it runs on the server machine itself, through `LocalEnv` ([09](09-exec-env.md)). The server's default sandbox is `LocalSandbox` in `apps/server/src/simp_server/server.py`. Its own docstring says it plainly:
 

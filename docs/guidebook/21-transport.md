@@ -198,7 +198,7 @@ FUNCTION append(entry):
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.append`.
 
-So core messages (`"msg"` rows, used to resume the agent) and protocol events live in one ordered stream. `self.log` keeps only the protocol events (`e["type"] != "msg"`). The comment in `__init__` says it plainly: `# ponytail: whole log in memory`.
+So core messages (`"msg"` rows, used to resume the agent) and protocol events live in one ordered stream. `self.log` keeps only the protocol events (`e["type"] != "msg"`). The [`ponytail:` comment](glossary.md#ponytail-comment) (a marked shortcut, see [27](27-limits-choices-extend.md)) in `__init__` says it plainly: `# ponytail: whole log in memory`.
 
 ### Replay: `after`, then snapshot, then live
 
