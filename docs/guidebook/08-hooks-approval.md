@@ -11,7 +11,7 @@ flowchart LR
     ai --> agent["agent ★ before_tool_call / after_tool_call (this chapter)"] --> coding --> session --> plugins --> testing
 ```
 
-Big picture of Part 2: [part-2-agent](part-2-agent.md).
+Big picture of Part 2: [part-2-agent](05-0-part-2-agent.md).
 
 In [05](05-agent-loop.md) the loop learned to run tools. In [06](06-events-abort.md) and [07](07-steering.md) the user learned to stop it and to talk to it. But the user still cannot say **"no, do not run that"** to one tool call. A coding agent will soon have a `bash` tool ([10](10-coding-tools.md)). Before that day, we want a gate.
 

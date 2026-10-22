@@ -15,7 +15,7 @@ flowchart LR
 
 Tools need one place to touch files and run commands. That place is the [execution environment](glossary.md#execution-environment): the `env` field of the [tool context](glossary.md#tool-context) from [05](05-agent-loop.md#toolcontext-what-a-tool-gets). All tools in [10](10-coding-tools.md) go through it.
 
-Big picture of Part 3: [part-3-coding](part-3-coding.md).
+Big picture of Part 3: [part-3-coding](09-0-part-3-coding.md).
 
 Code in this chapter (commit `2fc2776`):
 

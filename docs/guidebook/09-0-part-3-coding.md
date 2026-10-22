@@ -86,6 +86,6 @@ flowchart LR
 
 ## Builds on / Next
 
-- Builds on: [Part 2](part-2-agent.md) — the loop, `AgentTool`, `run_tool` and `ToolContext` from [05](05-agent-loop.md), the approval gate from [08](08-hooks-approval.md).
+- Builds on: [Part 2](05-0-part-2-agent.md) — the loop, `AgentTool`, `run_tool` and `ToolContext` from [05](05-agent-loop.md), the approval gate from [08](08-hooks-approval.md).
 - Chapters: [09 Execution environment](09-exec-env.md) · [10 Coding tools](10-coding-tools.md) · [11 The system prompt](11-system-prompt.md) · [12 Evals](12-evals.md).
-- Next: [Part 4 big picture](part-4-session.md), then [13 Sessions](13-session.md) wraps the loop, tools and prompt into one `AgentSession`.
+- Next: [Part 4 big picture](13-0-part-4-session.md), then [13 Sessions](13-session.md) wraps the loop, tools and prompt into one `AgentSession`.

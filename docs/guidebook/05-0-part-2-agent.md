@@ -8,7 +8,7 @@ Read this page before [05](05-agent-loop.md), and come back to it any time you g
 
 ![The agent loop: blocks, objects and chapters](img/part-2-agent.svg)
 
-Read the top row left to right (build the question, ask the model), then the bottom row right to left (handle the answer, run tools). Blocks are steps. Yellow cards on the arrows are the data passed between steps. Purple tags say which chapter builds the block. The dashed green arrow goes back for the next [turn](glossary.md#turn). `ai.stream()` is grey: it is Part 1, see [part-1-ai](part-1-ai.md).
+Read the top row left to right (build the question, ask the model), then the bottom row right to left (handle the answer, run tools). Blocks are steps. Yellow cards on the arrows are the data passed between steps. Purple tags say which chapter builds the block. The dashed green arrow goes back for the next [turn](glossary.md#turn). `ai.stream()` is grey: it is Part 1, see [part-1-ai](01-0-part-1-ai.md).
 
 ## The blocks
 
@@ -76,7 +76,7 @@ If something else raises (for example a subscriber), `Agent` ends the run with a
 | [Queue mode](glossary.md#queue-mode) | `"one-at-a-time"` (default) or `"all"` | How many queued messages are taken each time. |
 | [Tool hook](glossary.md#tool-hook) | `before_tool_call(call, ctx)`, `after_tool_call(call, result, ctx)` | Sync or async. Gate or change one tool call. |
 
-Messages (`UserMessage`, `AssistantMessage`, `ToolResultMessage`, `ToolCall`) come from Part 1: see [part-1-ai](part-1-ai.md#the-objects).
+Messages (`UserMessage`, `AssistantMessage`, `ToolResultMessage`, `ToolCall`) come from Part 1: see [part-1-ai](01-0-part-1-ai.md#the-objects).
 
 ## One worked example: "What is in README.md?"
 
@@ -96,6 +96,6 @@ If the user pressed Stop in step 8, the tool would see `ctx.cancel`, the loop wo
 
 ## Builds on / Next
 
-- Builds on: [Part 1 big picture](part-1-ai.md) · [04 Label + test the pipeline](04-label-test.md).
+- Builds on: [Part 1 big picture](01-0-part-1-ai.md) · [04 Label + test the pipeline](04-label-test.md).
 - Chapters: [05 The agent loop](05-agent-loop.md) · [06 Events and abort](06-events-abort.md) · [07 Steering](07-steering.md) · [08 Hooks and approval](08-hooks-approval.md).
-- Next: [Part 3 big picture](part-3-coding.md), then [09 Execution environment](09-exec-env.md) gives tools a safe `env` (the `ToolContext.env` field).
+- Next: [Part 3 big picture](09-0-part-3-coding.md), then [09 Execution environment](09-exec-env.md) gives tools a safe `env` (the `ToolContext.env` field).

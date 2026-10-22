@@ -15,7 +15,7 @@ flowchart LR
 
 After [11](11-system-prompt.md) the agent has a loop, tools and a system prompt. It can do real coding work. Now a new question: **how well?** Unit tests with the [FakeProvider](04-label-test.md) prove that our code does what we wrote. They cannot tell us if a real model, with our tools and our prompt, can fix a bug. For that we need an [eval](glossary.md#eval).
 
-Big picture of Part 3: [part-3-coding](part-3-coding.md).
+Big picture of Part 3: [part-3-coding](09-0-part-3-coding.md).
 
 Code in this chapter (commit `2fc2776`):
 

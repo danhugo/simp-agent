@@ -21,7 +21,7 @@ flowchart TB
 
 *This chapter adds limits to the `server` app (marked): a money budget, a kill switch and idle release.*
 
-Big picture of Part 5: [part-5-system](part-5-system.md).
+Big picture of Part 5: [part-5-system](19-0-part-5-system.md).
 
 Code in this chapter (commit `2fc2776`):
 

@@ -80,4 +80,4 @@ flowchart LR
 
 - Builds on: [00 Overview](00-overview.md).
 - Chapters: [01 Pick + Clean](01-pick-clean.md) · [02 Translate + Send](02-translate-send.md) · [03 Parse](03-parse.md) · [04 Label + test the pipeline](04-label-test.md).
-- Next: [Part 2 big picture](part-2-agent.md), then [05 The agent loop](05-agent-loop.md) uses `ai.stream()` as its `stream_fn`.
+- Next: [Part 2 big picture](05-0-part-2-agent.md), then [05 The agent loop](05-agent-loop.md) uses `ai.stream()` as its `stream_fn`.

@@ -16,7 +16,7 @@ flowchart LR
 
 **Builds:** block 5 · **IN:** raw chunks · **OUT:** events, `AssistantMessage`
 
-Big picture of Part 1: [part-1-ai](part-1-ai.md).
+Big picture of Part 1: [part-1-ai](01-0-part-1-ai.md).
 
 In [01](01-pick-clean.md#out-the-shape-of-a-model-call) we fixed the shape of a model call: a [stream function](glossary.md#stream-function) yields event dicts and ends with `done` or `error` holding the final `AssistantMessage`. In [02](02-translate-send.md) the stream function sent the request. A real model does not answer in one piece. It sends its answer in many small pieces, called **[deltas](glossary.md#delta)**. This chapter builds the code that glues those pieces back into one message.
 

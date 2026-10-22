@@ -16,7 +16,7 @@ flowchart LR
 
 *This chapter adds `agent/compaction.py` (pure helpers, in `agent`) and wires it into the `session` layer (both marked).*
 
-Big picture of Part 4: [part-4-session](part-4-session.md).
+Big picture of Part 4: [part-4-session](13-0-part-4-session.md).
 
 Code in this chapter (commit `2fc2776`):
 

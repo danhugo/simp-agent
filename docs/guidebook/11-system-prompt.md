@@ -33,7 +33,7 @@ Current date: 2026-10-13
 Current working directory: /work/app
 ```
 
-Big picture of Part 3: [part-3-coding](part-3-coding.md).
+Big picture of Part 3: [part-3-coding](09-0-part-3-coding.md).
 
 Code in this chapter (commit `2fc2776`):
 

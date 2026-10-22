@@ -11,7 +11,7 @@ flowchart LR
     ai --> agent["agent ★ loop (this chapter)"] --> coding --> session --> plugins --> testing
 ```
 
-Big picture of Part 2: [part-2-agent](part-2-agent.md).
+Big picture of Part 2: [part-2-agent](05-0-part-2-agent.md).
 
 Part 1 finished the `ai` [layer](glossary.md#layer). We can now send a [context](glossary.md#context) to any model with `ai.stream` ([04](04-label-test.md)) and get back one `AssistantMessage` ([03](03-parse.md)). In tests, `FakeProvider` plays the model ([04](04-label-test.md#testing-the-pipeline-without-a-real-model)).
 
