@@ -3,6 +3,7 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 ## 2026-10-22
+- Part 2 big picture: removed the "Ann" character and the phone-a-friend story. Now a plain setting: "the user asks the agent: What is in README.md?", then what really happens step by step. Facts, structure and Reader3 fixes kept.
 - Part 2 big picture: fixed Reader3 notes (define "the agent", "system prompt", "checks the arguments"; plain meaning of `ai.stream()`; sketch label on the loop code; view is "(almost)" the whole history).
 - Part 2 big picture rewritten story first: Ann asks "What is in README.md?", the phone-a-friend idea, the 4-step loop + 5-line pseudocode, a where/who/what walk-through (prompt, history, view, tool call, tool result, events, stop), one short story per chapter 05-08; picture and tables moved to "Map for later". Stop example fixed (error result before the aborted message); compaction/session hints removed from the example. Glossary: new "History". (checked at `f89999b`)
 - ch24: Problem told as a story (Alice and Bob, many sessions per user; old "one session per user" fixed); steps 3-4 point to the real code instead of repeating it; sandbox slot defined at Step 5; "Real code" lines always before the code block; new setsid/pid worked example (`4711` → `kill -9 -- -4711`). (checked at `6070f41`)
