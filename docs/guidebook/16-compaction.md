@@ -50,71 +50,88 @@ It keeps the call small. It breaks badly:
 3. **Counting messages is not counting tokens.** 20 small messages are fine; 20 file reads are not.
 4. **History is lost.** If we cut `agent.messages` itself, the saved session loses data too.
 
-## Step by step: from naive to real
-
-We fix the four problems one at a time. Each step is small.
-
-**Step 0: naive.** `messages[-keep:]`. Fast, but it forgets the task and can break pairs.
-
-**Step 1: count tokens, not messages.** Fixes problem 3.
-
-```text
-FUNCTION estimate(message):
-    n = number of characters in the message
-    RETURN n / 4                          // about 4 characters per token
-```
-Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `estimate`
-
-A rough guess: 4 characters is about 1 token. Now "too big" means tokens, so 20 file reads count as big.
-
-**Step 2: decide when, using the window.** Still problem 3.
-
-```text
-FUNCTION should_compact(tokens, model, settings):
-    RETURN settings.enabled
-       AND tokens > model.context_window - settings.reserve_tokens
-```
-Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `should_compact`
-
-We act before the limit, not at it. `reserve_tokens` leaves room for the reply and the summary.
-
-**Step 3: cut only on a user or assistant message.** Fixes problem 2.
-
-```text
-ok = every index j after start WHERE messages[j] is a user or assistant message
-before = the indexes in ok that are at or before i    // safe cut points
-```
-Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `find_cut`
-
-`start` is the `first_kept_index` of the last compaction (0 if there was none). `i` is where the walk back stopped: `find_cut` starts at the end and goes back until it has about `keep_recent_tokens`. Then it moves the cut to a safe message. A tool result is never the first kept message, so it never loses its call.
-
-**Step 4: summarize the old part instead of dropping it.** Fixes problem 1.
-
-```text
-summary = WAIT for summarize(old messages, previous summary)   // a model call
-```
-Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `summarize`
-
-The model writes a summary in a fixed format. The first section lists every user request, so the task is not lost.
-
-**Step 5: append a marker, do not cut history.** Fixes problem 4.
-
-```text
-RETURN CompactionEntry(summary + list of read and modified files, cut, read, mod)
-```
-Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `compact`
-
-`compact` returns a `CompactionEntry`. The session appends it. `build_view` uses it to make the smaller list for the model. Full history stays in memory and in the store.
-
-**Step 6: be exact about files, and incremental.** The model can forget details, so code adds `<read-files>` and `<modified-files>`. Next time, `summarize` gets only the new old messages plus the `previous` summary, so we never re-read old text.
-
-**Step 7: wire it in the session.** `_prepare` runs before every model call, checks `should_compact`, and returns `build_view(...)`. The sections below show the real code for each step.
-
 ## Real design
 
 The idea: when the history is near the limit, ask the model to **summarize** the old part. Keep the summary and the recent messages. This is **[compaction](glossary.md#compaction)**.
 
+Each naive problem gets one fix. Each fix has its own section below:
+
+| Problem | Fix | Section |
+|---|---|---|
+| 3. counting messages | count tokens, and act a bit before the limit | [estimate_tokens and should_compact](#estimate_tokens-and-should_compact-when) |
+| 2. broken pairs | cut only on a user or assistant message | [find_cut](#find_cut-where) |
+| 1. forgets the task | summarize the old part; the first section lists every user request | [summarize](#summarize-incremental) |
+| 4. history lost | append a marker; change only the view | [CompactionEntry and build_view](#compactionentry-and-build_view-history-stays-append-only) |
+
 All the pure logic is in `packages/simp_agent/src/simp_agent/agent/compaction.py`. It knows nothing about sessions, so it can be tested alone (layer rule, [00](00-overview.md)).
+
+### The whole thing on one example
+
+First the OUT, so you know where we are going. The fizzbuzz session has 10 messages. Token counts use the rough rule "4 characters = 1 token" (next sections). We keep about 5000 recent tokens (`keep_recent_tokens = 5000`).
+
+| index | message | tokens |
+|---|---|---|
+| 0 | User: "write fizzbuzz.py that prints 1 to 15" | 10 |
+| 1 | Assistant: tool call `write(path="fizzbuzz.py", ...)` | 60 |
+| 2 | Tool result: "Wrote fizzbuzz.py" | 5 |
+| 3 | User: "add tests and run them" | 6 |
+| 4 | Assistant: tool call `write(path="test_fizzbuzz.py", ...)` | 800 |
+| 5 | Tool result: "Wrote test_fizzbuzz.py" | 5 |
+| 6 | Assistant: tool call `bash(command="pytest")` | 15 |
+| 7 | Tool result: pytest output (19 960 characters) | 4990 |
+| 8 | Assistant: "Test 15 failed. I must fix the FizzBuzz case." | 15 |
+| 9 | User: "go ahead" | 3 |
+
+**1. Find the cut.** Walk back from the end and add up tokens until we have 5000:
+
+```text
+i=9  total=3
+i=8  total=18
+i=7  total=5008   >= 5000, stop. i=7 is a tool result.
+```
+
+We must not start the kept part with a tool result: its call (index 6) would be cut away. So the cut moves back to the nearest user or assistant message at or before 7. That is index 6. **cut = 6.**
+
+**2. Summarize the old part.** Messages 0..5 go to the model as one text. The model answers with a summary in a fixed format. Code adds the file lists, taken from the `write` calls:
+
+```text
+## User Requests (chronological)
+1. Write fizzbuzz.py that prints 1 to 15.
+2. Add tests and run them.
+
+## Goal
+fizzbuzz.py works and its tests pass.
+...
+
+<modified-files>
+fizzbuzz.py
+test_fizzbuzz.py
+</modified-files>
+```
+
+(The real summary has all the sections: Progress, Key Decisions, Next Steps and more.)
+
+**3. Append a marker.** History gets one new item at index 10:
+
+```text
+CompactionEntry(summary="## User Requests ...", first_kept_index=6,
+                read_files=[], modified_files=["fizzbuzz.py", "test_fizzbuzz.py"])
+```
+
+Messages 0..9 stay in history and on disk.
+
+**4. What the model sees** on the next call:
+
+```text
+[0] User: "The conversation history before this point was compacted into the following summary:
+          <summary> ## User Requests ... </summary>"
+[1] message 6   (bash call)
+[2] message 7   (its result)
+[3] message 8
+[4] message 9
+```
+
+5 messages instead of 10, and about 5000 + summary tokens instead of about 5900. On a real one-hour session the old part is much bigger, so the saving is much bigger too. The next sections build each step.
 
 ### CompactionEntry and build_view: history stays append-only
 
@@ -173,11 +190,12 @@ FUNCTION should_compact(tokens, model, settings):
     RETURN settings.enabled AND tokens > model.context_window - settings.reserve_tokens
 ```
 
-Key idea: use the real token count from the provider when we have it; guess only the rest. Limit: chars/4 is only a rough guess.
-
-- `estimate` is a rough guess: 4 characters ≈ 1 token.
-- `estimate_tokens` prefers the real number. The last good assistant reply has `usage` from the provider ([03](03-parse.md)): input + output tokens of that call. Add the guess only for messages after it. It looks only **after** the last `CompactionEntry`, because usage from before was measured on the old, bigger view.
-- `should_compact` is true when tokens pass `context_window - reserve_tokens`.
+- `estimate` is a rough guess: 4 characters ≈ 1 token. It is cheap, but it can be off.
+- `estimate_tokens` prefers the real number, because the provider counted it exactly. The last good assistant reply has `usage` from the provider ([03](03-parse.md)).
+- `usage.input + usage.output` is the size of that whole call. Only the messages after that reply are guessed.
+- It looks only **after** the last `CompactionEntry`. Why: usage from before was measured on the old, bigger view.
+- Error and aborted replies are skipped. Why: their usage is often zero or incomplete.
+- `should_compact` is true when tokens pass `context_window - reserve_tokens`. We act before the limit, not at it, so there is room for the reply and the summary.
 
 `CompactionSettings` has three fields: `enabled=True`, `reserve_tokens=16384` (room left for the reply and the summary), `keep_recent_tokens=20000` (how much recent history to keep word for word).
 
@@ -198,9 +216,10 @@ FUNCTION find_cut(messages, start, keep_tokens):
     RETURN none                                // nothing safe to cut
 ```
 
-Key idea: the cut is always on a user or assistant message, so a tool call and its result stay together. Limit: one huge turn cannot be cut.
-
-Walk back from the end until about `keep_tokens` are kept. Then move the cut to a user or assistant message at or before that point. A cut **never** lands on a tool result, so a tool call and its result stay together. `start` is the previous entry's `first_kept_index`, so a new cut is always after the old one. The `ponytail:` comment names a known limit: one single huge turn cannot be cut.
+- Walk back from the end until about `keep_tokens` are kept. `i` is where the walk stops.
+- Move the cut to a user or assistant message at or before `i`. A cut **never** lands on a tool result, so a tool call and its result stay together. In the example, `i=7` became `cut=6`.
+- `start` is the `first_kept_index` of the last compaction (0 if none). So a new cut is always after the old one.
+- Limit: if one turn alone is bigger than the window, we cannot cut inside it.
 
 ### serialize_conversation: what the summarizer reads
 
@@ -223,7 +242,10 @@ FUNCTION serialize_conversation(messages):
 
 Key idea: one plain text block, not a chat, so the model summarizes instead of answering.
 
-Why one text and not the real messages? If you send the chat as chat, the model tends to **continue** it ("Sure, I will add tests now"). As one block of text inside `<conversation>` tags, with a system prompt that says "Do NOT continue the conversation", it summarizes. Tool results are cut to `TOOL_RESULT_MAX = 2000` characters and tool arguments to `ARG_MAX = 500`: the summary needs what happened, not every byte of a file. Thinking is skipped.
+- Why one text? If we send the chat as chat, the model tends to **continue** it ("Sure, I will add tests now").
+- As one block inside `<conversation>` tags, with a system prompt that says "Do NOT continue the conversation", it summarizes.
+- Tool results are cut to `TOOL_RESULT_MAX = 2000` characters and tool arguments to `ARG_MAX = 500`. Why: the summary needs what happened, not every byte of a file.
+- Thinking is skipped. Why: it is big, and the text and tool calls already show the result.
 
 ### summarize: incremental
 
@@ -265,7 +287,11 @@ FUNCTION file_lists(messages, prev):
 
 Key idea: file lists come from code, not from the model, so they are exact.
 
-From the `path` argument of `read`, `write` and `edit` calls ([10](10-coding-tools.md)), the code builds two lists: files only read, and files changed. They merge with the previous entry's lists. `format_files` appends them to the summary as `<read-files>` and `<modified-files>` blocks. The model may lose details in a summary, but it will always know that `fizzbuzz.py` was modified. This is done in code, not by the model, so it is exact.
+- The code reads the `path` argument of `read`, `write` and `edit` calls ([10](10-coding-tools.md)).
+- It builds two lists: files only read, and files changed. A changed file is not also listed as read.
+- The lists merge with the previous entry's lists, so old files are not forgotten.
+- `format_files` appends them to the summary as `<read-files>` and `<modified-files>` blocks (see the example above).
+- Why in code: a summary may lose details, but the model always knows that `fizzbuzz.py` was modified.
 
 ### compact: putting it together
 
@@ -402,7 +428,13 @@ uv run pytest packages/simp_agent/tests/test_compaction_serialize.py packages/si
 
 1. **Try `find_cut` by hand.** Build a list: `UserMessage("a"*4000)`, an `AssistantMessage` with a `ToolCall`, a `ToolResultMessage` with `"b"*4000`, then `UserMessage("c"*4000)`. Call `find_cut(msgs, 0, keep)` for many `keep` values. Check the result is never the tool result index. *Hint:* copy the loop in `test_cut_never_on_tool_result` in `test_queues_compaction.py`.
 
-2. **Compaction starts only above the limit.** Write `run(n_chars)`. It makes an `AgentSession` with `Model(context_window=10000)` and sets `s.compaction.reserve_tokens = 1000`, so the limit is 9000 tokens. Set `s.agent.messages` to `[UserMessage("x" * n_chars), AssistantMessage([TextContent("y")])]`. Use `FakeProvider(AssistantMessage([TextContent("SUM")]), DONE)`, subscribe to events and call `prompt("hi")`. Return three things: was a `compaction_start` event sent, is a `CompactionEntry` in `messages`, and how many model calls were made. Try `run(400)` (about 100 tokens) and `run(40000)` (about 10000 tokens). You should get `(False, False, 1)` and `(True, True, 2)`. Why would `Model(context_window=10000)` with the default settings always compact? *Hint:* the default `reserve_tokens` is 16384. See `compact_agent` and `test_below_threshold_no_compaction` in the same file.
+2. **Compaction starts only above the limit.** Write `run(n_chars)`:
+   - Make an `AgentSession` with `Model(context_window=10000)` and set `s.compaction.reserve_tokens = 1000`. The limit is now 9000 tokens.
+   - Set `s.agent.messages = [UserMessage("x" * n_chars), AssistantMessage([TextContent("y")])]`.
+   - Use `FakeProvider(AssistantMessage([TextContent("SUM")]), DONE)`, subscribe to events, call `prompt("hi")`.
+   - Return: was `compaction_start` sent, is a `CompactionEntry` in `messages`, how many model calls were made.
+
+   `run(400)` (about 100 tokens) should give `(False, False, 1)`. `run(40000)` (about 10000 tokens) should give `(True, True, 2)`. Question: why would `Model(context_window=10000)` with the default settings always compact? *Hint:* the default `reserve_tokens` is 16384. See `compact_agent` and `test_below_threshold_no_compaction` in the same file.
 
 ## Recap
 

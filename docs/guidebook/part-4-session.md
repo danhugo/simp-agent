@@ -66,7 +66,7 @@ flowchart LR
 | [PluginAPI](glossary.md#pluginapi) | `register_tool`, `add_prompt_section`, `append_entry`, `send_message`, `set_model`, `abort`, `get_messages`, `emit`, … | What a plugin may do with its session. |
 | [Prompt section](glossary.md#prompt-section) | `id` → (`order`, string or function) | One part of the system prompt, rebuilt every turn. |
 | [CustomEntry](glossary.md#custom-entry) | `type`, `data` | Saved and replayed on resume, never sent to the LLM. |
-| [CompactionEntry](glossary.md#compactionentry) | `summary`, `first_kept_index`, `read_files`, `modified_files` | Marker in history: "everything before this index is replaced by this summary". |
+| [CompactionEntry](glossary.md#compaction-entry) | `summary`, `first_kept_index`, `read_files`, `modified_files` | Marker in history: "everything before this index is replaced by this summary". |
 | [CompactionSettings](glossary.md#compaction) | `enabled`, `reserve_tokens`, `keep_recent_tokens` | When to compact, and how much recent history to keep. |
 
 ## One worked example: "now add tests" the next day
