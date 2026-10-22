@@ -77,7 +77,13 @@ flowchart LR
 
 ## Errors are plain text
 
-Providers turn every failure into `AssistantMessage.error`, a string. When our own code knows the cause, it also sets `error_kind` (`fatal`, `budget` or `policy`), like the missing API key in ch [01](01-pick-clean.md#1-pick-_providers-register_provider). Later, the session reads that string to choose: shrink the history and try again ([context overflow](glossary.md#context-overflow), ch [17](17-overflow.md)), wait and retry (ch [15](15-retry.md)), or give up. Nothing in this chapter needs that yet.
+Providers turn every failure into `AssistantMessage.error`, a string. When our own code knows the cause, it also sets `error_kind` (`fatal`, `budget` or `policy`), like the missing API key in ch [01](01-pick-clean.md#1-pick-_providers-register_provider). For example:
+
+```text
+AssistantMessage(stop_reason="error", error="no API key for provider openai", error_kind="fatal")
+```
+
+The three kinds mean: `fatal` — trying again cannot help (no API key); `budget` — the user's spend limit is used up (the server sets it, ch [23](23-limits.md)); `policy` — the request is not allowed. The session reads `error_kind` through `ai.is_retryable`: all three kinds are never retried. Later, the session reads that string to choose: shrink the history and try again ([context overflow](glossary.md#context-overflow), ch [17](17-overflow.md)), wait and retry (ch [15](15-retry.md)), or give up. Nothing in this chapter needs that yet.
 
 ## Testing the pipeline without a real model
 

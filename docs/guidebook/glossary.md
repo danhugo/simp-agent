@@ -2,6 +2,9 @@
 
 Terms are added here as chapters define them. Each entry links to the chapter that defines it.
 
+## choices
+The list of answers in one Chat Completions chunk. We ask for one answer, so we read `choices[0]`; each choice has `delta`, `finish_reason` and `index`. The last chunk may have `choices = []` and carry only `usage`. Home: [03](03-parse.md#problem-and-goal).
+
 ## Coding agent
 A program that takes a task in plain words, asks a language model what to do, runs the tools the model asks for (read, write, run commands), and repeats until done. Home: [00](00-overview.md).
 
