@@ -138,17 +138,20 @@ Why check `ctx.cancel`? When the user presses Stop, a running command is killed,
 
 Now the missing file. `read` raises `FileNotFoundError`, and the model receives a result like `FileNotFoundError: [Errno 2] No such file or directory: '.../README.md'`. The run goes on, and the model can react: it can list the folder to look for the right file, or tell the user that there is no README.md.
 
-**Step 4 — check `stop_reason`.** After each model call, the loop looks at *why* the model stopped, before it executes any tool. Two values mean "stop the run now": `error` (the provider failed) and `aborted` (the user stopped the run). In both cases there is nothing useful to execute, so the loop ends on purpose.
+**Step 4 — check `stop_reason`.** After each model call, before any tool executes, the loop checks why the model stopped. `error` (the provider failed) and `aborted` (the user pressed Stop) both mean there is nothing useful to execute, so the loop ends on purpose.
 
-This is a good place to say exactly when a [run](#problem) ends. (Remember, a run is one call to the loop: `agent_loop()` here, `agent.prompt()` later.) The loop ends in only three ways. First, the model's message has `stop_reason` `error` or `aborted`. Second, the cancel flag is set after the tools of a turn have executed (that is [06](06-events-abort.md)). Third, the normal way: the model asked for no tools, and there is no steering or follow-up message waiting ([07](07-steering.md)).
+**How Stop works.** Pressing Stop does not send `aborted`. It only sets the **[cancel flag](glossary.md#abort)**, an `asyncio.Event` that the `Agent` keeps (`agent.abort()` sets it). The model stream, the executing tool (`ctx.cancel`) and the loop all watch it, and whoever is running reacts:
+- Stop while the model answers: the stream closes and the message gets `stop_reason` `aborted`.
+- Stop while a tool executes: the model already finished, so no message is `aborted` yet. The tool returns "Interrupted by the user", the remaining calls of that turn are skipped (they get no result), and after the tools the loop adds an `aborted` message itself.
 
-What is the cancel flag? It is one `asyncio.Event` that the `Agent` keeps ([06](06-events-abort.md) calls it the [cancel event](glossary.md#abort)). When the user presses Stop, the app calls `agent.abort()`, and that sets the flag. Three places watch it: the model stream, the tool that is executing (it gets the flag as `ctx.cancel`), and the loop itself. So both of the first two ways mean "the user pressed Stop". The difference is when Stop comes. Remember that a turn is one model call plus the tools it asked for.
+The flag says "stop now"; the `aborted` label in the history records "we stopped", so the app knows why the run ended. Details in [06](06-events-abort.md).
 
-If Stop comes while the model is still answering, the stream closes and the message gets `stop_reason` `aborted`, so the loop ends by the first way. If Stop comes later, for example while a tool executes, the model already finished, so its `stop_reason` is not `aborted`. A tool that listens to `ctx.cancel` stops, and its result says "Interrupted by the user". The loop executes no more tool calls of that turn (they get no result at all). After the tool loop, the loop sees the flag, adds an `aborted` message and calls `_end`, instead of asking the model again. That is the second way. The full story is in [06](06-events-abort.md).
+**When a run ends.** A [run](#problem) (one call to the loop) ends in only three ways:
+1. the message has `stop_reason` `error` or `aborted`;
+2. the cancel flag is set after a turn's tools executed;
+3. normally: the model asks for no tools, and no steering or follow-up message is waiting ([07](07-steering.md)).
 
-So why do we need both the flag and `aborted`? Pressing Stop does not send `aborted`. It only sets the flag (`agent.abort()` calls `_cancel.set()`). Whoever is running at that moment sees the flag and reacts: while the model streams, `_stream` closes the stream and `_llm_turn` writes `stop_reason` `aborted` on the message; while a tool executes, no message has that label yet, so after the tool part the loop makes one itself (`_aborted()`). The flag is the live signal that everyone sees at once. `aborted` is the label saved in the history, so the app and the UI later know the run ended because the user pressed Stop. In short: the flag says "stop now"; the label records "we stopped".
-
-The first two go through a small helper, `_end`. It sends the last two events, `turn_end` and `agent_end`, and returns the list of new messages. The third sends `agent_end` at the end of the loop.
+Ways 1 and 2 call `_end`, which sends `turn_end` and `agent_end` and returns the new messages. Way 3 sends `agent_end` at the end of the loop.
 
 ```text
 IF msg.stop_reason is "error" or "aborted":
