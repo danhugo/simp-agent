@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-22
 - ch24: Problem told as a story (Alice and Bob, many sessions per user; old "one session per user" fixed); steps 3-4 point to the real code instead of repeating it; sandbox slot defined at Step 5; "Real code" lines always before the code block; new setsid/pid worked example (`4711` → `kill -9 -- -4711`). (checked at `6070f41`)
+- Context fixes: ch00 running examples now match the chapters (README, a.txt, shape.py; fizzbuzz as an eval in ch12, followed through from ch13); ch20 explains the title call (`title_task`, `SessionTitle`), glossary "Title call", linked from 23/26; ch22/24/27 say server slots (`DEFAULT_PLUGINS`) are not the agent plugins of ch14. (checked at `0b51b45`)
 - ch16: merged "Step by step" into Real design (taught once); added full worked example (10 messages → find_cut=6 with token counts → history → model view); removed repeats; glossary duplicate `CompactionEntry` entry removed, part-4 link fixed to `#compaction-entry`. Checked against `agent/compaction.py`.
 
 ## 2026-10-21

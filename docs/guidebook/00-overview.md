@@ -174,9 +174,15 @@ Which chapter adds which feature, and in which layer it lives:
 | Web client | 25 | `apps/web` |
 | System tests, deploy | 26 | `apps/web/e2e`, `deploy/` |
 
-## The running example
+## The running examples
 
-Every chapter uses the same small task, taken from the real eval file `evals/tasks/fizzbuzz.toml`:
+Each Part uses small examples that fit its layer:
+
+- Part 1 (01–04) sends one prompt about a `README` to a model.
+- Part 2 ([05](05-agent-loop.md)) has the loop read and write `a.txt`.
+- Part 3 ([10](10-coding-tools.md)) edits `a.txt` and `shape.py` with the real tools; [12](12-evals.md) then meets fizzbuzz as an eval task.
+
+From Part 4 on, the book follows one task, taken from the real eval file `evals/tasks/fizzbuzz.toml`:
 
 ```toml
 prompt = """Write fizzbuzz.py with a function fizzbuzz(n) that returns a list of strings for 1..n:
@@ -187,9 +193,7 @@ The same file has a `check` that imports `fizzbuzz` and asserts the result, so w
 
 We follow this task as the system grows:
 
-- In Part 1 it is just a `UserMessage` sent to a model.
-- In Part 2 the model answers with a tool call, and the loop runs it.
-- In Part 3 a real `write` tool creates `fizzbuzz.py`, and the eval checks it.
+- In Part 3 the eval ([12](12-evals.md)) runs it and checks `fizzbuzz.py`.
 - In Part 4 the conversation is saved and can be resumed.
 - In Part 5 you type the task in a terminal or a browser.
 

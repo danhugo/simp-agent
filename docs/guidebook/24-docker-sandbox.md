@@ -130,7 +130,7 @@ class Sandbox(Protocol):
 - `close` frees running resources. Files stay.
 - `remove` deletes the files when the session is deleted.
 
-The class to use is picked from settings, like the store and auth slots ([22](22-store-auth.md)):
+The class to use is picked from settings, like the store and auth slots (`DEFAULT_PLUGINS`, [22](22-store-auth.md); not the agent plugins of [14](14-plugins.md)):
 
 ```python
 DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_server.store:SqliteStore",

@@ -119,7 +119,7 @@ Real code: [budget.py](../../apps/server/src/simp_server/budget.py) — `guard`
 stream_fn = budget.guard(stream_fn, check)   // check() returns nothing, or a reason
 ```
 
-Why: the agent, retries and the title call all use `stream_fn`. One wrapper covers all. The refusal is a normal `error` message, so the loop needs no new code.
+Why: the agent, retries and the [title call](glossary.md#title-call) ([20](20-server-run.md#the-run)) all go through `guarded_stream`, the `stream_fn` wrapper. One wrapper covers all. The refusal is a normal `error` message, so the loop needs no new code.
 
 **Step 4 — add the kill switch to the check.** One more reason to refuse:
 
