@@ -307,22 +307,29 @@ That is the whole `parse`. Run the six chunks from the top through these steps a
 
 ## The other two vendors
 
-Same plan, same events, same kind of final message. Only the input is different.
+The goal does not change. Responses and Anthropic must give the **same events** and the **same `AssistantMessage`** as Chat Completions. Only the wrapping of the pieces is different.
+
+Where each thing comes from, in the three APIs:
+
+| What we need | Chat Completions | OpenAI Responses | Anthropic (through the SDK) |
+|---|---|---|---|
+| a text piece | `choices[0].delta.content` | `response.output_text.delta` event | `text` event |
+| a tool-arg piece | `delta.tool_calls[i].function.arguments` | `response.function_call_arguments.delta` event | `input_json` event (`partial_json`) |
+| the end of a part | not sent; we guess it | `response.output_item.done` event | `content_block_stop` event |
+| the stop reason | `finish_reason` | `status` of `response.completed` / `incomplete` / `failed` | `stop_reason` of `get_final_message()` |
+| the usage | last chunk, `choices = []` | `usage` of `response.completed` | `usage` of `get_final_message()` |
 
 ### OpenAI Responses: named events
 
 Real code: [openai_responses.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_responses.py) — `parse`.
 
-**What is different.** Responses sends named [SSE](glossary.md#sse) events, and the answer is a list of [items](glossary.md#item-responses). Each item has a clear start (`response.output_item.added`) and end (`response.output_item.done`). So most of our hard work above disappears:
+Responses sends **[SSE](glossary.md#sse)** events. SSE (server-sent events) is a simple way for a server to send many small messages over one open HTTP answer. Here, each event has a name in `type`. The answer is a list of [items](glossary.md#item-responses). One real event looks like this:
 
-- **No matching by index.** Items come one after another, so `parse` keeps just one "current" part.
-- **Clear ends.** `thinking_end` and `toolcall_end` come from the item's `.done` event, not guessed.
-- **Full arguments at the end.** The `.done` event carries the whole `arguments` string, so we parse that (and fall back to the pieces we added up).
-- **The `.done` item wins.** For text and thinking too, the full text in the `.done` item replaces what we added up from pieces.
-- **Stop reason from status.** `response.completed` → `tool_use` if the message has a `ToolCall`, else `stop`; `incomplete` because of `max_output_tokens` → `length`; anything else (`failed`, or an `error` event) → `error`. No `response.completed` at all → `error` "Stream ended without response.completed".
-- **Two ids.** A tool call item has a `call_id` and an item id (`fc_...`). We keep both as `ToolCall.id = "call_1|fc_1"`; ch 02 explains why ([Trick 1](02-translate-send.md#responses-to_input)).
+```json
+{"type": "response.output_text.delta", "item_id": "msg_1", "output_index": 0, "content_index": 0, "delta": "Hi"}
+```
 
-A short text answer "Hi!" first:
+**Example 1: the text answer "Hi!"**
 
 ```text
 response.output_item.added       item: {type: message, id: "msg_1"}   → new TextContent (no event)
@@ -332,7 +339,7 @@ response.output_item.done        item: {..., content: [{text: "Hi!"}]} → text 
 response.completed               status: completed                    → stop_reason stop, done
 ```
 
-The same `read` call:
+**Example 2: the same `read` call**
 
 ```text
 response.output_item.added            item: {type: function_call, id: "fc_1", call_id: "call_1", name: "read"}
@@ -345,23 +352,36 @@ response.completed                    status: completed, usage: {input_tokens: 7
                                         → stop_reason tool_use, done
 ```
 
+**The rules.** Each item has a clear start (`response.output_item.added`) and a clear end (`response.output_item.done`). So most of the hard work of Chat Completions goes away:
+
+- **No matching by index.** Items come one after another, so `parse` keeps just one "current" part.
+- **Clear ends.** `thinking_end` and `toolcall_end` come from the item's `.done` event. We do not guess them.
+- **Full arguments at the end.** The `.done` event carries the whole `arguments` string, so we parse that. If it is empty, we use the pieces we added up.
+- **The `.done` item wins.** For text and thinking too, the full text in the `.done` item replaces what we added up from pieces.
+- **Stop reason from status.** `response.completed` → `tool_use` if the message has a `ToolCall`, else `stop`. `incomplete` because of `max_output_tokens` → `length`. Anything else (`failed`, or an `error` event) → `error`. No `response.completed` at all → `error` "Stream ended without response.completed".
+- **Two ids.** A tool call item has a `call_id` and an item id (`fc_...`). We keep both as `ToolCall.id = "call_1|fc_1"`. Ch 02 explains why ([Trick 1](02-translate-send.md#responses-to_input)).
+
 ### Anthropic: the SDK builds the message
 
 Real code: [anthropic.py](../../packages/simp_agent/src/simp_agent/ai/providers/anthropic.py) — `parse` and `stream`.
 
-**What is different.** The `anthropic` SDK's `client.messages.stream(...)` already reads the raw events and builds the full message for us. It also gives easy helper events: `text`, `thinking`, `signature`, `input_json` (with `partial_json`). It also passes on the raw `content_block_start` (a new part begins: text, thinking or tool call) and `content_block_stop` (that part is complete). So `parse` only **forwards** events for the UI; it never parses JSON or maps stop reasons itself.
+Here we use the **[SDK](glossary.md#sdk)** (software development kit): the official Python library `anthropic`, made by the vendor. Its `client.messages.stream(...)` reads the raw SSE events for us. It gives back the raw events plus easy helper events: `text`, `thinking`, `signature` and `input_json`. One real raw event looks like this:
 
-**Why we still keep partial text.** `parse` adds `text` and `thinking` pieces to `msg` as they come. If the run is aborted mid-stream, that partial message is all we have.
+```json
+{"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "toolu_1", "name": "read", "input": {}}}
+```
 
-**At the end** `stream` calls `get_final_message()` and takes from it the complete content (including signed thinking blocks), `stop_reason` and `usage`. Then it yields `done`.
+**Example 1: the text answer "Hi!"**
 
-- `stop_reason` is mapped: `end_turn`/`stop_sequence` → `stop`, `tool_use` → `tool_use`, `max_tokens` → `length`.
-- An unknown word falls back to `stop`. Why: the SDK already checked the stream, so it did not break.
-- `usage` has only `input` and `output`, no `reasoning`.
+```text
+content_block_start  {type: text}                     → new TextContent (no event)
+text                 text: "Hi"                       → text_delta "Hi"
+text                 text: "!"                        → text_delta "!"
+content_block_stop   (text)                           → (no event)
+get_final_message()  stop_reason: end_turn            → stop_reason stop, done
+```
 
-Here `start` is sent by `stream`, not by `parse`.
-
-The same `read` call:
+**Example 2: the same `read` call**
 
 ```text
 content_block_start  {type: tool_use, id: "toolu_1", name: "read"}  → toolcall_start "read"
@@ -370,6 +390,16 @@ input_json           partial_json: "th\": \"a\"}"                    → toolcal
 content_block_stop   (tool_use)                                      → toolcall_end
 get_final_message()  stop_reason: tool_use, usage: {7, 3}            → done
 ```
+
+**The rules.** Two jobs are split between two functions:
+
+- **The SDK builds the final message.** At the end, `stream` calls **[`get_final_message()`](glossary.md#get_final_message)**. This SDK method returns the full answer that the SDK built from all the events. `stream` takes from it the content, `stop_reason` and `usage`, puts them on `msg`, and yields `done`. So `parse` never parses JSON and never maps stop reasons.
+- **`parse` sends events to the UI and keeps partial text.** It turns SDK events into our events. It also adds `text` and `thinking` pieces to `msg` as they come. Why both? If the run is aborted in the middle, `get_final_message()` is never called, and the partial `msg` is all we have. If the run ends normally, the SDK content replaces it. So the two do not fight: one is for the normal end, one is for an abort.
+- **Signed thinking comes from the SDK.** **[Signed thinking](glossary.md#signed-thinking)** is a thinking block with a `signature` from Anthropic. We must send it back unchanged in the next request. The final content from `get_final_message()` has the full signed blocks.
+- **`start` is sent by `stream`, not by `parse`.** `stream` makes `msg` first, yields `start`, and then passes `msg` into `parse`. So `stream` still holds `msg` when something fails: its `except` puts the error on the same `msg` and yields `error`. Also, `start` is sent even if the connection fails before any event.
+- `stop_reason` is mapped: `end_turn`/`stop_sequence` → `stop`, `tool_use` → `tool_use`, `max_tokens` → `length`.
+- An unknown word falls back to `stop`. Why: the SDK already checked the stream, so it did not break.
+- `usage` has only `input` and `output`, no `reasoning`.
 
 ## Test
 
