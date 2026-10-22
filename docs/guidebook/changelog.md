@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-22
 
+- ch05 "naive → real" rewritten as prose with one running example ("What is in README.md?"): each failure told as a story, each fix shows the text the model now receives; happy path, KeyError, provider, err()/is_error, JSON Schema, LoopConfig, FakeProvider, ctx/on_update explained at first use; ctx introduced before ctx.cancel; summary table at the end. "Stop rule"/"Errors end the run" bullets turned into prose. (checked at `d90fc58`)
 - ch05: "run" now defined at first use (Problem); Step 4 links back and lists the 3 ways the loop stops.
 - ch05 Step 4: "end the run" replaced by what `_end()` really does; `length` check shown inside the tool-call loop (it does not stop the loop). New glossary "Run", linked at first use in 01, 03, 05-0, 05, 06, 07, 08.
 - Part 2 big picture: new picture `img/part-2-loop.svg` under "The core loop in 4 steps": the 4 steps in a circle with the README.md data on each arrow, chapter tags (05, 06, 07, 08) and the Agent box. The old 9-block picture stays under "Map for later" (labels match the block table).

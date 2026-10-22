@@ -54,23 +54,33 @@ FUNCTION naive_loop(system_prompt, messages, tools, model):
             ADD ToolResultMessage(call.id, call.name, text) to messages
 ```
 
-It works for the happy path. Where it breaks:
+It works for the **happy path**: the case where nothing goes wrong. Let us follow one example through it and see where it breaks. The user asks: *"What is in README.md?"* We have one tool, `read`, which takes `{"path": ...}` and returns the file's text.
 
-- **Unknown tool** → `KeyError`, the [run](glossary.md#run-agent) dies.
-- **Bad arguments** (missing field, wrong type) → the tool crashes in a strange place, or worse, does the wrong thing.
-- **Tool raises** → the exception ends the run. The model never learns what went wrong, so it cannot try another way.
-- **Provider error** → `msg.stop_reason == "error"` has no tool calls, so we return. That is fine, but by luck, not by design.
-- **Answer cut off** (`stop_reason == "length"`) → the last tool call's arguments may be half-written JSON. We would run it anyway.
-- **No way to test** → `ai.stream` is hard-coded, so a test needs a real model.
-- **The tool knows nothing** → no working folder, no way to stop it, no way to report progress.
+If all goes well, the model answers with a tool call `read({"path": "README.md"})`. The loop runs it, adds the file's text to the history, and calls the model again. Now the model has the text, so it writes a short summary with no tool calls, and the loop returns. Good. But models make mistakes, files go missing and networks fail. Here is what the naive loop does then.
 
-The real design fixes each of these.
+**The model mistypes the tool name.** Say the model asks for `raed` instead of `read`. The naive loop looks up `raed` in a Python dict. The name is not there, so Python raises a `KeyError` (the error a dict raises when a key is missing). Nobody catches it, so the whole program crashes. The user sees a stack trace and no answer. But the model could easily fix this itself, if someone told it "there is no tool `raed`".
+
+**The model sends bad arguments.** Now the name is right, but the arguments are `{}`, with no `path`. The naive loop calls `read({})` anyway. Inside the tool, `args["path"]` raises another `KeyError`. With a different tool it could be worse: the tool might not crash at all and just do the wrong thing.
+
+**The tool itself fails.** The arguments are fine, `{"path": "README.md"}`, but the file is not there. The tool raises `FileNotFoundError`. Again nothing catches it, and the run dies. The model never learns that the file is missing, so it never gets the chance to try another path.
+
+**The provider fails.** A **[provider](glossary.md#provider)** is the code that talks to one model vendor's API (Anthropic, OpenAI, and so on). Say the vendor's server is down. In our `ai` layer, `ai.stream` does not raise in that case: it returns an `AssistantMessage` with `stop_reason="error"` ([02](02-translate-send.md)). That message has no tool calls, so the naive loop says "no calls, so we are done" and returns. The result is correct, but by luck. The loop never looked at the error. It stopped only because an error message has no tool calls.
+
+**The answer is cut off.** Every model has a limit on how many tokens it may write. If it hits the limit in the middle of a tool call, the answer ends with `stop_reason="length"`, and the last call's arguments may be half-written, for example `{"path": "READ`. The naive loop does not check, and runs the call anyway. For `read` that is only an odd error. For a `write` tool it could save half a file.
+
+**We cannot test it.** The loop calls `ai.stream` by name, so every test needs a real model, a network and an API key. Tests would be slow, cost money, and give a different answer each time.
+
+**The tool knows nothing.** The tool gets only its arguments. It does not know the working folder, so `README.md` is looked up relative to wherever the program happened to start. It cannot see when the user presses Stop, so a long command keeps running. And it cannot report progress while it works.
+
+The real design fixes each of these, one step at a time. The big idea behind most of the fixes is the same: **an error becomes text that the model can read**, not an exception that kills the run.
 
 ## Step by step: from naive to real
 
-We fix the naive loop one problem at a time. Each step is small.
+We fix the naive loop one problem at a time, with the same README.md example. Each step is small. Steps 1 to 3 all live in one function, `run_tool`, which runs one tool call and never raises.
 
-**Step 1 — find the tool safely.** A dict lookup raises `KeyError`. We search the list and return an error result if the tool is missing:
+First, one small helper. When something goes wrong with a tool call, `run_tool` uses `err(text)` to build the answer. It makes a normal `ToolResultMessage` for that call, with the error text as its content and `is_error=True`. The `is_error` flag marks the result as a failure, so the provider and the UI can show it as one. The important part is that it is still a normal tool result. It goes into the history, and the model reads it on the next turn like any other result.
+
+**Step 1 — find the tool safely.** Instead of a dict lookup, we search the list of tools. If no tool has that name, we return an error result instead of crashing:
 
 ```text
 tool = FIND the tool in tools whose name is call.name, or nothing
@@ -78,65 +88,82 @@ IF tool is nothing:
     RETURN err("Tool <call.name> not found")
 ```
 
-The model reads "not found" and can pick a real tool. The run goes on.
+Back to the typo. The model asked for `raed`. The run does not crash any more. The history now holds a tool result with the text `Tool raed not found`. On the next turn the model reads it, sees its mistake, and calls `read({"path": "README.md"})`. The run goes on.
 
-**Step 2 — check the arguments.** The tool already has a JSON schema in `parameters`. We use it to check what the model sent:
+**Step 2 — check the arguments.** Each tool already describes its arguments with a **[JSON Schema](glossary.md#json-schema)** in its `parameters` field: a small JSON document that says "`path` is a string and it is required". The model uses this schema to know what to send. We use the same schema to check what it sent, with the `jsonschema` Python library, before the tool runs:
 
 ```text
-CHECK call.arguments against tool.parameters (JSON schema)   // jsonschema.validate
+CHECK call.arguments against tool.parameters    // jsonschema.validate
+IF the check fails:
+    RETURN err("Invalid arguments for <call.name>: <what is wrong>")
 ```
 
-Bad arguments now give a clear error like `'x' is a required property`, before the tool runs.
+So for `read({})` the tool never runs. The model gets the text `Invalid arguments for read: 'path' is a required property`. That is clear enough that on the next turn it sends `{"path": "README.md"}`.
 
-**Step 3 — catch tool errors.** We wrap `execute` in `try` and turn the exception into text:
+**Step 3 — catch tool errors.** We wrap the tool call in `try`, and turn any exception into text. The tool now also gets a second argument, `ctx`, its context. Step 6 explains `ctx` fully; here we only need one part of it, `ctx.cancel`, which is set when the user presses Stop.
 
 ```text
-IF tool.execute raised an error e:
+TRY:
+    RETURN ToolResultMessage(call.id, call.name, WAIT for tool.execute(call.arguments, ctx))
+IF it raised an error e:
     IF ctx.cancel is set: RETURN err("Interrupted by the user")
     ELSE: RETURN err("<error type>: <e>")
 ```
 
-`err` builds a `ToolResultMessage` with `is_error=True`. So the model learns what went wrong and can try another way.
+Why check `ctx.cancel`? When the user presses Stop, a running command is killed, and that also shows up as an exception. The model should hear "the user stopped this", not a confusing low-level error.
 
-**Step 4 — check `stop_reason`.** We stop on `error` or `aborted` on purpose, and we never run cut-off calls.
+Now the missing file. `read` raises `FileNotFoundError`, and the model receives a result like `FileNotFoundError: [Errno 2] No such file or directory: '.../README.md'`. The run goes on, and the model can react: it can list the folder to look for the right file, or tell the user that there is no README.md.
 
-(A [run](#problem) is one call to the loop, as defined in Problem.) The loop stops in only three ways: `error`/`aborted` (via `_end`), the cancel flag set after the tools (via `_end`), or no more tool calls, steering or follow-up (`agent_end` at the end).
+**Step 4 — check `stop_reason`.** After each model call, the loop looks at *why* the model stopped, before it runs any tool. Two values mean "stop the run now": `error` (the provider failed) and `aborted` (the user stopped the run). In both cases there is nothing useful to run, so the loop ends on purpose.
+
+This is a good place to say exactly when a [run](#problem) ends. (Remember, a run is one call to the loop.) The loop ends in only three ways. First, the model's message has `stop_reason` `error` or `aborted`. Second, the cancel flag is set after the tools of a turn ran (that is [06](06-events-abort.md)). Third, the normal way: the model asked for no tools, and there is no steering or follow-up message waiting ([07](07-steering.md)). The first two go through a small helper, `_end`. It sends the last two events, `turn_end` and `agent_end`, and returns the list of new messages. The third sends `agent_end` at the end of the loop.
 
 ```text
 IF msg.stop_reason is "error" or "aborted":
-    // stop the loop: call _end(send, msg, new), which sends
-    // turn_end and agent_end and returns the new messages
-    // (agent_loop returns them; in 06, agent.prompt() returns them)
-    RETURN _end(send, msg, new)
+    RETURN _end(send, msg, new)   // send turn_end and agent_end, return the new messages
 
 FOR call IN msg.tool_calls:
     IF msg.stop_reason is "length":     // args may be cut off: never run them
         result = error ToolResultMessage(call.id, call.name,
                  "Tool call was truncated (max tokens); not executed")
     ELSE:
-        result = run the tool (Steps 1-3)
-    add result to history
+        result = run_tool(call)         // Steps 1-3
+    ADD result to history
 ```
 
-Note: `"length"` does **not** stop the loop. Each call gets an error result instead of running, and the loop goes on (if there were tool calls; with no tool calls the run ends as usual). So the model sees the error on the next turn and can try again.
+`agent_loop` returns what `_end` gives back. (In [06](06-events-abort.md), `agent.prompt()` returns it.)
 
-Now the stop is by design, not by luck. And half-written arguments never reach a tool.
+So for the provider failure, the loop now stops because it *checked* `stop_reason`, not by luck. The error message stays in the history, and the caller can see it.
 
-**Step 5 — make the model call a setting.** `ai.stream` moves into `LoopConfig`:
+Note that `"length"` does **not** stop the loop. Each tool call gets an error result instead of running, and the loop goes on. With our example: the model was cut off in `{"path": "READ`. The call does not run. The model receives `Tool call was truncated (max tokens); not executed`, and on the next turn it can send the call again, this time in full. (If a cut-off answer has no tool calls at all, the run simply ends as usual.) Half-written arguments never reach a tool.
+
+**Step 5 — make the model call a setting.** The naive loop called `ai.stream` by name. The real loop reads it from a settings object, **[`LoopConfig`](glossary.md#loopconfig)**. `LoopConfig` holds everything the loop needs that is not the history: the model, the tools, the working folder, and the function used to call the model:
 
 ```text
 LoopConfig.stream_fn = ai.stream    // swap for a fake in tests
 ```
 
-A test passes `FakeProvider` here. No real model is needed.
+A test puts `FakeProvider` here instead. `FakeProvider` is a pretend model from [04](04-label-test.md#testing-the-pipeline-without-a-real-model): the test gives it a list of answers in advance, and it plays them back one by one. So a test can say "first answer with `read({})`, then with `read({"path": "README.md"})`, then with text", and check that the loop does the right thing at each step. No network, no API key, and the same result every time. The [Test](#test) section below uses it this way.
 
-**Step 6 — give the tool a context.** Each tool gets one `ToolContext` object:
+**Step 6 — give the tool a context.** Last, the tool needs to know where it works. Each tool call gets one `ToolContext` object, `ctx`, built from the loop's settings:
 
 ```text
 ctx = ToolContext(cancel, config.env, config.cwd, on_update)
 ```
 
-Now the tool knows the working folder, can see a stop request, and can report progress.
+It has four parts. `cancel` is the Stop flag that we already used in Step 3. `env` is the place where file and shell work really happens (the local disk, by default). `cwd` is the working folder, so `README.md` means the README.md in the user's project, not wherever the program started. `on_update` is a function the tool can call with a short text to report progress while it works, for example the output of a long command; the UI can show it right away.
+
+Here is the whole path in one table:
+
+| Problem in the naive loop | Fixed in |
+|---|---|
+| Unknown tool name (`raed`) crashes with `KeyError` | Step 1 |
+| Bad arguments (`{}`) reach the tool | Step 2 |
+| Tool raises (file not found) and kills the run | Step 3 |
+| Provider error stops the loop only by luck | Step 4 |
+| Cut-off tool call runs with half-written arguments | Step 4 |
+| Cannot test without a real model | Step 5 |
+| Tool cannot see the folder, Stop, or report progress | Step 6 |
 
 The result is the real design below.
 
@@ -317,12 +344,14 @@ flowchart TD
 (The diagram leaves out one exit: if the user aborts during the tool batch, the loop adds an `aborted` message and ends. That is [06](06-events-abort.md).)
 
 
-One pass of the inner `while` is one [turn](glossary.md#turn): one model call plus the tools it asked for. Some points:
+One pass of the inner `while` is one [turn](glossary.md#turn): one model call plus the tools it asked for. How does the loop know it is done? It sets `has_calls = bool(calls)`. If the model asked for no tools, there is nothing left to run, so the inner loop ends. This is the only "done" signal, which means the model itself decides when it has finished.
+
+Errors end the run, but never the program. A provider error does not raise; it comes back as an `AssistantMessage` with `stop_reason="error"` ([01](01-pick-clean.md), [02](02-translate-send.md)). The loop adds this message to the history and returns, so the caller can see what went wrong. Retrying is a separate job ([15](15-retry.md)).
+
+Some other points:
 
 - **Inputs.** `messages` is the full history. The loop **appends** to it (mutates it). `prompts` are the new user messages for this run. The return value is only the **new** messages, so the caller can save or show them.
 - **`add(m)`** does two things: it appends `m` to `messages` and to `new`, and it emits `message_start` / `message_end` events. Every message goes through `add`, so events and history never disagree. Events are the topic of [06](06-events-abort.md).
-- **The stop rule.** `has_calls = bool(calls)`. If the model asked for nothing, the inner loop ends. This is the only "done" signal: the model decides when it has finished.
-- **Errors end the run, not the program.** A provider error comes back as an `AssistantMessage` with `stop_reason="error"` ([01](01-pick-clean.md), [02](02-translate-send.md)). The loop adds it to history and returns. The caller sees it; retry is a separate job ([15](15-retry.md)).
 - **Cut-off calls are never run.** When `stop_reason == "length"`, each call gets an error result "Tool call was truncated (max tokens); not executed". Running half-written arguments (say, a `write` with half a file) would be dangerous. The model still gets a result for each call, so the next request is valid.
 - **Every tool call gets a result.** Unknown tool, bad args, crash, truncated: in every case the loop adds a `ToolResultMessage`. Providers reject a tool call with no result ([01](01-pick-clean.md#2-clean-transform_messages)), so this keeps the history sendable. (One exception: after an abort the remaining calls are skipped; `transform_messages` repairs that later, see [01](01-pick-clean.md#2-clean-transform_messages) and [06](06-events-abort.md).)
 - **Tools run one after another**, in the order the model gave, so results stay in the same order as the calls. (A design reason, not written in the code: two tools never edit the same file at the same time.)
