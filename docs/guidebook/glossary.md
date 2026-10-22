@@ -131,6 +131,9 @@ One long conversation with the agent, across many prompts and restarts. Owned by
 ## AgentSession
 The class in `session/__init__.py` that owns one `Agent` and adds saving, plugins, retry, compaction and overflow recovery. Home: [13](13-session.md).
 
+## Title call
+After the first assistant message, `Run` starts `title_task`: one small model call that names the session, saves it with `store.set_title` and sends a `session_title` event. Home: [20](20-server-run.md#the-run).
+
 ## SessionStore
 A protocol with two methods, `append(entry)` and `load()`: where a session saves its history. `append` may be sync or async. Home: [13](13-session.md).
 
@@ -276,10 +279,10 @@ The `": ping"` comment sent every 15 seconds on an idle SSE stream, so proxies k
 An asyncio object one task waits on until another task sets its result. Home: [21](21-transport.md#approval-over-the-wire).
 
 ## Store
-The server plugin that saves users, sessions, events and usage. By default `SqliteStore`. Home: [22](22-store-auth.md#sqlitestore-one-file-five-tables).
+The server slot that saves users, sessions, events and usage. By default `SqliteStore`. Home: [22](22-store-auth.md#sqlitestore-one-file-five-tables).
 
 ## Auth
-The server plugin that finds the user for a request. By default `StaticTokenAuth`. Home: [22](22-store-auth.md#token-hashes).
+The server slot that finds the user for a request. By default `StaticTokenAuth`. Home: [22](22-store-auth.md#token-hashes).
 
 ## Token (auth)
 A long random string sent as `Authorization: Bearer <token>`. Only its SHA-256 hash is stored. Home: [22](22-store-auth.md#token-hashes).

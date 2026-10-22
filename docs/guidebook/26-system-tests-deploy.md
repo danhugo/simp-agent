@@ -76,7 +76,7 @@ Rules are checked from top to bottom. The first match wins. It only looks at the
 - **Echo** for a normal streaming answer.
 - **"tool ..."** makes a `bash` call, so the test can see an approval card ([08](08-hooks-approval.md)) and a real tool result.
 - **"slow ..."** streams 40 chunks with a longer wait. This gives the test time to reload the page, press Stop, or steer while the run is busy.
-- **"Name this coding session"** answers the title request with `"Fake title"`.
+- **"Name this coding session"** answers the title request ([title call](glossary.md#title-call)) with `"Fake title"`.
 
 Then it yields the same events a real provider yields: `start`, `thinking_delta`, some `text_delta`, `done`. The wait between chunks comes from `SIMP_FAKE_DELAY` (default `0.05` seconds).
 

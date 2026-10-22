@@ -173,7 +173,9 @@ user_by_token(token):
 
 Note `disabled = 0`. A revoked user fails here, even with a token that is still in the table.
 
-`StaticTokenAuth` in `server.py` is the default auth plugin. It reads the header and calls `user_by_token`:
+The server picks its store, auth and sandbox classes by name from `DEFAULT_PLUGINS` in `server.py`. These "server slots" are NOT the agent plugins of [14](14-plugins.md).
+
+`StaticTokenAuth` in `server.py` is the default auth class (the `auth` slot). It reads the header and calls `user_by_token`:
 
 Real code: [server.py](../../apps/server/src/simp_server/server.py) — `StaticTokenAuth.authenticate`
 

@@ -98,7 +98,7 @@ Here are the main choices. Each one was taught in an earlier chapter; the link s
 | Providers never read the environment | The app gives the key through `get_api_key` | The core has no hidden input; the app owns secrets | [01](01-pick-clean.md#1-pick-_providers-register_provider) |
 | History is append-only | Compaction adds a `CompactionEntry`; it never deletes | Nothing is lost; resume and audit see everything | [13](13-session.md), [16](16-compaction.md) |
 | Core only classifies errors | `is_retryable`, `is_context_overflow`; the session decides | Policy can change without touching `ai` | [15](15-retry.md), [17](17-overflow.md) |
-| Everything is a plugin | Store, sandbox, auth, providers, tools, agent plugins | New features plug in; the core stays small | [14](14-plugins.md), [22](22-store-auth.md) |
+| Everything plugs in | Server slots (store, sandbox, auth) and agent plugins ([14](14-plugins.md)) | New features plug in; the core stays small | [14](14-plugins.md), [22](22-store-auth.md) |
 
 Two of these are worth one more look, because they shape how you extend the system.
 
