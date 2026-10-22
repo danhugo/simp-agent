@@ -5,6 +5,8 @@ Changes to this book, newest first. Each entry names the project commit the text
 ## 2026-10-22
 - ch24: Problem told as a story (Alice and Bob, many sessions per user; old "one session per user" fixed); steps 3-4 point to the real code instead of repeating it; sandbox slot defined at Step 5; "Real code" lines always before the code block; new setsid/pid worked example (`4711` → `kill -9 -- -4711`). (checked at `6070f41`)
 
+- ch16: merged "Step by step" into Real design (taught once); added full worked example (10 messages → find_cut=6 with token counts → history → model view); removed repeats; glossary duplicate `CompactionEntry` entry removed, part-4 link fixed to `#compaction-entry`. Checked against `agent/compaction.py`.
+
 ## 2026-10-21
 - ch25: new "Two kinds of events" (seq vs offset) before the steps; repeated file list and mid-step ch21 jump removed; ChatState shows 4 fields, all 10 now in ref-objects "Web client ChatState"; browser-notification detail dropped. (checked at `99d5e6f`)
 - ch21: durable/live defined once (Step 1); `"msg"` rows explained before `append`; snapshot worked example (seq 1-5, after=3); `subscribe` shown before the `first, q` call. (checked at `b51ef3b`)
@@ -149,3 +151,6 @@ Changes to this book, newest first. Each entry names the project commit the text
 - 2026-10-22: ch10 fix — Step-by-step repeat removed (problem→section table); tools grouped look/read, change, run; full IN→OUT edit example (real output); Key idea/Limit labels folded into prose; _limited pseudo-code matches code.
 - 2026-10-22: ch16 fix — Step-by-step repeat removed (problem→section table); new worked example: 10 messages with tokens → cut=6 → CompactionEntry → model view, with a short summary + <modified-files>; estimate/find_cut/file-list paragraphs split one idea per line with why; exercise 2 as a list; duplicate glossary #compactionentry removed, part-4 link fixed.
 - 2026-10-22: ch27 fix — fake Step-by-step removed; order Choices → Limits → Extend, count_lines story told once; Why column for each choice; working CountLines plugin (real output) in Part 3; append_entry fact checked (build_view drops CustomEntry); 'no code' wording said once; tool-changed reminder cut.
+- 2026-10-22: ch17 fix — Session._run → AgentSession._run; _run shown once (overflow branch only); order of checks and compact() repeats replaced with links to 15/16, only overflow edge cases kept; prevent/repair table moved after Problem; naive problem 4 now a guard; kind check noted in is_retryable.
+- 2026-10-22: ch26 fix — one order: Part A (fake model → e2e) then Part B (logs/backup → launchd), each with its own naive story; Step-by-step repeat removed (--fake-llm and backup code shown once, orphan ELSE gone); __main__ fact fixed (run/seed/backup → real server, other words → fake.main); fake.py shrunk; Key idea lines cut.
+- 2026-10-22: ch18 fix — build_model code shown once (Step-by-step → problem→section table); Model field list → ref-objects link; RedactSecrets IN→OUT example (tool result masked, history unchanged, model view masked); repeat 'one function' line cut.

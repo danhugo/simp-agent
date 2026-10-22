@@ -68,7 +68,7 @@ It runs `python fizzbuzz.py` and prints the output. But it breaks in many ways:
 
 1. **Slow.** A new [container](glossary.md#container) starts for every command. That costs time on each `bash` call.
 2. **Not hardened.** The container runs as root, has full network, no memory or process limit. A fork bomb still hurts the host.
-3. **Timeout does not kill the command.** `proc.kill()` kills the `docker` program on the host. The command inside the container may keep running.
+3. **Timeout does not kill the command.** Killing the process kills the `docker` program on the host. The command inside the container may keep running.
 4. **`cwd` is wrong.** The tool passes a host path as `cwd`. Here it is ignored; we always use `/work`.
 5. **No cancel, no streaming.** `cancel` is never checked, and `on_output` is never called. The user sees nothing until the end.
 6. **No life cycle.** Nobody knows when to start or stop anything per session.
@@ -149,7 +149,7 @@ The session manager uses the slot at three moments:
 - When it evicts an idle session ([23](23-limits.md)): `await self.sandbox.close(run.ref)`. Its docstring says: "Free RAM and the container; files and log stay".
 - On shutdown: `close_all()` if the sandbox has it.
 
-There is also a safety check, `check_sandbox()`. If the server has more than one user and still uses `LocalSandbox`, it refuses with a message, unless you set `allow_local_sandbox = true`:
+There is also a safety check, `check_sandbox()`. If the server has more than one active user and still uses `LocalSandbox`, it refuses with a message, unless you set `allow_local_sandbox = true`:
 
 ```python
 def check_sandbox(settings: dict, n_users: int) -> str | None:
