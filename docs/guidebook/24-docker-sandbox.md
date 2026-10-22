@@ -28,7 +28,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-In [20](20-server-run.md) the server runs one session per user. In [22](22-store-auth.md) it got users and login. So now several people can use one server. Each of them can ask the agent "write `fizzbuzz.py` and run it".
+Picture a shared server. Alice and Bob both log in ([22](22-store-auth.md)). Each of them can open many sessions ([20](20-server-run.md)), and each session is one agent with its own folder. Alice asks her agent: "write `fizzbuzz.py` and run it". The agent calls `bash` with `python fizzbuzz.py`. Where does that command run, and what else can it touch?
 
 The `bash` tool ([10](10-coding-tools.md)) runs any shell command. Today it runs on the server machine itself, through `LocalEnv` ([09](09-exec-env.md)). The server's default sandbox is `LocalSandbox` in `apps/server/src/simp_server/server.py`. Its own docstring says it plainly:
 
@@ -82,7 +82,6 @@ RUN docker run -d --name <name> <image> sleep infinity   // once per session
 // later, for each command:
 RUN docker exec <name> sh -c "<command>"
 ```
-Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerSandbox.open`
 
 Why: one start per session, not per command. This fixes "slow".
 
@@ -95,29 +94,15 @@ Why: one start per session, not per command. This fixes "slow".
 
 Why: each flag closes one hole (root, network, fork bomb, memory, writes, extra powers).
 
-**Step 3 — map `cwd`.** Turn the host path into a path under `/work`:
-
-```text
-rel = _path(cwd) relative to root    // _path does the root check
-RETURN "/work/" + rel
-```
-Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv._cwd`
+**Step 3 — map `cwd`.** Turn the host path into a path under `/work` (code in [DockerEnv](#dockerenv-files-on-the-host-commands-in-the-box) below).
 
 Why: the container only knows `/work`. The root check from `LocalEnv` still applies.
 
-**Step 4 — kill the whole group.** Start the command with `setsid`, print its pid first, and kill `-<pid>` inside the container:
-
-```text
-RUN docker exec <container> setsid sh -c "echo $$; <command>"   // first line = group pid
-...
-IF timeout or cancel:
-    RUN docker exec <container> kill -9 -- -<pid>   // minus: kill the whole group
-```
-Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv.exec`
+**Step 4 — kill the whole group.** Start the command with `setsid`, print its pid first, and on timeout or cancel kill `-<pid>` inside the container (worked example in [DockerEnv](#dockerenv-files-on-the-host-commands-in-the-box) below).
 
 Why: killing the host `docker` program does not stop the command in the box. This fixes timeout and cancel. We also read output in chunks and call `on_output`, as `LocalEnv.exec` does.
 
-**Step 5 — a life cycle.** Wrap steps 1 to 4 in `DockerSandbox` with `open`, `close`, `remove`, and plug it into the server as the `Sandbox` slot.
+**Step 5 — a life cycle.** Wrap steps 1 to 4 in `DockerSandbox` with `open`, `close`, `remove`. Then plug it into the server's **[sandbox slot](glossary.md#sandbox-slot)**: a place in the server settings that says which class gives each session its env.
 
 Why: now the server knows when to start and stop a container for each session. Next we read the real code.
 
@@ -125,7 +110,7 @@ Why: now the server knows when to start and stop a container for each session. N
 
 The real code has two parts:
 
-- A **[sandbox slot](glossary.md#sandbox-slot)** in the server: "give me an env for this session".
+- The sandbox slot in the server: "give me an env for this session".
 - `DockerSandbox` in `apps/server/src/simp_server/sandboxes/docker.py`: one long-lived, hardened container per session, plus `DockerEnv`, the env the tools use.
 
 ### The sandbox slot
@@ -254,13 +239,14 @@ The session folder `workspaces_dir/<session_id>` is a **[bind mount](glossary.md
 
 `DockerEnv` is a subclass of `LocalEnv`:
 
+Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv`
+
 ```text
 CLASS DockerEnv extends LocalEnv:
     FUNCTION init(root, container):
         set up LocalEnv with root      // file tools stay on the host
         remember container name        // only exec uses it
 ```
-Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv`
 
 The module docstring explains the split: "File ops run on the host (LocalEnv with root containment) on a dir bind-mounted at /work; only exec goes through `docker exec`."
 
@@ -278,20 +264,19 @@ FUNCTION _cwd(cwd):
 
 **Running a command.** `exec` uses `docker exec` with a small shell trick:
 
+Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv.exec`
+
 ```text
 proc = START docker exec -w _cwd(cwd) <container>
            setsid -w sh -c "echo $$; exec sh -c <command> 2>&1"
 pid = first line of proc output     // the group leader's pid
 ```
-Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv.exec`
 
 - `setsid` makes the command the leader of a new **[process group](glossary.md#process-group-kill)**.
 - The first line it prints is its own pid (`echo $$`). We read that line first and keep it.
 - `2>&1` is inside the container. The comment says why: Docker sends stderr as a separate stream, and it could arrive before the pid line.
 
 The rest is the same pump loop as `LocalEnv.exec`: read chunks, call `on_output`, wait for done, cancel, or timeout. The difference is the kill:
-
-Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv.exec`
 
 ```text
 IF command did not finish (timeout or cancel):
@@ -304,6 +289,16 @@ IF command did not finish (timeout or cancel):
 ```
 
 `kill -9 -<pid>` (note the minus) kills the whole process group **inside** the container. This fixes problem 3 of the naive version: a timeout or a cancel really stops `sleep 30 &` and its children. Then the host `docker exec` process is killed too, if it is still alive.
+
+**Worked example.** The agent runs `python fizzbuzz.py; sleep 30` with a 5 second timeout.
+
+1. Output starts: `4711\n1\n2\nFizz\n…`. The first line, `4711`, is the pid of the `setsid` shell. We keep it and do not show it.
+2. `on_output` gets `1`, `2`, `Fizz`, …
+3. Then `sleep 30` runs. After 5 seconds the timeout hits.
+4. We run `docker exec <container> kill -9 -- -4711`. Group 4711 (the shell and `sleep`) dies inside the box.
+5. `exec` returns `(None, "1\n2\nFizz\n…")`.
+
+Without the minus (`kill -9 4711`) only the shell would die, and `sleep 30` would keep running.
 
 ### close, remove, close_all
 
