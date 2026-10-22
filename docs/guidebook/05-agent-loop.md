@@ -139,7 +139,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 CLASS AgentTool(ai.Tool):          // name, description, parameters + the code
     execute = FUNCTION (args, ctx) -> text, or nothing
     prepare_arguments = FUNCTION (raw args) -> args, or nothing
-                        // runs before validation (pi prepareArguments)
+                        // runs before validation
 ```
 
 - `execute(args, ctx)` is an async function. It returns **text**. The text goes back to the model as the tool result.
@@ -234,7 +234,7 @@ CLASS LoopConfig:
 ```
 
 - `stream_fn` defaults to `ai.stream`. A test passes `FakeProvider(...)` instead. This is the [stream function](glossary.md#stream-function) shape from [01](01-pick-clean.md#out-the-shape-of-a-model-call) paying off: the loop cannot tell the difference.
-- `get_api_key(provider)` is called **before every model call**, so an OAuth token can refresh in the middle of a long run. `api_key_opts` turns it into `{"api_key": ...}`. If it is `None`, no key is passed and the provider returns a "no API key" error ([01](01-pick-clean.md#1-pick-_providers-register_provider)).
+- `get_api_key(provider)` is called **before every model call**, so a key that can expire (e.g. a login token) can refresh in the middle of a long run. `api_key_opts` turns it into `{"api_key": ...}`. If it is `None`, no key is passed and the provider returns a "no API key" error ([01](01-pick-clean.md#1-pick-_providers-register_provider)).
 - `env` and `cwd` go into every `ToolContext`.
 - `get_tools`, if set, is called every turn and wins over `tools`. So the tool list can change during a run. The `Agent` class sets `get_tools=lambda: self.tools`, so changing `agent.tools` takes effect at the next turn.
 
