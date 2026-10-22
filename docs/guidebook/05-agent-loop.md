@@ -54,7 +54,7 @@ FUNCTION naive_loop(system_prompt, messages, tools, model):
 
 It works for the happy path. Where it breaks:
 
-- **Unknown tool** → `KeyError`, the run dies.
+- **Unknown tool** → `KeyError`, the [run](glossary.md#run-agent) dies.
 - **Bad arguments** (missing field, wrong type) → the tool crashes in a strange place, or worse, does the wrong thing.
 - **Tool raises** → the exception ends the run. The model never learns what went wrong, so it cannot try another way.
 - **Provider error** → `msg.stop_reason == "error"` has no tool calls, so we return. That is fine, but by luck, not by design.
@@ -96,16 +96,27 @@ IF tool.execute raised an error e:
 
 `err` builds a `ToolResultMessage` with `is_error=True`. So the model learns what went wrong and can try another way.
 
-**Step 4 — check `stop_reason`.** We stop on `error` or `aborted` on purpose, and we never run cut-off calls:
+**Step 4 — check `stop_reason`.** We stop on `error` or `aborted` on purpose, and we never run cut-off calls.
+
+First, one word: a **[run](glossary.md#run-agent)** is one call to `agent.prompt()`: from the user's message until the loop stops (normally `agent_start` … `agent_end`). `agent.continue_()` also starts a run. In this chapter that is one call to `agent_loop()`; the `Agent` class with `prompt()` comes in [06](06-events-abort.md).
 
 ```text
 IF msg.stop_reason is "error" or "aborted":
-    RETURN end the run                                   // _end(send, msg, new)
-...
-IF msg.stop_reason is "length":     // args may be cut off: never run them
-    result = error ToolResultMessage(call.id, call.name,
-             "Tool call was truncated (max tokens); not executed")
+    // stop the loop: call _end(send, msg, new), which sends
+    // turn_end and agent_end and returns the new messages
+    // (agent_loop returns them; in 06, agent.prompt() returns them)
+    RETURN _end(send, msg, new)
+
+FOR call IN msg.tool_calls:
+    IF msg.stop_reason is "length":     // args may be cut off: never run them
+        result = error ToolResultMessage(call.id, call.name,
+                 "Tool call was truncated (max tokens); not executed")
+    ELSE:
+        result = run the tool (Steps 1-3)
+    add result to history
 ```
+
+Note: `"length"` does **not** stop the loop. Each call gets an error result instead of running, and the loop goes on (if there were tool calls; with no tool calls the run ends as usual). So the model sees the error on the next turn and can try again.
 
 Now the stop is by design, not by luck. And half-written arguments never reach a tool.
 

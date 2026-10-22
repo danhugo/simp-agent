@@ -88,7 +88,7 @@ The loop has **one** output channel: `emit(event)`, where `event` is a plain dic
 {type: agent_end, messages: [user, assistant c1, tool result c1, assistant "done"]}
 ```
 
-Each turn is `turn_start` … `turn_end`; the run is `agent_start` … `agent_end`.
+Each turn is `turn_start` … `turn_end`; the [run](glossary.md#run-agent) is `agent_start` … `agent_end`.
 
 | Event | Extra keys | When |
 |---|---|---|

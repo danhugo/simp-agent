@@ -29,7 +29,7 @@ Code in this chapter (commit `2fc2776`):
 We start at the far left of the [layer map](00-overview.md#the-layer-map): the `ai` layer. The [agent loop](glossary.md#agent-loop) (ch [05](05-agent-loop.md)) wants to say "ask the model" and not care which vendor answers. Two things stand in the way:
 
 - **Vendors differ.** Anthropic and OpenAI speak different APIs (ch [02](02-translate-send.md) shows how). Something must **pick** the right code for this model.
-- **History can be broken.** A turn may have ended with an error, or a tool call may have no result because the user stopped the run. Every vendor rejects that. Something must **clean** the history first.
+- **History can be broken.** A turn may have ended with an error, or a tool call may have no result because the user stopped the [run](glossary.md#run-agent). Every vendor rejects that. Something must **clean** the history first.
 
 Neither block talks to a model yet. They only prepare.
 
