@@ -50,9 +50,11 @@ FUNCTION naive_loop(system_prompt, messages, tools, model):
         IF no calls: RETURN messages
         FOR EACH call in calls:
             tool = look up tools by call.name      // crashes if the name is unknown
-            text = WAIT for tool.execute(call.arguments)   // may crash
+            text = WAIT for tool.execute(call.arguments)   // may crash; WAIT = await
             ADD ToolResultMessage(call.id, call.name, text) to messages
 ```
+
+Here `Context` is the request we send to the model. It is not the `ctx` we meet in Step 3.
 
 It works for the **happy path**: the case where nothing goes wrong. Let us follow one example through it and see where it breaks. The user asks: *"What is in README.md?"* We have one tool, `read`, which takes `{"path": ...}` and returns the file's text.
 
@@ -100,7 +102,7 @@ IF the check fails:
 
 So for `read({})` the tool never runs. The model gets the text `Invalid arguments for read: 'path' is a required property`. That is clear enough that on the next turn it sends `{"path": "README.md"}`.
 
-**Step 3 — catch tool errors.** We wrap the tool call in `try`, and turn any exception into text. The tool now also gets a second argument, `ctx`, its context. Step 6 explains `ctx` fully; here we only need one part of it, `ctx.cancel`, which is set when the user presses Stop.
+**Step 3 — catch tool errors.** We wrap the tool call in `try`, and turn any exception into text. The tool now also gets a second argument, a `ctx` (a `ToolContext`: the extra object each tool gets, see Step 6). Step 6 explains `ctx` fully; here we only need one part of it, `ctx.cancel`, which is set when the user presses Stop.
 
 ```text
 TRY:
@@ -127,7 +129,7 @@ FOR call IN msg.tool_calls:
         result = error ToolResultMessage(call.id, call.name,
                  "Tool call was truncated (max tokens); not executed")
     ELSE:
-        result = run_tool(call)         // Steps 1-3
+        result = run_tool(call, ctx)    // Steps 1-3
     ADD result to history
 ```
 
