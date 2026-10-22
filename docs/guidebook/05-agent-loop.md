@@ -146,6 +146,8 @@ What is the cancel flag? It is one `asyncio.Event` that the `Agent` keeps ([06](
 
 If Stop comes while the model is still answering, the stream closes and the message gets `stop_reason` `aborted`, so the loop ends by the first way. If Stop comes later, for example while a tool executes, the model already finished, so its `stop_reason` is not `aborted`. A tool that listens to `ctx.cancel` stops, and its result says "Interrupted by the user". The loop executes no more tool calls of that turn (they get no result at all). After the tool loop, the loop sees the flag, adds an `aborted` message and calls `_end`, instead of asking the model again. That is the second way. The full story is in [06](06-events-abort.md).
 
+So why do we need both the flag and `aborted`? Pressing Stop does not send `aborted`. It only sets the flag (`agent.abort()` calls `_cancel.set()`). Whoever is running at that moment sees the flag and reacts: while the model streams, `_stream` closes the stream and `_llm_turn` writes `stop_reason` `aborted` on the message; while a tool executes, no message has that label yet, so after the tool part the loop makes one itself (`_aborted()`). The flag is the live signal that everyone sees at once. `aborted` is the label saved in the history, so the app and the UI later know the run ended because the user pressed Stop. In short: the flag says "stop now"; the label records "we stopped".
+
 The first two go through a small helper, `_end`. It sends the last two events, `turn_end` and `agent_end`, and returns the list of new messages. The third sends `agent_end` at the end of the loop.
 
 ```text
