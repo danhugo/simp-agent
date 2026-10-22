@@ -30,7 +30,7 @@ Code in this chapter (commit `2fc2776`):
 
 Part 4 is almost done. The session saves, retries, compacts and runs plugins. Two gaps are left before the apps:
 
-1. **Choosing a model.** A `Model` ([01](01-pick-clean.md#in-model-and-context), all fields: [ref-objects](ref-objects.md#request-objects-tool-context-model)) has many fields: `id`, `api`, `provider`, `base_url`, `api_key_env`, `context_window`, `max_tokens`, `compat`. Users want to write "use my `local` setup" in a settings file, not build a `Model` by hand. Both the CLI and the server need this, and they must agree.
+1. **Choosing a model.** A `Model` ([01](01-pick-clean.md#in-model-and-context), all fields: [ref-objects](ref-objects.md#request-objects-tool-context-model)) has many fields. Users want to write "use my `local` setup" in a settings file, not build a `Model` by hand. Both the CLI and the server need this, and they must agree.
 2. **Plugins that prove the sockets.** [14](14-plugins.md) built the hook points. We need real plugins that use them: one that keeps secrets out of the model and the logs, and one that makes the agent read-only.
 
 ## Naive version
@@ -59,65 +59,15 @@ It works for `claude`. It breaks when:
 
 ## Step by step: from naive to real
 
-We fix the naive `model_for` one problem at a time.
+Each naive problem has one fix. The code is shown once, in the next section:
 
-**Step 1 — pick `provider` from `api`.** The provider name decides which API key is used ([01](01-pick-clean.md#1-pick-_providers-register_provider)). An `openai-*` API always means the `openai` provider:
-
-Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
-
-```text
-api = profile "api", or "anthropic-messages"
-IF api starts with "openai": provider = "openai"
-ELSE: provider = "anthropic"
-```
-
-Key idea: the API name picks the provider, so the right key is used.
-
-**Step 2 — read only known keys.** We build a `kw` dict by hand. `model` becomes `id`. Other keys, like `plugins`, are never passed to `Model`, so no `TypeError`:
-
-Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
-
-```text
-kw = {id: profile "model", api, provider, base_url, api_key_env}
-FOR EACH key in (max_tokens, context_window):
-    IF key is in profile: ADD it to kw
-// other keys (like plugins) are never read
-```
-
-Key idea: only known keys go to `Model`, so no `TypeError`.
-
-**Step 3 — drop `None`.** `pr.get(...)` gives `None` for a missing key. Passing `None` would hide `Model`'s default (for example `id="claude-sonnet-5-5"`). So we filter:
-
-Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
-
-```text
-RETURN Model(kw without any None values)   // None would hide Model's default
-```
-
-Key idea: a missing key keeps `Model`'s default.
-
-**Step 4 — turn on usage for OpenAI.** We copy `compat` (so the settings dict is not changed) and set `include_usage` only if the user did not set it. An explicit `False` stays:
-
-Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
-
-```text
-kw.compat = a COPY of profile "compat" (or empty)   // never change the settings dict
-IF api starts with "openai":
-    IF include_usage is not set: include_usage = True   // an explicit False stays
-```
-
-**Step 5 — plugins by name.** A small table maps names to classes. A typo raises at once. Each call makes new objects, because plugins keep state:
-
-Real code: [plugins/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/plugins/__init__.py) — `build_plugins`
-
-```text
-known = "redact_secrets" -> RedactSecrets, "plan_mode" -> PlanMode
-RETURN a NEW object of known[name] FOR EACH name
-```
-
-Key idea: a name table; a typo fails at once.
-
-**Step 6 — two real plugins.** Now we write `RedactSecrets` and `PlanMode`. They use only the hooks from [14](14-plugins.md). The result is the real code below.
+| Naive problem | Fix | Where |
+|---|---|---|
+| 1. wrong `provider` | `provider` comes from `api` | [build_model](#profiles-and-build_model) |
+| 2. unknown keys crash | only known keys are read | [build_model](#profiles-and-build_model) |
+| 3. `None` hides a default | drop every `None` | [build_model](#profiles-and-build_model) |
+| 4. no usage from OpenAI | `include_usage` on, unless set | [build_model](#profiles-and-build_model) |
+| 5. no plugins | a name table makes new objects (plugins keep state) | [build_plugins](#build_plugins-names-to-objects), [RedactSecrets](#redactsecrets), [PlanMode](#planmode) |
 
 ## Real design
 
@@ -155,7 +105,7 @@ Each line fixes one naive problem:
 - **`include_usage` on by default for OpenAI APIs.** `setdefault` keeps an explicit `False`, for a server that does not support it.
 - `compat` is copied (`dict(...)`), so the settings dict is never changed.
 
-`build_model` lives in the `session` layer because both apps use it. The CLI (`apps/cli/src/simp_cli/__init__.py`) first merges the profile from `~/.simp-agent/settings.json` with command line flags (`resolve_config`), checks a few things, then calls `profile.build_model`. The server imports it directly. One function, so a profile means the same model in both apps.
+`build_model` lives in the `session` layer because both apps use it. The CLI (`apps/cli/src/simp_cli/__init__.py`) first merges the profile from `~/.simp-agent/settings.json` with command line flags (`resolve_config`), checks a few things, then calls `profile.build_model`. The server imports it directly.
 
 Note: keys are never in the profile. Only `api_key_env`, the **name** of an env var. The app reads the key ([19](19-cli.md), [22](22-store-auth.md)).
 
@@ -229,6 +179,14 @@ FUNCTION context(messages):
 - `tool_result`: if `bash` prints `cat .env`, the saved tool result is masked.
 - `tool_update`: streamed output is masked before the UI sees it.
 - `context`: every message in the model's view is masked. `deep` walks every string field of every dataclass (text, thinking, tool call arguments) and returns **copies**. It skips `id`, `signature`, `type` and `role`: these are provider data we must not touch, and changing them would break the next call.
+
+Example, IN → OUT (env var `API_KEY` holds a key `sk-abc...`; masked by the env name and by the `sk-` pattern):
+
+| | Before | After |
+|---|---|---|
+| tool result (`bash: cat .env`) | `API_KEY=sk-abc...` | `API_KEY=[REDACTED]` (saved masked) |
+| user message in history | `my key is sk-abc...` | unchanged |
+| same user message in the model's view | `my key is sk-abc...` | `my key is [REDACTED]` |
 
 Why `context` and not only `tool_result`? The user may paste a key in their own message. History keeps the user's text (it is theirs), but the model never sees the key. And because the session passes the `context` chain as `redact` to `compact()` ([16](16-compaction.md)), the summary model does not see it either.
 
