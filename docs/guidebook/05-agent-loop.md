@@ -172,13 +172,16 @@ So for the provider failure, the loop now stops because it *checked* `stop_reaso
 
 Note that `"length"` does **not** stop the loop. Each tool call gets an error result instead of executing, and the loop goes on. With our example: the model was cut off in `{"path": "READ`. The call is not executed. The model receives `Tool call was truncated (max tokens); not executed`, and on the next turn it can send the call again, this time in full. (If a cut-off answer has no tool calls at all, the run simply ends as usual.) Half-written arguments never reach a tool.
 
-**Step 5 — make the model call a setting.** The naive loop called `ai.stream` by name. The real loop reads it from a settings object, **[`LoopConfig`](glossary.md#loopconfig)**. `LoopConfig` holds everything the loop needs that is not the history: the model, the tools, the working folder, and the function used to call the model:
+**Step 5 — let tests swap the model.** The naive loop has `ai.stream(...)` written inside it. So every test must call a real model: slow, costs money, and the answer changes each time. The fix: the loop does not pick the function itself. It takes the function as an input, `stream_fn`, and calls whatever it is given.
 
 ```text
-LoopConfig.stream_fn = ai.stream    // swap for a fake in tests
+naive:  reply = ai.stream(model, request)
+real:   reply = config.stream_fn(model, request)
 ```
 
-A test puts `FakeProvider` here instead. `FakeProvider` is a pretend model from [04](04-label-test.md#testing-the-pipeline-without-a-real-model): the test gives it a list of answers in advance, and it plays them back one by one. So a test can say "first answer with `read({})`, then with `read({"path": "README.md"})`, then with text", and check that the loop does the right thing at each step. No network, no API key, and the same result every time. The [Test](#test) section below uses it this way.
+The app passes `stream_fn = ai.stream`. A test passes `FakeProvider` ([04](04-label-test.md)), which returns a scripted answer, such as "call `read` README.md". No real model, and the same answer every time.
+
+`stream_fn` lives in [`LoopConfig`](glossary.md#loopconfig), the one object that holds all the loop's inputs except the history (we meet the other fields as we need them).
 
 **Step 6 — give the tool a context.** Last, the tool needs to know where it works. Each tool call gets one `ToolContext` object, `ctx`, built from the loop's settings:
 
