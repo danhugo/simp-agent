@@ -81,16 +81,11 @@ FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel):
     SEND agent_end
 ```
 
-So with 06's code the message has nowhere to go. The easy patch is to keep the text in `Agent` and call `prompt()` again when the run ends. That keeps the history valid, but it has four problems:
-
-- **Too late.** The model has already answered about README.md alone.
-- **One place for two needs.** The urgent steer and the "later" follow-up wait in the same place, so the agent cannot treat them differently.
-- **No choice of batch size.** Everything waiting goes out together, but sometimes the user wants each message handled as its own task.
-- **A flickering UI.** Each delivery is a new run, with a new `agent_start` and `agent_end` [event](glossary.md#event). A UI that shows "busy" until `agent_end` flickers off and on.
+So with 06's code the message has nowhere to go. The easy patch is to keep the text in `Agent` and call `prompt()` again when the run ends. That keeps the history valid, but it comes **too late**: the model has already answered about README.md alone. It also keeps **one place for two needs**: the urgent steer and the "later" follow-up wait together, so the agent cannot treat them differently. Everything waiting goes out together, so there is **no choice of batch size**, but sometimes the user wants each message handled as its own task. And each delivery is a new run, with a new `agent_start` and `agent_end` [event](glossary.md#event), so a UI that shows "busy" until `agent_end` gives **a flickering UI**.
 
 ## Step by step: grow the loop
 
-How do we fix these four problems without a second run? Four small steps.
+How do we fix all of this without a second run? Four small steps.
 
 **Step 1: two queues.** `Agent` keeps two lists, `steering` and `follow_ups`. The UI picks one by calling `steer(text)` or `follow_up(text)`. This fixes "one place for two needs".
 

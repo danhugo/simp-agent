@@ -2,7 +2,7 @@
 
 **In one sentence:** Part 2 teaches the program to keep asking the model, running the tools it asks for, until the model gives a final answer. That program is the [agent loop](glossary.md#agent-loop).
 
-Read this page before [05](05-agent-loop.md). Come back to it any time you get lost in [05](05-agent-loop.md)–[08](08-hooks-approval.md). It adds no new facts. The plain walk-through comes first; the map (picture and tables) is at the end.
+Read this page before [05](05-agent-loop.md). Come back to it any time you get lost in [05](05-agent-loop.md)–[08](08-hooks-approval.md). It adds no new facts.
 
 ## Example: the user asks about a file
 
@@ -104,12 +104,9 @@ Paths are under `packages/simp_agent/src/simp_agent/`.
 
 ### Which block is inside which
 
-- **`agent_loop()` is the whole Part.** It does blocks 1, 2, 5, 6, 8 and 9 itself.
-- **One model turn = `_llm_turn()`** = blocks 3 and 4. Inside block 4, `_stream()` wraps `stream_fn`. `stream_fn` is `ai.stream()` from Part 1 (or `FakeProvider` in tests, [04](04-label-test.md)).
-- **`run_tool()`** is block 7 only. The hooks (6, 8) are *around* it, in `agent_loop()`.
-- **The `Agent` class** ([06](06-events-abort.md)) is *outside* the loop. It keeps the history, the subscribers, the cancel flag and the two queues. Each `prompt()` builds a `LoopConfig` and calls `agent_loop()` once.
-- **Events** ([06](06-events-abort.md)) are not a block. Every block sends them through one `emit` function; `Agent` gives them to each subscriber.
-- **[Tool approval](glossary.md#tool-approval)** is not in this Part's code. It is one `before_tool_call` (block 6) written in `AgentSession` → Part 4, [13](13-session.md). [08](08-hooks-approval.md) shows it early.
+`agent_loop()` is the whole Part: it does blocks 1, 2, 5, 6, 8 and 9 itself. One model turn is `_llm_turn()`, which does blocks 3 and 4. Inside block 4, `_stream()` wraps `stream_fn`, and `stream_fn` is `ai.stream()` from Part 1 (or `FakeProvider` in tests, [04](04-label-test.md)). `run_tool()` is block 7 only; the hooks (6 and 8) sit *around* it, in `agent_loop()`.
+
+The `Agent` class ([06](06-events-abort.md)) is *outside* the loop. It keeps the history, the subscribers, the cancel flag and the two queues, and each `prompt()` builds a `LoopConfig` and calls `agent_loop()` once. Events ([06](06-events-abort.md)) are not a block: every block sends them through one `emit` function, and `Agent` gives them to each subscriber. [Tool approval](glossary.md#tool-approval) is not in this Part's code either. It is one `before_tool_call` (block 6) written in `AgentSession` in Part 4 ([13](13-session.md)); [08](08-hooks-approval.md) shows a simple version.
 
 ```mermaid
 flowchart LR
@@ -152,19 +149,7 @@ Messages (`UserMessage`, `AssistantMessage`, `ToolResultMessage`, `ToolCall`) co
 
 ### The worked example with all blocks
 
-The same question again, now with block numbers and events.
-
-1. The app calls `agent.prompt("What is in README.md?")`. `Agent` builds a `LoopConfig` and calls `agent_loop()`.
-2. **Start:** the `UserMessage` goes into the history. Events: `agent_start`, `message_start`, `message_end`.
-3. **Take steering:** the queue is empty. Event: `turn_start`.
-4. **Build the view:** no tool change. The `Context` has the system prompt, one message and the `read` tool.
-5. **Call the model:** `ai.stream()` streams. Each piece is sent as `message_update`. The final message has one `ToolCall(name="read", arguments={"path": "README.md"})`, `stop_reason="tool_use"`.
-6. **Check the reply:** not an error, not cut off. Go on to the tools.
-7. **Before hook:** first the event `tool_execution_start`. Then the hook returns `None` (allow).
-8. **Run the tool:** `read` is found, args pass the schema, `execute` returns the file text → `ToolResultMessage`.
-9. **After hook:** keeps the result. Events: `tool_execution_end`, then the result is added (`message_start`, `message_end`), then `turn_end`.
-10. **Next or stop?** There was a tool call → next turn. While the tool ran, the user called `agent.steer("only the first line")`. Block 2 adds that message now, before the next model call.
-11. The model answers with text (only the first line, as the user asked), `stop_reason="stop"`. No tool calls, no steering, no follow-up → `agent_end`. `prompt()` returns the new messages.
+The walk-through [above](#walk-the-question-through-the-loop) maps to the blocks like this. The first turn goes through blocks 1 to 9: `agent_start`, then `turn_start`, the `read` call streams in as `message_update` events (block 4), `tool_execution_start` comes before block 6, the hook allows the call, `read` returns the file text, and `tool_execution_end` and `turn_end` close the turn. Block 9 sees a tool call, so it starts a second turn. If the user typed `agent.steer("only the first line")` while `read` ran, block 2 adds that message now, before the next model call. The model then answers with text and no tool calls, so the run sends `agent_end` and `prompt()` returns the new messages.
 
 If the user pressed Stop while `read` ran (block 7), the tool would see `ctx.cancel` and return an error result ("Interrupted by the user"). The loop adds that result, then an `AssistantMessage` with `stop_reason="aborted"`, and ends.
 
