@@ -119,7 +119,7 @@ FUNCTION _path(ctx, path):
     RETURN ctx.cwd joined with path     // an absolute path stays as is
 ```
 
-`_obj` builds the [JSON Schema](glossary.md#json-schema) of a tool's arguments: which fields exist, which are required. It sets `additionalProperties: False`, which tells the model not to invent extra fields. `_path` joins the model's path to `ctx.cwd`; if the model gives an absolute path, `os.path.join` keeps it as is. Note what `_path` does **not** do: it does not check if the path is allowed. That is the env's job ([path safety](09-exec-env.md#path-safety)). A tool only joins; the env decides.
+`_obj` builds the [JSON Schema](glossary.md#json-schema) of a tool's arguments: which fields exist, which are required. It sets `additionalProperties: False`, which tells the model not to invent extra fields. `_path` joins the model's path to `ctx.cwd`; if the model gives an absolute path, `os.path.join` keeps it as is. Note what `_path` does **not** do: it does not check if the path is allowed. That is the env's job ([path safety](09-exec-env.md#step-3-_path-checks-the-path)). A tool only joins; the env decides.
 
 Errors are plain exceptions. A tool raises `ValueError`, `OSError` or `RuntimeError` with a clear message, and `run_tool` ([05](05-agent-loop.md#run_tool-one-call-never-raises)) turns it into an error tool result. So no tool builds error objects by hand.
 
