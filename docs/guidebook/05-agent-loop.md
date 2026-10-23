@@ -97,12 +97,12 @@ We fix the naive loop one problem at a time, with the same README.md example. Ea
 
 First, one small helper. When something goes wrong with a tool call, `run_tool` uses `err(text)` to build the answer. It makes a normal `ToolResultMessage` for that call, with the error text as its content and `is_error=True`. The `is_error` flag marks the result as a failure, so the provider and the UI can show it as one. The important part is that it is still a normal tool result. It goes into the history, and the model reads it on the next turn like any other result.
 
-`RETURN` here gives the result back to `agent_loop`, which called `result = WAIT for run_tool(call, ctx)`. `agent_loop` calls the after hook ([08](08-hooks-approval.md)), adds the result to the history, and the model reads it on the next turn.
+`RETURN` here gives the result back to `agent_loop`, which called `result = WAIT for run_tool(tools, call, ctx)`. `agent_loop` calls the after hook ([08](08-hooks-approval.md)), adds the result to the history, and the model reads it on the next turn.
 
 **Step 1 — find the tool safely.** Instead of a dict lookup, we search the list of tools. If no tool has that name, we return an error result instead of crashing:
 
 ```text
-FUNCTION run_tool(call, ctx):
+FUNCTION run_tool(tools, call, ctx):
     tool = FIND the tool in tools whose name is call.name, or nothing
     IF tool is nothing:
         RETURN err("Tool <call.name> not found")
@@ -113,7 +113,7 @@ Back to the typo. The model asked for `raed`. The run does not crash any more. T
 **Step 2 — check the arguments.** Each tool already describes its arguments with a **[JSON Schema](glossary.md#json-schema)** in its `parameters` field: a small JSON document that says "`path` is a string and it is required". The model uses this schema to know what to send. We use the same schema to check what it sent, with the `jsonschema` Python library, before the tool executes:
 
 ```text
-FUNCTION run_tool(call, ctx):
+FUNCTION run_tool(tools, call, ctx):
     ...
     CHECK call.arguments against tool.parameters    // jsonschema.validate
     IF the check fails:
@@ -125,7 +125,7 @@ So for `read({})` the tool never executes. The model gets the text `Invalid argu
 **Step 3 — catch tool errors.** We wrap the tool call in `try`, and turn any exception into text. The tool now also gets a second argument, a `ctx` (a `ToolContext`: the extra object each tool gets, see Step 6). Step 6 explains `ctx` fully; here we only need one part of it, `ctx.cancel`, which is set when the user presses Stop.
 
 ```text
-FUNCTION run_tool(call, ctx):
+FUNCTION run_tool(tools, call, ctx):
     ...
     TRY:
         RETURN ToolResultMessage(call.id, call.name, WAIT for tool.execute(call.arguments, ctx))
@@ -162,7 +162,7 @@ FOR call IN msg.tool_calls:
         result = error ToolResultMessage(call.id, call.name,
                  "Tool call was truncated (max tokens); not executed")
     ELSE:
-        result = WAIT for run_tool(call, ctx)    // Steps 1-3
+        result = WAIT for run_tool(tools, call, ctx)    // Steps 1-3
     ADD result to history
 ```
 
@@ -215,7 +215,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 
 ```text
 CLASS AgentTool(ai.Tool):          // name, description, parameters + the code
-    execute = FUNCTION (args, ctx) -> text, or nothing
+    execute = FUNCTION (args, ctx) -> text
     prepare_arguments = FUNCTION (raw args) -> args, or nothing
                         // called before validation
 ```
@@ -283,6 +283,7 @@ flowchart TD
     B -- no --> E1["error: Tool X not found"]
     B -- yes --> C[prepare_arguments, then jsonschema.validate]
     C -- invalid --> E2["error: Invalid arguments for X: ..."]
+    C -- prepare_arguments raised --> E4["error: prepare_arguments failed: ..."]
     C -- ok --> D[await tool.execute args, ctx]
     D -- raises --> E3["error: Type: message<br/>or 'Interrupted by the user'"]
     D -- returns text --> OK[ToolResultMessage text]
@@ -328,15 +329,14 @@ The other fields (`get_steering`, `get_follow_up`, `prepare_next_turn`, `before_
 
 This is the main loop from the naive version, with the Step 4 check of `stop_reason` and the pieces above plugged in.
 
-First, a run in plain words. The user asks "What is in a.txt? Make it upper case." Three turns happen:
+First, a run in plain words. The user asks "What is in README.md?" Two turns happen:
 
 | Turn | Model reply | Loop does | `has_calls` |
 |---|---|---|---|
-| 1 | call `read(path="a.txt")` | executes `read`, adds result `"hello"` | yes, so go on |
-| 2 | call `write(path="a.txt", text="HELLO")` | executes `write`, adds result `"ok"` | yes, so go on |
-| 3 | text "Done." (no calls) | nothing to execute | no, so stop |
+| 1 | call `read(path="README.md")` | executes `read`, adds the file text as the result | yes, so go on |
+| 2 | text answer (no calls) | nothing to execute | no, so stop |
 
-The run returns seven new messages: the user prompt, then assistant + tool result for turns 1 and 2, then the final assistant message.
+The run returns four new messages: the user prompt, the assistant message and tool result of turn 1, then the final assistant message.
 
 Now the loop that does this. This is a small version: it leaves out steering and follow-ups ([07](07-steering.md)), tool events and abort ([06](06-events-abort.md)), and hooks ([08](08-hooks-approval.md)).
 
@@ -356,7 +356,7 @@ FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> n
         msg = WAIT for _llm_turn(system_prompt, messages, config, cancel, send, add)
         add(msg)
         IF msg.stop_reason is "error" or "aborted":
-            SEND event turn_end, agent_end; RETURN new
+            RETURN _end(send, msg, new)        // turn_end, agent_end
         calls = the tool calls in msg
         FOR EACH call in calls:
             IF msg.stop_reason is "length":    // args may be cut off: never execute them
@@ -366,6 +366,9 @@ FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> n
                 ctx = ToolContext(cancel, config.env, config.cwd, on_update)
                 result = WAIT for run_tool(_tools(config), call, ctx)
             add(result)
+        IF cancel is set:                      // user pressed Stop during the tools
+            msg = an aborted AssistantMessage; add(msg)
+            RETURN _end(send, msg, new)
         SEND event {turn_end, msg}
         has_calls = (calls is not empty)
     SEND event {agent_end, new}
@@ -394,7 +397,6 @@ flowchart TD
 
 (The diagram leaves out one exit: if the user aborts during the tool batch, the loop adds an `aborted` message and ends. That is [06](06-events-abort.md).)
 
-
 One pass of the inner `while` is one [turn](glossary.md#turn): one model call plus the tools it asked for. How does the loop know it is done? It sets `has_calls = bool(calls)`. If the model asked for no tools, there is nothing left to execute, so the inner loop ends. This is the only "done" signal, which means the model itself decides when it has finished.
 
 Errors end the run, but never the program. A provider error does not raise; it comes back as an `AssistantMessage` with `stop_reason="error"` ([01](01-pick-clean.md), [02](02-translate-send.md)). The loop adds this message to the history and returns, so the caller can see what went wrong. Retrying is a separate job ([15](15-retry.md)).
@@ -406,7 +408,6 @@ Some other points:
 - **Cut-off calls are never executed.** When `stop_reason == "length"`, each call gets an error result "Tool call was truncated (max tokens); not executed". Executing a tool with half-written arguments (say, a `write` with half a file) would be dangerous. The model still gets a result for each call, so the next request is valid.
 - **Every tool call gets a result.** Unknown tool, bad args, crash, truncated: in every case the loop adds a `ToolResultMessage`. Providers reject a tool call with no result ([01](01-pick-clean.md#2-clean-transform_messages)), so this keeps the history sendable. (One exception: after an abort the remaining calls are skipped; `transform_messages` repairs that later, see [01](01-pick-clean.md#2-clean-transform_messages) and [06](06-events-abort.md).)
 - **Tools execute one after another**, in the order the model gave, so results stay in the same order as the calls. (A design reason, not written in the code: two tools never edit the same file at the same time.)
-
 
 ### `_llm_turn`: one model call
 

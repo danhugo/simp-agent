@@ -2,6 +2,10 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-10-23
+
+- ch05 batch 1: agent_loop example now reads README.md (2 turns, 4 new messages; was a.txt, wrongly "seven"); Steps call `run_tool(tools, call, ctx)`; agent_loop pseudocode uses `RETURN _end(send, msg, new)` and has the abort check after the tools; `AgentTool.execute` returns text (`Awaitable[str]`); run_tool diagram shows the `prepare_arguments failed` exit; double blank lines removed. ch00 Part 2 line updated. (checked at agent/__init__.py:22, :74, :158-197)
+
 ## 2026-10-22
 
 - ch05: the run/turn example now uses the same prompt as the rest of the chapter, "What is in README.md?" (was "Summarize README.md").
