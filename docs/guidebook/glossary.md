@@ -279,7 +279,7 @@ The event sent after a (re)connect with `last_seq`, run state, in-flight text an
 A standard JSON format that describes data shapes. Used here to generate TypeScript types. Home: [20](20-server-run.md#gen_protocol--protocolgents).
 
 ## SSE
-Server-Sent Events: one long HTTP response where the server writes events as text blocks. Our browser client reads them with `fetch`, not `EventSource`, because `EventSource` cannot send the `Authorization` header ([25](25-web-client.md#3-the-page-listens-sse-over-fetch-subscribe)). Home: [21](21-transport.md#sse-out-post-in). OpenAI Responses names each event in its `type` ([03](03-parse.md#openai-responses-named-events)).
+Server-Sent Events: one long HTTP response where the server writes events as text blocks. Our browser client reads them with `fetch`, not `EventSource`, because `EventSource` cannot send the `Authorization` header ([25](25-web-client.md#the-page-listens-sse-over-fetch-subscribe)). Home: [21](21-transport.md#sse-out-post-in). OpenAI Responses names each event in its `type` ([03](03-parse.md#openai-responses-named-events)).
 
 ## `seq`
 A number that grows by one for each saved row of a session. Clients use it to ask for the events they missed. Home: [21](21-transport.md#seq-one-counter-for-everything).
@@ -342,13 +342,13 @@ Removing an unused `Run` from memory and closing its sandbox. Files and log stay
 Evicting runs that were not used for `idle_minutes`. Home: [23](23-limits.md#idle-release-evict-runs-nobody-uses).
 
 ## Reducer
-A pure function `(state, event) -> new state`. In the web client, `reduce()` is the only place chat state changes. Home: [25](25-web-client.md#5-events-arrive-the-reducer-statets).
+A pure function `(state, event) -> new state`. In the web client, `reduce()` is the only place chat state changes. Home: [25](25-web-client.md#events-arrive-the-reducer-statets).
 
 ## In-flight buffer
 Text of the assistant message that is still streaming, kept by the server `Run` (`self.inflight`) so a late or reloaded tab gets it in the snapshot. Home: [21](21-transport.md#replay-after-then-snapshot-then-live).
 
 ## Gap / dup delta
-A delta that does not start at the end of the text: a skipped one (gap) or a repeated one (dup). The web client drops both; see [Offset](#offset). Home: [25](25-web-client.md#6-deltas-fit-together-appendat).
+A delta that does not start at the end of the text: a skipped one (gap) or a repeated one (dup). The web client drops both; see [Offset](#offset). Home: [25](25-web-client.md#deltas-fit-together-appendat).
 
 ## Bearer token
 A secret sent in the header `Authorization: Bearer <token>` on every call to the server. See [Token (auth)](#token-auth). Home: [22](22-store-auth.md).
@@ -357,7 +357,7 @@ A secret sent in the header `Authorization: Bearer <token>` on every call to the
 A clock that only goes forward (`time.monotonic()`). Changing the computer's time does not move it, so it is safe for measuring how long something took. Used in [10](10-coding-tools.md) and [23](23-limits.md).
 
 ## Offset
-The position in the full text where a delta starts. `appendAt()` uses it to drop repeated (dup) and skipped (gap) deltas. Home: [25](25-web-client.md#6-deltas-fit-together-appendat).
+The position in the full text where a delta starts. `appendAt()` uses it to drop repeated (dup) and skipped (gap) deltas. Home: [25](25-web-client.md#deltas-fit-together-appendat).
 
 ## Sandbox
 A closed place where a session's commands run, apart from the server and other users. Home: [24](24-docker-sandbox.md#the-sandbox-slot).
@@ -390,13 +390,13 @@ SQLite's built-in way to copy a database safely while it is open and in use. Hom
 The macOS service manager. It starts, restarts and schedules programs from `.plist` files. Home: [26](26-system-tests-deploy.md#launchd-run-it-as-a-service-on-a-mac).
 
 ## Pi
-Another small coding agent that simp-agent copies many ideas from. Code comments like `(pi ExtensionAPI)` point to it. Home: [27](27-limits-choices-extend.md#part-1-design-choices).
+Another small coding agent that simp-agent copies many ideas from. Code comments like `(pi ExtensionAPI)` point to it. Home: [27](27-limits-choices-extend.md#design-choices).
 
 ## Protocol (Python)
-A `typing.Protocol` class that lists methods. Any object with those methods fits; no base class is needed. Not the same as the server [Protocol](#protocol). Home: [27](27-limits-choices-extend.md#part-1-design-choices).
+A `typing.Protocol` class that lists methods. Any object with those methods fits; no base class is needed. Not the same as the server [Protocol](#protocol). Home: [27](27-limits-choices-extend.md#design-choices).
 
 ## Ponytail comment
-A `ponytail:` code comment that marks a known shortcut and names its limit and the way to fix it later. Home: [27](27-limits-choices-extend.md#part-2-known-limits).
+A `ponytail:` code comment that marks a known shortcut and names its limit and the way to fix it later. Home: [27](27-limits-choices-extend.md#known-limits).
 
 ## Allow list
 A fixed list of what to include; anything not on it is left out. The backup copies only the database, `settings.toml`, `workspaces` and `sandboxes`, so `.env` never goes in. Home: [26](26-system-tests-deploy.md).
