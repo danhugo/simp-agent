@@ -101,7 +101,7 @@ Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__ini
 
 ### Sessions on disk
 
-Both modes use `JsonlStore` from [13](13-session.md#jsonlstore-the-real-store-in-the-cli). Each working folder has its own sessions:
+With the model and key ready, the CLI must open a session or load an old one. Both modes use `JsonlStore` from [13](13-session.md#jsonlstore-the-real-store-in-the-cli). Each working folder has its own sessions:
 
 ```text
 FUNCTION session_dir(cwd):
@@ -166,7 +166,7 @@ RETURN an Application with:
 
 Real code: [apps/cli/src/simp_cli/repl.py](../../apps/cli/src/simp_cli/repl.py), method `Repl.build_app`.
 
-The `live` row shows what is still changing (the streaming answer, tools waiting for a result; see [Components](#components)), plus the approval question if one is waiting. The `prompt` row is one input line; its prefix is `> `, `… ` while running, or `Allow? [y/N/a] ` while asking. The `bar` row is a toolbar with the model id, the session id, about how many tokens are used (`estimate_tokens` from [16](16-compaction.md#when-estimate_tokens-and-should_compact)), and the state (`idle`, `running`, `compacting`, `retrying`).
+The `live` row shows what is still changing (the streaming answer, tools waiting for a result; the [Components](#components) section at the end builds these), plus the approval question if one is waiting. The `prompt` row is one input line; its prefix is `> `, `… ` while running, or `Allow? [y/N/a] ` while asking. The `bar` row is a toolbar with the model id, the session id, about how many tokens are used (`estimate_tokens` from [16](16-compaction.md#when-estimate_tokens-and-should_compact)), and the state (`idle`, `running`, `compacting`, `retrying`).
 
 Finished components go above the app with `run_in_terminal`. Why not full screen? Because then the text stays in the normal terminal: you can scroll back and copy it like any other output.
 
@@ -181,50 +181,9 @@ Real code: [apps/cli/src/simp_cli/repl.py](../../apps/cli/src/simp_cli/repl.py),
 
 So the input line stays alive while the agent works. This fixes breaks 2 and 6 of the naive version: there is one event loop for the whole REPL, and you can type during a run. Break 1 (streaming) is fixed by the `live` row, which is redrawn as deltas come in.
 
-### Components
-
-The `live` row above is filled with small **[components](glossary.md#component)** from `components.py`. A component is any object with `render(width) -> list[str]`:
-
-```text
-COMPONENT UserMsg(text):
-    FUNCTION render(width):
-        RETURN the lines of "> " + text in bold, drawn at this width
-```
-
-Real code: [apps/cli/src/simp_cli/components.py](../../apps/cli/src/simp_cli/components.py), class `UserMsg`.
-
-`_render` uses `rich` to draw into a string, not into the real terminal. So `render` is pure: a test can call `render(80)` and read the lines.
-
-There are four components: `UserMsg`, `AssistantMsg`, `ToolCall` and `Notice`. `AssistantMsg` shows plain text while streaming and Markdown only when `done`; the code comment says why: "half-done markdown jumps around". `ToolCall` shows at most `TOOL_LINES = 12` lines of output, then `… (N more lines)`. A `CompactionEntry` ([16](16-compaction.md)) shows as the notice `— earlier history compacted —`.
-
-`Chat` turns messages and events into components, and keeps them in two places. `live` holds components that still change. `commit(c)` sends a finished component to normal terminal scrollback, once.
-
-The key method is `on_message`. It takes one finished message:
-
-```text
-FUNCTION on_message(m):     // called by live message_end AND by resume replay
-    IF m is a user message:   commit UserMsg(m)
-    IF m is an assistant message:
-        drop the streaming component from live
-        commit AssistantMsg(m), if it has something to show
-        FOR EACH tool call in m: ADD a ToolCall to live      // waits for its result
-    IF m is a tool result:    take its ToolCall out of live, add the result, commit it
-    IF m is a compaction:     commit Notice("— earlier history compacted —")
-```
-
-Real code: [apps/cli/src/simp_cli/components.py](../../apps/cli/src/simp_cli/components.py), method `Chat.on_message`.
-
-Example, fizzbuzz. One assistant message comes in: text "I will write it." and a call `write(path="fizzbuzz.py")`.
-
-- Scrollback gets the lines of `I will write it.` (now Markdown, as it is done).
-- `live` gets a `ToolCall` for `write: fizzbuzz.py`, still waiting.
-- Then the tool result message comes in. The same `ToolCall` leaves `live`, gets the result, and goes to scrollback once.
-
-Live events call it on `message_end`. Resume calls it too, through `replay(messages)`. One path for both means a resumed fizzbuzz session looks the same as when it ran live. `test_replay_equals_live` in `apps/cli/tests/test_tui.py` checks exactly this.
-
 ### Routing input
 
-What a line means depends on the state. That logic is a pure function in `__init__.py`, so it is easy to test:
+Now the user types their question and presses Enter. To know what to do with the line, we need a router. What a line means depends on the state. That logic is a pure function in `__init__.py`, so it is easy to test:
 
 ```text
 FUNCTION route(line, running):        // gives back (kind, text)
@@ -260,7 +219,7 @@ While running, Ctrl-C aborts the run. When idle, the first Ctrl-C only warns; a 
 
 ### Approval in the terminal
 
-The session already has the approval policy ([08](08-hooks-approval.md#approval-a-before_tool_call-that-asks-a-human)): it calls an `approve(call)` function that returns `"allow"`, `"deny"` or `"always"`, and only for `bash`, `write` and `edit`. The CLI only has to supply that function, which asks the human.
+A `prompt` line starts the agent. When the agent wants to run a risky tool, it must ask the user first. The session already has the approval policy ([08](08-hooks-approval.md#approval-a-before_tool_call-that-asks-a-human)): it calls an `approve(call)` function that returns `"allow"`, `"deny"` or `"always"`, and only for `bash`, `write` and `edit`. The CLI only has to supply that function, which asks the human.
 
 Both modes turn the typed text into an answer with one function:
 
@@ -308,6 +267,47 @@ Real code: [apps/cli/src/simp_cli/repl.py](../../apps/cli/src/simp_cli/repl.py),
 The question shows in the live region. The next Enter calls `submit`, which sees `self.pending` and runs `self.pending.set_result(approval_answer(line))`. Ctrl-C while asking sets `"deny"` and then aborts.
 
 `describe_call` makes the question short: `bash: <command>`, or `<tool>: <path>` for `write`, `edit` and `read` (for example `write: fizzbuzz.py`).
+
+### Components
+
+The agent now answers, and tools run after approval. Last, the answer must be drawn on the screen. To do that, the `live` row of [the REPL](#the-repl) is filled with small **[components](glossary.md#component)** from `components.py`. A component is any object with `render(width) -> list[str]`:
+
+```text
+COMPONENT UserMsg(text):
+    FUNCTION render(width):
+        RETURN the lines of "> " + text in bold, drawn at this width
+```
+
+Real code: [apps/cli/src/simp_cli/components.py](../../apps/cli/src/simp_cli/components.py), class `UserMsg`.
+
+`_render` uses `rich` to draw into a string, not into the real terminal. So `render` is pure: a test can call `render(80)` and read the lines.
+
+There are four components: `UserMsg`, `AssistantMsg`, `ToolCall` and `Notice`. `AssistantMsg` shows plain text while streaming and Markdown only when `done`; the code comment says why: "half-done markdown jumps around". `ToolCall` shows at most `TOOL_LINES = 12` lines of output, then `… (N more lines)`. A `CompactionEntry` ([16](16-compaction.md)) shows as the notice `— earlier history compacted —`.
+
+`Chat` turns messages and events into components, and keeps them in two places. `live` holds components that still change. `commit(c)` sends a finished component to normal terminal scrollback, once.
+
+The key method is `on_message`. It takes one finished message:
+
+```text
+FUNCTION on_message(m):     // called by live message_end AND by resume replay
+    IF m is a user message:   commit UserMsg(m)
+    IF m is an assistant message:
+        drop the streaming component from live
+        commit AssistantMsg(m), if it has something to show
+        FOR EACH tool call in m: ADD a ToolCall to live      // waits for its result
+    IF m is a tool result:    take its ToolCall out of live, add the result, commit it
+    IF m is a compaction:     commit Notice("— earlier history compacted —")
+```
+
+Real code: [apps/cli/src/simp_cli/components.py](../../apps/cli/src/simp_cli/components.py), method `Chat.on_message`.
+
+Example, fizzbuzz. One assistant message comes in: text "I will write it." and a call `write(path="fizzbuzz.py")`.
+
+- Scrollback gets the lines of `I will write it.` (now Markdown, as it is done).
+- `live` gets a `ToolCall` for `write: fizzbuzz.py`, still waiting.
+- Then the tool result message comes in. The same `ToolCall` leaves `live`, gets the result, and goes to scrollback once.
+
+Live events call it on `message_end`. Resume calls it too, through `replay(messages)`. One path for both means a resumed fizzbuzz session looks the same as when it ran live. `test_replay_equals_live` in `apps/cli/tests/test_tui.py` checks exactly this.
 
 ## Test
 
