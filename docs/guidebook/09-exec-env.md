@@ -61,9 +61,13 @@ The sections below fix each break once.
 
 ## Real design
 
-### One object for all tools
+We follow two real requests from the running example, top-down: the model calls `read`, then `bash`. Each piece (contract, helper, class) comes in when the request needs it.
 
-[DockerEnv](24-docker-sandbox.md) is the second env, built in Part 5; here it only shows that a second one can exist. A tool never builds its own env. It uses `ctx.env`. The host (CLI, server, eval runner) picks which env to pass in `LoopConfig.env`. If the host gives none, the default is `LocalEnv()`. The loop puts it into each tool's context: `ToolContext(cancel, config.env, config.cwd, on_update)`.
+### Step 1: the tool asks `ctx.env`
+
+The model sends the tool call `read(path="README.md")`. `run_tool` ([05](05-agent-loop.md)) runs the `read` tool and gives it a tool context. The tool does not open the file itself. It calls `await ctx.env.read_file(path)`. So the first question is: where does `ctx.env` come from?
+
+A tool never builds its own env. It uses `ctx.env`. The host (CLI, server, eval runner) picks which env to pass in `LoopConfig.env`. If the host gives none, the default is `LocalEnv()`. The loop puts it into each tool's context: `ToolContext(cancel, config.env, config.cwd, on_update)`.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`LoopConfig`, `agent_loop`)
 
@@ -76,13 +80,33 @@ flowchart LR
     Env --> Docker["DockerEnv (ch 24)"]
 ```
 
-So to move all commands into Docker, the server swaps one object. No tool changes.
+So to move all commands into Docker, the server swaps one object. No tool changes. [DockerEnv](24-docker-sandbox.md) is that second env, built in Part 5; here it only shows that a second one can exist.
 
-### `LocalEnv`: this machine
+#### The contract: `ExecutionEnv`
+
+The tool does not know if `ctx.env` is a `LocalEnv` or a `DockerEnv`. To call it anyway, we need a contract: a list of methods every env has. `ExecutionEnv` is a `typing.Protocol`: any object with these methods counts, no need to inherit.
+
+```text
+ExecutionEnv (all async):
+    read_file(path)          -> text
+    write_file(path, text)
+    read_bytes(path)         -> bytes
+    write_bytes(path, data)
+    list(path)               -> list of {name, is_dir, size}
+    exec(command, cwd, timeout, cancel, on_output = none) -> (exit_code or None, output)
+```
+
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`ExecutionEnv`)
+
+How the two are related: `ExecutionEnv` says WHAT an env can do; `LocalEnv` and `DockerEnv` are HOW one machine does it. The contract also says HOW the result comes back: text, bytes, entries, or `(exit code, output)`.
+
+### Step 2: `LocalEnv` reads the file
+
+The tool called `ctx.env.read_file("README.md")`. With the default host setup, `ctx.env` is a `LocalEnv`. What does it do with the call?
 
 `LocalEnv` is the only env in the core library. It works on the machine where Python runs. It takes one optional argument, `root`: the folder the tools may use. With no root (the `LoopConfig` default), paths are used as they are, so a relative path depends on the folder the Python process runs in. That is why the tools in [10](10-coding-tools.md) first join the path to `ctx.cwd` themselves.
 
-File methods are thin. Each sends the slow disk work to a thread with `asyncio.to_thread`, so the event loop keeps running and Stop is still heard:
+`read_file` is thin, and so are the other file methods. The loop is `async`, so to read without freezing it, we need a thread: each method sends the slow disk work to a thread with `asyncio.to_thread`, so the event loop keeps running and Stop is still heard:
 
 ```text
 FUNCTION read_file(path):
@@ -108,9 +132,9 @@ Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp
 
 `write_file` calls `write_bytes`, so there is only one write path to check. Making the parent folders means the model needs no "make folder" tool. `list` sorts by name, so the output is the same every time, which helps tests and the model. Bytes exist next to text because images and the server's file download ([20](20-server-run.md)) are not text.
 
-Every method starts with `_path(path)`. That is the next section.
+Every method starts with `_path(path)`. What does `_path` do with `"README.md"` before the disk is touched? That is the next step.
 
-### Path safety
+### Step 3: `_path` checks the path
 
 [Path safety](glossary.md#path-safety) means: when `LocalEnv` has a `root`, a file path can never point outside it. This book uses only this one name for the idea.
 
@@ -136,9 +160,11 @@ Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp
 
 **Path safety is for files only.** `exec` does not check paths, so `cat ../secret` through bash still works on `LocalEnv`. Real isolation for commands is the Docker sandbox in [24](24-docker-sandbox.md). And with no root, every path is trusted. That is fine for a CLI on your own machine.
 
-What happens to the error? The tool does not catch it. `run_tool` ([05](05-agent-loop.md)) turns any exception into an error tool result. So the model sees `PermissionError: path escapes root: ../secret` and can try another path. The loop does not crash.
+Now the result goes back. If `_path` is happy, the text of `README.md` returns to the tool, the tool returns it to `run_tool`, and the model reads it in the next turn. What happens to an error? The tool does not catch it. `run_tool` ([05](05-agent-loop.md)) turns any exception into an error tool result. So the model sees `PermissionError: path escapes root: ../secret` and can try another path. The loop does not crash.
 
-### `exec`: run, stream, stop
+### Step 4: a second request, `bash`
+
+Reading a file is short. Now the model calls `bash(command="pytest")`. The `bash` tool calls `ctx.env.exec(...)`. This call can be long, print a lot, and the user may press Stop. What does `exec` do with it?
 
 `exec(command, cwd, timeout, cancel, on_output)` runs a shell command. While it runs, output streams out. Three things can end it:
 
@@ -152,7 +178,7 @@ In cases 2 and 3 we kill the command and return `(None, output so far)`. `None` 
 FUNCTION exec(command, cwd, timeout, cancel, on_output = none):
     proc = START command in a shell, in cwd,
            stderr merged into stdout,             // one stream, in the order it came
-           in a NEW process group                 // see next section
+           in a NEW process group                 // see Step 5
     chunks = empty list
 
     FUNCTION pump():
@@ -177,7 +203,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp
 
 How to read it. stderr is merged into stdout so the model sees errors next to the line that caused them. Bad bytes are replaced, not raised, because one odd byte from a program must not crash the tool. `on_output` is what the `bash` tool passes as `ctx.on_update` ([05](05-agent-loop.md#toolcontext-what-a-tool-gets)), so each chunk becomes a `tool_execution_update` event for the UI.
 
-The end is a race. Two tasks run at the same time: `run` reads output until the command exits, and `stop` just waits for the Stop button. We wait for whichever finishes first, but no longer than `timeout`. Then the `stop` task is cancelled, because nobody needs it now. If `run` is not done, Stop or the timeout won: we kill the whole process group with `run_kill` (next section) and then still wait for `run`. Why wait? The output pipe closes only when every process in the group is dead, so this wait also reads the last bytes. We keep every chunk in `chunks`, so even after a kill we can return what came so far.
+The end is a race. Two tasks run at the same time: `run` reads output until the command exits, and `stop` just waits for the Stop button. We wait for whichever finishes first, but no longer than `timeout`. Then the `stop` task is cancelled, because nobody needs it now. If `run` is not done, Stop or the timeout won: we kill the whole process group with `run_kill` (Step 5) and then still wait for `run`. Why wait? The output pipe closes only when every process in the group is dead, so this wait also reads the last bytes. We keep every chunk in `chunks`, so even after a kill we can return what came so far.
 
 ```mermaid
 sequenceDiagram
@@ -199,9 +225,9 @@ sequenceDiagram
     end
 ```
 
-### Process-group kill
+### Step 5: Stop kills the whole group
 
-The story: bash starts `npm test`, which starts `node`. If we kill only bash, `node` lives on and still holds port 3000.
+`exec` called `run_kill(proc.pid)` when Stop or the timeout won. Why a group, and not just the process? Bash starts `npm test`, which starts `node`. If we kill only bash, `node` lives on and still holds port 3000.
 
 So we start the shell with `start_new_session=True`. Now the shell and every child it starts share one **process group**, whose id is the shell's PID. A [process-group kill](glossary.md#process-group-kill) sends `SIGKILL` (a kill signal that cannot be caught) to the whole group at once. `run_kill(pgid)` does this; `pgid` is the process group id, which is why `exec` passes `proc.pid`.
 
@@ -209,23 +235,9 @@ Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp
 
 > **Detail (OS):** `run_kill` calls `os.killpg(pgid, 9)` up to 100 times, 20 ms apart (about 2 s max). Why repeat? A child may be forked at the moment the first signal goes out, and miss it. It stops when `killpg` raises `ProcessLookupError` (group empty) or, on macOS, `PermissionError` (only zombies left: dead processes whose exit code nobody has read yet).
 
-### The contract: `ExecutionEnv`
+### Step 6: the rules every env must pass
 
-Now we can name all six methods. `ExecutionEnv` is a `typing.Protocol`: any object with these methods counts, no need to inherit.
-
-```text
-ExecutionEnv (all async):
-    read_file(path)          -> text
-    write_file(path, text)
-    read_bytes(path)         -> bytes
-    write_bytes(path, data)
-    list(path)               -> list of {name, is_dir, size}
-    exec(command, cwd, timeout, cancel, on_output = none) -> (exit_code or None, output)
-```
-
-Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`ExecutionEnv`)
-
-The types say *which* methods exist, not *how* they must behave. For that there is `EnvConformance` in the `testing` [layer](glossary.md#layer): one shared test class that checks path safety, exec output, cancel, and the group kill. Any env passes it by giving one fixture, `make_env(root)`. `DockerEnv` uses it in [24](24-docker-sandbox.md).
+We followed one `read` and one `bash` call through `LocalEnv`. How do we know a second env, like `DockerEnv`, does the same? The types say *which* methods exist, not *how* they must behave. For that there is `EnvConformance` in the `testing` [layer](glossary.md#layer): one shared test class that checks path safety, exec output, cancel, and the group kill. Any env passes it by giving one fixture, `make_env(root)`. `DockerEnv` uses it in [24](24-docker-sandbox.md).
 
 Real code: [packages/simp_agent/src/simp_agent/testing/env_conformance.py](../../packages/simp_agent/src/simp_agent/testing/env_conformance.py) (`EnvConformance`)
 
