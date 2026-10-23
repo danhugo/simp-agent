@@ -141,7 +141,7 @@ Now the missing file. `read` raises `FileNotFoundError`, and the model receives 
 
 **Step 4 — check `stop_reason`.** After each model call, before any tool executes, the loop checks why the model stopped. `error` (the provider failed) and `aborted` (the user pressed Stop) both mean there is nothing useful to execute, so the loop ends on purpose.
 
-**How Stop works.** Pressing Stop happens in two parts. First, it sets a flag, the **[cancel flag](glossary.md#abort)**. The model call, the tool that is executing and the loop all watch this flag. Second, an `aborted` label goes into the history, so later everyone can see why the run ended. Who writes that label depends on when the user pressed Stop. If the model was still answering, its answer stops and gets `stop_reason` `aborted`. If a tool was executing, the model had already finished, so the tool returns "Interrupted by the user", the other calls of that turn are skipped, and the loop adds an `aborted` message itself. How the flag works inside is [06](06-events-abort.md).
+**How Stop works.** Pressing Stop happens in two parts. First, it sets a flag, the **[cancel flag](glossary.md#abort)**. The model call, the tool that is executing and the loop all watch this flag. Second, an `aborted` label goes into the history, so later everyone can see why the run ended. Who writes that label depends on when the user pressed Stop. If the model was still answering, its answer stops and gets `stop_reason` `aborted`. If tools were executing, the model had already finished. A tool that fails because of Stop returns "Interrupted by the user" (Step 3), the calls that have not started are skipped, and the loop adds an `aborted` message itself. How the flag works inside, and the exact moments when Stop can land, is [06](06-events-abort.md).
 
 **When a run ends.** A [run](#problem) ends in only three ways. The model's message has `stop_reason` `error` or `aborted`. Or the user pressed Stop while the tools of a turn were executing. Or, the normal way, the model asks for no more tools (and no new message from the user is waiting, [07](07-steering.md)). In every case the loop sends a last `agent_end` event and returns the new messages.
 
@@ -202,8 +202,7 @@ CLASS AgentTool(ai.Tool):          // name, description, parameters + the code
                         // called before validation
 ```
 
-- `execute(args, ctx)` is an async function. It returns **text**. The text goes back to the model as the tool result.
-- `prepare_arguments` is optional. It fixes raw arguments before they are checked (for example, an old argument name). We see it in `run_tool` below.
+`execute(args, ctx)` is an async function that returns **text**, and that text goes back to the model as the tool result. `prepare_arguments` is optional: it repairs raw arguments before they are checked (for example, an old argument name).
 
 Because `AgentTool` **is** an `ai.Tool`, we can pass the same list to the model (as descriptions) and to the loop (to execute them).
 
@@ -215,7 +214,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 
 ```text
 CLASS ToolContext:
-    cancel       // an asyncio.Event
+    cancel       // the Stop flag (an asyncio.Event: a flag that async code can wait on)
     env          // the ExecutionEnv
     cwd          // the working folder
     on_update    // FUNCTION (text): SEND event tool_execution_update (progress for the UI)
@@ -257,7 +256,7 @@ FUNCTION run_tool(tools, call, ctx) -> ToolResultMessage:
         ELSE: RETURN err("<type>: <e>")
 ```
 
-This is the most important rule of the chapter: **every failure becomes a `ToolResultMessage` with `is_error=True`**. Nothing raises out of `run_tool`.
+Nothing raises out of `run_tool`: every failure becomes a `ToolResultMessage` with `is_error=True`.
 
 ```mermaid
 flowchart TD
@@ -271,13 +270,7 @@ flowchart TD
     D -- returns text --> OK[ToolResultMessage text]
 ```
 
-Why turn errors into messages? Because the model can **read** them. If it sees `'x' is a required property`, it calls the tool again with `x`. If the run crashed, there is nobody left to fix it. The error text is feedback, not a failure.
-
-Three more details:
-
-- The schema check uses the same `parameters` the model was shown. One schema, two jobs: it tells the model what to send, and it checks what the model sent.
-- `prepare_arguments` is called **before** validation, so it can repair old argument shapes. It writes back into `call.arguments`, so the history keeps the repaired version.
-- If the tool raised **because** the user stopped the run, the model sees `Interrupted by the user`, not a confusing `CancelledError`.
+Only one thing is new compared with Steps 1–3: `prepare_arguments` runs **before** the schema check, so it can repair an old argument shape. It writes back into `call.arguments`, so the history keeps the repaired version.
 
 ### `LoopConfig`: the settings
 
@@ -318,7 +311,7 @@ The run returns four new messages: the user prompt, the assistant message and to
 
 Now the loop that does this. This is a small version: it leaves out steering and follow-ups ([07](07-steering.md)), tool events and most of abort ([06](06-events-abort.md)), and hooks ([08](08-hooks-approval.md)).
 
-Its inputs, in plain words: `messages` is the history so far (the loop appends to this same list), `prompts` are the new user messages for this run, and `config` is the `LoopConfig` above. `emit` is how the app listens: the loop gives it every event. Inside, `send(event)` tells the app's listeners about one event, and `add(message)` keeps a message in the history and also tells the listeners about it. `cancel` is the Stop flag from Steps 3 and 4.
+Its inputs, in plain words: `messages` is the history so far (the loop appends to this same list), `prompts` are the new user messages for this run, and `config` is the `LoopConfig` above. `emit` is a function from the app; the loop calls it with every **event** (a small dict such as `{type: "turn_start"}` that says what just happened, so a UI can show it; [06](06-events-abort.md) covers them all). Inside, `send(event)` passes one event to `emit`, and `add(message)` keeps a message in the history and also sends events about it. `cancel` is the Stop flag from Steps 3 and 4.
 
 `_llm_turn` gets `send` and `add` too. It uses `send` for each piece of the streamed answer, and `add` for the few messages it puts in the history itself (a note when the tool list changed, and steering messages, [07](07-steering.md)).
 
@@ -327,7 +320,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 ```text
 FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> new messages:
     new = []                                   // only the messages from this run
-    FUNCTION send(event): emit(event)          // give the event to the subscribers
+    FUNCTION send(event): emit(event)          // 06 shows the real version, _emit_all
     // add is called for the user's prompts, the model's reply and tool results
     FUNCTION add(message): append message to messages and to new; SEND message_start, message_end
     SEND event agent_start
@@ -375,10 +368,9 @@ flowchart TD
     R --> TE[turn_end]
     TE --> H{had tool calls?}
     H -- yes --> T
+    R -- user pressed Stop --> AB([add aborted message, turn_end, agent_end, return])
     H -- no --> END2([agent_end, return new messages])
 ```
-
-(The diagram leaves out the Stop-during-tools exit; see [Step 4](#step-by-step-from-naive-to-real).)
 
 One pass of the inner `while` is one [turn](glossary.md#turn): one model call plus the tools it asked for. Normally the run ends when the model asks for no tools (`has_calls` is false), so the model itself decides when it is done. Every way a run ends, and why cut-off calls never execute, is in [Step 4](#step-by-step-from-naive-to-real). Retrying after a provider error is a separate job ([15](15-retry.md)).
 
@@ -394,9 +386,10 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 
 ```text
 // inside FUNCTION _llm_turn(system_prompt, messages, config, cancel, send, add):
+    view = WAIT for config.prepare_next_turn(messages), or messages if it gives nothing
+    ...                                                     // steering poll (07)
     tools = config.get_tools() if set, else config.tools    // read again every turn
-    view = the messages to send (by default, the whole history)
-    ...
+    ...                                                     // "Tools added / removed" note (07)
     IF system_prompt is a function: system_prompt = WAIT for system_prompt()
     llm_msgs = ai.transform_messages(view)
     msg = nothing; partial = nothing
@@ -411,7 +404,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 
 The tool list and the system prompt are read again every turn. `system_prompt` is usually a string, but it may also be a function that returns the string, so the prompt can change between turns (what goes in it is [11](11-system-prompt.md)). The `view` is the list of messages we send; by default it is the whole history, and [16](16-compaction.md) makes it shorter. `transform_messages` ([01](01-pick-clean.md#2-clean-transform_messages)) cleans it before it is sent. The final message is taken from the last `done` or `error` event, the one rule of a stream function. In the real code the call goes through a small wrapper, `_stream`, so that Stop can cut it off in the middle ([06](06-events-abort.md)).
 
-The skipped lines (a steering poll and the "Tools added / removed" note) belong to [07](07-steering.md). The `view` is made by the `prepare_next_turn` hook, and two more hooks, `transform_context` and `convert_to_llm`, can change it before `transform_messages`; all three do nothing by default, and [16](16-compaction.md) uses `prepare_next_turn`.
+The skipped lines (a steering poll and the "Tools added / removed" note) belong to [07](07-steering.md). The `view` is made by the `prepare_next_turn` hook. Two more hooks, `transform_context` and `convert_to_llm`, can change it before `transform_messages`. In a bare `LoopConfig` all three do nothing; the `Agent` class sets `prepare_next_turn` to `build_view` by default, and [16](16-compaction.md) explains it.
 
 ## Test
 
@@ -422,7 +415,7 @@ def call(name, **args):
     return AssistantMessage([ToolCall("c1", name, args)], stop_reason="tool_use")
 
 
-async def echo(args, ctx):
+async def echo(args, cancel):   # the 2nd argument is the ToolContext; the test names it cancel
     return f"echo {args['x']}"
 
 
