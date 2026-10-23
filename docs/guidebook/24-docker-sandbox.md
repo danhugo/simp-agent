@@ -41,7 +41,7 @@ The root check of `LocalEnv` keeps the *file* tools (`read`, `write`, `edit`, `l
 
 For one person on a laptop, this is fine: it is their own machine. For Ana and Bob together, it is not. Each session's commands must run in a closed box, apart from the server and from each other. That box is a **[sandbox](glossary.md#sandbox)**. We build it with Docker: a **[container](glossary.md#container)** is a process that sees its own files, its own users and its own limits, started from a ready-made image. It shares the host's kernel, so it starts in about a second, much faster than a full virtual machine.
 
-## Starting point: 23's server, with LocalSandbox in the slot
+## Starting point: 23's server and LocalSandbox
 
 Here is the real `LocalSandbox.open` the server uses today (`server.py`, trimmed):
 
@@ -52,25 +52,13 @@ async def open(self, session_id: str) -> LocalEnv:
     return LocalEnv(str(d.resolve()))
 ```
 
-The session gets a plain `LocalEnv` from [09](09-exec-env.md). The first idea is the smallest swap: keep this `open`, but make `exec` of that env put `docker run --rm -v <root>:/work python:3.13-slim sh -c <command>` in front of every command, and on timeout kill the `docker` process on the host.
+The session gets a plain `LocalEnv` from [09](09-exec-env.md). The smallest swap is to keep this `open`, but make `exec` of that env put `docker run --rm -v <root>:/work python:3.13-slim sh -c <command>` in front of every command, and on timeout kill the `docker` process on the host.
 
-That prints FizzBuzz. But it breaks in four ways:
-
-1. **Slow.** A new container starts for every `bash` call, and the agent makes many.
-2. **Still open.** The container runs as root, has the network, and has no memory or process limit. `curl` and the fork bomb still work.
-3. **Timeout and cancel do not stop the command.** Killing the `docker` program on the host leaves the command inside the container running. `cancel` and `on_output` are ignored, and `cwd` is thrown away.
-4. **Nobody owns it.** Nothing says when a session's box starts, when it stops, and when its files go away.
+That prints FizzBuzz, but it is slow, because a new container starts for every `bash` call and the agent makes many. It is also still open: the container runs as root, has the network, and has no memory or process limit, so `curl` and the fork bomb still work. A timeout does not stop the command either, because killing the `docker` program on the host leaves the command inside the container running; `cancel`, `on_output` and `cwd` are thrown away too. And nobody owns the box: nothing says when a session's box starts, when it stops, and when its files go away.
 
 ## Step by step: from LocalSandbox to DockerSandbox
 
-In plain words, each step fixes one break:
-
-1. **Start the box once per session**, keep it alive doing nothing, and send each command into it. This fixes *slow*.
-2. **Close every door we do not need** when starting it: no root, no network, a limit on processes and memory, a read-only system. This fixes *still open*.
-3. **Kill the whole command inside the box** on timeout or cancel, the same group kill as [09](09-exec-env.md#step-5-stop-kills-the-whole-group), just done from inside. This fixes the timeout.
-4. **Give the server a slot** that opens, closes and removes a box per session, so the session manager decides when. This fixes *nobody owns it*.
-
-Real design walks these in the order the server meets them: first the slot (4), then the box (1, 2), then the commands (3).
+In plain words, the fix is to start the box once per session, keep it alive doing nothing, and send each command into it. When we start it, we close every door we do not need: no root, no network, a limit on processes and memory, a read-only system. On timeout or cancel we kill the whole command inside the box, the same group kill as [09](09-exec-env.md#step-5-stop-kills-the-whole-group), just done from inside. And the session manager, which already decides when a session loads and goes away, also decides when its box opens, closes and is removed.
 
 ## Real design
 
@@ -92,41 +80,9 @@ flowchart LR
 
 The session folder lives on the host. The container sees the same folder at `/work`. File tools stay on the host; only commands go into the box.
 
-### The sandbox slot
-
-Follow one request. Ana opens a session. The session manager loads it ([20](20-server-run.md)) and needs a place where her tools will run, so it calls `self.sandbox.open(row["sandbox_ref"])`; `sandbox_ref` is the name the store keeps for the session's box. To make that call, the server needs a slot it can fill with either a local or a Docker sandbox.
-
-The server does not know about Docker. The protocol is `Sandbox`, in `server.py`:
-
-```python
-class Sandbox(Protocol):
-    async def open(self, session_id: str) -> ExecutionEnv: ...
-
-    async def close(self, session_id: str) -> None: ...
-
-    async def remove(self, session_id: str) -> None: ...  # delete the workspace files (session deleted)
-```
-
-`open` gives back an `ExecutionEnv`, the same contract every tool already uses ([09](09-exec-env.md#the-contract-executionenv)). So the tools never learn that a container exists. `close` frees what is running but keeps the files. `remove` deletes the files.
-
-This is a **[sandbox slot](glossary.md#sandbox-slot)**, one of the [server slots](glossary.md#server-slot) from [22](22-store-auth.md#token-hashes), next to `store` and `auth`. `DEFAULT_PLUGINS` puts `LocalSandbox` in it. `load_settings()` switches it to Docker when you set the env var `SIMP_SANDBOX=docker` (or set `[plugins] sandbox` in `settings.toml`):
-
-```python
-docker = {"sandbox": "simp_server.sandboxes.docker:DockerSandbox"} if os.environ.get("SIMP_SANDBOX") == "docker" else {}
-```
-
-Why a slot, and not Docker everywhere? Because the server code stays the same in both worlds. One person on a laptop needs no Docker, and the tests run without it. But forgetting to switch on a shared server would be dangerous, so the server checks:
-
-```python
-def check_sandbox(settings: dict, n_users: int) -> str | None:
-    """LocalSandbox runs tools on this machine as the server user: fine for one person, not for several."""
-```
-
-With more than one user and `LocalSandbox`, it returns an error message, and the server refuses to start (or to add the second user), unless you set `allow_local_sandbox = true` on purpose.
-
-One more door is closed outside the box. The model API keys sit in the server's environment, and a child process inherits the environment. So `take_keys()` reads the keys and *removes* them from `os.environ`: "Removed from os.environ so sandboxed commands never see them." Even `env` inside `bash` cannot print them.
-
 ### DockerSandbox.open: one hardened container per session
+
+Follow one request. Ana opens a session. The session manager loads it ([20](20-server-run.md)) and needs a place where her tools will run, so it calls `self.sandbox.open(row["sandbox_ref"])`; `sandbox_ref` is the name the store keeps for the session's box, and `open` receives it as `session_id`. With Docker switched on, that call lands in `DockerSandbox.open`.
 
 Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerSandbox.open`
 
@@ -147,7 +103,7 @@ FUNCTION open(session_id):
     RETURN it
 ```
 
-The id check comes first because the id becomes both a folder name and a container name; `../x` must never reach either. The reuse check and `sleep infinity` are step 1: the container starts once and then just waits, and every command later enters it with `docker exec`. `docker rm -f` is there because a crashed server can leave a container with the same name behind. The old-folder move is for sessions made by an earlier server version, which kept files in `<data_dir>/sandboxes`.
+The id check comes first because the id becomes both a folder name and a container name; `../x` must never reach either. With the reuse check and `sleep infinity`, the container starts once and then just waits, and every command later enters it with `docker exec`. `docker rm -f` is there because a crashed server can leave a container with the same name behind. The old-folder move is for sessions made by an earlier server version, which kept files in `<data_dir>/sandboxes`.
 
 **The image.** Before `docker run` can start anything, it needs an image. `apps/server/sandboxes/Dockerfile` builds the image `simp-sandbox:latest`, the template each container starts from:
 
@@ -165,7 +121,7 @@ It has Python and the programs the agent likes to call (`rg`, `fd`, `git`), a no
 
 The session folder is a **[bind mount](glossary.md#bind-mount)**: a host folder shown inside the container at `/work`. A file the agent writes in the box is a normal file on the host, so it survives the container.
 
-Step 2 is the flags. Turning off every power the box does not need, and adding limits, is called **[hardening](glossary.md#hardening)**. Each flag closes one door from the Problem:
+Now the flags. Turning off every power the box does not need, and adding limits, is called **[hardening](glossary.md#hardening)**. Each flag closes one door named in the Problem:
 
 | Flag | What it stops |
 |---|---|
@@ -177,6 +133,8 @@ Step 2 is the flags. Turning off every power the box does not need, and adding l
 | `--cap-drop ALL`, `--security-opt no-new-privileges` | Gaining extra Linux powers (capabilities), even through a setuid program. |
 
 The values come from the `[sandbox]` table in `settings.toml`, so an admin can give more memory or turn on a network. Missing keys fall back to the safe defaults: `network = "none"`, `memory = "1g"`, `cpus = "1"`, `pids_limit = 256`, `image = "simp-sandbox:latest"`, `workspaces_dir = <data_dir>/workspaces`.
+
+One more door is closed outside the box. The model API keys sit in the server's environment, and a child process inherits the environment. So `take_keys()` reads the keys and *removes* them from `os.environ`: "Removed from os.environ so sandboxed commands never see them." Even `env` inside `bash` cannot print them.
 
 ### DockerEnv: files on the host, commands in the box
 
@@ -217,19 +175,51 @@ IF not done:
 3. We run `docker exec simp-<id> kill -9 -- -4711`. The shell and `sleep` die inside the box.
 4. `exec` returns `(None, "1\n2\nFizz\n…")`.
 
-With `kill -9 4711` (no minus), only the shell would die and `sleep 30` would keep running, which is exactly break 3 of the starting point.
+With `kill -9 4711` (no minus), only the shell would die and `sleep 30` would keep running, which is exactly what went wrong with the `docker run` swap above.
 
 ### close, remove, close_all
 
-The request ends. The session manager calls the slot again at moments you already know. When it evicts an idle run ([23](23-limits.md)), it calls `close`; the docstring says "Free RAM and the container; files and log stay". When a session is deleted, it calls `close` and then `remove`. On shutdown it closes each open run and then calls `close_all()` if the sandbox has one.
+The request ends. The session manager calls the sandbox again at moments you already know. When it evicts an idle run ([23](23-limits.md)), it calls `close`; the docstring says "Free RAM and the container; files and log stay". When a session is deleted, it calls `close` and then `remove`. On shutdown it closes each open run and then calls `close_all()` if the sandbox has one.
 
 `close(session_id)` drops the env from `envs` and runs `docker rm -f` on its container. The folder stays. The next `open` starts a fresh container on the same folder, so `fizzbuzz.py` is still there. That is why eviction in [23](23-limits.md) is cheap to undo: a container costs memory while it waits, the files cost nothing.
 
 `remove(session_id)` deletes the folder, in both the new and the old place, after the same id check. `close_all()` closes every open container at once with `asyncio.gather`, so a server shutdown leaves no containers running.
 
+### The sandbox slot
+
+Each call above came from the session manager as `self.sandbox.open(...)`, `close(...)` or `remove(...)`. So how does `self.sandbox` become a `DockerSandbox` on a shared server and a `LocalSandbox` on a laptop?
+
+The server does not know about Docker. The protocol is `Sandbox`, in `server.py`:
+
+```python
+class Sandbox(Protocol):
+    async def open(self, session_id: str) -> ExecutionEnv: ...
+
+    async def close(self, session_id: str) -> None: ...
+
+    async def remove(self, session_id: str) -> None: ...  # delete the workspace files (session deleted)
+```
+
+`open` gives back an `ExecutionEnv`, the same contract every tool already uses ([09](09-exec-env.md#the-contract-executionenv)). So the tools never learn that a container exists. `close` frees what is running but keeps the files. `remove` deletes the files.
+
+This is a **[sandbox slot](glossary.md#sandbox-slot)**, one of the [server slots](glossary.md#server-slot) from [22](22-store-auth.md#token-hashes), next to `store` and `auth`. `DEFAULT_PLUGINS` puts `LocalSandbox` in it. `load_settings()` switches it to Docker when you set the env var `SIMP_SANDBOX=docker` (or set `[plugins] sandbox` in `settings.toml`):
+
+```python
+docker = {"sandbox": "simp_server.sandboxes.docker:DockerSandbox"} if os.environ.get("SIMP_SANDBOX") == "docker" else {}
+```
+
+Why a slot, and not Docker everywhere? Because the server code stays the same in both worlds. One person on a laptop needs no Docker, and the tests run without it. But forgetting to switch on a shared server would be dangerous, so the server checks:
+
+```python
+def check_sandbox(settings: dict, n_users: int) -> str | None:
+    """LocalSandbox runs tools on this machine as the server user: fine for one person, not for several."""
+```
+
+With more than one user and `LocalSandbox`, it returns an error message, and the server refuses to start (or to add the second user), unless you set `allow_local_sandbox = true` on purpose.
+
 ### Passing EnvConformance
 
-That is the whole life of one session. One question is left: how do we know `DockerEnv` acts exactly like `LocalEnv`? We reuse **`EnvConformance`** from [09](09-exec-env.md#test): one test class with checks for files, listing, root containment, exit codes, streaming, `cwd`, timeout and cancel. Any env that passes it can be given to the tools.
+One question is left: how do we know `DockerEnv` acts exactly like `LocalEnv`? We reuse **`EnvConformance`** from [09](09-exec-env.md#test): one test class with checks for files, listing, root containment, exit codes, streaming, `cwd`, timeout and cancel. Any env that passes it can be given to the tools.
 
 One line in it was written for Docker:
 
@@ -292,6 +282,6 @@ uv run pytest apps/server/tests/test_docker_sandbox.py -q
 
 ## Recap
 
-Ana's `bash` commands no longer run on the server. The server has a `Sandbox` slot with `open`, `close` and `remove`, and the session manager calls it when a session loads, is evicted, is deleted, and at shutdown. `LocalSandbox` gives a plain folder and no isolation, so `check_sandbox` refuses several users on it unless you allow it, and `take_keys` hides the model keys from every command. `DockerSandbox.open` starts one hardened container per session (user 1000, no network, limits on processes, memory and CPU, read-only system, no capabilities) with the session folder bind-mounted at `/work`. `DockerEnv` keeps the file tools on the host and sends only `exec` through `docker exec`, where `setsid` and the pid line let a timeout kill the whole group inside the box. `EnvConformance` and `test_hardening` prove it. Next, [25](25-web-client.md) gives Ana and Bob a browser page to use all of this.
+Ana's `bash` commands no longer run on the server. `DockerSandbox.open` starts one hardened container per session (user 1000, no network, limits on processes, memory and CPU, read-only system, no capabilities) with the session folder bind-mounted at `/work`. `DockerEnv` keeps the file tools on the host and sends only `exec` through `docker exec`, where `setsid` and the pid line let a timeout kill the whole group inside the box. `take_keys` hides the model keys from every command. The session manager drives it all through the `Sandbox` slot (`open`, `close`, `remove`) when a session loads, is evicted, is deleted, and at shutdown; `LocalSandbox` gives a plain folder and no isolation, so `check_sandbox` refuses several users on it unless you allow it. `EnvConformance` and `test_hardening` prove it. Next, [25](25-web-client.md) gives Ana and Bob a browser page to use all of this.
 
 **Builds on:** [23 Limits](23-limits.md) · **Next:** [25 Web client](25-web-client.md)
