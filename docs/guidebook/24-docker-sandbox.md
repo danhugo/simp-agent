@@ -109,7 +109,7 @@ class Sandbox(Protocol):
 
 `open` gives back an `ExecutionEnv`, the same contract every tool already uses ([09](09-exec-env.md#the-contract-executionenv)). So the tools never learn that a container exists. `close` frees what is running but keeps the files. `remove` deletes the files.
 
-This is a **[sandbox slot](glossary.md#sandbox-slot)**, one of the [server slots](glossary.md#server-slot) from [22](22-store-auth.md#real-design), next to `store` and `auth`. `DEFAULT_PLUGINS` puts `LocalSandbox` in it. `load_settings()` switches it to Docker when you set the env var `SIMP_SANDBOX=docker` (or set `[plugins] sandbox` in `settings.toml`):
+This is a **[sandbox slot](glossary.md#sandbox-slot)**, one of the [server slots](glossary.md#server-slot) from [22](22-store-auth.md#token-hashes), next to `store` and `auth`. `DEFAULT_PLUGINS` puts `LocalSandbox` in it. `load_settings()` switches it to Docker when you set the env var `SIMP_SANDBOX=docker` (or set `[plugins] sandbox` in `settings.toml`):
 
 ```python
 docker = {"sandbox": "simp_server.sandboxes.docker:DockerSandbox"} if os.environ.get("SIMP_SANDBOX") == "docker" else {}

@@ -29,7 +29,7 @@ Go back to Ana from [21](21-transport.md#problem). Her tab now gets every event 
 
 Now the admin restarts the server to install an update. Ana opens her tab the next morning, and her fizzbuzz chat is gone: every user, every session and every event lived in that process. Worse, the restart came while the agent was running `bash`. The last saved state still says "running", but no loop runs any more, so her tab waits forever.
 
-There is a second problem. Bob, Ana's colleague, uses the same server. Nothing says who sends a request, so Bob (or anyone who can reach the port) can open Ana's session and read it.
+Bob, Ana's colleague, uses the same server. Nothing says who sends a request, so Bob (or anyone who can reach the port) can open Ana's session and read it.
 
 So we need two things. A **[store](glossary.md#store)**: one place on disk for users, sessions, events and cost. And **[auth](glossary.md#auth)**: a way to check who sends each request.
 
@@ -42,70 +42,23 @@ await self.mgr.store.add_entry(self.user_id, self.sid, self.seq, "msg", to_dict(
 await self.mgr.store.add_entry(self.user_id, self.sid, ev["seq"], ev["type"], ev)         # Run.durable
 ```
 
-So far `store` is only a name. The easy fill is Python dicts with plain-text tokens (`token -> user`, `session id -> rows`). That works for one happy demo and breaks in four ways:
-
-1. **The process stops.** All dicts are gone. Ana's token no longer works and her chat is lost.
-2. **Someone reads the data.** If we dump the token map to a file, the file holds working tokens. Anyone who copies the file can log in as anyone.
-3. **Two users share the server.** If rows are keyed by session id alone, Bob can guess Ana's session id and read her chat.
-4. **A run dies in the middle.** Nothing marks it as stopped. The tab waits forever, and the last tool call has no result.
-
-This chapter fills in `store` (a real `SqliteStore`) and the `auth` that turns a token into a user, keeping the same `add_entry` calls.
+So far `store` is only a name. The easy fill is Python dicts with plain-text tokens (`token -> user`, `session id -> rows`). It works for one happy demo. This chapter fills in a real store, `SqliteStore`, and the auth that turns a token into a user, and keeps the same `add_entry` calls.
 
 ## Real design
 
-We follow Ana through one day on the server, and fix each break when her flow hits it. She logs in with a password, gets a token (the server keeps only its hash), opens her session, asks a question while every event is saved, and then the server restarts and must recover. The table shows where each break is fixed:
-
-| Break | Fix | Section |
-|---|---|---|
-| 1. process stops | one SQLite file on disk | [Opening the store](#opening-the-store) |
-| 2. data is read | keep only hashes of tokens and passwords | [scrypt passwords](#scrypt-passwords), [Token hashes](#token-hashes) |
-| 3. users share the server | `user_id` in every session query | [Loading a session](#loading-a-session) |
-| 4. a run dies | rebuild from rows, then close the dead run | [Loading a session](#loading-a-session), [recover](#recover) |
-
-First, how the server finds its store and its auth. `server.py` defines two small interfaces, `Store` (it must have `open()`) and `Auth` (it must have `authenticate(request)`, which returns the user or nothing). The class for each is picked by name from `DEFAULT_PLUGINS`:
-
-Real code: [server.py](../../apps/server/src/simp_server/server.py) — `DEFAULT_PLUGINS`
-
-```python
-DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_server.store:SqliteStore",
-                   "auth": "simp_server.server:StaticTokenAuth"}
-```
-
-We call these three names **[server slots](glossary.md#server-slot)**. They are not the agent plugins of [14](14-plugins.md): a slot is one class the server needs, and you swap it by naming another class. This chapter fills the `store` and `auth` slots; [24](24-docker-sandbox.md) fills `sandbox`.
-
-### Opening the store
-
-`SqliteStore` lives in `apps/server/src/simp_server/store.py`. It uses SQLite through `aiosqlite`, a small package that wraps the standard `sqlite3` so that calls are `async` and do not block the server. The whole database is one file, `<data_dir>/simp.db`. `data_dir` comes from `settings.toml`; by default it is `~/.simp-server`. A file stays after the process stops (break 1).
-
-`open()` creates the folder, connects, turns on WAL and creates the tables if they are missing:
-
-Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.open`
-
-```text
-db = CONNECT to <data_dir>/simp.db
-SET journal_mode = WAL
-RUN SCHEMA          // CREATE TABLE IF NOT EXISTS ... for every table
-```
-
-**[WAL](glossary.md#wal)** (write-ahead log) is a SQLite mode. Readers do not wait for a writer, and a crash does not leave a half-written database. After that, `open()` updates old files. The server was built in stages, and a `simp.db` from an earlier stage has no `cost`, `password` or `disabled` column. So `open()` adds them with `ALTER TABLE`, and marks old users with no token as disabled. This way an admin can update the code and keep the same file.
-
-The schema makes five tables at once, but we meet each one below at the moment Ana's flow first writes to it (all columns: [ref-objects · Server store tables](ref-objects.md#server-store-tables)).
-
-Why SQLite and not Postgres? The server runs on one machine ([26](26-system-tests-deploy.md)). SQLite needs no extra server process, and a backup is a copy of one file. The cost is that only one write runs at a time. For one team on one machine, writes are small and fast, so this is fine.
-
-Now Ana arrives. Before she can do anything, the server must know who she is.
+We follow Ana through one day on the server: she logs in, gets a token, opens her session, asks a question while every event is saved, and then the server restarts and must recover. Each table and each setting comes in when her flow first needs it.
 
 ### scrypt passwords
 
 **IN:** a name and a password. **OUT:** a new per-device token, or nothing.
 
-Ana opens the web client ([25](25-web-client.md)) and types her name and password. To check them, the server first needs a row for her. That is the first table, `users`:
+Ana opens the web client ([25](25-web-client.md)) and types her name and password. To check them, the server needs a row for her. Rows live in one SQLite file on disk, `<data_dir>/simp.db` (`data_dir` comes from `settings.toml`; by default it is `~/.simp-server`). The first table is `users`:
 
 ```sql
 users(id, name, token_sha256, password, disabled)
 ```
 
-The row is written by `add_user`, from `/api/signup` or from the admin command `simp-server seed` (see [Token hashes](#token-hashes) for the token part). Passwords use **[scrypt](glossary.md#scrypt)**, a slow hash from Python's `hashlib`. Each password gets a **[salt](glossary.md#salt)**: random bytes mixed into the hash, so two users with the same password get different hashes. The result goes into `users.password`:
+Where does Ana's row come from? It is written by `add_user`, called from the sign-up route or from the admin command `simp-server seed`. Her password is not stored as text, because anyone who copies `simp.db` could then read it. It is stored as a hash. Passwords use **[scrypt](glossary.md#scrypt)**, a slow hash from Python's `hashlib`. Each password gets a **[salt](glossary.md#salt)**: random bytes mixed into the hash, so two users with the same password get different hashes. The result goes into `users.password`:
 
 Real code: [store.py](../../apps/server/src/simp_server/store.py) — `_scrypt`, `hash_password`, `check_password`
 
@@ -121,19 +74,19 @@ check_password(password, stored):
     IF no stored hash:
         _scrypt(password, dummy salt)   // same time whether or not the user exists
         RETURN false
-    split stored into salt and h
-    RETURN constant-time compare(_scrypt(password, salt), h)
+    split stored into salt and saved_hash
+    RETURN constant-time compare(_scrypt(password, salt), saved_hash)
 ```
 
 Two choices here are about time. If the user does not exist, we still run scrypt once, so an attacker cannot learn which names exist by timing the answer. And `hmac.compare_digest` compares in constant time, so the time does not show how many bytes matched.
 
-scrypt is slow on purpose, and slow code would block the event loop. So the store calls it with `asyncio.to_thread(...)`. `login` checks Ana's password, then makes a new per-device token, which the next section explains:
+scrypt is slow on purpose, and slow code would block the event loop. So the store calls it with `asyncio.to_thread(...)`. `login` checks Ana's password and, if it matches, gives her a new token:
 
 Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.login`
 
 ```text
 login(name, password):
-    rows = SELECT id, password FROM users WHERE name = name AND disabled = 0
+    user_row = SELECT id, password FROM users WHERE name = name AND disabled = 0
     IF NOT check_password(password, stored hash or none)   // run in a thread
         RETURN nothing
     token = new random token
@@ -145,19 +98,17 @@ The routes are in `server.py`: `/api/signup`, `/api/login`, `/api/logout`. Sign-
 
 ### Token hashes
 
-Ana now holds a token from `login`. Every next request carries it.
-
 **IN:** an HTTP request with a header. **OUT:** the user `{id, name}`, or nothing (then HTTP 401).
 
-A **[token](glossary.md#token-auth)** is a long random string. The client sends it as `Authorization: Bearer <token>`. The server never stores the token itself. It stores only its SHA-256 hash.
+Ana now holds the token that `login` returned. A **[token](glossary.md#token-auth)** is a long random string. Her client sends it on every next request as `Authorization: Bearer <token>`. The server never stores the token itself. It stores only its SHA-256 hash, so a copied `simp.db` gives hashes, and a hash cannot be sent back as a token.
 
-There are two kinds of token. A **[static token](glossary.md#static-token)** is one long-lived token per user, kept in `users.token_sha256`. The admin makes it on the command line with `simp-server seed --name ana`, which prints it once; `simp-server rotate --name ana` replaces it. A **[per-device token](glossary.md#per-device-token)** is made by each password login and kept as one row in the `tokens` table, so `logout` can delete just that device.
+There are two kinds of token. The one from `login` is a **[per-device token](glossary.md#per-device-token)**: each password login makes one row in the `tokens` table, so `logout` can delete just that device.
 
 ```sql
 tokens(token_sha256, user_id, created)   -- one row per device login
 ```
 
-The hash is made by `sha`, and `add_user` (seen above) uses the same `sha` for the static token:
+The other kind is a **[static token](glossary.md#static-token)**: one long-lived token per user, kept in `users.token_sha256`. The admin makes it on the command line with `simp-server seed --name ana`, which prints it once; `simp-server rotate --name ana` replaces it. Both kinds are hashed by `sha`:
 
 Real code: [store.py](../../apps/server/src/simp_server/store.py) — `sha`, `SqliteStore.add_user`
 
@@ -168,12 +119,12 @@ sha(token):
 add_user(name, password = none, token = yes):
     // returns the static token (shown once); only its sha256 is stored
     // a taken name raises IntegrityError
-    t = new random token IF token wanted, ELSE none
-    INSERT user (new id, name, sha(t), hash_password(password) in a thread)
-    RETURN t
+    static_token = new random token IF token wanted, ELSE none
+    INSERT user (new id, name, sha(static_token), hash_password(password) in a thread)
+    RETURN static_token
 ```
 
-This fixes break 2. If someone copies `simp.db`, they get hashes, not tokens, and a hash cannot be sent back as a token. Why a fast hash like SHA-256 is enough here: a token is 32 random bytes, so nobody can guess it. A password can be guessed, so it gets the slow scrypt hash ([above](#scrypt-passwords)).
+Why is a fast hash like SHA-256 enough for tokens, when passwords need scrypt? A token is 32 random bytes, so nobody can guess it. A password can be guessed, so it gets the slow hash.
 
 One query checks both kinds of token:
 
@@ -181,24 +132,33 @@ Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteSto
 
 ```text
 user_by_token(token):
-    h = sha(token)
-    rows = SELECT id, name FROM users
-           WHERE disabled = 0
-             AND (token_sha256 = h  OR  id has a row in tokens with token_sha256 = h)
-    RETURN first row, or nothing
+    token_hash = sha(token)
+    user_row = SELECT id, name FROM users
+               WHERE disabled = 0
+                 AND (token_sha256 = token_hash  OR  id has a row in tokens with token_sha256 = token_hash)
+    RETURN user_row, or nothing
 ```
 
 Note `disabled = 0`. The admin command `revoke` sets `disabled = 1`, clears the static token and deletes all device tokens. `rotate` deletes device tokens, sets a new static token and turns the user back on. In both cases every old token stops working at once.
 
-`StaticTokenAuth`, the default class in the `auth` slot, is the bridge from HTTP to this query:
+Who calls this query on each request? The server does not hard-code one class for it. `server.py` defines two small interfaces, `Auth` (it must have `authenticate(request)`, which returns the user or nothing) and `Store` (it must have `open()`), and picks the class for each by name from `DEFAULT_PLUGINS`:
+
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `DEFAULT_PLUGINS`
+
+```python
+DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_server.store:SqliteStore",
+                   "auth": "simp_server.server:StaticTokenAuth"}
+```
+
+We call these three names **[server slots](glossary.md#server-slot)**. They are not the agent plugins of [14](14-plugins.md): a slot is one class the server needs, and you swap it by naming another class. This chapter fills `store` and `auth`; [24](24-docker-sandbox.md) fills `sandbox`. `StaticTokenAuth`, the default class in the `auth` slot, is the bridge from HTTP to `user_by_token`:
 
 Real code: [server.py](../../apps/server/src/simp_server/server.py) — `StaticTokenAuth.authenticate`
 
 ```text
 authenticate(request):
-    h = request header "authorization"
-    IF h starts with "Bearer ":
-        RETURN store.user_by_token(rest of h)
+    header = request header "authorization"
+    IF header starts with "Bearer ":
+        RETURN store.user_by_token(rest of header)
     RETURN nothing
 ```
 
@@ -206,20 +166,20 @@ authenticate(request):
 
 **IN:** the user and a session id. **OUT:** a `Run` in memory, with the same history as before the restart.
 
-Ana opens her fizzbuzz session. The session itself is one row in the `sessions` table (owner, title, profile, sandbox), written by `add_session`:
+Now the server knows the request is from Ana, and she opens her fizzbuzz session. The session itself is one row in the `sessions` table (owner, title, profile, sandbox), written by `add_session`:
 
 ```sql
 sessions(id, user_id, ...)   -- one row per session
 ```
 
-Every table except `users` has a `user_id` column, and every read of a session, its entries or its usage has `user_id` in its `WHERE`. This is the fix for break 3:
+How do we stop Bob from opening it? Every table except `users` has a `user_id` column, and every read of a session, its entries or its usage has `user_id` in its `WHERE`:
 
 Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.get_session`
 
 ```text
 get_session(user_id, sid):
-    rows = SELECT sessions WHERE id = sid AND user_id = user_id
-    RETURN first row, or nothing
+    session_row = SELECT sessions WHERE id = sid AND user_id = user_id
+    RETURN session_row, or nothing
 ```
 
 Example: Ana owns session `s1`. Bob sends a request for `s1`. The query runs with Bob's id, finds no row, and the server answers 404. There is no special "is this yours?" check to forget; it is in the SQL. (The few queries that look up a user, like `user_by_token` and `login` above, have no user yet, so they search by token or name.)
@@ -232,14 +192,14 @@ entries(session_id, user_id, seq, type, json)   -- one row per message or event
 
 A row is one of two kinds, and both share **one** `seq` counter per session ([21 · seq](21-transport.md#seq-one-counter-for-everything)). Core messages (`type = "msg"`) are what the model sees. Durable protocol events ([20](20-server-run.md)), with `type` set to the event type like `run_state`, are what clients see.
 
-`SessionManager.get` finds the session row (scoped by user), reads its entries and builds a `Run` ([20](20-server-run.md)). It waits for `recover()` before it returns, so no client ever sees a dead "running" run:
+`SessionManager.get` finds the session row (scoped by user), reads its entries and builds a `Run` ([20](20-server-run.md)). The `env` it passes is the place where tools run, from the `sandbox` slot. Before it returns, it waits for `recover()`, which closes a run that died while busy; for Ana's finished session it does nothing.
 
 Real code: [server.py](../../apps/server/src/simp_server/server.py) — `SessionManager.get`
 
 ```text
 row = store.get_session(user id, sid)      // none -> HTTP 404
 IF sid not in runs:
-    runs[sid] = new Run(row, env, store.entries(user id, sid))   // env: from the sandbox slot
+    runs[sid] = new Run(row, env, store.entries(user id, sid))
     WAIT for runs[sid].recover()
 ```
 
@@ -265,21 +225,37 @@ seq 5  assistant_message                              -> log
 seq 6  run_state  idle                                -> log
 ```
 
-After loading: 2 messages, a log of 4 events, `run_state = "idle"`, `seq = 6`. The next row gets seq 7. (`from_dict` is the [JSON round trip](ref-objects.md#going-to-json-and-back).) The code keeps the whole log in memory; that is fine for one machine (see [Why this way](#why-this-way)).
+After loading: 2 messages, a log of 4 events, `run_state = "idle"`, `seq = 6`. The next row gets seq 7. (`from_dict` is the [JSON round trip](ref-objects.md#going-to-json-and-back).) The code keeps the whole log in memory; that is fine for one machine.
 
 ### Saving events
 
 **IN:** a message or an event during a run. **OUT:** one new row in `entries`, with the next `seq`.
 
-[21](21-transport.md) showed `Run.append` (a core message) and `Run.durable` (an event clients must not lose). The part that matters here is their last line: both add 1 to `self.seq` and call `store.add_entry(user_id, sid, seq, type, data)`, with type `"msg"` for a message and the event type for an event. Because both write to one table with one counter, "read rows in `seq` order" gives the exact order things happened, for the history and the log alike.
+Ana asks a new question. Each message and each durable event goes through the two `add_entry` calls from the [Starting point](#starting-point-21s-run-with-the-store-left-open) ([21 · seq](21-transport.md#seq-one-counter-for-everything) shows how `seq` grows). Both write to one table with one counter, so `Run.__init__` above can rebuild the history and the log from one read.
 
 Each model call also writes one row to the last table, `usage` (tokens and cost, again with `user_id`). [23 Limits](23-limits.md) reads it.
+
+### Opening the store
+
+Now the admin restarts the server. The new process must find all of these rows again. At start, the server calls `open()` on the class in the `store` slot. `SqliteStore` uses SQLite through `aiosqlite`, a small package that wraps the standard `sqlite3` so that calls are `async` and do not block the server. `open()` creates the folder, connects to `simp.db`, turns on WAL and creates the tables if they are missing:
+
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.open`
+
+```text
+db = CONNECT to <data_dir>/simp.db
+SET journal_mode = WAL
+RUN SCHEMA          // CREATE TABLE IF NOT EXISTS ... for every table
+```
+
+**[WAL](glossary.md#wal)** (write-ahead log) is a SQLite mode. Readers do not wait for a writer, and a crash does not leave a half-written database. After that, `open()` updates old files. The server was built in stages, and a `simp.db` from an earlier stage has no `cost`, `password` or `disabled` column. So `open()` adds them with `ALTER TABLE`, and marks old users with no token as disabled. This way an admin can update the code and keep the same file. (All columns of the five tables: [ref-objects · Server store tables](ref-objects.md#server-store-tables).)
+
+Why SQLite and not Postgres? The server runs on one machine ([26](26-system-tests-deploy.md)). SQLite needs no extra server process, and a backup is a copy of one file. The cost is that only one write runs at a time. For one team on one machine, writes are small and fast, so this is fine.
 
 ### recover
 
 **IN:** a loaded `Run` whose last saved state is busy. **OUT:** a settled run: state `error`, and a valid history.
 
-Back to the restart from the [Problem](#problem). The last saved `run_state` says `running` (or `waiting_approval`), but no loop runs. And the last assistant message asks for a tool call that has no result. The model API returns an error for such a history, so even Continue would fail.
+The restart in the [Problem](#problem) came while Ana's agent was running `bash`. After the restart, `SessionManager.get` loads her session as above, but the last saved `run_state` says `running`, `waiting_approval` or `aborting`, and no loop runs. And the last assistant message asks for a tool call that has no result. The model API returns an error for such a history, so even Continue would fail.
 
 `recover()` fixes both. If the run is not busy, it does nothing. If it is busy, it closes the run in three steps. First, every `approval_request` with no `approval_resolved` gets `ApprovalResolved(decision="aborted")`. Second, every tool call in the last assistant message with no result gets an error result, `"aborted: the server restarted before this tool finished"`; it is saved as a history message (`append`) and also sent as a `ToolResult` event. Third, the state becomes `error`, and a `Notice` says `"interrupted: the server restarted during this run"`.
 
@@ -290,9 +266,9 @@ IF not busy: RETURN
 FOR EACH approval_request with no approval_resolved:
     durable ApprovalResolved(call_id, decision = "aborted")
 FOR EACH tool call in the last assistant message with no tool result:
-    m = ToolResultMessage(call id, tool, "aborted: the server restarted before this tool finished", is_error = true)
-    ADD m to session messages; append(m)
-    durable ToolResult(call_id, tool, m.content, is_error = true)
+    result_msg = ToolResultMessage(call id, tool, "aborted: the server restarted before this tool finished", is_error = true)
+    ADD result_msg to session messages; append(result_msg)
+    durable ToolResult(call_id, tool, result_msg.content, is_error = true)
 run_state = "error"   // set directly, not with set_state
 durable RunState(state = "error")
 durable Notice(level = "warning", text = "interrupted: the server restarted during this run")
@@ -369,6 +345,6 @@ uv run pytest apps/server/tests/test_store.py apps/server/tests/test_accounts.py
 
 The server now keeps everything in one SQLite file, `<data_dir>/simp.db`, so a restart loses nothing. Tokens and passwords are stored only as hashes: SHA-256 for random tokens, salted scrypt for passwords, so a copied file gives no logins. Every session query carries `user_id`, so Bob cannot see Ana's work. Messages and events go into one `entries` table with one `seq`; on load, `Run.__init__` splits them back into history and log, and `Run.recover` closes a run that died while busy.
 
-The server is now safe to restart and to share. But nothing stops one user from spending all the money on the model, or from leaving many sessions open. That is the next chapter.
+The server is now safe to restart and to share. But nothing stops one user from spending all the money on the model, or from leaving many sessions open. [23 Limits](23-limits.md) adds those limits.
 
 **Builds on:** [21 Transport](21-transport.md) · **Next:** [23 Limits](23-limits.md)
