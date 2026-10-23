@@ -415,3 +415,6 @@ An Anthropic SDK method. After the stream ends, it returns the full message the 
 
 ## Host
 The program that runs the agent and sets things the model must not change: the CLI, the server, or the eval runner. Example: the host sets the `bash` time cap with `make_tools(bash_max_timeout_s=...)`. Home: [10](10-coding-tools.md#running-a-command-bash).
+
+## Orphan tool call
+A `ToolCall` in the history with no `ToolResultMessage` after it. Vendors reject it with a 400 error, so `transform_messages` adds a "No result provided" result for it. Home: [01](01-pick-clean.md#what-can-be-broken).
