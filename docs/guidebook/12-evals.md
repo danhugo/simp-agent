@@ -23,9 +23,9 @@ Big picture of Part 3: [part-3-coding](09-0-part-3-coding.md).
 
 Code in this chapter (commit `2fc2776`):
 
-- `evals/run.py` — the eval harness: `load_tasks`, `run_task`, `run_all`, `main`
+- `evals/run.py` — the eval runner: `load_tasks`, `run_task`, `run_all`, `main`
 - `evals/tasks/*.toml` — four [eval tasks](glossary.md#eval-task): `read_answer`, `fizzbuzz`, `fix_bug`, `refactor_rename`
-- `evals/test_run.py` — tests for the harness itself, with the FakeProvider
+- `evals/test_run.py` — tests for the eval runner itself, with the FakeProvider
 
 ## What you will get
 
@@ -45,13 +45,13 @@ wrote /path/to/simp-agent/evals/results/20261013-101500-sol.json
 
 ### Four names from later chapters
 
-The harness needs a ready-made agent object and the server's model settings. We build these later, so here we only use them. You need just this much:
+The eval runner needs a ready-made agent object and the server's model settings. We build these later, so here we only use them. You need just this much:
 
 - `AgentSession` ([13](13-session.md)) wraps the [agent loop](05-agent-loop.md) with tools and a system prompt. `s.prompt(text)` runs the agent until it stops; `s.subscribe(fn)` calls `fn(event)` for every [event](glossary.md#event); `s.abort()` stops it now.
 - A [profile](glossary.md#profile) ([18](18-profiles-plugins.md)) is a named model plus its prices, written in the server's `settings.toml`. `build_model(profile)` turns it into a model object.
 - `load_settings` and `take_keys` ([22](22-store-auth.md)) read `settings.toml` and the API keys.
 
-`sol` above must be a profile in your `settings.toml`; else the harness stops with `no profile 'sol'`.
+`sol` above must be a profile in your `settings.toml`; else the eval runner stops with `no profile 'sol'`.
 
 ## Problem
 
@@ -160,7 +160,7 @@ Each line has a reason. The temp folder means every task starts clean and is del
 
 ### Counting and limits through events
 
-The harness does not change the loop. It only **listens** to [events](glossary.md#event) ([06](06-events-abort.md)):
+The eval runner does not change the loop. It only **listens** to [events](glossary.md#event) ([06](06-events-abort.md)):
 
 Real code: [evals/run.py](../../evals/run.py) — `run_task` (inner `on_event`)
 
@@ -177,7 +177,7 @@ FUNCTION on_event(e):
             s.abort()                    // stop a runaway agent
 ```
 
-The harness does not change the agent; it only listens. Each assistant message is one [turn](glossary.md#turn), so on each `message_end` from the assistant we add one turn, add its [usage](glossary.md#usage), and keep its text as the answer so far.
+The eval runner does not change the agent; it only listens. Each assistant message is one [turn](glossary.md#turn), so on each `message_end` from the assistant we add one turn, add its [usage](glossary.md#usage), and keep its text as the answer so far.
 
 Two limits stop a runaway agent. The first is turns: when the 25th assistant message ends, we call `s.abort()` ([abort](glossary.md#abort)); that turn is still counted and paid for. The second is time: `asyncio.wait_for(s.prompt(...), TIMEOUT_S)` gives up after 300 seconds, aborts, and sets the error `timeout after 300s`. Both live in one line of `run.py`: `MAX_TURNS, TIMEOUT_S, CHECK_TIMEOUT_S = 25, 300, 120`.
 
@@ -195,7 +195,7 @@ r.passed = (chk exit code == 0)
 r.check_output = last 2000 chars of stdout + stderr
 ```
 
-The last answer goes to `_answer.txt`, so a check can test **what the agent said**, not only the files; `read_answer` uses this. `PYTHON` is set to the Python that runs the harness, and checks write `"$PYTHON" -m pytest`, so pytest runs from the project's own Python, not whatever `python` the shell finds. The check has its own limit, `CHECK_TIMEOUT_S` (120 seconds); a timeout means fail. Only the last 2000 characters of output are kept: enough to see why it failed.
+The last answer goes to `_answer.txt`, so a check can test **what the agent said**, not only the files; `read_answer` uses this. `PYTHON` is set to the Python that runs the eval runner, and checks write `"$PYTHON" -m pytest`, so pytest runs from the project's own Python, not whatever `python` the shell finds. The check has its own limit, `CHECK_TIMEOUT_S` (120 seconds); a timeout means fail. Only the last 2000 characters of output are kept: enough to see why it failed.
 
 Last, `run_task` adds the cost: `(input * price_in + output * price_out) / 1e6`, because prices in the profile are dollars per million tokens.
 
@@ -216,7 +216,7 @@ keys = take_keys(settings)
 RUN run_all(profile name, that profile, keys, task names from --tasks or all)
 ```
 
-The harness reads the same `settings.toml` as the server ([22](22-store-auth.md)), from `--home` (default `$SIMP_SERVER_HOME` or `~/.simp-server`). So you eval exactly the profiles you serve. Run it like this:
+The eval runner reads the same `settings.toml` as the server ([22](22-store-auth.md)), from `--home` (default `$SIMP_SERVER_HOME` or `~/.simp-server`). So you eval exactly the profiles you serve. Run it like this:
 
 ```bash
 uv run python evals/run.py --profile sol

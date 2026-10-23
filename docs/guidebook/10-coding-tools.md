@@ -39,20 +39,20 @@ The tools must let a model look around (list folders, find files, search text), 
 
 ```text
 // naive: no env, no limits, no checks
-FUNCTION read(args):
+FUNCTION read(args, ctx):          // the execute(args, ctx) shape from 05
     RETURN the whole file at args.path            // opened directly, no ctx.env
 
-FUNCTION write(args):
+FUNCTION write(args, ctx):
     WRITE args.content to args.path
     RETURN "ok"
 
-FUNCTION edit(args):
+FUNCTION edit(args, ctx):
     text = the whole file at args.path
     REPLACE every old_text in text with new_text  // 0 or many matches still "ok"
     WRITE text back
     RETURN "ok"
 
-FUNCTION bash(args):
+FUNCTION bash(args, ctx):
     RUN args.command in a shell, wait for it
     RETURN stdout + stderr                        // no exit code, no cut
 ```
@@ -99,7 +99,7 @@ TOOLS = make_tools()
 
 `make_tools` wraps each function in an `AgentTool` with a name, a one-line description and a schema. The order is `read, write, edit, bash, grep, find, ls`. **Every** argument has a description. The model only sees these strings, never the code, so they are part of the tool's behaviour: "must match exactly once", "no timeout by default", "Dirs end with '/'". `TOOLS` is the default list with no bash cap; a host that wants a cap calls `make_tools(bash_max_timeout_s=...)`.
 
-The same names and descriptions also go into the system prompt. In [11](11-system-prompt.md), `system_prompt` writes one line per tool, like `- read: Read a text file. Output has line numbers. ...`.
+The host passes this list to the loop as `LoopConfig(model, tools=make_tools(), ...)` ([05](05-agent-loop.md#agent_loop-the-loop)). `_llm_turn` sends it to the model each turn, and `run_tool` finds a tool in it by name. The same names and descriptions also go into the system prompt. In [11](11-system-prompt.md), `system_prompt` writes one line per tool, like `- read: Read a text file. Output has line numbers. ...`.
 
 `_obj` (in the next section) builds each schema. `make_tools` USES the tool functions: the function is HOW a call runs, the `AgentTool` around it is WHAT the model sees.
 
