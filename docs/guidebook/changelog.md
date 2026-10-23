@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-23
 
+- ch24 flow reorder: Real design follows one session: Ana opens a session → sandbox slot (open call first, then protocol) → DockerSandbox.open with the image explained inside it → bash runs via DockerEnv → session ends (manager close/remove/close_all text moved here) → EnvConformance last. Text moved, not cut.
 - ch20 flow reorder: Real design now follows one request: start server (__main__) → protocol models (parse the prompt) → the Run → run state machine (set_state, start, _turn, recover) → title call (own section) → gen_protocol last. Text moved, not cut; step labels, Recap and links (glossary title call, 21 _turn link) updated.
 - ch08 one-shot: README story continued (`read` calls never ask; follow-up `write NOTES.md` is the call that asks); naive bullets → prose; Step by step cut to 4 steps with no code repeat; "deny makes a result" said once; LoopConfig signatures given once; ToolContext/truncation linked to 05; diagram gets the truncation branch; session state and "read it step by step" as prose; approval table uses the story; after-hook test named; Recap as prose. (checked at agent/__init__.py:63-66, :163-180, :246, :316-317; session/__init__.py:95, :193-218)
 - ch13 flow reorder: Real design now follows the user: open (AgentSession) → ask (prompt/start, prompt sections) → save on message_end → SessionStore append/ListStore → JsonlStore → close and reopen (load). Text moved, not cut; forward refs fixed; Recap reordered.
