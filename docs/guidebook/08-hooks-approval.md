@@ -46,7 +46,9 @@ Every call runs. The first idea is to put a question right here:
         IF answer is not "y": CONTINUE        // skip: no result is added
 ```
 
-The user answers `n` to the `write`, and it breaks in several ways. The skipped call gets no tool result, but [06](06-events-abort.md) taught us that every tool call must get one, so the next model request is invalid. Even if it were valid, the model is never told that the user said no, so it may just try `write` again. The list of risky tools and `input()` sit inside the loop, so a web server or a test cannot use it. `input()` also blocks: if the user presses **Stop** ([06](06-events-abort.md)) while the question is open, nothing ends the wait. And there is still no place to change a result after a tool runs.
+If the user answers `n`, the naive loop just skips the `write` call. That breaks two things. The call gets no result, so the next model request is rejected ([06](06-events-abort.md)). And the model never learns that the user said no, so it may simply try `write` again. Both have one fix: a denied call still gets a result, and the result says why.
+
+The bigger problem is *where* the question lives. `input()` and the list of risky tools are written inside the loop, so only a terminal can answer: a web server or a test cannot, and while `input()` waits, not even Stop can end it. So the loop should not ask the user itself. It should call a **hook** that the app gives it: one before a tool runs (allow or deny), and one after (change the result).
 
 ## Step by step: grow the tool step
 
