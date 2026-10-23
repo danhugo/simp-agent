@@ -2,7 +2,7 @@
 
 **Goal:** Measure the agent on real tasks; when you add a capability later, you can add a case for it.
 
-**Builds on:** [11 The system prompt](11-system-prompt.md) · **Next:** [13 Sessions](13-session.md)
+**Builds on:** [05 Agent loop](05-agent-loop.md) · [06 Events and abort](06-events-abort.md) (we count by listening) · [09 Execution environment](09-exec-env.md) · [10 Coding tools](10-coding-tools.md) · [11 The system prompt](11-system-prompt.md) · **Next:** [13 Sessions](13-session.md)
 
 ## Where we are
 
@@ -13,7 +13,11 @@ flowchart LR
     evals -.uses.-> agent
 ```
 
-After [11](11-system-prompt.md) the agent has a loop, tools and a system prompt. It can do real coding work. Now a new question: **how well?** Unit tests with the [FakeProvider](04-label-test.md) prove that our code does what we wrote. They cannot tell us if a real model, with our tools and our prompt, can fix a bug. For that we need an [eval](glossary.md#eval).
+Take the running example again. The user asks "What is in README.md?". After [11](11-system-prompt.md) the model has a `read` tool and a system prompt that says when to use it, so it should answer well. But *should* is not proof. Our unit tests use the [FakeProvider](04-label-test.md): they prove our code does what we wrote, but the fake model always says what we tell it to say. They cannot tell us if a **real** model, with our tools and our prompt, finds the file and gives the right answer.
+
+To know that, we must run the real agent with a real model on a fixed job and let a program check the result. That is an [eval](glossary.md#eval). Our first eval task, `read_answer`, is a small cousin of the running example: "read `config.ini` and tell me the server port". The check is one command: is `8473` in the answer?
+
+Why now, before [13 Sessions](13-session.md)? Because from here on, every chapter changes how the agent behaves (retry, compaction, plugins). With an eval in place, each change can be measured, not only guessed.
 
 Big picture of Part 3: [part-3-coding](09-0-part-3-coding.md).
 
@@ -37,27 +41,25 @@ total           1/1      2 turns       300/30       $0.0004  1.2s
 wrote /path/to/simp-agent/evals/results/20261013-101500-sol.json
 ```
 
-(Shown with one task for short; the real run has four lines plus the total.) `sol` must be a profile in your server's `settings.toml` (see [main](#main-reuse-the-servers-settings)); else it stops with `no profile 'sol'`.
+(Shown with one task to keep it short; the real run has four lines plus the total.) The columns are: pass or fail, number of [turns](glossary.md#turn), input/output tokens, dollars, seconds.
 
-> **What you need before [13](13-session.md), [18](18-profiles-plugins.md), [22](22-store-auth.md):**
-> `AgentSession` ([13](13-session.md)): `s.prompt(text)` runs the agent until it stops; `s.subscribe(fn)` calls `fn(event)` for every [event](glossary.md#event); `s.abort()` stops it now.
-> `build_model(profile)` ([18](18-profiles-plugins.md)) turns a [profile](glossary.md#profile) into a model; `load_settings` / `take_keys` ([22](22-store-auth.md)) read the server's `settings.toml` and API keys.
-> A profile is a named model plus prices in the server's `settings.toml` ([18](18-profiles-plugins.md)).
+### Four names from later chapters
 
-Here we only use them; you can read this chapter first and come back.
+The harness needs a ready-made agent object and the server's model settings. We build these later, so here we only use them. You need just this much:
+
+- `AgentSession` ([13](13-session.md)) wraps the [agent loop](05-agent-loop.md) with tools and a system prompt. `s.prompt(text)` runs the agent until it stops; `s.subscribe(fn)` calls `fn(event)` for every [event](glossary.md#event); `s.abort()` stops it now.
+- A [profile](glossary.md#profile) ([18](18-profiles-plugins.md)) is a named model plus its prices, written in the server's `settings.toml`. `build_model(profile)` turns it into a model object.
+- `load_settings` and `take_keys` ([22](22-store-auth.md)) read `settings.toml` and the API keys.
+
+`sol` above must be a profile in your `settings.toml`; else the harness stops with `no profile 'sol'`.
 
 ## Problem
 
-When you change the system prompt, a tool description, or the model, you want to know: **did the agent get better or worse?** Reading one chat by hand is not enough. The model is random; one good answer proves little.
-
-We need something that:
-
-1. Gives the agent the **same tasks** every time, in a **fresh folder**.
-2. Checks the result **by a program**, not by eye.
-3. Records **cost**: turns, tokens, dollars, seconds. A change that passes the same tasks at half the cost is a win too.
-4. Saves the numbers to a file, so you can compare runs.
+When you change the system prompt, a tool description, or the model, you want to know: **did the agent get better or worse?** Reading one chat by hand is not enough. The model is random; one good answer proves little. We need the **same tasks** every time, in a **fresh folder**, checked **by a program**. We also want the **cost** (turns, tokens, dollars, seconds), because a change that passes the same tasks at half the cost is a win too. And the numbers must be **saved**, so next week we can compare.
 
 ## Naive version
+
+Here is the first thing you might write, for one bug-fix job. It is a sketch, not real code:
 
 ```text
 FUNCTION main(model):
@@ -67,40 +69,20 @@ FUNCTION main(model):
     WAIT for s.prompt("Fix the bug in calc.py")
     ok = RUN "python -c '... assert average([2, 4]) == 3'" in d, exit code is 0
     PRINT "PASS" IF ok ELSE "FAIL"
-
-// needs a real model and key
 ```
 
-This works once. Where it breaks:
-
-- **One task, in code.** Adding a task means editing Python.
-- **No limits.** If the model loops forever, the script never ends and keeps spending money.
-- **No cost numbers.** You see PASS, but not 3 turns or 30.
-- **Wrong `python`.** `python` in the shell may not be the project's Python.
-- **Nothing saved.** Next week you cannot compare.
-- **Cannot be tested** without a real model and a key.
-
-The rest of the chapter fixes each of these:
-
-| Problem | Fixed in |
-|---|---|
-| One task, in code | [A task is a TOML file](#a-task-is-a-toml-file) |
-| No limits | [Counting and limits through events](#counting-and-limits-through-events) |
-| No cost numbers | [Counting and limits](#counting-and-limits-through-events), [The check](#the-check) |
-| Wrong `python` | [The check](#the-check) |
-| Nothing saved | [run_all](#run_all-the-table-and-the-file) |
-| Cannot be tested | [Test](#test) |
+It works once. But the task lives inside the Python code, so each new task means more code ([fixed by TOML files](#a-task-is-a-toml-file)). There is no limit: if the model loops forever, the script never ends and keeps spending money ([fixed by listening to events](#counting-and-limits-through-events)). It prints PASS but not whether that took 3 turns or 30 ([same section](#counting-and-limits-through-events)). `python` in the shell may not be the project's Python, so the check may fail for the wrong reason ([fixed in the check](#the-check)). Nothing is saved ([fixed in run_all](#run_all-the-table-and-the-file)). And it cannot be tested without a real model and key ([fixed in the test](#test)).
 
 ## Real design
 
 ```mermaid
 flowchart TD
     A["main(): parse --profile, --home, --tasks"] --> B["load_settings + take_keys"]
-    B --> C["run_all(profile, keys, names)"]
+    B --> C["run_all(profile name, profile, keys, names)"]
     C --> D["load_tasks(names) → list of dicts from tasks/*.toml"]
     D --> E["for each task: run_task"]
     E --> F["temp dir + setup files"]
-    F --> G["AgentSession(LocalEnv(root)).prompt(task.prompt)<br/>count turns/tokens, stop at 25 turns or 300 s"]
+    F --> G["AgentSession(LocalEnv(root)).prompt(task.prompt)<br/>count turns and tokens, stop at a limit"]
     G --> H["write _answer.txt, run task.check in shell"]
     H --> I["row: passed, turns, input, output, cost, seconds"]
     I --> J["print one line per task + total<br/>write results/DATE-profile.json"]
@@ -131,7 +113,7 @@ def average(xs):
 "test_calc.py" = """..."""
 ```
 
-Look at the second half of the check: `grep -q "assert average([2, 4]) == 3"`. It makes sure the agent did **not** "fix" the test by changing the test. A good check tests the goal *and* blocks the easy cheat.
+Look at the second half of the check. Inside a TOML single-quoted string the text is kept as is, so the backslashes reach `grep`: in a `grep` pattern `[` is special, and `\[` means a plain `[`. So the check looks for the line `assert average([2, 4]) == 3`. It makes sure the agent did **not** "fix" the test by changing the test. A good check tests the goal *and* blocks the easy cheat.
 
 The four tasks grow in difficulty:
 
@@ -156,7 +138,7 @@ FUNCTION load_tasks(names):
     RETURN the tasks with these names
 ```
 
-No names means all tasks, sorted by file name. A wrong name stops early with the list of real names, before any money is spent.
+No names means all tasks, sorted by file name. A wrong name stops with the list of real names, before any task runs, so no money is spent.
 
 ### run_task: one task, one fresh folder
 
@@ -172,15 +154,9 @@ INSIDE run_task:
                          get_api_key = the profile key, max_retries=1)
 ```
 
-Why each part:
+Each line has a reason. The temp folder means every task starts clean and is deleted at the end, so runs do not affect each other. "Real path" is `Path(d).resolve()`: on macOS `/tmp` is a symlink (a link to another folder) to `/private/tmp`, and using the real path as both root and cwd keeps it the same everywhere, including `LocalEnv`'s path checks ([09](09-exec-env.md)). `LocalEnv` is the same [execution environment](glossary.md#execution-environment) the CLI uses, so we measure the real tools, not a copy.
 
-- **Temp folder.** Every task starts clean, and the folder is deleted at the end. Runs do not affect each other.
-- **`.resolve()`.** On macOS `/tmp` is a symlink (a link to another folder) to `/private/tmp`. Using the real path as root and cwd keeps it the same everywhere, including `LocalEnv`'s path checks ([09](09-exec-env.md)).
-- **`LocalEnv`** — the same [execution environment](glossary.md#execution-environment) the CLI uses. We measure the real tools, not a copy.
-- **`stream_fn`** — by default `ai.stream`, the real [provider](glossary.md#provider) call ([04](04-label-test.md)). The test passes a FakeProvider here instead.
-- **`max_retries=1`** — retry a failed model call only once ([15](15-retry.md)). An eval should show problems, not hide them behind long waits.
-
-The key is found from the [profile](glossary.md#profile): its `api_key_env`, or else `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` by the API type.
+`stream_fn` is by default `ai.stream`, the real [provider](glossary.md#provider) call ([02](02-translate-send.md)); the test passes a FakeProvider here instead. `max_retries=1` retries a failed model call only once ([15](15-retry.md)): an eval should show problems, not hide them behind long waits. The key comes from the profile's `api_key_env`, or else `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` by the API type.
 
 ### Counting and limits through events
 
@@ -189,6 +165,7 @@ The harness does not change the loop. It only **listens** to [events](glossary.m
 Real code: [evals/run.py](../../evals/run.py) — `run_task` (inner `on_event`)
 
 ```text
+// r is the result row of this task; s is the session from above
 FUNCTION on_event(e):
     IF e is message_end AND the message is from the assistant:
         ADD 1 to r.turns
@@ -200,14 +177,11 @@ FUNCTION on_event(e):
             s.abort()                    // stop a runaway agent
 ```
 
-Key idea: count and stop only by listening to events; the agent is not changed.
+The harness does not change the agent; it only listens. Each assistant message is one [turn](glossary.md#turn), so on each `message_end` from the assistant we add one turn, add its [usage](glossary.md#usage), and keep its text as the answer so far.
 
-Each assistant message is one [turn](glossary.md#turn). We add its [usage](glossary.md#usage) and keep the last text as the answer. Two limits stop a runaway agent:
+Two limits stop a runaway agent. The first is turns: when the 25th assistant message ends, we call `s.abort()` ([abort](glossary.md#abort)); that turn is still counted and paid for. The second is time: `asyncio.wait_for(s.prompt(...), TIMEOUT_S)` gives up after 300 seconds, aborts, and sets the error `timeout after 300s`. Both live in one line of `run.py`: `MAX_TURNS, TIMEOUT_S, CHECK_TIMEOUT_S = 25, 300, 120`.
 
-- **Turns:** when the 25th assistant message ends (`MAX_TURNS = 25`) we call `s.abort()` ([abort](glossary.md#abort)). That turn is still counted and paid for.
-- **Time:** `asyncio.wait_for(s.prompt(...), TIMEOUT_S)` with `TIMEOUT_S = 300`. On timeout we abort too.
-
-A task that hits a limit is not a crash. The row gets an `error`, and the check still runs. (It will usually fail.)
+A task that hits a limit is not a crash. The row gets an `error`, and the check still runs (it will usually fail).
 
 ### The check
 
@@ -221,12 +195,9 @@ r.passed = (chk exit code == 0)
 r.check_output = last 2000 chars of stdout + stderr
 ```
 
-- The last answer goes to `_answer.txt`, so a check can test **what the agent said**, not only files. `read_answer` uses this.
-- `PYTHON` is set to the Python running the harness. Checks write `"$PYTHON" -m pytest`, so pytest runs from the harness's own Python (it must be installed there).
-- The check has its own limit, `CHECK_TIMEOUT_S = 120`. A timeout means fail.
-- Only the last 2000 characters of output are kept: enough to see why it failed.
+The last answer goes to `_answer.txt`, so a check can test **what the agent said**, not only the files; `read_answer` uses this. `PYTHON` is set to the Python that runs the harness, and checks write `"$PYTHON" -m pytest`, so pytest runs from the project's own Python, not whatever `python` the shell finds. The check has its own limit, `CHECK_TIMEOUT_S` (120 seconds); a timeout means fail. Only the last 2000 characters of output are kept: enough to see why it failed.
 
-Then cost: `(input * price_in + output * price_out) / 1e6`. Prices in the profile are dollars per million tokens.
+Last, `run_task` adds the cost: `(input * price_in + output * price_out) / 1e6`, because prices in the profile are dollars per million tokens.
 
 ### run_all: the table and the file
 
@@ -240,7 +211,7 @@ Real code: [evals/run.py](../../evals/run.py) — `main`
 
 ```text
 settings = load_settings(--home folder)
-...
+STOP with "no profile ..." IF --profile is not in settings
 keys = take_keys(settings)
 RUN run_all(profile name, that profile, keys, task names from --tasks or all)
 ```
@@ -268,7 +239,7 @@ The book ships only these four tasks: three code edits and one read-and-answer. 
 
 > ⚠️ **Evals run on your own machine, with no sandbox.** `LocalEnv` runs the agent's `bash` tool on your host, as you ([09](09-exec-env.md)). The temp folder is only the *starting* folder; a command like `rm -rf ~` or `curl ... | sh` is not blocked. The `check` also runs with `shell=True` on your host. Only run tasks you trust, with models you trust, ideally in a spare VM you can delete, or container. The [Docker sandbox](24-docker-sandbox.md) is not used here.
 
-Also note: `take_keys` removes the known key variables (each profile's `api_key_env`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) from `os.environ` before the agent runs. Commands the agent starts do not see those keys. Other secrets in your environment are still visible.
+One thing protects you a little: `take_keys` reads the keys from `<data_dir>/.env` and from the environment, and removes the known key variables (each profile's `api_key_env`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) from `os.environ` before the agent runs. Commands the agent starts do not see those keys. Other secrets in your environment are still visible.
 
 ## Test
 
@@ -285,6 +256,7 @@ async def test_read_answer_passes_with_fake_provider(tmp_path):
     rows = await run.run_all("p", profile, {}, ["read_answer"], stream_fn=fake, out_dir=tmp_path)
     assert rows[0]["name"] == "read_answer" and rows[0]["passed"]
     assert rows[0]["turns"] == 2 and rows[0]["input"] == 300 and rows[0]["output"] == 30
+    # ... (shortened) then it checks the cost and reads back the JSON file
 ```
 
 This runs the **whole path**: real task file, real temp folder, real `read` tool, real check (`grep` on `_answer.txt`), cost math and the JSON file. Only the model is fake. A second test, `test_tasks_load`, checks that all four task files parse.
@@ -309,7 +281,7 @@ uv run python evals/run.py --help # shows --profile, --home, --tasks
 ## Exercises
 
 1. Add `evals/tasks/count_lines.toml`. In `[setup]` put a file with 7 lines. Ask the agent how many lines it has, and check with `grep -q 7 _answer.txt`. Run `uv run pytest -q evals`: which test must you update, and why?
-2. Run one task with `--tasks fix_bug,nope`. What happens, and how much money was spent?
+2. Run `--tasks fix_bug,nope` (one real task, one wrong name). What happens, and how much money was spent?
 
 ## Recap
 
@@ -320,4 +292,4 @@ uv run python evals/run.py --help # shows --profile, --home, --tasks
 - It runs on your host with no sandbox: only trusted tasks and models.
 - Tests use the FakeProvider, so no key is needed.
 
-**Builds on:** [11 The system prompt](11-system-prompt.md) · **Next:** [13 Sessions](13-session.md) — we have been using `AgentSession`; now we build it.
+**Builds on:** [06 Events and abort](06-events-abort.md) · [11 The system prompt](11-system-prompt.md) · **Next:** [13 Sessions](13-session.md) — we have been using `AgentSession`; now we build it.
