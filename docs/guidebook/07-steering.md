@@ -33,8 +33,15 @@ sequenceDiagram
     U->>A: follow-up: "Then write a short summary to NOTES.md"
     M-->>A: answer about both files
     A->>M: model call 4 (sees the follow-up)
-    M-->>A: call write NOTES.md ... done
+    M-->>A: call write NOTES.md
+    Note over A: write NOTES.md runs
+    A->>M: model call 5
+    M-->>A: "Done."
 ```
+
+![Steer and follow-up on a timeline: when the user types vs. when the model sees it](img/07-steer-timeline.png)
+
+The picture shows the same run on a timeline: time runs left to right, through 5 turns and 11 messages. The steer and the follow-up wait in their queue (the dashed bars) and enter the history only at a safe point. The small squares before each model call show which messages that call sends: orange is the steer, sent from turn 2 on, and purple is the follow-up, sent from turn 4 on.
 
 While `read README.md` runs, the user remembers something and types "Also read CHANGELOG.md". Near the end, they type "Then write a short summary to NOTES.md". This whole chapter is about how these two messages get into the run.
 
