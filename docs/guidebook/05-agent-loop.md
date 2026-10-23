@@ -187,118 +187,11 @@ Here is the whole path in one table:
 
 ## Real design
 
-The six steps fixed the naive loop. Now we put them together as real code, piece by piece, in the order the code builds them (not the order of the steps). First the tool itself: the naive loop only had a name and an `execute` function, and the real one is `AgentTool`. Next comes what each tool gets (`ToolContext`, Step 6) and the function that executes one call safely (`run_tool`, Steps 1–3). Then the settings (`LoopConfig`, Step 5). Last, the loop that uses them all (`agent_loop`, Step 4) and the model call inside it (`_llm_turn`).
-
-### Tools: `AgentTool`
-
-This is the tool from the naive loop, made real. Why do we need a new class? From [01](01-pick-clean.md), `ai.Tool` is only a description for the model: `name`, `description`, `parameters` (a JSON schema). The `ai` layer never executes tools. But the loop must also have the code that executes the tool. So `AgentTool` is `ai.Tool` plus `execute`:
-
-Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`AgentTool`)
-
-```text
-CLASS AgentTool(ai.Tool):          // name, description, parameters + the code
-    execute = FUNCTION (args, ctx) -> text
-    prepare_arguments = FUNCTION (raw args) -> args, or nothing
-                        // called before validation
-```
-
-`execute(args, ctx)` is an async function that returns **text**, and that text goes back to the model as the tool result. `prepare_arguments` is optional: it repairs raw arguments before they are checked (for example, an old argument name).
-
-Because `AgentTool` **is** an `ai.Tool`, we can pass the same list to the model (as descriptions) and to the loop (to execute them).
-
-### `ToolContext`: what a tool gets
-
-This is Step 6 in real code: the one object each tool call gets.
-
-Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`ToolContext`)
-
-```text
-CLASS ToolContext:
-    cancel       // the Stop flag (an asyncio.Event: a flag that async code can wait on)
-    env          // the ExecutionEnv
-    cwd          // the working folder
-    on_update    // FUNCTION (text): SEND event tool_execution_update (progress for the UI)
-```
-
-A tool should not reach for globals. Everything it needs comes in this one object — the [tool context](glossary.md#tool-context):
-
-| Field | What it is | Explained in |
-|---|---|---|
-| `cancel` | Set when the user stops the run. A long tool should check it. | [06](06-events-abort.md) |
-| `env` | The [execution environment](glossary.md#execution-environment): the one place where tools read files and execute commands. Default `LocalEnv`. | [09](09-exec-env.md) |
-| `cwd` | The working folder. Default: the process's current folder. | [09](09-exec-env.md) |
-| `on_update` | Send progress text (for example, bash output lines) to the UI. | [06](06-events-abort.md) |
-
-Why one object and not four arguments? We can add a field later without changing every tool. And the same tool code works on a laptop or in a Docker sandbox ([24](24-docker-sandbox.md)): only `env` changes.
-
-### `run_tool`: one call, never raises
-
-This is Steps 1–3 in real code: the same three checks, in one function.
-
-Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`run_tool`)
-
-```text
-FUNCTION run_tool(tools, call, ctx) -> ToolResultMessage:
-    err(text) = ToolResultMessage(call.id, call.name, text, is_error = yes)
-
-    tool = FIND the tool in tools whose name is call.name
-    IF no tool: RETURN err("Tool <call.name> not found")
-    TRY:
-        IF tool.prepare_arguments: call.arguments = tool.prepare_arguments(call.arguments)
-        CHECK call.arguments against tool.parameters    // jsonschema.validate
-    IF the check fails: RETURN err("Invalid arguments for <call.name>: <message>")
-    IF prepare_arguments raised e: RETURN err("prepare_arguments failed: <type>: <e>")
-    TRY:
-        text = WAIT for tool.execute(call.arguments, ctx)
-        RETURN ToolResultMessage(call.id, call.name, text)
-    IF it raised e:
-        IF ctx.cancel is set: RETURN err("Interrupted by the user")
-        ELSE: RETURN err("<type>: <e>")
-```
-
-Nothing raises out of `run_tool`: every failure becomes a `ToolResultMessage` with `is_error=True`.
-
-```mermaid
-flowchart TD
-    A[ToolCall] --> B{tool found?}
-    B -- no --> E1["error: Tool X not found"]
-    B -- yes --> C[prepare_arguments, then jsonschema.validate]
-    C -- invalid --> E2["error: Invalid arguments for X: ..."]
-    C -- prepare_arguments raised --> E4["error: prepare_arguments failed: ..."]
-    C -- ok --> D[await tool.execute args, ctx]
-    D -- raises --> E3["error: Type: message<br/>or 'Interrupted by the user'"]
-    D -- returns text --> OK[ToolResultMessage text]
-```
-
-Only one thing is new compared with Steps 1–3: `prepare_arguments` runs **before** the schema check, so it can repair an old argument shape. It writes back into `call.arguments`, so the history keeps the repaired version.
-
-### `LoopConfig`: the settings
-
-This is Step 5 in real code: `stream_fn` and the other settings are inputs to the loop, not fixed inside it.
-
-`agent_loop` takes many settings. They live in one dataclass, `LoopConfig`. Here are the ones this chapter uses:
-
-Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`LoopConfig`)
-
-```text
-CLASS LoopConfig:
-    model
-    tools = empty list
-    get_tools = nothing    // if set: called every turn, wins over tools
-    stream_fn = ai.stream  // swap for a fake in tests
-    get_api_key = nothing
-    env = a new LocalEnv
-    cwd = the current folder
-    // other fields: later chapters (07 steering, 08 hooks, 16 compaction)
-```
-
-`stream_fn` defaults to `ai.stream`, and a test passes `FakeProvider(...)` instead; thanks to the [stream function](glossary.md#stream-function) shape from [01](01-pick-clean.md#out-the-shape-of-a-model-call), the loop cannot tell the difference. `get_tools`, if set, is called every turn, so the tool list can change during a run (the `Agent` class uses it so that changing `agent.tools` takes effect at the next turn). `get_api_key(provider)` is called before every model call, so a key that can expire, like a login token, can refresh in the middle of a long run; if it is not set, no key is passed and the provider returns a "no API key" error ([01](01-pick-clean.md#1-pick-_providers-register_provider)). `env` and `cwd` go into every `ToolContext`.
-
-All the other fields have "do nothing" defaults, and later chapters fill them in: steering and follow-ups in [07](07-steering.md), tool hooks in [08](08-hooks-approval.md), and the history view in [16](16-compaction.md). That is why the loop in this chapter can stay small.
+The six steps fixed the naive loop. Now we put them together as real code, and we follow the data, top-down, with the same README.md example. We start where a run starts: `agent_loop`, whose input is the history (`messages`) plus the user's new message (`prompts`), with the Step 4 check of `stop_reason`. Then we go one level down to `_llm_turn`, the one model call inside each turn (where Step 5's `stream_fn` is called). Then `run_tool`, what the loop does with each tool call the model asks for (Steps 1–3). Last come the pieces the loop uses, each one after we have seen where it is needed: the tool itself (`AgentTool`), what each tool call gets (`ToolContext`, Step 6), and the settings (`LoopConfig`, Step 5).
 
 ### `agent_loop`: the loop
 
-This is the main loop from the naive version, with the Step 4 check of `stop_reason` and the pieces above plugged in.
+This is the main loop from the naive version, with the Step 4 check of `stop_reason`. It uses a few pieces that we look at after the loop: `_llm_turn`, `run_tool`, `ToolContext` and `LoopConfig`.
 
 First, a run in plain words. The user asks "What is in README.md?" Two turns happen:
 
@@ -311,7 +204,7 @@ The run returns four new messages: the user prompt, the assistant message and to
 
 Now the loop that does this. This is a small version: it leaves out steering and follow-ups ([07](07-steering.md)), tool events and most of abort ([06](06-events-abort.md)), and hooks ([08](08-hooks-approval.md)).
 
-Its inputs, in plain words: `messages` is the history so far (the loop appends to this same list), `prompts` are the new user messages for this run, and `config` is the `LoopConfig` above. `emit` is a function from the app; the loop calls it with every **event** (a small dict such as `{type: "turn_start"}` that says what just happened, so a UI can show it; [06](06-events-abort.md) covers them all). Inside, `send(event)` passes one event to `emit`, and `add(message)` keeps a message in the history and also sends events about it. `cancel` is the Stop flag from Steps 3 and 4.
+Its inputs, in plain words: `messages` is the history so far (the loop appends to this same list), `prompts` are the new user messages for this run, and `config` is the [`LoopConfig`](#loopconfig-the-settings) settings object (shown at the end of this section). `emit` is a function from the app; the loop calls it with every **event** (a small dict such as `{type: "turn_start"}` that says what just happened, so a UI can show it; [06](06-events-abort.md) covers them all). Inside, `send(event)` passes one event to `emit`, and `add(message)` keeps a message in the history and also sends events about it. `cancel` is the Stop flag from Steps 3 and 4.
 
 `_llm_turn` gets `send` and `add` too. It uses `send` for each piece of the streamed answer, and `add` for the few messages it puts in the history itself (a note when the tool list changed, and steering messages, [07](07-steering.md)).
 
@@ -405,6 +298,112 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 The tool list and the system prompt are read again every turn. `system_prompt` is usually a string, but it may also be a function that returns the string, so the prompt can change between turns (what goes in it is [11](11-system-prompt.md)). The `view` is the list of messages we send; by default it is the whole history, and [16](16-compaction.md) makes it shorter. `transform_messages` ([01](01-pick-clean.md#2-clean-transform_messages)) cleans it before it is sent. The final message is taken from the last `done` or `error` event, the one rule of a stream function. In the real code the call goes through a small wrapper, `_stream`, so that Stop can cut it off in the middle ([06](06-events-abort.md)).
 
 The skipped lines (a steering poll and the "Tools added / removed" note) belong to [07](07-steering.md). The `view` is made by the `prepare_next_turn` hook. Two more hooks, `transform_context` and `convert_to_llm`, can change it before `transform_messages`. In a bare `LoopConfig` all three do nothing; the `Agent` class sets `prepare_next_turn` to `build_view` by default, and [16](16-compaction.md) explains it.
+### `run_tool`: one call, never raises
+
+This is Steps 1–3 in real code: the same three checks, in one function.
+
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`run_tool`)
+
+```text
+FUNCTION run_tool(tools, call, ctx) -> ToolResultMessage:
+    err(text) = ToolResultMessage(call.id, call.name, text, is_error = yes)
+
+    tool = FIND the tool in tools whose name is call.name
+    IF no tool: RETURN err("Tool <call.name> not found")
+    TRY:
+        IF tool.prepare_arguments: call.arguments = tool.prepare_arguments(call.arguments)
+        CHECK call.arguments against tool.parameters    // jsonschema.validate
+    IF the check fails: RETURN err("Invalid arguments for <call.name>: <message>")
+    IF prepare_arguments raised e: RETURN err("prepare_arguments failed: <type>: <e>")
+    TRY:
+        text = WAIT for tool.execute(call.arguments, ctx)
+        RETURN ToolResultMessage(call.id, call.name, text)
+    IF it raised e:
+        IF ctx.cancel is set: RETURN err("Interrupted by the user")
+        ELSE: RETURN err("<type>: <e>")
+```
+
+Nothing raises out of `run_tool`: every failure becomes a `ToolResultMessage` with `is_error=True`.
+
+```mermaid
+flowchart TD
+    A[ToolCall] --> B{tool found?}
+    B -- no --> E1["error: Tool X not found"]
+    B -- yes --> C[prepare_arguments, then jsonschema.validate]
+    C -- invalid --> E2["error: Invalid arguments for X: ..."]
+    C -- prepare_arguments raised --> E4["error: prepare_arguments failed: ..."]
+    C -- ok --> D[await tool.execute args, ctx]
+    D -- raises --> E3["error: Type: message<br/>or 'Interrupted by the user'"]
+    D -- returns text --> OK[ToolResultMessage text]
+```
+
+Only one thing is new compared with Steps 1–3: `prepare_arguments`, an optional repair function on the tool ([below](#tools-agenttool)), runs **before** the schema check, so it can repair an old argument shape. It writes back into `call.arguments`, so the history keeps the repaired version.
+
+### Tools: `AgentTool`
+
+This is the tool from the naive loop, made real. Why do we need a new class? From [01](01-pick-clean.md), `ai.Tool` is only a description for the model: `name`, `description`, `parameters` (a JSON schema). The `ai` layer never executes tools. But the loop must also have the code that executes the tool. So `AgentTool` is `ai.Tool` plus `execute`:
+
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`AgentTool`)
+
+```text
+CLASS AgentTool(ai.Tool):          // name, description, parameters + the code
+    execute = FUNCTION (args, ctx) -> text
+    prepare_arguments = FUNCTION (raw args) -> args, or nothing
+                        // called before validation
+```
+
+`execute(args, ctx)` is an async function that returns **text**, and that text goes back to the model as the tool result. `prepare_arguments` is optional: it repairs raw arguments before they are checked (for example, an old argument name).
+
+Because `AgentTool` **is** an `ai.Tool`, we can pass the same list to the model (as descriptions) and to the loop (to execute them).
+
+### `ToolContext`: what a tool gets
+
+This is Step 6 in real code: the one object each tool call gets.
+
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`ToolContext`)
+
+```text
+CLASS ToolContext:
+    cancel       // the Stop flag (an asyncio.Event: a flag that async code can wait on)
+    env          // the ExecutionEnv
+    cwd          // the working folder
+    on_update    // FUNCTION (text): SEND event tool_execution_update (progress for the UI)
+```
+
+A tool should not reach for globals. Everything it needs comes in this one object — the [tool context](glossary.md#tool-context):
+
+| Field | What it is | Explained in |
+|---|---|---|
+| `cancel` | Set when the user stops the run. A long tool should check it. | [06](06-events-abort.md) |
+| `env` | The [execution environment](glossary.md#execution-environment): the one place where tools read files and execute commands. Default `LocalEnv`. | [09](09-exec-env.md) |
+| `cwd` | The working folder. Default: the process's current folder. | [09](09-exec-env.md) |
+| `on_update` | Send progress text (for example, bash output lines) to the UI. | [06](06-events-abort.md) |
+
+Why one object and not four arguments? We can add a field later without changing every tool. And the same tool code works on a laptop or in a Docker sandbox ([24](24-docker-sandbox.md)): only `env` changes.
+
+### `LoopConfig`: the settings
+
+This is Step 5 in real code: `stream_fn` and the other settings are inputs to the loop, not fixed inside it.
+
+`agent_loop` takes many settings. They live in one dataclass, `LoopConfig`. Here are the ones this chapter uses:
+
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`LoopConfig`)
+
+```text
+CLASS LoopConfig:
+    model
+    tools = empty list
+    get_tools = nothing    // if set: called every turn, wins over tools
+    stream_fn = ai.stream  // swap for a fake in tests
+    get_api_key = nothing
+    env = a new LocalEnv
+    cwd = the current folder
+    // other fields: later chapters (07 steering, 08 hooks, 16 compaction)
+```
+
+`stream_fn` defaults to `ai.stream`, and a test passes `FakeProvider(...)` instead; thanks to the [stream function](glossary.md#stream-function) shape from [01](01-pick-clean.md#out-the-shape-of-a-model-call), the loop cannot tell the difference. `get_tools`, if set, is called every turn, so the tool list can change during a run (the `Agent` class uses it so that changing `agent.tools` takes effect at the next turn). `get_api_key(provider)` is called before every model call, so a key that can expire, like a login token, can refresh in the middle of a long run; if it is not set, no key is passed and the provider returns a "no API key" error ([01](01-pick-clean.md#1-pick-_providers-register_provider)). `env` and `cwd` go into every `ToolContext`.
+
+All the other fields have "do nothing" defaults, and later chapters fill them in: steering and follow-ups in [07](07-steering.md), tool hooks in [08](08-hooks-approval.md), and the history view in [16](16-compaction.md). That is why the loop in this chapter can stay small.
 
 ## Test
 
