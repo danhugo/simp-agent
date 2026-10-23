@@ -67,7 +67,7 @@ flowchart LR
     CF -.-> LLM
     CF -.-> RT
     CF -.-> CHK
-    LOOP -- "send(event)" --> AG[Agent] --> S1[UI] --> U2([what the user sees])
+    LOOP -- "send(event) → emit" --> AG[Agent] --> S1[UI] --> U2([what the user sees])
     AG --> S2[log]
 ```
 
@@ -77,7 +77,7 @@ The next section follows the events out. The section after it follows the Stop i
 
 ### What a caller sees
 
-The loop has **one** output: `emit(event)`. An [event](glossary.md#event) is a plain dict with a `"type"` key. Here is our README run, as the UI sees it. (The model sends many `message_update` events per call; we show one.)
+Inside the loop, every event goes through `send`. `send` only passes it on to `emit`, the one function the caller gave to `agent_loop`. That is the loop's only output. An [event](glossary.md#event) is a plain dict with a `"type"` key. Here is our README run, as the UI sees it. (The model sends many `message_update` events per call; we show one.)
 
 ```text
 {type: agent_start}                                              // the run starts
@@ -324,7 +324,7 @@ FUNCTION Agent._run(prompts):
     start = length of messages
     TRY:
         cfg = LoopConfig(model, get_tools = the current tools, stream_fn, ...)
-        emit = a function that calls _emit_all(_subs, e)
+        emit = a function that calls _emit_all(_subs, e)   // the loop's send() passes each event here
         RETURN agent_loop(system_prompt, messages, prompts, cfg, emit, _cancel)
     IF an Exception happens:     // e.g. a subscriber raised
         ADD AssistantMessage(stop_reason="error", error="<type>: <text>") to messages
@@ -413,6 +413,6 @@ uv run pytest packages/simp_agent/tests/test_harden.py
 
 ## Recap
 
-The loop now talks while it works: every step sends one [event](glossary.md#event) dict through `emit`, and every message enters the history through `add`, so a UI can draw the whole README run from `agent_start` to `agent_end`. The cancel flag from 05 is one `asyncio.Event`. It is checked in a race during the model call, before each tool, inside tools and after the batch, so a Stop is fast and closes the web request. Whatever was on screen stays in the history, marked `aborted`, and `transform_messages` repairs only the model's view. `Agent` holds the history, the subscribers and the flag between questions.
+The loop now talks while it works: every step sends one [event](glossary.md#event) dict through `send`, which passes it to the caller's `emit`, and every message enters the history through `add`, so a UI can draw the whole README run from `agent_start` to `agent_end`. The cancel flag from 05 is one `asyncio.Event`. It is checked in a race during the model call, before each tool, inside tools and after the batch, so a Stop is fast and closes the web request. Whatever was on screen stays in the history, marked `aborted`, and `transform_messages` repairs only the model's view. `Agent` holds the history, the subscribers and the flag between questions.
 
 **Builds on:** [05 The agent loop](05-agent-loop.md) · **Next:** [07 Steering](07-steering.md): the `get_steering` / `get_follow_up` hooks and the `Agent` queues, so the user can type while the agent works.
