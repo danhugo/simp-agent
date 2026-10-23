@@ -1,16 +1,63 @@
 # Part 5 big picture: the system
 
-**In one sentence:** Part 5 builds the apps around `AgentSession`: a terminal app (the CLI) for one user, and a server with a web client for many users. A task text goes in (typed in a terminal, or sent as a JSON command over HTTP). Events come out (printed lines, or an SSE stream), and every message and event is saved.
+**In one sentence:** Part 5 builds the apps around `AgentSession`: a terminal app (the CLI) for one user, and a server with a web client for many users. Text goes in, events come out, and everything a client needs to redraw the screen is saved.
 
-Read this page before [19](19-cli.md), and come back to it any time you get lost in [19](19-cli.md)–[26](26-system-tests-deploy.md). It adds no new facts; it only puts the pieces of those eight chapters side by side.
+Read this page before [19](19-cli.md). Come back to it any time you get lost in [19](19-cli.md)–[26](26-system-tests-deploy.md). It adds no new facts. The plain walk-through comes first; the map (picture and tables) is at the end.
 
-## The picture
+## Example: from one terminal to a team in the browser
+
+After Part 4 we have `AgentSession`: it keeps the chat on disk, retries, compacts and runs plugins. But it is only a Python object. Nobody can type to it yet.
+
+The easy case comes first. The user opens a terminal and types **`simp-agent "write fizzbuzz.py"`**. One program, one user, one session. The program makes an `AgentSession`, prints each event as a line, and asks "allow this?" in the terminal before a tool runs. That is the CLI, and it uses the session directly.
+
+Now the user's team wants the same agent in a browser, on one shared Mac. New problems show up at once:
+
+1. **The browser is not in the same program.** It needs a way to send "write fizzbuzz.py" to the server and a way to get the answer back while it is still being written.
+2. **The user reloads the page in the middle of the answer**, or the Wi‑Fi drops. The screen must come back exactly as it was, with no message lost and none shown twice.
+3. **Many users share one server.** Each must log in and see only their own sessions. The Mac has limited memory, so not every session can stay loaded.
+4. **Every model call costs real money.** One user, or one runaway run, must not spend the whole team's budget.
+5. **The agent runs shell commands.** One user's `rm -rf` must not touch another user's files, or the server itself.
+6. **We must test all this** in a real browser, without an API key and without paying for model calls, and then keep it running on the Mac.
+
+Somebody must sit between the browser and `AgentSession` and solve all six. **That "somebody" is the server**, with a small web client on the other side.
+
+## The core idea
+
+The session from Part 4 stays the same. The server wraps each loaded session in a **[Run](glossary.md#run)**: a small object that holds the session, its state (idle, running, waiting for approval…) and the list of what has happened so far.
+
+Only two HTTP routes carry everything. **Commands go in** by POST: the browser sends small JSON messages like `{"type": "prompt", "text": "write fizzbuzz.py"}`. **Events come out** by one long-open GET that uses SSE ("server-sent events": the server keeps the reply open and writes one event per line, as they happen).
+
+The key rule is about what is saved. Events are of two kinds. A **[durable event](glossary.md#durable-event)** is a whole thing that happened, like "a message ended" or "a tool gave this result". It gets the next number (`seq`) and is saved. A **[live event](glossary.md#live-event)** is one small text piece as the model types. It is only sent, never saved, because saving every few letters would be slow, and the full message will come later as a durable event anyway. When a browser reconnects, it says "the last number I have is N". The server sends every durable event after N, then one **[snapshot](glossary.md#snapshot)**: the state right now, including the text of the message that is still being written. So the server never loses what a client needs, and a lost text piece does not matter.
+
+## What each chapter adds
+
+**[19 The CLI](19-cli.md): the one-user app.** It reads flags and the settings file, gives `AgentSession` a JSONL file as its store, prints events as lines and asks for tool approval in the terminal (skip with `--yes`). It is the simple case to compare the server with.
+
+**[20 The server run](20-server-run.md): one session on a server.** This builds the `Run`, its states and the allowed moves between them (`TRANSITIONS`), and the command route. It answers problem 1 for commands: a prompt starts a run, a steer or follow-up is queued, an approval answers a waiting tool.
+
+**[21 Transport](21-transport.md): events out, and reconnect.** It builds the protocol (the typed commands and events), the `seq` numbers, durable and live events, the snapshot and the SSE route. This is problem 2.
+
+**[22 Store and auth](22-store-auth.md): many users.** It saves sessions and events in SQLite, so a server restart loses nothing, and checks a login token on every request, so each user sees only their own sessions. Part of problem 3.
+
+**[23 Limits](23-limits.md): memory and money.** It caps how many runs stay loaded (the oldest idle one is closed first) and adds a budget guard in front of every model call, with a daily limit per user and a limit per run. The rest of problem 3, and problem 4.
+
+**[24 Docker sandbox](24-docker-sandbox.md): keep users apart.** Each session gets its own container, and every tool command runs inside it. Problem 5.
+
+**[25 Web client](25-web-client.md): the browser side.** It sends commands, reads the event stream, and turns each event into the next screen state with one pure function, `reduce()`. It is the other half of problems 1 and 2.
+
+**[26 System tests and deploy](26-system-tests-deploy.md): prove it and run it.** A fake model gives the same answer every time, so Playwright tests can click the real web page with no API key. JSON logs, a database backup and launchd services run it on the Mac. Problem 6.
+
+## The map
+
+Now the same system with the real names. Use this as a reference when you read the chapters.
+
+### The picture
 
 ![The system: blocks, objects and chapters](img/part-5-system.svg)
 
-There are two paths into the grey box (`AgentSession`, Part 4). Path A (top) is the CLI: it talks to the session directly. Path B (middle row, left to right) is the server: a command goes from the browser through auth, loading and the sandbox to the session. Then read the bottom row right to left: model calls pass the budget guard, events are saved, and they stream back to the browser. The yellow box (10) holds the tools that test and run the whole system. Blocks are steps. Cards on the arrows are the data passed between steps. Purple tags say which chapter builds the block.
+There are two paths into the grey box (`AgentSession`, Part 4). Path A (top) is the CLI: it talks to the session directly. Path B (middle row, left to right) is the server: a command goes from the browser through auth, loading and the sandbox to the session. Then read the bottom row right to left: model calls pass the budget guard, events are saved, and they stream back to the browser. The yellow box (10) holds the tools that test and run the whole system. Blocks are steps. Cards on the arrows are the data passed between steps. Each purple tag names the main chapter of a block; the table below lists every chapter that adds to it.
 
-## The blocks
+### The blocks
 
 | # | Block | What it does | IN | OUT | Code (file · function) | Chapter |
 |---|---|---|---|---|---|---|
@@ -27,17 +74,9 @@ There are two paths into the grey box (`AgentSession`, Part 4). Path A (top) is 
 
 Not numbered: `AgentSession` (the agent loop, tools, plugins, retry and compaction) is Part 4, [13](13-session.md)–[18](18-profiles-plugins.md). The server entry point `apps/server/src/simp_server/__main__.py` · `main()` only picks a mode ([20](20-server-run.md)).
 
-## Which block is inside which
+### Which block is inside which
 
-- **The CLI (1) and the server (2–9) are two apps on the same `AgentSession`.** The CLI gives it a `JsonlStore` and a terminal `ask` function. The server gives it a `Run` as the store and `Run.approve` as the approve function.
-- **A `Run` is the server's wrapper around one `AgentSession`.** It holds the session, the durable event log, the in-flight buffer, the run state and the open client queues. Blocks 6, 8 and 9 are all `Run` methods.
-- **`SessionManager.get()` = Load run (4) + Sandbox open (5).** Every HTTP route for a session calls it first, after Auth (3).
-- **Budget guard (7) wraps the model call.** `Run` passes `budget.guard(stream_fn, over_budget)` to `AgentSession` as its `stream_fn`, so every model call (and the title call) goes through it.
-- **Events (8) is a session subscriber.** `Run.__init__` calls `session.subscribe(self.on_event)`. `Run.append` is the store method; core messages and protocol events share one `seq` counter.
-- **Two HTTP routes carry everything:** POST `/api/sessions/{sid}/commands` for commands in (6), and GET `/api/sessions/{sid}/events` for events out (9).
-- **Test + run (10) is outside the flow.** It swaps the model (FakeLLM) or the whole server (`fake.py`) and keeps the rest real.
-
-The small chart below shows only the nesting:
+The CLI (1) and the server (2–9) are two apps on the same `AgentSession`. The CLI gives it a `JsonlStore` and a terminal `ask` function; the server gives it the `Run` as the store and `Run.approve` as the approve function. Every HTTP route for a session first runs Auth (3), then `SessionManager.get()`, which is Load run (4) plus opening the Sandbox (5). Commands (6), Events (8) and Stream out (9) are all methods of `Run`. The budget guard (7) wraps the model call: `Run` passes `budget.guard(stream_fn, over_budget)` to `AgentSession` as its `stream_fn`, so every model call, and the title call, goes through it. Events (8) is a session subscriber (`session.subscribe(self.on_event)`), and core messages and protocol events share one `seq` counter. Test + run (10) sits outside the flow: it swaps the model (FakeLLM) or the whole server (`fake.py`) and keeps the rest real.
 
 ```mermaid
 flowchart LR
@@ -57,14 +96,12 @@ flowchart LR
     SO -- SSE --> W
 ```
 
-**Rule for the whole Part:** the server never loses what a client needs. Every durable event is kept in the run's log and in the store, so a client that reconnects gets the missed events and a snapshot. Live deltas may be lost; the snapshot fills the gap.
-
-## The objects
+### The objects
 
 | Object | Fields | Meaning |
 |---|---|---|
 | [Protocol](glossary.md#protocol) | `Command` and `ServerEvent` models | The typed messages between server and client. The TypeScript types in `protocol.gen.ts` are generated from them. |
-| [Run](glossary.md#run) | `session`, `log`, `seq`, `inflight`, `pending`, `subs`, `info` | One loaded session on the server. |
+| [Run](glossary.md#run) | `session`, `env`, `log`, `seq`, `inflight`, `pending`, `subs`, `info`, `task`, `run_start`, … | One loaded session on the server. |
 | [Run state](glossary.md#run-state) | `idle`, `running`, `waiting_approval`, `aborting`, `error` | Where the run is. Allowed moves are in `TRANSITIONS`. |
 | [Durable event](glossary.md#durable-event) | `seq`, `type`, … | Saved to the store with a number; sent again on reconnect. |
 | [Live event](glossary.md#live-event) | `msg_id` or `call_id`, `offset`, `delta` | A small text piece, sent only, never saved. |
@@ -74,20 +111,13 @@ flowchart LR
 | [Budget guard](glossary.md#budget-guard) | `Limits`: `user_day_usd` (2.0), `run_usd` (0.5) | Stops a model call when a limit is reached. |
 | `ChatState` | `lastSeq`, `runState`, `items`, `inFlight`, `pending`, … | What the web client draws. `reduce()` makes the next one from an event. |
 
-## One worked example: "write fizzbuzz.py" from the browser
+### The worked example with all blocks
 
-You log in to the web app and type "write fizzbuzz.py" in a new session.
+You log in to the web app and type "write fizzbuzz.py" in a new session. The app POSTs `{"type": "prompt", "text": "write fizzbuzz.py"}` to `/api/sessions/{sid}/commands` (2); its event stream is already open. The `Bearer` token in the header finds your user (3). The session is new, so `SessionManager.get()` builds an empty `Run` (4), and with Docker the session gets its own container, where the `write` tool will put `fizzbuzz.py` (5). The run is `idle`, so `Run.start()` moves it to `running` and starts `session.prompt(...)` as a task (6). Before the model call, `over_budget()` checks the limits; you spent less than $2.0 today, so the call goes on (7). Text pieces go out as live `TextDelta` events; when the message ends, a durable `AssistantMessage` is saved with its usage, and the `write` call ends as a durable `ToolResult` (8). Your browser gets each event as an SSE line and `reduce()` draws it (9).
 
-1. **CLI:** not used here. In a terminal, `simp-agent "write fizzbuzz.py"` would make an `AgentSession` with a JSONL store and print the events itself.
-2. **Web client:** the app POSTs `{"type": "prompt", "text": "write fizzbuzz.py"}` to `/api/sessions/{sid}/commands`. It already has the events stream open.
-3. **Auth:** the `Bearer` token in the header finds your user.
-4. **Load run:** the session is new and not in memory, so `SessionManager.get()` builds a `Run` with no messages.
-5. **Sandbox:** with Docker, the session gets its own container; the `write` tool will put `fizzbuzz.py` in its workspace.
-6. **Command:** the run is `idle`, so `Run.start()` moves it to `running` and runs `session.prompt(...)` as a task.
-7. **Budget guard:** before the model call, `over_budget()` checks the limits. You spent less than $2.0 today, so the call goes on.
-8. **Events:** text deltas go out as live `TextDelta` events. When the message ends, a durable `AssistantMessage` event is saved with its usage. The `write` call ends as a durable `ToolResult`. At the end the run goes back to `idle`.
-9. **Stream out:** your browser gets each event as an SSE line, and `reduce()` draws it. If you reload the page, it reconnects with `after=N` and gets the missed events plus a snapshot.
-10. **Test + run:** in the Playwright tests the same flow runs against FakeLLM, so the answer is always the same and no API key is needed.
+Now you reload the page while the model is still typing its last sentence. The page has nothing, so it opens the stream again with `Last-Event-ID: 0`, and the server sends every durable event (the message, the tool result), then a snapshot: run state `running`, plus the half-written text in the in-flight buffer. New text pieces then arrive live, and the screen looks as if nothing happened. If only the network drops and the page stays open, the client sends its last seq in the same header and gets only what it missed.
+
+In the Playwright tests (10) the same flow runs against FakeLLM, so the answer is always the same and no API key is needed. In a terminal, `simp-agent "write fizzbuzz.py"` (1) skips blocks 2–9: it makes the `AgentSession` itself and prints the events.
 
 ## Builds on / Next
 
