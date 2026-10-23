@@ -33,17 +33,11 @@ Code in this chapter (commit `2fc2776`). Nothing new is added to the repo; the c
 
 ## Problem
 
-You have built all of simp-agent. The fizzbuzz task now runs from a terminal ([19](19-cli.md)) or a browser ([25](25-web-client.md)), inside a container ([24](24-docker-sandbox.md)), with budgets ([23](23-limits.md)).
+At the end of [26](26-system-tests-deploy.md), the whole system works. Ana types "write `fizzbuzz.py`" in her browser ([25](25-web-client.md)), the server runs her session ([20](20-server-run.md)), `bash` runs in a container ([24](24-docker-sandbox.md)), a budget stops a runaway loop ([23](23-limits.md)), and browser tests check it all with a fake model ([26](26-system-tests-deploy.md)). Nothing new needs to be built for the job we set in [00](00-overview.md).
 
-But three questions are still open:
+Now Bob asks for something new. He wants a `count_lines` tool, so the model can ask "how long is `fizzbuzz.py`?" without reading the whole file. He wants it in the terminal ([19](19-cli.md)) and in the browser. And he asks two more questions that every new reader of this code will ask: why is simp-agent built this way, and what can it **not** do yet?
 
-- **Why** is it built this way, and not like other agents?
-- **Where does it stop?** What does it not do, on purpose or for now?
-- **How do I add a feature** without breaking the core?
-
-If you do not know the answers, you will add features in the wrong place. The core grows. The layer rule ([00](00-overview.md#the-one-rule-import-only-downward)) breaks. Tests get harder.
-
-This chapter answers the three questions.
+These three questions belong together. If you do not know why the core is shaped as it is, and where its edges are, you will put Bob's tool in the wrong place. The core grows, the layer rule ([00](00-overview.md#the-one-rule-import-only-downward)) breaks, and tests get harder. So this last chapter first adds `count_lines` the quick way and sees where it hurts, then looks back at the choices behind the core, then at its known limits, and last adds `count_lines` again the right way.
 
 ## Naive version
 
@@ -74,13 +68,11 @@ asyncio.run(main())
 # fizzbuzz.py has 15 lines
 ```
 
-It works for one app. It breaks when:
+(The tool always says `"15"` so the example stays short; a real one would read the file through `ctx`.)
 
-1. **Each app repeats it.** The CLI and the server both build sessions. You must copy the tool into both and keep the copies the same.
-2. **The tool cannot react to the session.** It cannot add a line to the system prompt, block other tools, or save its own state. It is just a function.
-3. **You cannot turn it on or off by name.** There is no switch in a profile ([18](18-profiles-plugins.md)).
+This is not wrong. For a tool that every session always needs, passing it in `tools` is exactly what the built-in coding tools do ([10](10-coding-tools.md)). But Bob's tool is an extra, and here the quick way hurts. The CLI and the server each build their own sessions, so the tool must be wired into both apps and kept the same. Bob also cannot switch it on or off by name in a profile ([18](18-profiles-plugins.md)), the way `plan_mode` is switched on. And a bare function cannot do more than answer: it cannot add a hint to the system prompt telling the model the tool exists, and it cannot save its own state in the session.
 
-The fix is not a bigger core. It is to use the sockets the core already has. Below we first look at the choices behind the core, then at its limits, and last we build `count_lines` again the right way: as a plugin ([Part 3](#part-3-extend-it-yourself)).
+The fix is not a bigger core. The core already has sockets for this. To see why they look the way they do, we first look back at the choices behind the core.
 
 ## Real design
 
@@ -88,19 +80,7 @@ The fix is not a bigger core. It is to use the sockets the core already has. Bel
 
 simp-agent copies many ideas from **[pi](glossary.md#pi)**, another small coding agent. The code says so often, in comments like `(pi ExtensionAPI)` and `(pi prepareArguments)`. Where simp-agent is different, it is usually because it chose to be smaller.
 
-Here are the main choices. Each one was taught in an earlier chapter; the link says where.
-
-| Choice | What it means | Why | Taught in |
-|---|---|---|---|
-| Layers, import only downward | Six folders; `test_layers.py` checks the rule | A change in a high layer cannot break a low one | [00](00-overview.md) |
-| A fake model from day one | `FakeProvider` makes every layer testable with no network | Tests are fast, free and give the same result each time | [04](04-label-test.md) |
-| `stream()` never raises | Errors become an `error` event with a final message | The loop has one path for good and bad answers | [02](02-translate-send.md), [04](04-label-test.md) |
-| Providers never read the environment | The app gives the key through `get_api_key` | The core has no hidden input; the app owns secrets | [01](01-pick-clean.md#1-pick-_providers-register_provider) |
-| History is append-only | Compaction adds a `CompactionEntry`; it never deletes | Nothing is lost; resume and audit see everything | [13](13-session.md), [16](16-compaction.md) |
-| Core only classifies errors | `is_retryable`, `is_context_overflow`; the session decides | Policy can change without touching `ai` | [15](15-retry.md), [17](17-overflow.md) |
-| Everything plugs in | Server slots (store, sandbox, auth) and agent plugins ([14](14-plugins.md)) | New features plug in; the core stays small | [14](14-plugins.md), [22](22-store-auth.md) |
-
-Two of these are worth one more look, because they shape how you extend the system.
+Every choice below was taught in an earlier chapter, so here we only name it and say why it matters when you extend the system. The first choice is the one all others rest on: six layers, each importing only from the layers below, checked by `test_layers.py` ([00](00-overview.md)). It means a change high up cannot break anything low down. The second is a fake model from day one, `FakeProvider` ([04](04-label-test.md)), so every layer can be tested fast, for free and with the same result each time; that is why Bob can test his tool without an API key. Then come three rules that keep the core simple: `stream()` never raises, but turns errors into an `error` event, so the loop has one path for good and bad answers ([02](02-translate-send.md)); providers never read the environment, the app hands over the key, so the core has no hidden input ([01](01-pick-clean.md#1-pick-_providers-register_provider)); and history is append-only, so compaction adds a `CompactionEntry` instead of deleting, and resume sees everything ([13](13-session.md), [16](16-compaction.md)). The last two choices shape how you extend the system, so they get one more look.
 
 **The core only classifies.** In `packages/simp_agent/src/simp_agent/ai/__init__.py`:
 
@@ -137,9 +117,9 @@ The roadmap (`docs/ROADMAP.md`) states the rule behind all of this: *"keep the c
 
 ### Part 2: Known limits
 
-simp-agent is small on purpose. Some features are missing. The code marks many of them with a **[ponytail comment](glossary.md#ponytail-comment)**: a `ponytail:` note that names a shortcut and its ceiling. `NOTES.md` lists more under "Not yet (present in pi, skipped here)".
+simp-agent is small on purpose, so some features are missing. They are written down in three places. In the code, a **[ponytail comment](glossary.md#ponytail-comment)** is a `ponytail:` note that names a shortcut and its ceiling. `NOTES.md` at the repo root is the build log; its section "Not yet (present in pi, skipped here)" lists features pi has and simp-agent skipped. `docs/ROADMAP.md` is the plan for later work.
 
-Here are the real limits at this commit.
+The limits fall into two groups. The first three are in the core: they touch every user, in the CLI and the server alike.
 
 **1. Tools run one by one.** In `packages/simp_agent/src/simp_agent/agent/__init__.py`, the loop runs tool calls in a plain `for`:
 
@@ -151,7 +131,7 @@ FOR EACH call IN calls:          // one by one, no parallel run
     run the tool, WAIT for it
 ```
 
-If the model asks for three `read` calls at once, they run one after another. `NOTES.md` lists "parallel tool execution" as not done. For fizzbuzz this is fine. For a big repo, it is slower.
+If the model asks for three `read` calls at once, they run one after another. `NOTES.md` lists "parallel tool execution" as not done. For Ana's fizzbuzz this does not matter. In a big repo, where the model reads ten files at once, it is slower. One by one was chosen because it is simple: steering, approval and abort ([06](06-events-abort.md)–[08](08-hooks-approval.md)) only ever deal with one running tool.
 
 **2. One huge turn cannot be compacted.** In `packages/simp_agent/src/simp_agent/agent/compaction.py`:
 
@@ -159,31 +139,34 @@ Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/
 
 ```text
 FUNCTION find_cut(messages, start, keep_tokens) -> index or nothing
-    RETURN first kept index after start
+    RETURN the last user/assistant index whose tail fits keep_tokens
+    //   (or the first one, if none fits)
     // only a user or assistant message, never a tool_result,
     //   so call/result pairs stay together
     // ponytail: no split-turn cut; one huge turn cannot be compacted
 ```
 
-The cut ([16](16-compaction.md)) only lands on a user or assistant message. So if one turn has many large tool results, there is no place to cut inside it. Overflow recovery ([17](17-overflow.md)) compacts once; a second overflow ends the run with the error. The roadmap lists "compaction inside one long turn" for later.
+The cut ([16](16-compaction.md)) only lands on a user or assistant message. So if Bob runs a test that prints a huge log, and the model reads it in many tool results within one turn, there is no place to cut inside that turn. Overflow recovery ([17](17-overflow.md)) compacts once; a second overflow ends the run with the error. The roadmap lists "compaction inside one long turn" for later.
 
 **3. Three provider APIs.** `_PROVIDERS` holds `anthropic-messages`, `openai-completions` and `openai-responses`. Others need `register_provider` (see below).
 
+The other five limits are at the edges, in the server and in how it is run.
+
 **4. One machine.** The server uses SQLite and runs on one machine with launchd ([26](26-system-tests-deploy.md)). The roadmap says Postgres, replicas and session leases are "dropped while on one machine".
 
-**5. Budgets are soft.** The budget is checked **before** each LLM call ([23](23-limits.md)). One call can still go over the limit. A profile with no prices costs $0 and never hits a budget; the server only warns at startup.
+**5. Budgets are soft.** The budget is checked **before** each LLM call ([23](23-limits.md)). So if Ana has $0.01 left, one more call still runs and can take her over the limit. A profile with no prices costs $0 and never hits a budget; the server only warns at startup.
 
 **6. No rate limit on login.** The README says: *"There is no rate limit on `/api/login` and `/api/signup`: before exposing the server through a tunnel, put one in front."*
 
-**7. `LocalSandbox` is not isolation.** Its docstring says: *"Not isolation: DockerSandbox replaces it."* The server refuses to start with `LocalSandbox` and more than one active user, unless `allow_local_sandbox = true` is set ([24](24-docker-sandbox.md)).
+**7. `LocalSandbox` is not isolation.** Its docstring says: *"Not isolation: DockerSandbox replaces it."* The server refuses to start with `LocalSandbox` when there is more than one user in the store (`check_sandbox`), unless `allow_local_sandbox = true` is set ([24](24-docker-sandbox.md)).
 
 **8. Missing tools and features.** No web fetch or search tool, no MCP, no skills, no memory, no sub-agents. All of these are on the roadmap as later work: "capabilities via plugins".
 
-Notice the pattern. Most limits are in the apps or in "later" lists. The core loop is complete for its job. That is the point of a small core: limits are easy to see, and easy to fix in one place.
+Notice the pattern. Only three limits are in the core, and each is a shortcut with a known fix. Most are at the edges or on the "later" list, and most later features (web fetch, MCP, sub-agents) would be new plugins, not changes to the loop. That is the point of a small core: its limits are easy to see and easy to fix in one place.
 
 ### Part 3: Extend it yourself
 
-There are four sockets. Pick the lowest one that does the job.
+Now back to Bob. The system has four sockets for new features, each at a different layer. Pick the one that gives you what you need and touches the least; each row below is a little more powerful than the one before.
 
 | You want to add... | Use | Where |
 |---|---|---|
@@ -211,7 +194,8 @@ CLASS PluginAPI:      // what a plugin can do with its session
         remove any tool with the same name
         ADD tool to the agent's tools
     FUNCTION add_prompt_section(id, value, order = 100)   // rebuilt each turn
-    FUNCTION append_entry(type, data)                     // saved state, not sent to model
+    ASYNC FUNCTION append_entry(type, data)               // saved state, not sent to model
+    // also: unregister_tool, remove_prompt_section, send_message
 ```
 Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `PluginAPI`
 
@@ -238,7 +222,7 @@ print(model.ctxs[0].system_prompt)
 # Use count_lines for file sizes.
 ```
 
-The tool works, and the prompt line is in the first request. The plugin could also save its own state as a [custom entry](glossary.md#custom-entry). `PlanMode` in `plugins/plan_mode.py` is a full example: it adds a prompt section, blocks `write`, `edit` and `bash`, and keeps its on/off state in a custom entry, so it survives a resume.
+The tool works, and the prompt line is in the first request. The plugin could also save its own state as a [custom entry](glossary.md#custom-entry). `PlanMode` in `plugins/plan_mode.py` ([18](18-profiles-plugins.md)) is a full example: it adds a prompt section, blocks `write`, `edit` and `bash`, and keeps its on/off state in a custom entry, so it survives a resume.
 
 To turn a plugin on by name, add it to `build_plugins` in `packages/simp_agent/src/simp_agent/plugins/__init__.py`:
 
@@ -252,16 +236,11 @@ Real code: [plugins/__init__.py](../../packages/simp_agent/src/simp_agent/plugin
 
 Then both the CLI and the server can switch it on through a profile ([18](18-profiles-plugins.md)). No copy in each app.
 
-**Rules for extending.** Keep these, and the system stays healthy:
-
-- Put new code in the highest layer that works. A plugin is better than a change to `agent`.
-- Keep the layer rule. Run `test_layers.py` after each change.
-- Test with `FakeProvider` first, then add an eval case ([12](12-evals.md)), like `evals/tasks/fizzbuzz.toml`.
-- When you take a shortcut, leave a `ponytail:` comment that names its ceiling.
+Four habits keep the system healthy as it grows, and each one is a choice from Part 1 put to work. Put new code in the highest layer that works: a plugin is better than a change to `agent`. Run `test_layers.py` after each change, so the layer rule holds. Test with `FakeProvider` first, then add an eval case ([12](12-evals.md)) like `evals/tasks/fizzbuzz.toml`, to see a real model use the feature. And when you take a shortcut, leave a `ponytail:` comment that names its ceiling, so the next reader finds the limit in the code and not in production.
 
 ## Test
 
-This chapter adds no code to the repo, so it has no new test. But one existing test shows the main extend path: a plugin that adds a tool. It is `test_plugin_setup_events_and_api` in `apps/cli/tests/test_sockets.py`:
+This chapter adds no code to the repo, so it has no new test. But one existing test, from [14](14-plugins.md), checks the exact path Bob's plugin uses: a plugin that adds a tool. `session(...)` and `tool(...)` are small helpers at the top of the test file that build a session with a fake model and a do-nothing tool. It is `test_plugin_setup_events_and_api` in `apps/cli/tests/test_sockets.py`:
 
 ```python
 async def test_plugin_setup_events_and_api():
@@ -285,12 +264,7 @@ async def test_plugin_setup_events_and_api():
     assert "agent_start" in events and "agent_end" in events
 ```
 
-What it checks:
-
-- `P` is a plain class. It does not inherit anything. It only has `name`, `setup` and `on_event`.
-- `setup` gets its own config from `plugin_config`, by plugin name.
-- The tool `extra` that the plugin registers is in the very first request to the (fake) model: `seen[0].tools`.
-- `on_event` sees the session events, from `agent_start` to `agent_end`.
+`P` is a plain class that inherits nothing; it only has `name`, `setup` and `on_event`, which is what makes a plugin a [protocol](glossary.md#protocol-python) and not a base class. `setup` gets its own config from `plugin_config`, found by plugin name. The tool `extra` that the plugin registers is already in the very first request to the fake model (`seen[0].tools`), so the model can use it from the first turn. And `on_event` sees every session event from `agent_start` to `agent_end`.
 
 Run it:
 
@@ -311,11 +285,16 @@ For the other sockets, see the tests in their chapters: providers in [01](01-pic
 
 ## Recap
 
-- The main choices: layers, a fake model, `stream()` never raises, providers never read env, append-only history, the core only classifies errors, and "everything is a plugin".
-- Known limits at `2fc2776`: tools run one by one, one huge turn cannot be compacted, three provider APIs, one machine, soft budgets, no login rate limit, `LocalSandbox` is not isolation, and no web, MCP or sub-agent tools yet.
-- To extend: `register_provider` for models, `AgentTool` for tools, a plugin with `PluginAPI` for session behaviour, and `Sandbox` / `Store` / `Auth` for the server.
-- The `CountLines` plugin moves the naive tool into `setup`, with no change to the core.
-- `test_plugin_setup_events_and_api` shows a plugin adding a tool with no change to the core.
+simp-agent rests on a few choices: layers that import only downward, a fake model from day one, a `stream()` that never raises, providers that never read the environment, append-only history, a core that only classifies errors, and small protocols for everything that plugs in. Its known limits at `2fc2776` are three in the core (tools run one by one, one huge turn cannot be compacted, three provider APIs) and five at the edges (one machine, soft budgets, no login rate limit, `LocalSandbox` is not isolation, no web, MCP or sub-agent tools yet). To grow it, use `register_provider` for a model API, `AgentTool` for a tool every session needs, a plugin with `PluginAPI` for behaviour like Bob's `count_lines`, and `Sandbox`, `Store` or `Auth` for the server. Bob's tool became a plugin with no change to the core, and `test_plugin_setup_events_and_api` checks that path.
+
+## The whole path
+
+```mermaid
+flowchart LR
+    p1["Part 1: ai<br/>one model call"] --> p2["Part 2: agent<br/>the loop"] --> p3["Part 3: coding<br/>tools + prompt"] --> p4["Part 4: session<br/>save, retry, plugins"] --> p5["Part 5: apps<br/>CLI, server, web, deploy"]
+```
+
+You started in [01](01-pick-clean.md) with one call to a model. [Part 2](05-0-part-2-agent.md) turned it into a loop that runs tools, [Part 3](09-0-part-3-coding.md) gave the loop real coding tools and a prompt, [Part 4](13-0-part-4-session.md) made a run something you can save, resume, retry and extend, and [Part 5](19-0-part-5-system.md) put it in front of Ana and Bob. Each part only used the ones before it, which is the layer rule at the size of the whole book. To go further, read `NOTES.md` and `docs/ROADMAP.md`, pick one limit from Part 2 of this chapter, and fix it in the highest layer that works.
 
 **Builds on:** [26 System tests and deploy](26-system-tests-deploy.md) · **Next:** —
 
