@@ -293,6 +293,12 @@ The server slot that saves users, sessions, events and usage. By default `Sqlite
 ## Auth
 The server slot that finds the user for a request. By default `StaticTokenAuth`. Home: [22](22-store-auth.md#token-hashes).
 
+## Server slot
+One class the server needs (`store`, `auth` or `sandbox`), picked by name from `DEFAULT_PLUGINS` in `server.py`. Not the agent plugins of 14. Home: [22](22-store-auth.md#real-design).
+
+## Salt
+Random bytes mixed into a password hash, so two users with the same password get different hashes. Home: [22](22-store-auth.md#scrypt-passwords).
+
 ## Token (auth)
 A long random string sent as `Authorization: Bearer <token>`. Only its SHA-256 hash is stored. Home: [22](22-store-auth.md#token-hashes).
 
