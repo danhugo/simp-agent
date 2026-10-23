@@ -179,7 +179,7 @@ Which chapter adds which feature, and in which layer it lives:
 Each Part uses small examples that fit its layer:
 
 - Part 1 (01–04) sends one prompt about a `README` to a model.
-- Part 2 ([05](05-agent-loop.md)) has the loop read and write `a.txt`.
+- Part 2 ([05](05-agent-loop.md)) has the loop read `README.md` and answer.
 - Part 3 ([10](10-coding-tools.md)) edits `a.txt` and `shape.py` with the real tools; [12](12-evals.md) then meets fizzbuzz as an eval task.
 
 From Part 4 on, the book follows one task, taken from the real eval file `evals/tasks/fizzbuzz.toml`:
