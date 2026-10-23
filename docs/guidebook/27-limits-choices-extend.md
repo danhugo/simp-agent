@@ -76,11 +76,11 @@ The fix is not a bigger core. The core already has sockets for this. To see why 
 
 ## Real design
 
-### Part 1: Design choices
+### Design choices
 
 simp-agent copies many ideas from **[pi](glossary.md#pi)**, another small coding agent. The code says so often, in comments like `(pi ExtensionAPI)` and `(pi prepareArguments)`. Where simp-agent is different, it is usually because it chose to be smaller.
 
-Every choice below was taught in an earlier chapter, so here we only name it and say why it matters when you extend the system. The first choice is the one all others rest on: six layers, each importing only from the layers below, checked by `test_layers.py` ([00](00-overview.md)). It means a change high up cannot break anything low down. The second is a fake model from day one, `FakeProvider` ([04](04-label-test.md)), so every layer can be tested fast, for free and with the same result each time; that is why Bob can test his tool without an API key. Then come three rules that keep the core simple: `stream()` never raises, but turns errors into an `error` event, so the loop has one path for good and bad answers ([02](02-translate-send.md)); providers never read the environment, the app hands over the key, so the core has no hidden input ([01](01-pick-clean.md#1-pick-_providers-register_provider)); and history is append-only, so compaction adds a `CompactionEntry` instead of deleting, and resume sees everything ([13](13-session.md), [16](16-compaction.md)). The last two choices shape how you extend the system, so they get one more look.
+Every choice here was taught in an earlier chapter, so we only list them and do not explain them again: six layers checked by `test_layers.py` ([00](00-overview.md)), a fake model from day one ([04](04-label-test.md)), `stream()` that never raises ([02](02-translate-send.md)), providers that never read the environment ([01](01-pick-clean.md#1-pick-_providers-register_provider)), and append-only history ([13](13-session.md), [16](16-compaction.md)). The layer rule is the one all others rest on: a change high up cannot break anything low down. The last two choices shape how you extend the system, so they get one more look.
 
 **The core only classifies.** In `packages/simp_agent/src/simp_agent/ai/__init__.py`:
 
@@ -115,7 +115,7 @@ A slot is a **[protocol](glossary.md#protocol-python)**: a list of methods, not 
 
 The roadmap (`docs/ROADMAP.md`) states the rule behind all of this: *"keep the core small and stable; everything new plugs in (Sandbox, Store, Auth, provider, tool, agent plugin), so providers can be swapped without rewrites."*
 
-### Part 2: Known limits
+### Known limits
 
 simp-agent is small on purpose, so some features are missing. They are written down in three places. In the code, a **[ponytail comment](glossary.md#ponytail-comment)** is a `ponytail:` note that names a shortcut and its ceiling. `NOTES.md` at the repo root is the build log; its section "Not yet (present in pi, skipped here)" lists features pi has and simp-agent skipped. `docs/ROADMAP.md` is the plan for later work.
 
@@ -148,7 +148,7 @@ FUNCTION find_cut(messages, start, keep_tokens) -> index or nothing
 
 The cut ([16](16-compaction.md)) only lands on a user or assistant message. So if Bob runs a test that prints a huge log, and the model reads it in many tool results within one turn, there is no place to cut inside that turn. Overflow recovery ([17](17-overflow.md)) compacts once; a second overflow ends the run with the error. The roadmap lists "compaction inside one long turn" for later.
 
-**3. Three provider APIs.** `_PROVIDERS` holds `anthropic-messages`, `openai-completions` and `openai-responses`. Others need `register_provider` (see below).
+**3. Three provider APIs.** `_PROVIDERS` holds `anthropic-messages`, `openai-completions` and `openai-responses`. Others need `register_provider`, the provider socket from [01](01-pick-clean.md#1-pick-_providers-register_provider).
 
 The other five limits are at the edges, in the server and in how it is run.
 
@@ -164,7 +164,7 @@ The other five limits are at the edges, in the server and in how it is run.
 
 Notice the pattern. Only three limits are in the core, and each is a shortcut with a known fix. Most are at the edges or on the "later" list, and most later features (web fetch, MCP, sub-agents) would be new plugins, not changes to the loop. That is the point of a small core: its limits are easy to see and easy to fix in one place.
 
-### Part 3: Extend it yourself
+### Extend it yourself
 
 Now back to Bob. The system has four sockets for new features, each at a different layer. Pick the one that gives you what you need and touches the least; each row below is a little more powerful than the one before.
 
@@ -236,7 +236,7 @@ Real code: [plugins/__init__.py](../../packages/simp_agent/src/simp_agent/plugin
 
 Then both the CLI and the server can switch it on through a profile ([18](18-profiles-plugins.md)). No copy in each app.
 
-Four habits keep the system healthy as it grows, and each one is a choice from Part 1 put to work. Put new code in the highest layer that works: a plugin is better than a change to `agent`. Run `test_layers.py` after each change, so the layer rule holds. Test with `FakeProvider` first, then add an eval case ([12](12-evals.md)) like `evals/tasks/fizzbuzz.toml`, to see a real model use the feature. And when you take a shortcut, leave a `ponytail:` comment that names its ceiling, so the next reader finds the limit in the code and not in production.
+Four habits keep the system healthy as it grows, and each one is a design choice from above put to work. Put new code in the highest layer that works: a plugin is better than a change to `agent`. Run `test_layers.py` after each change, so the layer rule holds. Test with `FakeProvider` first, then add an eval case ([12](12-evals.md)) like `evals/tasks/fizzbuzz.toml`, to see a real model use the feature. And when you take a shortcut, leave a `ponytail:` comment that names its ceiling, so the next reader finds the limit in the code and not in production.
 
 ## Test
 
@@ -281,7 +281,7 @@ For the other sockets, see the tests in their chapters: providers in [01](01-pic
 ## Exercises
 
 1. Put the `CountLines` class in a new file in `plugins/`, import it in `plugins/__init__.py`, and add `count_lines` to `known` in `build_plugins`, then call `build_plugins(["count_lines"])`. Do you get a `CountLines` object? Now a profile can turn it on by name ([18](18-profiles-plugins.md)).
-2. Pick one limit from Part 2 (for example, tools run one by one). Say which layer you would change, and which socket (if any) could do it without a core change.
+2. Pick one limit from [Known limits](#known-limits) (for example, tools run one by one). Say which layer you would change, and which socket (if any) could do it without a core change.
 
 ## Recap
 
@@ -294,7 +294,7 @@ flowchart LR
     p1["Part 1: ai<br/>one model call"] --> p2["Part 2: agent<br/>the loop"] --> p3["Part 3: coding<br/>tools + prompt"] --> p4["Part 4: session<br/>save, retry, plugins"] --> p5["Part 5: apps<br/>CLI, server, web, deploy"]
 ```
 
-You started in [01](01-pick-clean.md) with one call to a model. [Part 2](05-0-part-2-agent.md) turned it into a loop that runs tools, [Part 3](09-0-part-3-coding.md) gave the loop real coding tools and a prompt, [Part 4](13-0-part-4-session.md) made a run something you can save, resume, retry and extend, and [Part 5](19-0-part-5-system.md) put it in front of Ana and Bob. Each part only used the ones before it, which is the layer rule at the size of the whole book. To go further, read `NOTES.md` and `docs/ROADMAP.md`, pick one limit from Part 2 of this chapter, and fix it in the highest layer that works.
+You started in [01](01-pick-clean.md) with one call to a model. [Part 2](05-0-part-2-agent.md) turned it into a loop that runs tools, [Part 3](09-0-part-3-coding.md) gave the loop real coding tools and a prompt, [Part 4](13-0-part-4-session.md) made a run something you can save, resume, retry and extend, and [Part 5](19-0-part-5-system.md) put it in front of Ana and Bob. Each part only used the ones before it, which is the layer rule at the size of the whole book. To go further, read `NOTES.md` and `docs/ROADMAP.md`, pick one limit from [Known limits](#known-limits), and fix it in the highest layer that works.
 
 **Builds on:** [26 System tests and deploy](26-system-tests-deploy.md) · **Next:** —
 

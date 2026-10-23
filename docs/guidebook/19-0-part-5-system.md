@@ -10,16 +10,16 @@ After Part 4 we have `AgentSession`: it keeps the chat on disk, retries, compact
 
 The easy case comes first. The user opens a terminal and types **`simp-agent "write fizzbuzz.py"`**. One program, one user, one session. The program makes an `AgentSession`, prints each event as a line, and asks "allow this?" in the terminal before a tool runs. That is the CLI, and it uses the session directly.
 
-Now the user's team wants the same agent in a browser, on one shared Mac. New problems show up at once:
+Now the user's team wants the same agent in a browser, on one shared Mac. New needs show up at once:
 
-1. **The browser is not in the same program.** It needs a way to send "write fizzbuzz.py" to the server and a way to get the answer back while it is still being written.
-2. **The user reloads the page in the middle of the answer**, or the Wi‑Fi drops. The screen must come back exactly as it was, with no message lost and none shown twice.
-3. **Many users share one server.** Each must log in and see only their own sessions. The Mac has limited memory, so not every session can stay loaded.
-4. **Every model call costs real money.** One user, or one runaway run, must not spend the whole team's budget.
-5. **The agent runs shell commands.** One user's `rm -rf` must not touch another user's files, or the server itself.
-6. **We must test all this** in a real browser, without an API key and without paying for model calls, and then keep it running on the Mac.
+- **Talk.** **The browser is not in the same program.** It needs a way to send "write fizzbuzz.py" to the server and a way to get the answer back while it is still being written.
+- **Reconnect.** **The user reloads the page in the middle of the answer**, or the Wi‑Fi drops. The screen must come back exactly as it was, with no message lost and none shown twice.
+- **Many users.** **Many users share one server.** Each must log in and see only their own sessions. The Mac has limited memory, so not every session can stay loaded.
+- **Money.** **Every model call costs real money.** One user, or one runaway run, must not spend the whole team's budget.
+- **Safety.** **The agent runs shell commands.** One user's `rm -rf` must not touch another user's files, or the server itself.
+- **Test and run.** **We must test all this** in a real browser, without an API key and without paying for model calls, and then keep it running on the Mac.
 
-Somebody must sit between the browser and `AgentSession` and solve all six. **That "somebody" is the server**, with a small web client on the other side.
+Somebody must sit between the browser and `AgentSession` and meet all six needs. **That "somebody" is the server**, with a small web client on the other side.
 
 ## The core idea
 
@@ -35,19 +35,19 @@ The key rule is about what is saved. Events are of two kinds. A **[durable event
 
 **[19 The CLI](19-cli.md): the one-user app.** It reads flags and the settings file, gives `AgentSession` a JSONL file as its store, prints events as lines and asks for tool approval in the terminal (skip with `--yes`). It is the simple case to compare the server with.
 
-**[20 The server run](20-server-run.md): one session on a server.** This builds the `Run`, its states and the allowed moves between them (`TRANSITIONS`), and the command route. It answers problem 1 for commands: a prompt starts a run, a steer or follow-up is queued, an approval answers a waiting tool.
+**[20 The server run](20-server-run.md): one session on a server.** This builds the `Run`, its states and the allowed moves between them (`TRANSITIONS`), and the command route. It meets the talk need for commands: a prompt starts a run, a steer or follow-up is queued, an approval answers a waiting tool.
 
-**[21 Transport](21-transport.md): events out, and reconnect.** It builds the protocol (the typed commands and events), the `seq` numbers, durable and live events, the snapshot and the SSE route. This is problem 2.
+**[21 Transport](21-transport.md): events out, and reconnect.** It builds the protocol (the typed commands and events), the `seq` numbers, durable and live events, the snapshot and the SSE route. This is the reconnect need.
 
-**[22 Store and auth](22-store-auth.md): many users.** It saves sessions and events in SQLite, so a server restart loses nothing, and checks a login token on every request, so each user sees only their own sessions. Part of problem 3.
+**[22 Store and auth](22-store-auth.md): many users.** It saves sessions and events in SQLite, so a server restart loses nothing, and checks a login token on every request, so each user sees only their own sessions. Part of the many-users need.
 
-**[23 Limits](23-limits.md): memory and money.** It caps how many runs stay loaded (the oldest idle one is closed first) and adds a budget guard in front of every model call, with a daily limit per user and a limit per run. The rest of problem 3, and problem 4.
+**[23 Limits](23-limits.md): memory and money.** It caps how many runs stay loaded (the oldest idle one is closed first) and adds a budget guard in front of every model call, with a daily limit per user and a limit per run. The rest of the many-users need, and the money need.
 
-**[24 Docker sandbox](24-docker-sandbox.md): keep users apart.** Each session gets its own container, and every tool command runs inside it. Problem 5.
+**[24 Docker sandbox](24-docker-sandbox.md): keep users apart.** Each session gets its own container, and every tool command runs inside it. The safety need.
 
-**[25 Web client](25-web-client.md): the browser side.** It sends commands, reads the event stream, and turns each event into the next screen state with one pure function, `reduce()`. It is the other half of problems 1 and 2.
+**[25 Web client](25-web-client.md): the browser side.** It sends commands, reads the event stream, and turns each event into the next screen state with one pure function, `reduce()`. It is the other half of the talk and reconnect needs.
 
-**[26 System tests and deploy](26-system-tests-deploy.md): prove it and run it.** A fake model gives the same answer every time, so Playwright tests can click the real web page with no API key. JSON logs, a database backup and launchd services run it on the Mac. Problem 6.
+**[26 System tests and deploy](26-system-tests-deploy.md): prove it and run it.** A fake model gives the same answer every time, so Playwright tests can click the real web page with no API key. JSON logs, a database backup and launchd services run it on the Mac. The test-and-run need.
 
 ## The map
 

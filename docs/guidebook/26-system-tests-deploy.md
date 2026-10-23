@@ -35,9 +35,9 @@ The first is: **do the pieces work together?** A unit test for the transport nev
 
 The second is: **does the server stay alive?** The server runs on one Mac for Ana and Bob. If the Mac reboots, the server is gone until someone starts it by hand. If the disk dies, all users, sessions and workspaces are gone. And when something goes wrong at night, the admin needs logs that a program can search.
 
-So the chapter has two halves. Part A tests the whole system with a fake model. Part B runs it as a service, with logs and backups.
+So the chapter has two halves. The first half tests the whole system with a fake model. The second half runs it as a service, with logs and backups.
 
-## Part A: test the whole system
+## Test the whole system
 
 ### Starting point: 25's app, and 04's fake model
 
@@ -133,7 +133,13 @@ The test sends "slow" and waits until `w3` is on screen. Then it reloads, so all
 
 The repo has a second, older fake: `apps/server/src/simp_server/fake.py`. It is a small FastAPI app with the **same HTTP API** as the real server, but no agent, no store and no auth. It plays back a recorded `SCRIPT` (thinking, text, one `ls -la` tool call, a final answer). It was built so the web client could be written before the real server was ready, and the real server still imports its `sse` helper. You start it with `simp-server fake` (`__main__.py` sends any word it does not know to `fake.main`). `apps/web/e2e/fake_reload.py` is a manual reload check against it. No `make e2e` test uses it; FakeLLM replaced it because it tests the real server.
 
-## Part B: run it on one machine
+## Run it on one machine
+
+Now the tests pass, so we turn to the second question: does the server stay alive?
+
+### Starting point: 25's server, started by hand
+
+At the end of [25](25-web-client.md), someone starts the server by hand in a terminal. Logs are plain text lines on stderr. There is no backup. If the Mac reboots, the server stays down. We fix these three things in order: logs, backups, then a service that starts by itself.
 
 ### JSON logs
 

@@ -51,10 +51,10 @@ These are the same [events](glossary.md#event) the agent sends in [06](06-events
 
 ## Step by step: from the routes to a page
 
-We fix the three breaks in five small steps. The real code for each is in the next section.
+We fix the three breaks in five small steps.
 
 1. **Read the stream with `fetch` instead of `EventSource`.** `fetch` can send the token header. The price is that we must cut the stream into events ourselves: an SSE event ends with a blank line, so we keep a buffer and cut at each blank line. This fixes the 401.
-2. **Reconnect in a loop, and say where we stopped.** Each new connection sends the `seq` of the newest durable event the page has. The server then sends only the durable events we missed, then a snapshot (step 5), then live events. We wait a little longer after each failed try.
+2. **Reconnect in a loop, and say where we stopped.** Each new connection sends the `seq` of the newest durable event the page has. The server then sends only the durable events we missed, then a [snapshot](glossary.md#snapshot) of the state right now, then live events. We wait a little longer after each failed try.
 3. **Put every change in one pure function, the reducer.** It takes the old state and one event and returns the new state. A durable event whose `seq` is not bigger than the last one we applied is skipped. This fixes "many writers" and part of the duplicates.
 4. **Check the offset of each delta.** Add a delta only if it starts exactly at the end of the text we have. A repeated delta or one after a missing piece does not fit, so it is dropped. This fixes the rest of the duplicates.
 5. **Let the snapshot replace live state.** On every connect the server sends a `snapshot`: the in-flight text, live tool output, pending approval, run state, title and plan mode as they are now. The reducer replaces its live state with it instead of adding to it. After a reload, the page starts from exactly what the server has.
@@ -63,7 +63,7 @@ We fix the three breaks in five small steps. The real code for each is in the ne
 
 The web app is React + Vite in `apps/web/`. We follow Ana from the moment she opens the page to the moment the answer is on the screen, and name each file when its piece first appears. Types such as `ServerEvent` and `PendingApproval` come from `protocol.gen.ts`, which is made from the server's own types ([20](20-server-run.md)), so the client and the server cannot disagree about an event's fields.
 
-### 1. Ana logs in: calls with a token (api.ts)
+### Ana logs in: calls with a token (api.ts)
 
 The login form posts the name and password to `/api/login` (or `/api/signup` for a new user) and stores the returned token in `localStorage`. `api.ts` then wraps `fetch` once, so every call carries the token:
 
@@ -80,7 +80,7 @@ async function call(path: string, init: RequestInit = {}): Promise<Response> {
 
 A 401 becomes its own error type, `AuthError`. The app catches that one type and logs the user out. Any other error is just shown as an error.
 
-### 2. Ana picks a session (App.tsx)
+### Ana picks a session (App.tsx)
 
 `App.tsx` shows the session list (loaded with `api.sessions()`) and the chat for the chosen session. When Ana picks the fizzbuzz session, the page must start listening to its events. To do that, `App.tsx` calls `subscribe()` inside a React `useEffect`, which runs when the session id changes:
 
@@ -93,10 +93,10 @@ const apply = (ev: ServerEvent) => {
 return subscribe(sid, () => ref.current.lastSeq, apply, setConn, onLogout);
 ```
 
-`apply` is the one place where events enter the page: it runs the reducer (section 5 below) and saves the result. The state is kept twice: in React state, to redraw the page, and in `ref` (a `useRef`, a box whose value React does not copy). React state is updated later, at the next redraw. The ref is updated at once, so when `subscribe` reconnects it reads the true newest `lastSeq`. The effect returns the close function from `subscribe`, so switching to another session closes the old stream. `apply` also refreshes the session list on `run_state`, `snapshot` and `session_title`.
+`apply` is the one place where events enter the page: it runs the reducer, `reduce()` from `state.ts`, and saves the result. The state is kept twice: in React state, to redraw the page, and in `ref` (a `useRef`, a box whose value React does not copy). React state is updated later, at the next redraw. The ref is updated at once, so when `subscribe` reconnects it reads the true newest `lastSeq`. The effect returns the close function from `subscribe`, so switching to another session closes the old stream. `apply` also refreshes the session list on `run_state`, `snapshot` and `session_title`.
 
 <a id="fetch-based-sse"></a>
-### 3. The page listens: SSE over fetch (subscribe)
+### The page listens: SSE over fetch (subscribe)
 
 `subscribe()` reads the event stream with the same `call()`. Its comment says the whole plan:
 
@@ -157,7 +157,7 @@ if (!ctl.signal.aborted) {
 
 `attempt` counts the tries (it is the counter of the outer `for` loop), so the waits are 1 s, 2 s, 4 s, 8 s, then 10 s at most. A snapshot sets `attempt` back to 0, so after a good connection the first wait is short again. A bad token stops the loop for good, because retrying cannot fix it. `subscribe` returns `() => ctl.abort()`, so the caller can close the stream.
 
-### 4. Ana types a question (Chat.tsx)
+### Ana types a question (Chat.tsx)
 
 `Chat.tsx` draws the chat and holds the input box. When Ana presses Enter, it sends one command with the same `call()`, through `api.command(sid, c)`, which posts to `/api/sessions/{sid}/commands`:
 
@@ -168,7 +168,7 @@ send(!busy ? { type: "prompt", text: t } : queue ? { type: "follow_up", text: t 
 If no run is going, the text starts a new run (`prompt`). If a run is going, it is queued for later (`follow_up`) or sent into the current run (`steer`). The POST returns at once. The page does not add Ana's message to the screen itself: the answer, and even her own message, come back as events on the stream that `subscribe` already holds open.
 
 <a id="the-reducer-statets"></a>
-### 5. Events arrive: the reducer (state.ts)
+### Events arrive: the reducer (state.ts)
 
 All chat state lives in one object, `ChatState`. The four fields that matter most:
 
@@ -218,7 +218,7 @@ case "snapshot":
 The **[snapshot](glossary.md#snapshot)** does not add to the in-flight text. It replaces it. After a reload, the bubble shows exactly what the server has, and later deltas continue from there. Tool output is merged, not replaced: the snapshot holds only the tools still running, so the output of tools that already finished must stay on the screen.
 
 <a id="appendat"></a>
-### 6. Deltas fit together: appendAt
+### Deltas fit together: appendAt
 
 A delta has no `seq`, only an `offset`. The client uses one tiny rule:
 
@@ -248,7 +248,7 @@ case "thinking_delta": {
 
 A delta for a new `msg_id` starts a fresh bubble only if its offset is 0. If the first piece of a new message was lost, the page waits for the full message instead of showing the middle of it. `tool_output` uses the same `appendAt`, with one text per `call_id` in `toolOutputs`. It needs no new-message check, because each tool call has its own key and starts from an empty string.
 
-### 7. The page draws it (Chat.tsx)
+### The page draws it (Chat.tsx)
 
 `Chat.tsx` only reads `ChatState` and sends commands; it never changes the state itself. Every button calls `api.command(sid, c)`, for example `{ type: "set_plan_mode", enabled: !state.planMode }`, `{ type: "compact" }` or `{ type: "continue" }`. The server runs the command, the result comes back as events, the reducer updates the state, and React redraws. Data goes one way only, so the screen always matches the server. The **Continue** button shows when `canContinue(state)` is true: the run state is `error`, or it is `idle` and the last item is a notice that starts with `interrupted:` (a server restart cut the run).
 
