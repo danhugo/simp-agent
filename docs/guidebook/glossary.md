@@ -240,7 +240,7 @@ Built-in plugin that replaces secrets with `[REDACTED]`. Home: [18](18-profiles-
 Built-in plugin (`PlanMode`) that makes the agent read-only and asks it for a plan. Home: [18](18-profiles-plugins.md).
 
 ## Print mode
-The CLI mode for one task (`simp-agent "task"` or `-p`): it runs once, prints full lines, and exits with 0 or 1. Home: [19](19-cli.md#print-mode).
+The CLI mode for one task (`simp-agent "task"` or `-p`): it runs once, prints full lines, and exits with 0 or 1. Home: [19](19-cli.md#main-pick-a-mode).
 
 ## REPL
 "Read, eval, print loop": the interactive CLI mode where you chat for many turns. Built on `prompt_toolkit` in `simp_cli/repl.py`. Home: [19](19-cli.md#the-repl).
@@ -249,7 +249,7 @@ The CLI mode for one task (`simp-agent "task"` or `-p`): it runs once, prints fu
 An object with `render(width) -> list[str]` that draws one part of the chat (`UserMsg`, `AssistantMsg`, `ToolCall`, `Notice` in `simp_cli/components.py`). Home: [19](19-cli.md#components).
 
 ## ANSI codes
-Special characters a terminal reads as colour or style. Not wanted in files or pipes, so `LinePrinter` uses them only on a TTY. Home: [19](19-cli.md#print-mode).
+Special characters a terminal reads as colour or style. Not wanted in files or pipes, so `LinePrinter` uses them only on a TTY. Home: [19](19-cli.md#events-come-back-lineprinter-draws-them).
 
 ## Protocol
 The fixed set of typed messages between simp-server and the web client, defined in `protocol.py`. Home: [20](20-server-run.md#protocol-models).
