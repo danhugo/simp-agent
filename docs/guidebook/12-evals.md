@@ -43,15 +43,7 @@ wrote /path/to/simp-agent/evals/results/20261013-101500-sol.json
 
 (Shown with one task to keep it short; the real run has four lines plus the total.) The columns are: pass or fail, number of [turns](glossary.md#turn), input/output tokens, dollars, seconds.
 
-### Four names from later chapters
-
-The eval runner needs a ready-made agent object and the server's model settings. We build these later, so here we only use them. You need just this much:
-
-- `AgentSession` ([13](13-session.md)) wraps the [agent loop](05-agent-loop.md) with tools and a system prompt. `s.prompt(text)` runs the agent until it stops; `s.subscribe(fn)` calls `fn(event)` for every [event](glossary.md#event); `s.abort()` stops it now.
-- A [profile](glossary.md#profile) ([18](18-profiles-plugins.md)) is a named model plus its prices, written in the server's `settings.toml`. `build_model(profile)` turns it into a model object.
-- `load_settings` and `take_keys` ([22](22-store-auth.md)) read `settings.toml` and the API keys.
-
-`sol` above must be a profile in your `settings.toml`; else the eval runner stops with `no profile 'sol'`.
+Here `sol` is a [profile](glossary.md#profile): a name for one model plus its prices, written in the server's `settings.toml` file. It must be in your `settings.toml`; else the eval runner stops with `no profile 'sol'`.
 
 ## Problem
 
@@ -142,6 +134,8 @@ No names means all tasks, sorted by file name. A wrong name stops with the list 
 
 ### run_task: one task, one fresh folder
 
+We now have a list of task dicts. What does the runner do with one of them? It gives the task a clean, empty folder, writes the `[setup]` files into it, and starts an agent there. The agent is an `AgentSession`, which [13](13-session.md) builds later: the [agent loop](05-agent-loop.md) with the [coding tools](10-coding-tools.md) and the [system prompt](11-system-prompt.md) already joined in one object. Here we only need three of its methods: `s.prompt(text)` runs the agent until it stops, `s.subscribe(fn)` calls `fn(event)` for every event, and `s.abort()` stops it now. `build_model(profile)`, from [18](18-profiles-plugins.md), turns the profile into the model object the session needs.
+
 Real code: [evals/run.py](../../evals/run.py) — `run_task`
 
 ```text
@@ -160,7 +154,7 @@ Each line has a reason. The temp folder means every task starts clean and is del
 
 ### Counting and limits through events
 
-The eval runner does not change the loop. It only **listens** to [events](glossary.md#event) ([06](06-events-abort.md)):
+The agent now runs in its folder. How do we know how many turns it took, and how do we stop it if it never ends? The eval runner does not change the loop. It only **listens** to [events](glossary.md#event) ([06](06-events-abort.md)), with `s.subscribe(on_event)`:
 
 Real code: [evals/run.py](../../evals/run.py) — `run_task` (inner `on_event`)
 
@@ -177,13 +171,15 @@ FUNCTION on_event(e):
             s.abort()                    // stop a runaway agent
 ```
 
-The eval runner does not change the agent; it only listens. Each assistant message is one [turn](glossary.md#turn), so on each `message_end` from the assistant we add one turn, add its [usage](glossary.md#usage), and keep its text as the answer so far.
+Each assistant message is one [turn](glossary.md#turn), so on each `message_end` from the assistant we add one turn, add its [usage](glossary.md#usage), and keep its text as the answer so far.
 
 Two limits stop a runaway agent. The first is turns: when the 25th assistant message ends, we call `s.abort()` ([abort](glossary.md#abort)); that turn is still counted and paid for. The second is time: `asyncio.wait_for(s.prompt(...), TIMEOUT_S)` gives up after 300 seconds, aborts, and sets the error `timeout after 300s`. Both live in one line of `run.py`: `MAX_TURNS, TIMEOUT_S, CHECK_TIMEOUT_S = 25, 300, 120`.
 
 A task that hits a limit is not a crash. The row gets an `error`, and the check still runs (it will usually fail).
 
 ### The check
+
+When the agent stops, by itself or by a limit, we must decide: pass or fail? `run_task` saves the answer, then runs the task's `check` command in the same folder:
 
 Real code: [evals/run.py](../../evals/run.py) — `run_task`
 
@@ -206,6 +202,8 @@ Last, `run_task` adds the cost: `(input * price_in + output * price_out) / 1e6`,
 It then writes `evals/results/<date-time>-<profile>.json` with every row and the total. That folder is in `.gitignore`: results are yours, not the repo's. If the profile has no `price_in` / `price_out`, it warns that cost will show `$0`.
 
 ### main: reuse the server's settings
+
+`run_all` needs a profile and API keys. Where does `main` get them? It reads the same settings file the server uses, with `load_settings`, and gets the keys with `take_keys`:
 
 Real code: [evals/run.py](../../evals/run.py) — `main`
 
@@ -292,4 +290,4 @@ uv run python evals/run.py --help # shows --profile, --home, --tasks
 - It runs on your host with no sandbox: only trusted tasks and models.
 - Tests use the FakeProvider, so no key is needed.
 
-**Builds on:** [06 Events and abort](06-events-abort.md) · [11 The system prompt](11-system-prompt.md) · **Next:** [13 Sessions](13-session.md) — we have been using `AgentSession`; now we build it.
+**Builds on:** [05 Agent loop](05-agent-loop.md) · [06 Events and abort](06-events-abort.md) · [10 Coding tools](10-coding-tools.md) · [11 The system prompt](11-system-prompt.md) · **Next:** [13 Sessions](13-session.md) — we have been using `AgentSession`; now we build it. Later, [15 Retry](15-retry.md) and [16 Compaction](16-compaction.md) change how the agent behaves; run these evals after each change.

@@ -8,7 +8,7 @@ Read this page before [09](09-exec-env.md). Come back to it any time you get los
 
 The user types again: **"What is in README.md?"**
 
-After [Part 2](05-0-part-2-agent.md) the loop knows how to run a tool when the model asks for one. But three things are still missing. First, there are no tools: nobody has written a `read` tool that really opens a file. Second, the model knows nothing about where it is: which folder, which project, what tools it has, what rules the project wants. Third, nothing stops a tool from touching any file on the machine, or running a command that never ends.
+After [Part 2](05-0-part-2-agent.md) the loop knows how to run a tool when the model asks for one. But it still cannot answer. There are no tools yet: nobody has written a `read` tool that really opens a file. The model knows nothing about where it is: which folder, which project, what tools it has, what the project wants. And nothing stops a tool from touching any file on the machine, or running a command that never ends.
 
 And when all that works, one more question comes: how do we know the agent is *good*? Trying it by hand once is not enough.
 
@@ -30,7 +30,7 @@ Finally, an [eval](glossary.md#eval-task) gives the agent a small real task in a
 
 **[10 Coding tools](10-coding-tools.md)** builds the seven tools on top of the env: `read`, `ls`, `grep`, `find` to look, `write` and `edit` to change, and `bash` to run. Each one takes the model's arguments, calls the env, and returns one string, cut to size by `truncate_head` or `truncate_tail`.
 
-**[11 The system prompt](11-system-prompt.md)** writes the instructions: who the model is, the tool list, the date and the folder. It also finds the project's own rules file (`AGENTS.md`, `CLAUDE.md`, …) and adds it.
+**[11 The system prompt](11-system-prompt.md)** writes the instructions: who the model is, the tool list, the date and the folder. It also finds the project's own [context file](glossary.md#context-file) (`AGENTS.md`, `CLAUDE.md`, …) and adds it.
 
 **[12 Evals](12-evals.md)** runs the whole agent on small tasks written as TOML files, and prints a pass/fail table. When you add a new skill later, you add a task for it.
 
@@ -100,16 +100,11 @@ flowchart LR
 
 ### The worked example with all blocks
 
-1. **Make the tools:** `make_tools()` gives seven `AgentTool`s, one of them `read`.
-2. **Load the context file:** `load_context_file(env, cwd)` finds `AGENTS.md` and returns its path and text.
-3. **Build the prompt:** `system_prompt(tools, cwd)` lists `- read: Read a text file. ...` and the other tools, the date and the cwd. The session adds the `AGENTS.md` text as its own `context_file` section after it.
-4. **Call the loop:** the same `agent_loop` from [05](05-agent-loop.md#agent_loop-the-loop): `agent_loop(prompt, messages, [UserMessage(...)], LoopConfig(model, tools=tools, env=LocalEnv(root), cwd=cwd))`. Only the prompt, `tools`, `env` and `cwd` are new; the loop is unchanged. It sends all this to the model. The model answers with `ToolCall(name="read", arguments={"path": "README.md"})`.
-5. **Run the tool:** `read` joins the path to `ctx.cwd` and calls `ctx.env.read_file(...)`.
-6. **Check the path:** `LocalEnv._path` makes sure the path stays inside `root` (if one is set).
-7. **Touch files:** the env reads the file and returns its text.
-8. **Cut:** `read` numbers the lines and keeps the head with `truncate_head`. If lines are left, it adds `[N more lines; use offset=... to continue]`.
-9. The string goes back to the loop as a `ToolResultMessage`. The model reads it and answers in words.
-10. **Eval** (uses `AgentSession` from [13](13-session.md) and `build_model` from [18](18-profiles-plugins.md), as ch12 warns): to measure this kind of work for real, `run_task` takes a task like `evals/tasks/fix_bug.toml`, writes `calc.py` and `test_calc.py` into a temp folder, sends the prompt, and then runs the `check`. `run_all` prints `fix_bug  PASS ...` and the total.
+At the start, `make_tools()` (block 1) gives seven `AgentTool`s, one of them `read`. `load_context_file(env, cwd)` (block 2) finds `AGENTS.md` and returns its path and text. `system_prompt(tools, cwd)` (block 3) lists `- read: Read a text file. ...` and the other tools, the date and the cwd; the session adds the `AGENTS.md` text after it as its own `context_file` section.
+
+Then we call the same `agent_loop` from [05](05-agent-loop.md#agent_loop-the-loop): `agent_loop(prompt, messages, [UserMessage(...)], LoopConfig(model, tools=tools, env=LocalEnv(root), cwd=cwd))`. Only the prompt, `tools`, `env` and `cwd` are new; the loop is unchanged. The model answers with `ToolCall(name="read", arguments={"path": "README.md"})`. The `read` tool (block 4) joins the path to `ctx.cwd` and calls `ctx.env.read_file(...)`. `LocalEnv._path` (block 5) makes sure the path stays inside `root`, if one is set, and the env reads the file (block 6). `read` numbers the lines and keeps the head with `truncate_head` (block 7); if lines are left, it adds `[N more lines; use offset=... to continue]`. The string goes back to the loop as a `ToolResultMessage`, and the model reads it and answers in words.
+
+To measure this kind of work for real, `run_task` (block 8) takes a task like `evals/tasks/fix_bug.toml`, writes `calc.py` and `test_calc.py` into a temp folder, sends the prompt, and runs the `check`. `run_all` (block 9) prints `fix_bug  PASS ...` and the total. This step uses `AgentSession` from [13](13-session.md) and `build_model` from [18](18-profiles-plugins.md). Ch12 explains both where it first uses them.
 
 ## Builds on / Next
 

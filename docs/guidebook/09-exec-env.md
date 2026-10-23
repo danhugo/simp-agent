@@ -29,7 +29,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-If each tool touches the disk with `open()` and runs commands with `subprocess` on its own, four things go wrong. First, there is no single place to swap: later the server runs each session inside a Docker container ([24](24-docker-sandbox.md)), and with ten tools calling `subprocess` we would change ten tools. Second, nothing stops a bad path such as `../../home/me/.ssh/id_rsa`. Third, the loop freezes: it is `async` ([05](05-agent-loop.md)), so one slow `open().read()` or a one-minute `subprocess.run()` blocks everything, and the **Stop** button from [06](06-events-abort.md) is not heard. Fourth, commands never die: `npm run dev &` starts a background child, and killing only the shell leaves it running.
+If each tool touches the disk with `open()` and runs commands with `subprocess` on its own, there is no single place to swap. Later the server runs each session inside a Docker container ([24](24-docker-sandbox.md)), and with ten tools calling `subprocess` we would change ten tools. So we put one object between the tools and the world. A first, naive try at that object shows what else it must get right.
 
 ## Naive version
 
@@ -48,16 +48,7 @@ CLASS NaiveEnv(root):
         RETURN (exit code, output)
 ```
 
-Where it breaks:
-
-- **Paths leave the root.** `read_file("../secret")` reads outside the root. So does a symlink inside the root that points out.
-- **It blocks.** No events go out, no Stop is heard.
-- **No cancel.** Only a timeout. The user's Stop ([abort](glossary.md#abort)) cannot end a running command.
-- **Children survive.** `p.kill()` kills the shell. `sleep 30 &` inside it keeps running.
-- **Output is lost.** On timeout we return `""`. The model never learns how far the command got.
-- **No folders.** `write_file("src/new/a.py", ...)` fails if `src/new` does not exist.
-
-The sections below fix each break once.
+This breaks in several ways. Nothing stops a bad path: `read_file("../secret")`, or a symlink inside the root that points out, reads outside the root. Every call blocks, and the loop is `async` ([05](05-agent-loop.md)), so while a one-minute command runs no events go out and the **Stop** button ([abort](glossary.md#abort)) from [06](06-events-abort.md) is not heard; only the timeout can end it. On timeout `p.kill()` kills the shell only, so a background child like `npm run dev &` keeps running, and we return `""`, so the model never learns how far the command got. And `write_file("src/new/a.py", ...)` fails if `src/new` does not exist.
 
 ## Real design
 
@@ -132,7 +123,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp
 
 `write_file` calls `write_bytes`, so there is only one write path to check. Making the parent folders means the model needs no "make folder" tool. `list` sorts by name, so the output is the same every time, which helps tests and the model. Bytes exist next to text because images and the server's file download ([20](20-server-run.md)) are not text.
 
-Every method starts with `_path(path)`. What does `_path` do with `"README.md"` before the disk is touched? That is the next step.
+Every method starts with `_path(path)`. What does `_path` do with `"README.md"` before the disk is touched?
 
 ### Step 3: `_path` checks the path
 
@@ -178,7 +169,7 @@ In cases 2 and 3 we kill the command and return `(None, output so far)`. `None` 
 FUNCTION exec(command, cwd, timeout, cancel, on_output = none):
     proc = START command in a shell, in cwd,
            stderr merged into stdout,             // one stream, in the order it came
-           in a NEW process group                 // see Step 5
+           in a NEW process group                 // so one kill reaches all children
     chunks = empty list
 
     FUNCTION pump():
@@ -203,7 +194,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp
 
 How to read it. stderr is merged into stdout so the model sees errors next to the line that caused them. Bad bytes are replaced, not raised, because one odd byte from a program must not crash the tool. `on_output` is what the `bash` tool passes as `ctx.on_update` ([05](05-agent-loop.md#toolcontext-what-a-tool-gets)), so each chunk becomes a `tool_execution_update` event for the UI.
 
-The end is a race. Two tasks run at the same time: `run` reads output until the command exits, and `stop` just waits for the Stop button. We wait for whichever finishes first, but no longer than `timeout`. Then the `stop` task is cancelled, because nobody needs it now. If `run` is not done, Stop or the timeout won: we kill the whole process group with `run_kill` (Step 5) and then still wait for `run`. Why wait? The output pipe closes only when every process in the group is dead, so this wait also reads the last bytes. We keep every chunk in `chunks`, so even after a kill we can return what came so far.
+The end is a race. Two tasks run at the same time: `run` reads output until the command exits, and `stop` just waits for the Stop button. We wait for whichever finishes first, but no longer than `timeout`. Then the `stop` task is cancelled, because nobody needs it now. If `run` is not done, Stop or the timeout won: we kill the whole process group with `run_kill` and then still wait for `run`. Why wait? The output pipe closes only when every process in the group is dead, so this wait also reads the last bytes. We keep every chunk in `chunks`, so even after a kill we can return what came so far.
 
 ```mermaid
 sequenceDiagram
