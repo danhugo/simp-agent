@@ -7,52 +7,46 @@
 ## Where we are
 
 ```mermaid
-flowchart TB
-    subgraph lib [simp_agent library]
-      ai --> agent --> coding --> session --> plugins --> testing
-    end
-    session --> cli[apps/cli]
-    session --> server[apps/server]
-    server --> limits[limits: budget, kill switch, idle release]
-    server --> store[(store + auth: SQLite)]
-    server -->|HTTP protocol| web[apps/web]
-    style limits fill:#ffd54f,stroke:#333,stroke-width:2px
+flowchart LR
+    ai --> agent --> coding --> session --> plugins --> testing
+    session -.used by.-> apps["apps: cli, server (+ web)"]
+    style apps fill:#ffd54f,stroke:#333,stroke-width:2px
 ```
 
-*This chapter adds limits to the `server` app (marked): a money budget, a kill switch and idle release.*
+*This chapter still works in the `server` app (marked). It adds limits around the model calls and the open runs. The library does not change.*
 
 Big picture of Part 5: [part-5-system](19-0-part-5-system.md).
 
 Code in this chapter (commit `2fc2776`):
 
 - `apps/server/src/simp_server/budget.py` — `Limits`, `limits`, `cost`, `day_start`, `guard`
-- `apps/server/src/simp_server/server.py` — `Run.guarded_stream`, `Run.over_budget`, `SessionManager` (`paused`, `evict_idle`, `evict_loop`), the `pause` and `resume` commands
+- `apps/server/src/simp_server/server.py` — `Run.guarded_stream`, `Run.over_budget`, `Run.start`, `SessionManager` (`paused`, `evict`, `evictable`, `evict_idle`, `evict_loop`), the `pause` and `resume` commands
 - `apps/server/tests/test_budget.py`, `apps/server/tests/test_lifecycle.py` — the limits tests
 
 ## Problem
 
-After [22](22-store-auth.md) the server has users, sessions and a durable store. Many people can now run the agent at the same time. That brings two new risks.
+At the end of [22](22-store-auth.md), Ana and Bob share one server. Each has a login, and their sessions survive a restart. Now think about one bad afternoon.
 
-**Money.** Every model call costs money. The agent loop ([05](05-agent-loop.md)) calls the model again and again until the model stops asking for tools. A confused model can loop for a long time. Say Ann asks for `fizzbuzz.py` and the tests keep failing: the model edits, runs, edits, runs. Fifty calls later the bill is real. Nobody is watching.
+Ana asks for `fizzbuzz.py`. The tests keep failing. The model edits the file, runs the tests, edits again. The agent loop ([05](05-agent-loop.md)) keeps calling the model as long as the model asks for tools, and every call costs money. Ana goes to a meeting. Fifty calls later the bill is real, and nobody was watching.
 
-**Memory and containers.** Each open session on the server is a `Run` ([20](20-server-run.md)) in memory. Each `Run` also holds a sandbox: a folder now, a Docker container in [24](24-docker-sandbox.md). Users close the tab and go home. If the server keeps every `Run` forever, it fills RAM and leaves containers running.
+At the same time Bob opens three sessions, looks at them, and closes the tab. Each session is a `Run` in the server's memory ([20](20-server-run.md)), and each `Run` holds a sandbox: a folder today, a Docker container in [24](24-docker-sandbox.md). If the server keeps every `Run` forever, RAM fills up and containers keep running for nobody.
 
-So we need three things:
+So this chapter adds three things:
 
-1. A **budget** ([daily](glossary.md#daily-budget) and per run): refuse a model call when a user or a run has spent too much.
-2. A **kill switch**: the admin can stop *all* model calls at once.
-3. **[Idle release](glossary.md#idle-release)**: close runs nobody uses, and load them back later.
+1. A **budget**: refuse a model call when a user has spent too much today ([daily budget](glossary.md#daily-budget)) or one run has spent too much ([run budget](glossary.md#run-budget)).
+2. A **kill switch**: the admin can stop *all* model calls at once, for example after a bug or a leaked API key.
+3. **[Idle release](glossary.md#idle-release)**: close runs nobody uses, and load them back from the store when the user returns.
 
 ## Naive version
 
-The simplest idea: after each run ends, add up the cost and stop the user if it is too high.
+The simplest budget: check the spend before a run starts, and add up the cost when it ends.
 
 Naive sketch (not in the repo):
 
 ```text
 PRICE_IN = 3.0, PRICE_OUT = 15.0   // USD per 1M tokens
 DAY_LIMIT = 2.0
-spent = {u1: 0}
+spent = {ana: 0}                   // in memory
 
 FUNCTION cost(usage):
     RETURN (usage.input * PRICE_IN + usage.output * PRICE_OUT) / 1,000,000
@@ -64,84 +58,32 @@ FUNCTION run(user, max_calls = 50):
     IF spent[user] >= DAY_LIMIT:            // check once, at the start
         RETURN "refused"
     total = 0
-    FOR EACH i in 0..max_calls:             // the agent loop: model wants more tools
+    FOR EACH i in 0..max_calls:             // the agent loop keeps asking for tools
         ADD cost(fake_model_call(i)) to total
-    ADD total to spent[user]                // count only at the end
+    ADD total to spent[user]                // count once, at the end
     RETURN "spent $total"
 
-run("u1")   // spent $33.75   <- limit was $2
-run("u1")   // refused        <- too late
+run("ana")   // spent $33.75   <- limit was $2
+run("ana")   // refused        <- too late
 ```
 
 Key idea: check once, count once. Limit: one run can spend far past the limit.
 
-It breaks in three ways:
-
-1. **The check is too early, the count is too late.** One run of 50 calls spends $33.75 although the limit is $2. The check only runs before the run starts.
-2. **A crash loses the count.** `spent` is in memory and is added only at the end. If the process dies mid-run, the money is spent but not recorded.
-3. **No way to stop it.** If something goes wrong for all users at once (a bug, a leaked key), the admin cannot stop every running loop without killing the server.
-
-The fix for 1 and 2: record cost after **every** model call, in the store, and check **before every** model call.
+It breaks in three ways. First, the check comes too early and the count too late: Ana's one run spends $33.75 against a $2 limit. Second, `spent` lives in memory and grows only at the end, so if the server crashes mid-run, the money is gone but not recorded. Third, nothing can stop all loops at once without killing the server.
 
 ## Step by step: from naive to real
 
-Remember Ann from the Problem: her tests keep failing, the model makes about fifty calls, and nobody watches the bill. Each call costs money. The steps below fix this, one problem at a time.
+Each step fixes one break. Real design below shows the code.
 
-**Step 1 — check before every call, not once.** Move the check inside the loop:
+**Step 1 — check before every call.** Move the check inside the loop and count after each call. Now Ana's run stops soon after the limit, not 48 calls later.
 
-Naive sketch (not in the repo):
+**Step 2 — count in the store.** Write one usage row per model call into the SQLite store from [22](22-store-auth.md), and sum rows to know the spend. A row survives a crash; a dict does not.
 
-```text
-FOR EACH i in 0..max_calls:
-    IF spent[user] >= DAY_LIMIT:
-        RETURN "refused"
-    ADD cost(fake_model_call(i)) to spent[user]   // count after every call
-```
+**Step 3 — put the check in one place.** Every model call goes through one function, `stream_fn` ([01](01-pick-clean.md#out-the-shape-of-a-model-call)). Wrap it once, and the agent, retries and the [title call](glossary.md#title-call) are all checked. Nothing can skip it.
 
-Why: now the run stops soon after the limit. Fix for break 1.
+**Step 4 — add the kill switch as one more reason to refuse.** The same check asks "did the admin pause the server?" before every call.
 
-**Step 2 — keep the count in the store.** Write one row per call, and sum rows to know the spend:
-
-Real code: [store.py](../../apps/server/src/simp_server/store.py) — `add_usage, spent`
-
-```text
-WAIT for store.add_usage(user_id, sid, model_id, input, output, cost = c)
-WAIT for store.spent(user_id, since)        // SUM(cost) since a time
-```
-
-Why: a dict in memory dies with the process. A database row survives a crash. Fix for break 2.
-
-**Step 3 — put the check in one door.** Wrap `stream_fn` so no call can skip it:
-
-Real code: [budget.py](../../apps/server/src/simp_server/budget.py) — `guard`
-
-```text
-stream_fn = budget.guard(stream_fn, check)   // check() returns nothing, or a reason
-```
-
-Why: the agent, retries and the [title call](glossary.md#title-call) ([20](20-server-run.md#the-run)) all go through `guarded_stream`, the `stream_fn` wrapper. One wrapper covers all. The refusal is a normal `error` message, so the loop needs no new code.
-
-**Step 4 — add the kill switch to the check.** One more reason to refuse:
-
-Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.over_budget`
-
-```text
-IF manager.paused():                         // PAUSED file exists
-    msg = "budget: server paused by the admin"
-```
-
-Why: the admin can stop every loop at its next model call. Fix for break 3.
-
-**Step 5 — free idle runs.** Pop a run from memory and close its sandbox, but only if nobody uses it:
-
-Real code: [server.py](../../apps/server/src/simp_server/server.py) — `SessionManager.evict_idle`
-
-```text
-IF run is evictable AND now - last_used[sid] >= idle_s:
-    WAIT for evict(sid)
-```
-
-Why: the store can rebuild the run later, so freeing it loses nothing. Now the real code.
+**Step 5 — free idle runs.** A run that nobody watches and that is not working can leave memory. The store can rebuild it later, so nothing is lost.
 
 ## Real design
 
@@ -176,12 +118,12 @@ FOR EACH profile (name, pr) in settings.profiles:
 
 ### Record cost after every call
 
-In `apps/server/src/simp_server/server.py`, the `Run` writes a usage row each time an assistant message ends:
+The `Run` writes a usage row each time an assistant message ends:
 
 Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.on_event`
 
 ```text
-u = {input: m.usage.input or 0, output: m.usage.output or 0}
+u = {input: m.usage.get("input", 0), output: m.usage.get("output", 0)}
 ...
 WAIT for store.add_usage(user_id, sid, model.id, u.input, u.output, cost = budget.cost(profile, u))
 ```
@@ -198,7 +140,7 @@ FUNCTION spent(user_id, since, session_id = none):
     // (also filter by session_id when given)
 ```
 
-`since` is a timestamp: `budget.day_start()` (local midnight) for the day limit, or the run start time plus the session id for the run limit.
+`since` is a timestamp. For the day limit it is `budget.day_start()`, midnight in the server's local time. For the run limit it is `run_start` (below) plus the session id. Why sum rows and not keep a counter on the `Run`? A counter dies when the run is evicted or the server restarts; the rows do not. One sum query serves both limits.
 
 ### The budget guard: wrap the stream
 
@@ -233,7 +175,7 @@ PROPERTY guarded_stream:
     RETURN budget.guard(manager.stream_fn, over_budget)
 ```
 
-It is passed as `stream_fn=self.guarded_stream` to `AgentSession` ([13](13-session.md)), and the title call uses `self.guarded_stream` too.
+`manager.stream_fn` is the real model door. `over_budget` is the check, shown next. The `Run` passes `stream_fn=self.guarded_stream` to `AgentSession` ([13](13-session.md)), and the title call uses `self.guarded_stream` too.
 
 ### The check itself
 
@@ -255,7 +197,7 @@ FUNCTION over_budget():
     RETURN msg
 ```
 
-Four reasons to refuse, in order: the server is paused (kill switch, below); the user was revoked ([22](22-store-auth.md)); the user spent the day limit; this run spent the run limit since `run_start`.
+Four reasons to refuse, in order: the server is paused (kill switch, below); the user was revoked ([22](22-store-auth.md)); the user spent the day limit; this run spent the run limit since `run_start`. The revoke check is here because revoking in [22](22-store-auth.md) only blocks new logins and requests. A loop that is already running makes no new request, so it would keep going. Checking before each model call stops it too.
 
 The check is `>=` on money **already spent**. It does not guess the next cost. So one call can go a little over, and the *next* call is refused.
 
@@ -264,18 +206,18 @@ What is a "run" here? `run_start` is set in `Run.start`:
 Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.start`
 
 ```text
-FUNCTION start(text, fresh = true):   // text: a prompt, or a coroutine factory (continue_, compact)
+FUNCTION start(text, fresh = true):   // text: a prompt, or a function to run (continue, compact)
     IF fresh:                            // a queued follow-up stays inside the same run budget
         run_start = now
 ```
 
 A new prompt starts a fresh run budget. A queued follow-up ([07](07-steering.md)) starts with `fresh=False`, so queueing cannot get around the run limit.
 
-Example:
-
-- 10:00 Ann sends a prompt. `run_start = 10:00`.
-- 10:02 Ann's queued follow-up starts. `run_start` stays `10:00`, so the follow-up's cost adds to the same run.
-- 10:10 Ann sends a new prompt. `run_start = 10:10`, and the run spend starts again from zero.
+| Time | What Ana does | `run_start` | Run spend counts from |
+|---|---|---|---|
+| 10:00 | sends a prompt | 10:00 | 10:00 |
+| 10:02 | her queued follow-up starts | stays 10:00 | 10:00 (same run) |
+| 10:10 | sends a new prompt | 10:10 | 10:10 (from zero) |
 
 When the guard refuses, the run ends in state `"error"`. The client sees why from the error text.
 
@@ -304,15 +246,11 @@ IF mode is "pause" or "resume":
     ELSE: delete f (ok if missing)
 ```
 
-`pause` creates the file. `resume` deletes it. Why a file and not an API call or a flag in memory?
+`pause` creates the file. `resume` deletes it. Why a file and not an API call or a flag in memory? A file works from a shell even when the HTTP side is broken, it needs no running server, and it survives a restart. Checking it costs one tiny disk lookup per model call.
 
-- It works from a shell, even when the HTTP side is broken.
-- It needs no running server, and it survives a restart.
-- The guard checks it before every call.
+Pause does not kill tools that are already running. It only refuses the next model call. A tool call ends on its own (or by its timeout, [10](10-coding-tools.md)), and without the model the loop cannot ask for more tools. So the damage stops within one step.
 
-Pause does not kill tools that are already running. It only refuses the next model call. Without the model, the loop cannot ask for more tools.
-
-Users can see their state through `/api/usage`:
+A user can ask how much they spent today and whether the server is paused. The web client ([25](25-web-client.md)) shows this from `/api/usage`:
 
 Real code: [server.py](../../apps/server/src/simp_server/server.py) — `create_app.usage`
 
@@ -373,13 +311,13 @@ FUNCTION evict_idle():
                 WAIT for evict(sid)
 ```
 
-`now` comes from a [monotonic clock](glossary.md#monotonic-clock), a clock that only goes forward, so a change to the system time cannot evict runs early.
+`now` comes from a [monotonic clock](glossary.md#monotonic-clock), a clock that only goes forward, so a change to the system time cannot evict runs early. A run with no `last_used` entry counts as used at time 0, so it is idle; in practice `get` always sets the entry.
 
-A background task, `mgr.evict_loop(...)`, calls it every `evict_every` seconds (default 60). It logs errors, so one failed eviction does not stop it.
+Who calls `evict_idle`? At start, the server's `lifespan` starts a background task, `mgr.evict_loop(...)`, which calls it every `evict_every` seconds (default 60). It logs errors, so one failed eviction does not stop the loop.
 
-There is also a hard cap. In `SessionManager.get`, if `max_open_sessions` runs are already loaded, the least recently used evictable run is evicted to make room. If none can be evicted, the server answers `503 "too many active sessions, try again later"`.
+Idle time alone is not enough: ten users could open sessions within one minute. So `SessionManager.get` also has a hard cap, `max_open_sessions` (default 8). When the cap is full, `get` evicts the evictable run with the oldest `last_used` to make room. If no run can be evicted, the server answers `503 "too many active sessions, try again later"`. The defaults (15 minutes, 8 runs) are small numbers for one machine; raise them in `settings.toml` on a bigger host.
 
-When the user comes back, `get` opens the sandbox again, builds a new `Run` from the stored entries, and calls `recover()` ([22](22-store-auth.md)). The user sees the same history and files.
+When Bob comes back, `get` loads his run from the store the same way as after a restart ([22](22-store-auth.md)). He sees the same history and files.
 
 ## Test
 
@@ -405,12 +343,7 @@ async def test_run_budget_stops_tool_loop(tmp_path):
     await mgr.store.close()
 ```
 
-What it checks:
-
-- The `FakeProvider` ([04](04-label-test.md)) has five replies, each asking for a `bash` call. This is the runaway loop.
-- Each call costs $1. The run limit is $1.5.
-- After call 2 the spend is $2, over the limit. Call 3 is refused **before** it reaches the provider, so `fp.calls == 2`.
-- The run ends in state `"error"`, and the store holds exactly $2.
+The `FakeProvider` ([04](04-label-test.md)) has five replies, each asking for a `bash` call: a runaway loop like Ana's. Each call costs $1 and the run limit is $1.5. After call 1 the spend is $1, under the limit, so call 2 runs. After call 2 it is $2, so call 3 is refused **before** it reaches the provider, and `fp.calls == 2`. The store holds $2: one call over, as the `>=` check allows. The test accepts the refusal text either in a `notice` event or in the error of an `assistant_message`, so it does not depend on which event the client gets.
 
 Run it:
 
@@ -431,10 +364,6 @@ Other tests in the file cover the day limit (`test_day_budget_and_pause`), the k
 
 ## Recap
 
-- `budget.cost` turns token usage into USD from profile prices. Each call's cost is saved with `store.add_usage`.
-- `budget.guard` wraps `stream_fn`. Before each model call it runs `Run.over_budget`. If that returns a reason, the call is refused with `error_kind="budget"` and is never retried.
-- Four reasons: server paused, user revoked, day limit, run limit. Follow-ups share the run budget.
-- The kill switch is a `PAUSED` file in the data dir. `simp-server pause` / `resume` create and delete it.
-- `SessionManager.evict_idle` frees runs that are idle, not busy and have no subscribers. A cap of `max_open_sessions` evicts the least recently used run or returns 503. Evicted runs load back from the store.
+Ana's runaway loop is now stopped. `budget.cost` turns each call's token usage into dollars from the profile prices, and `store.add_usage` saves it as a row. `budget.guard` wraps `stream_fn`, so before every model call `Run.over_budget` checks four things: kill switch, revoked user, day limit, run limit. A refusal is a normal model error with `error_kind="budget"`, never retried. Follow-ups share the run budget. The kill switch is a `PAUSED` file that `simp-server pause` and `resume` create and delete. Bob's forgotten runs are freed by `evict_idle` and the `max_open_sessions` cap, and they load back from the store. Next, [24](24-docker-sandbox.md) makes the sandbox a real container, which is why freeing it matters.
 
 **Builds on:** [22 Store and auth](22-store-auth.md) · **Next:** [24 Docker sandbox](24-docker-sandbox.md)
