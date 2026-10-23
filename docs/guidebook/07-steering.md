@@ -113,7 +113,7 @@ Two names first. `pending` is the list of user messages the loop has just taken 
 ```text
 SEND event {agent_start}                     // block 1: start the run
 FOR EACH p in prompts: add(p)
-pending = config.get_steering()              // NEW: steers typed before the run
+pending = config.get_steering()              // NEW: steering read (1), steers typed before the run
 has_calls = true
 FOREVER:                                     // NEW: outer loop, for follow-ups
     WHILE has_calls OR pending:              // inner loop: one pass = one turn
@@ -125,7 +125,7 @@ FOREVER:                                     // NEW: outer loop, for follow-ups
         ...                                  // blocks 5-8: check the reply, run the tools
         SEND event {turn_end, msg}
         has_calls = (msg asked for tools)
-        pending = config.get_steering()      // NEW: the steering read (block 9, safe point)
+        pending = config.get_steering()      // NEW: steering read (3) (block 9, safe point)
     pending = config.get_follow_up()         // NEW: the follow-up read (block 9)
     IF pending is empty: STOP
 SEND event {agent_end, new messages}
@@ -134,71 +134,51 @@ RETURN new messages
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
 
-The **steering read** sits at the end of each turn, after all the tools of that reply have run. There every tool call has its result, so it is a safe point. The inner loop goes on while the model asked for tools **or** a steer is waiting, so a steer can even start a new turn when the model was done.
+The **steering read (3)** sits at the end of each turn, after all the tools of that reply have run. There every tool call has its result, so it is a safe point. The inner loop goes on while the model asked for tools **or** a steer is waiting, so a steer can even start a new turn when the model was done.
 
 The **follow-up read** sits outside the inner loop. The inner loop ends only when the agent would stop, so only then does the loop ask for follow-ups; reading them earlier would cut into the current job. If one is waiting, `pending` is not empty and the inner loop starts again. If not, the run ends.
 
-There is one more, small steering read inside block 3, in `_llm_turn`. Before each model call, the `prepare_next_turn` hook builds the `view`, the list of messages the model will see ([05](05-agent-loop.md#_llm_turn-one-model-call)). That hook can be slow: compaction runs there and makes its own model call ([16](16-compaction.md)). A steer typed during it should join this turn, not wait for the next:
+There is one more, small steering read (2) inside block 3, in `_llm_turn`. Before each model call, the `prepare_next_turn` hook builds the `view`, the list of messages the model will see ([05](05-agent-loop.md#_llm_turn-one-model-call)). That hook can be slow: compaction runs there and makes its own model call ([16](16-compaction.md)). A steer typed during it should join this turn, not wait for the next:
 
 ```text
 // inside _llm_turn
 view = copy of the result of prepare_next_turn(messages)
-FOR EACH p in config.get_steering():
+FOR EACH p in config.get_steering():     // steering read (2)
     add(p)                               // into the history
     ADD p to view                        // and into this turn's view, built before the read
 ```
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_llm_turn`)
 
-### The path of one steer
-
-Now follow "Also read CHANGELOG.md" from the keyboard to the model:
+Here are the two loops as one picture. The three steering reads have the same labels as above: (1) before the run, (2) inside `_llm_turn`, (3) at the end of each turn.
 
 ```mermaid
 flowchart TD
-    U["user types 'Also read CHANGELOG.md'<br/>while read README.md runs"] --> S["agent.steer(text)"]
-    S --> L["Agent.steering list<br/>(the running tool is NOT cut)"]
-    T["turn 1: tool ends"] --> E["turn_end"]
-    L --> G["get_steering()<br/>after turn_end"]
-    E --> G
-    G --> P["pending"]
-    P --> Q{"tool calls OR pending?"}
-    Q -- "yes (even with no tool calls)" --> TS["turn 2: turn_start"]
-    TS --> H["add(steer) to the history"]
-    H --> LT["_llm_turn: one more get_steering()<br/>just before the model call"]
-    LT --> M["model call 2 sees the steer<br/>right after the tool result"]
+    S["agent_start"] --> P["add(prompts)"]
+    P --> R1["steering read (1)<br/>pending = get_steering()"]
+    R1 --> TS
+    subgraph INNER["inner loop: one pass = one turn"]
+        TS["turn_start"] --> AP["add(pending)"]
+        AP --> LT["_llm_turn<br/>steering read (2), then the model call"]
+        LT --> TL["tools (blocks 5-8)"]
+        TL --> TE["turn_end"]
+        TE --> R3["steering read (3)<br/>pending = get_steering()"]
+        R3 --> Q1{"has_calls OR pending?"}
+        Q1 -- yes --> TS
+    end
+    Q1 -- no --> FU
+    subgraph OUTER["outer loop: follow-ups"]
+        FU["follow-up read<br/>pending = get_follow_up()"] --> Q2{"follow-up waiting?"}
+    end
+    Q2 -- "yes: back into the inner loop" --> TS
+    Q2 -- no --> E["agent_end"]
 ```
 
-1. The user types the text while `read README.md` runs. The UI calls `agent.steer("Also read CHANGELOG.md")`.
-2. `steer` wraps the text in a `UserMessage` and appends it to `Agent.steering`. That is all; it does not wait for the loop.
-3. The tool ends. At the end of turn 1 the loop calls `config.get_steering()`, which takes the message out of the list and returns it. It becomes `pending`.
-4. `pending` is not empty, so the inner loop runs turn 2. After `turn_start` it adds the message to the history with `add`, the same helper as for every other message ([06](06-events-abort.md#how-the-loop-sends-them)), so the UI sees a normal user message.
-5. Model call 2 gets the history, with the steer right after the tool result, and calls `read CHANGELOG.md`.
-
-The follow-up "Then write a short summary to NOTES.md" takes the same path, through `agent.follow_up()`, `Agent.follow_ups` and `get_follow_up()`. It just waits for the follow-up read, after the model answered about both files. It is all **one run**: one `agent_start`, one `agent_end`.
+The [timeline picture](#example-two-new-wishes-during-one-run) shows the path of "Also read CHANGELOG.md" from the keyboard to model call 2.
 
 ### Where `get_steering` gets its messages
 
-Step 3 of the path calls `config.get_steering()`. What is it? The loop keeps no queue itself. `LoopConfig` ([05](05-agent-loop.md#loopconfig-the-settings)) has two hooks, and both return an empty list by default:
-
-```text
-get_steering  = a function that returns a list   // the steers waiting now
-get_follow_up = a function that returns a list   // the follow-ups waiting now
-```
-
-Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`LoopConfig`)
-
-`Agent._run` fills them in when it builds the `LoopConfig`:
-
-```text
-// inside _run
-get_steering  = WHEN called: RETURN _take(steering, steering_mode)
-get_follow_up = WHEN called: RETURN _take(follow_ups, follow_up_mode)
-```
-
-Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`Agent._run`)
-
-Why functions and not lists? For two reasons. A function looks at the list **each time it is called**, not once when the run starts, so a `steer()` in the middle of the run is seen at the next read. And the loop does not care where messages come from: `Agent` keeps them in plain lists, but another host could read them from a database or a socket. The loop only needs "give me what is waiting now".
+`steer()` only wraps the text in a `UserMessage`, appends it to `Agent.steering` and returns at once; it never cuts the running tool and never waits for the loop. The queue lives in `Agent`, not in the loop. The loop only gets two **functions** through `LoopConfig` ([05](05-agent-loop.md#loopconfig-the-settings)): `get_steering` and `get_follow_up` (both return an empty list by default). `Agent._run` sets them to "take from my list", using `_take` and the queue mode (next part). Because they are functions, each call looks at the list as it is **now**, so a `steer()` in the middle of the run is seen at the next read.
 
 ### The `Agent` side: two lists and a mode
 

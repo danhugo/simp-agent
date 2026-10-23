@@ -4,6 +4,8 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-23
 
+- 07: cut "The path of one steer" (the timeline picture shows it); "Where `get_steering` gets its messages" is now one short paragraph; new two-loop diagram (inner and outer loop) next to `agent_loop`, with the three steering reads labelled (1), (2), (3).
+
 - ch19 top-down reorder: follows one run (command → `main` picks a mode → a session opens → the question goes to `AgentSession` → events → `LinePrinter` → approval), then the REPL runs the same path (layout → `start` → router → async approve → components). File list cut; keys moved to where `get_api_key` is used; router question earlier; breaks named, not numbered. Anchors in glossary and 20 updated. (checked at `2fc2776`)
 - ch20 top-down reorder against the checklist: follows Ana's one prompt (JSON → protocol models → `SessionManager.get`/Run → run states and `start` → events via `on_event` → title call → gen_protocol); `__main__`/build-sandbox moved last; numbered breaks named in prose (long run, two prompts at once, loose body, reload, approval); Step/Problem/What/Why labels cut; dense terms paragraph split (commands, handshake, server events, snapshot); `recover` now only a link to 22. Anchors kept. (checked at `80afdc3`)
 - ch16: top-down reorder against the checklist: starts at `_prepare` in the session and follows one fizzbuzz session (too big → `compact` → `find_cut` → file lists + serialize → `summarize` → `CompactionEntry` → `build_view`); helpers met when the flow needs them; numbered naive problems and problem table turned into prose; forward refs and repeats cut (430 → ~390 lines). Headings kept so links from 17/18/19 still work. (checked at `072659a`)
