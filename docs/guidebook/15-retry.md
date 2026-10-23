@@ -33,6 +33,8 @@ We want the session to try again by itself. But not every error should be tried 
 
 ## Naive version
 
+Where retry plugs in: not inside the model call (`_llm_turn` of [05](05-agent-loop.md#_llm_turn-one-model-call)). The loop already turns a failed call into an error message and ends the run. Retry sits one level up, in the session ([13](13-session.md)): after the run ends, it looks at the last message and, if needed, starts the same loop again with `agent.continue_()`.
+
 Naive sketch (not in the repo):
 
 ```text

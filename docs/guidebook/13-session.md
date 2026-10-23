@@ -42,9 +42,9 @@ Here is the OUT first. The user says `hi`. The model calls a tool `nope` that do
 
 This is a **[JSONL](glossary.md#jsonl)** file: one JSON object per line. (Real output of the test run below, with the fake model, so `usage` and `model` are empty.) Each line is written the moment its message ends. To resume, we read the lines back into messages.
 
-## Naive version
+## Starting point: the Part 3 Agent, kept only in memory
 
-The simplest idea: run the agent, then dump all messages to a file at the end.
+We do not write a new agent. We keep the `Agent` of [06](06-events-abort.md#the-agent-class-state-on-top-of-the-loop), which runs the `agent_loop` of [05](05-agent-loop.md), with the tools of [10](10-coding-tools.md) and the prompt of [11](11-system-prompt.md). The simplest way to save it: run that agent, then dump all messages to a file at the end.
 
 ```text
 FUNCTION run(task, path):
