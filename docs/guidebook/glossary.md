@@ -108,7 +108,7 @@ A user message queued to run after the agent would stop. `Agent.follow_up(text)`
 How many queued messages one read takes: `"one-at-a-time"` (default, the oldest only) or `"all"`. Set by `Agent.steering_mode` and `Agent.follow_up_mode`. Home: [07](07-steering.md#the-agent-side-two-lists-and-a-mode).
 
 ## Tool hook
-One of two optional functions in `LoopConfig` (and `Agent`) that wrap each tool call: `before_tool_call(call, ctx)` returns `None` to run the tool or a reason string to deny it (the call then gets the error result `User denied: <reason>`); `after_tool_call(call, result, ctx)` may return a new result, and runs after a deny too. Home: [08](08-hooks-approval.md#two-hooks-in-loopconfig).
+One of two optional functions in `LoopConfig` (and `Agent`) that wrap each tool call: `before_tool_call(call, ctx)` returns `None` to run the tool or a reason string to deny it (the call then gets the error result `User denied: <reason>`); `after_tool_call(call, result, ctx)` may return a new result, and runs after a deny too. Home: [08](08-hooks-approval.md#the-two-fields-in-loopconfig).
 
 ## Tool approval
 Asking a human before a risky tool runs. Built as one `before_tool_call` in `AgentSession`: `approve(call)` answers `"allow"`, `"always"` (remember this tool name) or anything else (deny). Only `bash`, `write` and `edit` ask, and the question ends on abort. Home: [08](08-hooks-approval.md#approval-a-before_tool_call-that-asks-a-human).
