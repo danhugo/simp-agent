@@ -31,89 +31,36 @@ Ana asks for `fizzbuzz.py`. The tests keep failing. The model edits the file, ru
 
 At the same time Bob opens three sessions, looks at them, and closes the tab. Each session is a server [`Run`](glossary.md#run) in memory ([20](20-server-run.md)): one `Run` wraps one `AgentSession`, and each prompt it handles is one agent [run](glossary.md#run-agent) of the loop. Each `Run` holds a sandbox: a folder today, a Docker container in [24](24-docker-sandbox.md). If the server keeps every `Run` forever, RAM fills up and containers keep running for nobody.
 
-So this chapter adds three things:
-
-1. A **budget**: refuse a model call when a user has spent too much today ([daily budget](glossary.md#daily-budget)) or one run has spent too much ([run budget](glossary.md#run-budget)).
-2. A **kill switch**: the admin can stop *all* model calls at once, for example after a bug or a leaked API key.
-3. **[Idle release](glossary.md#idle-release)**: close runs nobody uses, and load them back from the store when the user returns.
+So this chapter adds a budget, a kill switch and idle release. The budget refuses a model call when a user has spent too much today ([daily budget](glossary.md#daily-budget)) or one run has spent too much ([run budget](glossary.md#run-budget)). The kill switch lets the admin stop *all* model calls at once, for example after a bug or a leaked API key. [Idle release](glossary.md#idle-release) closes runs nobody uses and loads them back from the store when the user returns.
 
 ## Starting point: 22's Run, with no limits
 
-At the end of [22](22-store-auth.md), each server `Run` wraps one `AgentSession` ([13](13-session.md)), and the `SessionManager` keeps loaded runs in memory and reloads them from the SQLite store. The model door is passed straight through:
+At the end of [22](22-store-auth.md), each server `Run` wraps one `AgentSession` ([13](13-session.md)), and the `SessionManager` keeps loaded runs in memory and reloads them from the SQLite store. The agent loop calls the model through `stream_fn`, the function it takes as an input ([05](05-agent-loop.md), Step 5). The server passes it straight through:
 
 ```text
 SessionManager(settings, store, sandbox, stream_fn)   // stream_fn = ai.stream
 Run: session = AgentSession(model, store, env, stream_fn = manager.stream_fn)
 ```
 
-This breaks in three ways for this chapter:
+Follow Ana's run. Her prompt starts the loop, the loop calls `stream_fn`, the model asks for a tool, the loop runs it and calls `stream_fn` again. Nothing on this path looks at money, so her one run can spend far past any limit. A check only at the start of a run is too early, and a count only at the end is too late. A count kept in memory would also die with a crash or a restart. And nothing can stop all loops at once without killing the server, or free the runs Bob forgot.
 
-1. Nothing checks money. The agent loop ([05](05-agent-loop.md)) calls `stream_fn` again and again, so Ana's one run can spend far past any limit. A check only at the start of a run is too early, and a count only at the end is too late.
-2. A count kept in memory dies with a crash or a restart. The spend must live in the store, one row per call.
-3. Nothing can stop all loops at once without killing the server, and nothing frees runs nobody uses.
-
-The fix grows this same code: wrap `stream_fn` once inside `Run` (every model call, retries and the [title call](glossary.md#title-call) pass through it), write a usage row after each call, add a kill switch as one more reason to refuse, and let the `SessionManager` evict idle runs.
+The fix grows this same code. We wrap `stream_fn` once inside `Run`, write a usage row to the store after each call, check the spend before the next call, add a kill switch as one more reason to refuse, and let the `SessionManager` evict idle runs.
 
 ## Real design
 
-### Cost from profile prices
-
-Real code: [budget.py](../../apps/server/src/simp_server/budget.py) — `Limits, limits, cost`
-
-```text
-CLASS Limits:
-    user_day_usd = 2.0
-    run_usd = 0.5
-
-FUNCTION limits(settings):
-    RETURN Limits built from settings["budget"] (or defaults)
-
-FUNCTION cost(profile, usage):
-    // missing token count or price counts as 0
-    RETURN (usage.input * profile.price_in + usage.output * profile.price_out) / 1,000,000
+```mermaid
+flowchart LR
+    loop["agent loop"] --> g["budget guard"]
+    g -- "over_budget() says no" --> err["error event: run stops"]
+    g -- ok --> s["stream_fn (the model)"]
+    s --> ev["Run.on_event: message ends"]
+    ev --> row["store.add_usage: cost row"]
+    row -. "next call: store.spent" .-> g
 ```
 
-`user_day_usd` is the most one user may spend in a day. `run_usd` is the most one **[run](glossary.md#run-budget)** may spend. They come from the `[budget]` table in `settings.toml`. Defaults: $2 a day, $0.5 a run.
+### The budget guard: wrap stream_fn
 
-Prices live in each profile ([18](18-profiles-plugins.md)) as `price_in` and `price_out`, in USD per 1 million tokens. `cost` multiplies the token counts from the model's `usage` by these prices. A profile with no prices costs $0. That is a quiet hole, so the server warns at start:
-
-Real code: [server.py](../../apps/server/src/simp_server/server.py) — `create_app.lifespan`
-
-```text
-FOR EACH profile (name, pr) in settings.profiles:
-    IF pr has no price_in OR no price_out:
-        LOG warning "profile <name> has no prices: its calls cost $0 and never hit a budget"
-```
-
-### Record cost after every call
-
-The `Run` writes a usage row each time an assistant message ends:
-
-Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.on_event`
-
-```text
-u = {input: m.usage.get("input", 0), output: m.usage.get("output", 0)}
-...
-WAIT for store.add_usage(user_id, sid, model.id, u.input, u.output, cost = budget.cost(profile, u))
-```
-
-The row goes to the SQLite store from [22](22-store-auth.md), so the count survives a crash. The session title call records its usage the same way.
-
-The store can sum it:
-
-Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.spent`
-
-```text
-FUNCTION spent(user_id, since, session_id = none):
-    RETURN SUM(cost) of usage rows for user_id with time >= since   // 0 if no rows
-    // (also filter by session_id when given)
-```
-
-`since` is a timestamp. For the day limit it is `budget.day_start()`, midnight in the server's local time. For the run limit it is `run_start` (below) plus the session id. Why sum rows and not keep a counter on the `Run`? A counter dies when the run is evicted or the server restarts; the rows do not. One sum query serves both limits.
-
-### The budget guard: wrap the stream
-
-Now the check. Where do we put it? The agent calls the model through one function, `stream_fn` ([01](01-pick-clean.md#out-the-shape-of-a-model-call)). If we wrap that one function, every model call passes the check. That wrapper is the **[budget guard](glossary.md#budget-guard)**:
+Where do we put the check? Every model call of the loop goes through `stream_fn`. If we wrap that one function, every call passes the check, including retries ([15](15-retry.md)) and the [title call](glossary.md#title-call). That wrapper is the **[budget guard](glossary.md#budget-guard)**:
 
 Real code: [budget.py](../../apps/server/src/simp_server/budget.py) — `guard`
 
@@ -129,13 +76,11 @@ FUNCTION guard(stream_fn, check):
     RETURN fn
 ```
 
-Key idea: one wrapper on the one model door, so every call is checked. Limit: it checks money already spent, not the next cost.
-
-`check` is an async function. It returns `None` when all is fine, or a text when the call must be refused. If refused, the guard does **not** call the real model. It yields one `error` event with an `AssistantMessage` that has `stop_reason="error"`. For the agent this looks like a normal failed model call ([03](03-parse.md)). So the loop stops in the normal way. No new code path in the agent.
+`check` is an async function. It returns `None` when all is fine, or a text when the call must be refused. If refused, the guard does **not** call the real model. It sends one `error` event with an `AssistantMessage` that has `stop_reason="error"`. For the agent this looks like a normal failed model call ([03](03-parse.md)), so the loop stops in the normal way, with no new code path in the agent. The run ends in state `"error"`, and the client sees why from the error text.
 
 Note `error_kind="budget"`. Retry ([15](15-retry.md)) never retries `"fatal" | "budget" | "policy"` errors (see `is_retryable`). A refused call would only be refused again.
 
-The `Run` gives the guard to its session:
+The `Run` builds the guard and gives it to its session:
 
 Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.guarded_stream`
 
@@ -144,9 +89,57 @@ PROPERTY guarded_stream:
     RETURN budget.guard(manager.stream_fn, over_budget)
 ```
 
-`manager.stream_fn` is the real model door. `over_budget` is the check, shown next. The `Run` passes `stream_fn=self.guarded_stream` to `AgentSession` ([13](13-session.md)), and the title call uses `self.guarded_stream` too.
+`manager.stream_fn` is the real `stream_fn` from before. The `Run` passes `stream_fn=self.guarded_stream` to `AgentSession` ([13](13-session.md)), and the title call uses `self.guarded_stream` too. The check it uses, `over_budget`, asks "how much was spent?" So first: where does the spend come from?
 
-### The check itself
+### Record cost after every call
+
+The `Run` writes a usage row each time an assistant message ends:
+
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.on_event`
+
+```text
+u = {input: m.usage.get("input", 0), output: m.usage.get("output", 0)}
+...
+WAIT for store.add_usage(user_id, sid, model.id, u.input, u.output, cost = budget.cost(profile, u))
+```
+
+The row goes to the SQLite store from [22](22-store-auth.md), so the count survives a crash. The session title call records its usage the same way.
+
+To turn tokens into dollars, `budget.cost` uses prices. They live in each profile ([18](18-profiles-plugins.md)) as `price_in` and `price_out`, in USD per 1 million tokens:
+
+Real code: [budget.py](../../apps/server/src/simp_server/budget.py) — `cost`
+
+```text
+FUNCTION cost(profile, usage):
+    // missing token count or price counts as 0
+    RETURN (usage.input * profile.price_in + usage.output * profile.price_out) / 1,000,000
+```
+
+A profile with no prices costs $0. That is a quiet hole, so the server warns at start:
+
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `create_app.lifespan`
+
+```text
+FOR EACH profile (name, pr) in settings.profiles:
+    IF pr has no price_in OR no price_out:
+        LOG warning "profile <name> has no prices: its calls cost $0 and never hit a budget"
+```
+
+The store can sum the rows:
+
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.spent`
+
+```text
+FUNCTION spent(user_id, since, session_id = none):
+    RETURN SUM(cost) of usage rows for user_id with time >= since   // 0 if no rows
+    // (also filter by session_id when given)
+```
+
+`since` is a timestamp. Why sum rows and not keep a counter on the `Run`? A counter dies when the run is evicted or the server restarts; the rows do not. One sum query serves both limits.
+
+### The check: is the spend over the limit?
+
+Now the guard has what it needs. Before each model call it runs `over_budget`:
 
 Real code: [server.py](../../apps/server/src/simp_server/server.py) — `Run.over_budget`
 
@@ -166,7 +159,22 @@ FUNCTION over_budget():
     RETURN msg
 ```
 
-Four reasons to refuse, in order: the server is paused (kill switch, below); the user was revoked ([22](22-store-auth.md)); the user spent the day limit; this run spent the run limit since `run_start`. The revoke check is here because revoking in [22](22-store-auth.md) only blocks new logins and requests. A loop that is already running makes no new request, so it would keep going. Checking before each model call stops it too.
+There are four reasons to refuse, in order. The first is the [kill switch](glossary.md#kill-switch): the admin has paused the whole server. The second is a revoked user ([22](22-store-auth.md)): revoking only blocks new logins and requests, and a loop that is already running makes no new request, so without this check it would keep going. The last two compare the spend with the limits.
+
+The limits come from the `[budget]` table in `settings.toml`:
+
+Real code: [budget.py](../../apps/server/src/simp_server/budget.py) — `Limits, limits`
+
+```text
+CLASS Limits:
+    user_day_usd = 2.0
+    run_usd = 0.5
+
+FUNCTION limits(settings):
+    RETURN Limits built from settings["budget"] (or defaults)
+```
+
+`user_day_usd` is the most one user may spend in a day ([daily budget](glossary.md#daily-budget)); its `since` is `budget.day_start()`, midnight in the server's local time. `run_usd` is the most one run may spend ([run budget](glossary.md#run-budget)); its `since` is `run_start`, and the sum is filtered by the session id. Defaults: $2 a day, $0.5 a run.
 
 The check is `>=` on money **already spent**. It does not guess the next cost. So one call can go a little over, and the *next* call is refused.
 
@@ -188,11 +196,11 @@ A new prompt starts a fresh run budget. A queued follow-up ([07](07-steering.md)
 | 10:02 | her queued follow-up starts | stays 10:00 | 10:00 (same run) |
 | 10:10 | sends a new prompt | 10:10 | 10:10 (from zero) |
 
-When the guard refuses, the run ends in state `"error"`. The client sees why from the error text.
+So Ana's runaway loop now stops: the call that comes after the spend reaches $0.5 is refused, and the guard ends the run with a budget error.
 
 ### Kill switch: one file
 
-A **[kill switch](glossary.md#kill-switch)** stops all model calls on the server at once. Here it is a file named `PAUSED` in the data directory:
+How does the admin pause the server? The **[kill switch](glossary.md#kill-switch)** that `over_budget` checks first is a file named `PAUSED` in the data directory:
 
 Real code: [server.py](../../apps/server/src/simp_server/server.py) — `SessionManager.paused`
 
@@ -219,7 +227,7 @@ IF mode is "pause" or "resume":
 
 Pause does not kill tools that are already running. It only refuses the next model call. A tool call ends on its own (or by its timeout, [10](10-coding-tools.md)), and without the model the loop cannot ask for more tools. So the damage stops within one step.
 
-A user can ask how much they spent today and whether the server is paused. The web client ([25](25-web-client.md)) shows this from `/api/usage`:
+After a refusal Ana will ask: how much did I spend today, and is the server paused? The server answers at `/api/usage`, and the web client ([25](25-web-client.md)) shows it:
 
 Real code: [server.py](../../apps/server/src/simp_server/server.py) — `create_app.usage`
 
@@ -324,7 +332,7 @@ Other tests in the file cover the day limit (`test_day_budget_and_pause`), the k
 
 ## Why this way
 
-> **Guard the one door, count in the store.** Every model call goes through `stream_fn`, so one wrapper (`budget.guard`) covers the loop, retries and the title call. The library knows nothing about money; the server adds it from outside. Cost is written to the store after each call, so a crash cannot hide spending. The cost of this choice: the last call can go a little over the limit. The kill switch is a file because it must work when everything else is broken.
+> **Guard `stream_fn`, count in the store.** Every model call goes through `stream_fn`, so one wrapper (`budget.guard`) covers the loop, retries and the title call. The library knows nothing about money; the server adds it from outside. Cost is written to the store after each call, so a crash cannot hide spending. The cost of this choice: the last call can go a little over the limit. The kill switch is a file because it must work when everything else is broken.
 
 ## Exercises
 
@@ -333,6 +341,6 @@ Other tests in the file cover the day limit (`test_day_budget_and_pause`), the k
 
 ## Recap
 
-Ana's runaway loop is now stopped. `budget.cost` turns each call's token usage into dollars from the profile prices, and `store.add_usage` saves it as a row. `budget.guard` wraps `stream_fn`, so before every model call `Run.over_budget` checks four things: kill switch, revoked user, day limit, run limit. A refusal is a normal model error with `error_kind="budget"`, never retried. Follow-ups share the run budget. The kill switch is a `PAUSED` file that `simp-server pause` and `resume` create and delete. Bob's forgotten runs are freed by `evict_idle` and the `max_open_sessions` cap, and they load back from the store. Next, [24](24-docker-sandbox.md) makes the sandbox a real container, which is why freeing it matters.
+Ana's runaway loop is now stopped. `budget.guard` wraps `stream_fn`. After each call, `budget.cost` turns the token usage into dollars from the profile prices, and `store.add_usage` saves it as a row. Before every model call, `Run.over_budget` checks four things: kill switch, revoked user, day limit, run limit. A refusal is a normal model error with `error_kind="budget"`, never retried. Follow-ups share the run budget. The kill switch is a `PAUSED` file that `simp-server pause` and `resume` create and delete. Bob's forgotten runs are freed by `evict_idle` and the `max_open_sessions` cap, and they load back from the store. Next, [24](24-docker-sandbox.md) makes the sandbox a real container, which is why freeing it matters.
 
 **Builds on:** [22 Store and auth](22-store-auth.md) · **Next:** [24 Docker sandbox](24-docker-sandbox.md)
