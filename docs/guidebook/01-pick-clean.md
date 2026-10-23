@@ -85,7 +85,7 @@ Where it breaks:
 
 - Every new vendor means editing the loop. A user cannot add their own vendor.
 - Both SDKs must be installed to import this file, even if you use one.
-- A raised exception (network down, bad key) crashes the loop. The [stream function](glossary.md#stream-function) rule says "never raise" (explained below).
+- A raised exception (network down, bad key) crashes the loop. The stream function rule says "never raise" (explained below).
 
 ### From naive to real
 
@@ -102,7 +102,7 @@ A new vendor is one new row. Users can add their own row too, without touching t
 
 **Problem 2: you must install every SDK.** Fix: import a vendor's SDK only the first time that vendor is called. For example, if you only use Anthropic, `import openai` never runs, so the OpenAI SDK does not need to be installed.
 
-**Problem 3: one error crashes the loop.** Fix: never raise. Send an error event, just like a normal reply. Each vendor function catches its own errors (network down, bad key) this way. Pick adds two more:
+**Problem 3: one error crashes the loop.** Fix: never raise. Send an error event, just like a normal reply. Each vendor's [stream function](glossary.md#stream-function) catches its own errors (network down, bad key) this way. Pick adds two more:
 
 ```text
 api not in the table  -> error event "Unknown api: my-api"
