@@ -132,7 +132,7 @@ A test of the real agent with a real model on fixed tasks, checked by a program.
 One file in `evals/tasks/*.toml`: a `prompt`, a shell `check` (exit 0 = pass) and optional `[setup]` files written into a fresh temp folder. Home: [12](12-evals.md#a-task-is-a-toml-file).
 
 ## Profile
-A named model setup in `settings.toml` under `[profiles.<name>]`: `api`, `model`, optional `base_url`, `api_key_env`, `price_in` / `price_out` (dollars per million tokens). `build_model` turns it into a `Model`. Used by evals in [12](12-evals.md); home: [18](18-profiles-plugins.md).
+A named model setup in a settings file (`settings.toml` under `[profiles.<name>]` for the server and evals, `~/.simp-agent/settings.json` for the CLI): `api`, `model`, optional `base_url`, `api_key_env`, `price_in` / `price_out` (dollars per million tokens). `build_model` turns it into a `Model`. Used by evals in [12](12-evals.md); home: [18](18-profiles-plugins.md).
 
 ## Session
 One long conversation with the agent, across many prompts and restarts. Owned by `AgentSession`. Home: [13](13-session.md).
