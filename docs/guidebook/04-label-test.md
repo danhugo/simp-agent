@@ -99,7 +99,7 @@ Almost every later chapter needs "the model said X" to test something:
 - Abort (ch [06](06-events-abort.md)), retry (ch [15](15-retry.md)) and compaction (ch [16](16-compaction.md)) need a model that fails, or that writes a summary, at the exact call we choose.
 - The server budget tests (ch [23](23-limits.md)) need to count how many model calls happened.
 
-A real model cannot do this. We cannot tell it "on the second call, return an error". And a test that calls a real API is slow, costs money, and fails when the network is down.
+A real model cannot do this: we cannot tell it "on the second call, return an error".
 
 So the plan is: the [stream function](glossary.md#stream-function) shape from [01](01-pick-clean.md#out-the-shape-of-a-model-call) is the only thing the loop knows. A fake that has this shape can stand in for blocks 3–5, and everything else can be tested against it. The real providers (ch [02](02-translate-send.md), [03](03-parse.md)) match the same shape.
 
@@ -113,9 +113,9 @@ Real code: [agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agen
 
 The default is the real `ai.stream`; a test passes the fake instead.
 
-### Naive version
+### Start: the smallest stream function
 
-The first idea is a function that always returns the same answer:
+We start from the [stream function](glossary.md#stream-function) shape of [01](01-pick-clean.md#out-the-shape-of-a-model-call): take `(model, context, api_key)`, yield events, end with `done` or `error`. The smallest function with that shape always gives the same answer:
 
 ```text
 FUNCTION fake(model, ctx, api_key):
@@ -131,7 +131,7 @@ This works for a test where the model only says "ok". But it breaks fast:
 - **No errors.** A message with `stop_reason="error"` still comes out as a `done` event, which a real provider never does.
 - **Replies cannot react.** A fixed reply cannot look at what the loop sent, for example to answer with the tool result.
 
-### Step by step: from naive to real
+### Step by step: grow it into `FakeProvider`
 
 **Step 1 — a script of replies.** Keep a list and take the next one each call:
 
