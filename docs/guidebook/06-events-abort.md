@@ -71,8 +71,6 @@ flowchart LR
     AG --> S2[log]
 ```
 
-The next section follows the events out. The section after it follows the Stop in. The last one shows the `Agent` class that sits between them.
-
 ## Events: one stream of small dicts
 
 ### What a caller sees
@@ -166,7 +164,7 @@ So every run ends with `agent_end`, and the UI can always clear its "busy" state
 
 ### Where the events go
 
-Follow one event out. `send` hands it to `emit`. When the app uses the `Agent` class (below), that `emit` is `_emit_all(agent._subs, e)`, so the event goes to **each subscriber** in the order they signed up with `agent.subscribe(fn)`. One subscriber can be the UI, another can be a log. The UI turns each event into what the user sees in our README example: `message_update` with a `text_delta` puts the words "README.md says…" on screen, `tool_execution_start` shows "reading README.md…", and `agent_end` turns off the busy spinner. The loop never draws anything; it only says what happened.
+Follow one event out. `send` hands it to `emit`. When the app uses the `Agent` class, that `emit` is `_emit_all(agent._subs, e)`, so the event goes to **each subscriber** in the order they signed up with `agent.subscribe(fn)`. One subscriber can be the UI, another can be a log. The UI turns each event into what the user sees in our README example: `message_update` with a `text_delta` puts the words "README.md says…" on screen, `tool_execution_start` shows "reading README.md…", and `agent_end` turns off the busy spinner. The loop never draws anything; it only says what happened.
 
 ## Abort: one asyncio.Event
 
@@ -249,7 +247,7 @@ So the history gets `AssistantMessage("README.md says this proj", stop_reason="a
 
 **Stop during a tool.** This time the model has already answered: it asked to run `bash` with `npm test`, and the tests take a minute. The user presses Stop while they run.
 
-The model call is over, so there is no stream to close. Now the **tool** must stop. `bash` ([10](10-coding-tools.md)) watches `ctx.cancel`; when the flag is set, it kills the `npm test` process. The tool ends with an error, and `run_tool` turns it into the result "Interrupted by the user" ([05 Step 3](05-agent-loop.md)). This is not special to `bash`: any tool that is running when Stop comes and stops because of the flag gets the same result (the tools that run commands, such as `ls`, `grep` and `find`, pass the flag on to `env.exec`). A tool that does not watch the flag just finishes, and keeps its normal result. Tool calls of the same turn that have not started yet are skipped and get no result in the history. Before the next model call, `transform_messages` adds "No result provided" for each of them, so every call still has a result.
+The model call is over, so there is no stream to close. Now the **tool** must stop. `bash` ([10](10-coding-tools.md)) watches `ctx.cancel`; when the flag is set, it kills the `npm test` process. The tool ends with an error, and `run_tool` turns it into the result "Interrupted by the user" ([05 Step 3](05-agent-loop.md)). This is not special to `bash`: any tool that is running when Stop comes and stops because of the flag gets the same result (the tools that run commands, such as `ls`, `grep` and `find`, pass the flag on to `env.exec`). A tool that does not watch the flag just finishes, and keeps its normal result.
 
 Right after the tools, the loop checks the flag and ends the run. The model's message finished normally, so it is not marked `aborted`. The loop therefore adds one small `aborted` message itself, to record that the user stopped:
 

@@ -37,7 +37,7 @@ Each step can go wrong. The model can ask for a tool that does not exist. It can
 
 Three words we use from here on, from big to small. A **[run](glossary.md#run-agent)** is everything from the user's message until the loop stops; here it is one call to `agent_loop()` (later `agent.prompt()`, [06](06-events-abort.md)). A **[turn](glossary.md#turn)** is one model call plus the tools that call asked for; a run has one or more turns. A **[tool call](glossary.md#tool-call)** is the model asking for one tool, which we then *execute* once; a turn has zero or more of them. So "run" never means one tool or one model call.
 
-Take the example below: the user asks "What is in README.md?". It is one run with two turns. In turn 1 the model asks for `read`, and the `read` tool executes. In turn 2 the model answers with text and asks for nothing, so the run ends.
+Take this example: the user asks "What is in README.md?". It is one run with two turns. In turn 1 the model asks for `read`, and the `read` tool executes. In turn 2 the model answers with text and asks for nothing, so the run ends.
 
 ```mermaid
 flowchart LR
@@ -71,7 +71,7 @@ FUNCTION naive_loop(system_prompt, messages, tools, model):
 
 Here `Context` is the request we send to the model.
 
-It works for the **happy path**: the case where nothing goes wrong. Let us follow one example through it and see where it breaks. The user asks: *"What is in README.md?"* We have one tool, `read`, which takes `{"path": ...}` and returns the file's text. (Later in this chapter `read` becomes an `AgentTool`; its real code is in [10](10-coding-tools.md).)
+It works for the **happy path**: the case where nothing goes wrong. Let us follow one example through it and see where it breaks. The user asks: *"What is in README.md?"* We have one tool, `read`, which takes `{"path": ...}` and returns the file's text. (Its real code is in [10](10-coding-tools.md).)
 
 If all goes well, the model answers with a tool call `read({"path": "README.md"})`. The loop executes `read`, adds the file's text to the history, and calls the model again. Now the model has the text, so it writes a short summary with no tool calls, and the loop returns. Good. But models make mistakes, files go missing and networks fail. Here is what the naive loop does then.
 
@@ -123,7 +123,7 @@ FUNCTION run_tool(tools, call, ctx):
 
 So for `read({})` the tool never executes. The model gets the text `Invalid arguments for read: 'path' is a required property`. That is clear enough that on the next turn it sends `{"path": "README.md"}`.
 
-**Step 3 — catch tool errors.** We wrap the tool call in `try`, and turn any exception into text. The tool now also gets a second argument, `ctx`: a small helper object that each tool call gets (Step 6). Here we only need one part of it, `ctx.cancel`, which is set when the user presses Stop.
+**Step 3 — catch tool errors.** We wrap the tool call in `try`, and turn any exception into text. The tool now also gets a second argument, `ctx`: a small helper object that each tool call gets. Here we only need one part of it, `ctx.cancel`, which is set when the user presses Stop.
 
 ```text
 FUNCTION run_tool(tools, call, ctx):
@@ -147,7 +147,7 @@ Now the missing file. `read` raises `FileNotFoundError`, and the model receives 
 
 ```text
 IF msg.stop_reason is "error" or "aborted":
-    RETURN the new messages       // the full loop is below
+    RETURN the new messages
 ```
 
 So for the provider failure, the loop now stops because it *checked* `stop_reason`, not by luck. The error message stays in the history, and the caller can see it.
@@ -163,7 +163,7 @@ real:   reply = config.stream_fn(model, request)
 
 The app passes `stream_fn = ai.stream`. A test passes `FakeProvider` ([04](04-label-test.md)), which returns a scripted answer, such as "call `read` README.md". No real model, and the same answer every time.
 
-`stream_fn` lives in [`LoopConfig`](glossary.md#loopconfig), the one object that holds the loop's settings (`system_prompt`, the history, `emit` and `cancel` are passed to `agent_loop` on their own; we meet the other fields as we need them).
+`stream_fn` lives in [`LoopConfig`](glossary.md#loopconfig), the one object that holds the loop's settings (`system_prompt`, the history, `emit` and `cancel` are passed to `agent_loop` on their own).
 
 **Step 6 — give the tool a context.** Last, the tool needs to know where it works. Each tool call gets one `ToolContext` object, `ctx`, built from the loop's settings:
 
@@ -171,7 +171,7 @@ The app passes `stream_fn = ai.stream`. A test passes `FakeProvider` ([04](04-la
 ctx = ToolContext(cancel, config.env, config.cwd, on_update)
 ```
 
-It has four parts. `cancel` is the Stop flag that we already used in Step 3. `env` is the place where file and shell work really happens. By default it is `LocalEnv`: file reads and shell commands on your own disk ([09](09-exec-env.md)). A Docker env can replace it ([24](24-docker-sandbox.md)). `cwd` is the working folder, so `README.md` means the README.md in the user's project, not wherever the program started. `on_update` is a function the tool can call with a short text to report progress while it works, for example the output of a long command; the UI can show it right away.
+It has four parts. `cancel` is the cancel flag that we already used in Step 3. `env` is the place where file and shell work really happens. By default it is `LocalEnv`: file reads and shell commands on your own disk ([09](09-exec-env.md)). A Docker env can replace it ([24](24-docker-sandbox.md)). `cwd` is the working folder, so `README.md` means the README.md in the user's project, not wherever the program started. `on_update` is a function the tool can call with a short text to report progress while it works, for example the output of a long command; the UI can show it right away.
 
 Here is the whole path in one table:
 
@@ -187,11 +187,11 @@ Here is the whole path in one table:
 
 ## Real design
 
-The six steps fixed the naive loop. Now we put them together as real code, and we follow the data, top-down, with the same README.md example. We start where a run starts: `agent_loop`, whose input is the history (`messages`) plus the user's new message (`prompts`), with the Step 4 check of `stop_reason`. Then we go one level down to `_llm_turn`, the one model call inside each turn (where Step 5's `stream_fn` is called). Then `run_tool`, what the loop does with each tool call the model asks for (Steps 1–3). Last come the pieces the loop uses, each one after we have seen where it is needed: the tool itself (`AgentTool`), what each tool call gets (`ToolContext`, Step 6), and the settings (`LoopConfig`, Step 5).
+The six steps fixed the naive loop. Now we put them together as real code, and we follow the data, top-down, with the same README.md example. We start where a run starts: `agent_loop`, whose input is the history (`messages`) plus the user's new message (`prompts`), with the Step 4 check of `stop_reason`. Then we go one level down to `_llm_turn`, the one model call inside each turn (where Step 5's `stream_fn` is called). Then `run_tool`, what the loop does with each tool call the model asks for (Steps 1–3). Last come the pieces the loop uses: the tool itself (`AgentTool`), what each tool call gets (`ToolContext`, Step 6), and the settings (`LoopConfig`, Step 5).
 
 ### `agent_loop`: the loop
 
-This is the main loop from the naive version, with the Step 4 check of `stop_reason`. It uses a few pieces that we look at after the loop: `_llm_turn`, `run_tool`, `ToolContext` and `LoopConfig`.
+This is the main loop from the naive version, with the Step 4 check of `stop_reason`.
 
 First, a run in plain words. The user asks "What is in README.md?" Two turns happen:
 
@@ -204,7 +204,9 @@ The run returns four new messages: the user prompt, the assistant message and to
 
 Now the loop that does this. This is a small version: it leaves out steering and follow-ups ([07](07-steering.md)), tool events and most of abort ([06](06-events-abort.md)), and hooks ([08](08-hooks-approval.md)).
 
-Its inputs, in plain words: `messages` is the history so far (the loop appends to this same list), `prompts` are the new user messages for this run, and `config` is the [`LoopConfig`](#loopconfig-the-settings) settings object (shown at the end of this section). `emit` is a function from the app; the loop calls it with every **event** (a small dict such as `{type: "turn_start"}` that says what just happened, so a UI can show it; [06](06-events-abort.md) covers them all). Inside, `send(event)` passes one event to `emit`, and `add(message)` keeps a message in the history and also sends events about it. `cancel` is the Stop flag from Steps 3 and 4.
+Its inputs, in plain words: `messages` is the history so far (the loop appends to this same list), `prompts` are the new user messages for this run, and `config` is the `LoopConfig` from Step 5. `cancel` is the cancel flag from Steps 3 and 4.
+
+The last input, `emit`, is how the loop tells the app what happens. It is a function from the app, and the loop calls it with every **[event](glossary.md#event)**: a small dict such as `{type: "turn_start"}` that says what just happened, so a UI can show it. Inside the loop, two small helpers use it. `send(event)` just passes one event to `emit`. `add(message)` puts a message in the history and, through `send`, tells the app about it.
 
 `_llm_turn` gets `send` and `add` too. It uses `send` for each piece of the streamed answer, and `add` for the few messages it puts in the history itself (a note when the tool list changed, and steering messages, [07](07-steering.md)).
 
@@ -233,7 +235,7 @@ FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> n
             ELSE:
                 on_update = FUNCTION (text): SEND event tool_execution_update for this call
                 ctx = ToolContext(cancel, config.env, config.cwd, on_update)
-                result = WAIT for run_tool(the current tools, call, ctx)   // tool = an AgentTool, see below
+                result = WAIT for run_tool(the current tools, call, ctx)   // tool = an AgentTool
             add(result)
         IF cancel is set:                      // Stop during the tools: see Step 4
             msg = an aborted AssistantMessage; add(msg)
@@ -297,9 +299,10 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
         IF event type is "done" or "error": msg = event message
 ```
 
-The tool list and the system prompt are read again every turn. `system_prompt` is usually a string, but it may also be a function that returns the string, so the prompt can change between turns (what goes in it is [11](11-system-prompt.md)). The `view` is the list of messages we send; by default it is the whole history, and [16](16-compaction.md) makes it shorter. `transform_messages` ([01](01-pick-clean.md#2-clean-transform_messages)) cleans it before it is sent. The final message is taken from the last `done` or `error` event, the one rule of a stream function. In the real code the call goes through a small wrapper, `_stream`, so that Stop can cut it off in the middle ([06](06-events-abort.md)).
+The tool list and the system prompt are read again every turn. `system_prompt` is usually a string, but it may also be a function that returns the string, so the prompt can change between turns (what goes in it is [11](11-system-prompt.md)). The `view` is the list of messages we send. `transform_messages` ([01](01-pick-clean.md#2-clean-transform_messages)) cleans it before it is sent. The final message is taken from the last `done` or `error` event, the one rule of a stream function. In the real code the call goes through a small wrapper, `_stream`, so that Stop can cut it off in the middle ([06](06-events-abort.md)).
 
 The skipped lines (a steering poll and the "Tools added / removed" note) belong to [07](07-steering.md). The `view` is made by the `prepare_next_turn` hook. Two more hooks, `transform_context` and `convert_to_llm`, can change it before `transform_messages`. In a bare `LoopConfig` all three do nothing; the `Agent` class sets `prepare_next_turn` to `build_view` by default, and [16](16-compaction.md) explains it.
+
 ### `run_tool`: one call, never raises
 
 The model asked for `read(path="README.md")`. `agent_loop` hands that call to `run_tool`. What does `run_tool` do with it?
@@ -312,7 +315,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 FUNCTION run_tool(tools, call, ctx) -> ToolResultMessage:
     err(text) = ToolResultMessage(call.id, call.name, text, is_error = yes)
 
-    tool = FIND the tool in tools whose name is call.name   // tool = an AgentTool, see below
+    tool = FIND the tool in tools whose name is call.name   // tool = an AgentTool
     IF no tool: RETURN err("Tool <call.name> not found")
     TRY:
         IF tool.prepare_arguments: call.arguments = tool.prepare_arguments(call.arguments)
@@ -341,11 +344,11 @@ flowchart TD
     D -- returns text --> OK[ToolResultMessage text]
 ```
 
-Only one thing is new compared with Steps 1–3: `prepare_arguments`, an optional repair function on the tool ([below](#tools-agenttool)), runs **before** the schema check, so it can repair an old argument shape. It writes back into `call.arguments`, so the history keeps the repaired version.
+Only one thing is new compared with Steps 1–3: `prepare_arguments`, an optional repair function on the tool, runs **before** the schema check, so it can repair an old argument shape. It writes back into `call.arguments`, so the history keeps the repaired version.
 
 ### Tools: `AgentTool`
 
-`run_tool` looked up `read` in the tool list. Each item in that list is an `AgentTool`: the description the model sees (`name`, `description`, `parameters` = `ai.Tool`) plus the code that really runs (`execute`). So `AgentTool` is WHAT a tool is; `run_tool` is HOW one call to it is executed safely: find it by name, check the args against its parameters, call its `execute`, and turn any error into a result.
+`run_tool` looked up `read` in the tool list. Each item in that list is an `AgentTool`. `AgentTool` is WHAT a tool is; `run_tool` is HOW one call to it is executed safely: find it by name, check the args against its parameters, call its `execute`, and turn any error into a result.
 
 This is the tool from the naive loop, made real. Why do we need a new class? From [01](01-pick-clean.md), `ai.Tool` is only a description for the model: `name`, `description`, `parameters` (a JSON schema). The `ai` layer never executes tools. But the loop must also have the code that executes the tool. So `AgentTool` is `ai.Tool` plus `execute`:
 
@@ -372,7 +375,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 
 ```text
 CLASS ToolContext:
-    cancel       // the Stop flag (an asyncio.Event: a flag that async code can wait on)
+    cancel       // the cancel flag (an asyncio.Event: a flag that async code can wait on)
     env          // the ExecutionEnv
     cwd          // the working folder
     on_update    // FUNCTION (text): SEND event tool_execution_update (progress for the UI)
@@ -424,7 +427,7 @@ def call(name, **args):
     return AssistantMessage([ToolCall("c1", name, args)], stop_reason="tool_use")
 
 
-async def echo(args, cancel):   # the 2nd argument is the ToolContext; the test names it cancel
+async def echo(args, ctx):
     return f"echo {args['x']}"
 
 
@@ -466,11 +469,7 @@ async def test_unknown_tool_and_invalid_args():
 
 Neither error stops the run. The model gets the error text and the third reply ends normally.
 
-Other loop tests in the same file (the edit and real-tool tests belong to [10](10-coding-tools.md)):
-
-- `test_no_tool_call_one_turn` — one reply with no calls → one turn.
-- `test_tool_exception` — `boom` raises; the result is an error containing `kaboom`.
-- `test_provider_error` — a reply with `stop_reason="error"` ends the run with `agent_end`.
+The same file has three more loop tests (its edit and real-tool tests belong to [10](10-coding-tools.md)). `test_no_tool_call_one_turn` checks that a reply with no calls gives one turn, `test_tool_exception` checks that when `boom` raises, the result is an error containing `kaboom`, and `test_provider_error` checks that a reply with `stop_reason="error"` ends the run with `agent_end`.
 
 ```bash
 uv run pytest packages/simp_agent/tests/test_core.py
@@ -496,7 +495,7 @@ uv run pytest packages/simp_agent/tests/test_core.py
 - `AgentTool` = `ai.Tool` + `execute(args, ctx) -> str` (+ optional `prepare_arguments`).
 - `ToolContext` gives a tool `cancel`, `env`, `cwd` and `on_update`, so tools need no globals.
 - `run_tool` finds the tool, checks the arguments with the tool's JSON schema, executes it, and turns every failure into an error `ToolResultMessage`.
-- `agent_loop` repeats: call the model, add the answer, execute each tool call, add each result. It stops when the model asks for no tools, on an `error` / `aborted` answer, or when the user aborts.
+- `agent_loop` repeats: call the model, add the answer, execute each tool call, add each result, until the run ends ([Step 4](#step-by-step-from-naive-to-real)).
 - Cut-off (`length`) tool calls are never executed, but still get a result.
 - `LoopConfig.stream_fn` lets tests use `FakeProvider`; the other hooks have empty defaults and are filled in by later chapters.
 
