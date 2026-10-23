@@ -68,13 +68,13 @@ It works for one happy demo. It breaks in four ways:
 
 ## Real design
 
-Each break has one fix, and each fix has one section below:
+We follow Ana through one day on the server, and fix each break when her flow hits it. She logs in with a password, gets a token (the server keeps only its hash), opens her session, asks a question while every event is saved, and then the server restarts and must recover. The table shows where each break is fixed:
 
 | Break | Fix | Section |
 |---|---|---|
-| 1. process stops | one SQLite file on disk | [SqliteStore](#sqlitestore-one-file-five-tables) |
-| 2. data is read | keep only hashes of tokens and passwords | [Token hashes](#token-hashes), [scrypt passwords](#scrypt-passwords) |
-| 3. users share the server | `user_id` in every session query | [SqliteStore](#sqlitestore-one-file-five-tables) |
+| 1. process stops | one SQLite file on disk | [Opening the store](#opening-the-store) |
+| 2. data is read | keep only hashes of tokens and passwords | [scrypt passwords](#scrypt-passwords), [Token hashes](#token-hashes) |
+| 3. users share the server | `user_id` in every session query | [Loading a session](#loading-a-session) |
 | 4. a run dies | rebuild from rows, then close the dead run | [Loading a session](#loading-a-session), [recover](#recover) |
 
 First, how the server finds its store and its auth. `server.py` defines two small interfaces, `Store` (it must have `open()`) and `Auth` (it must have `authenticate(request)`, which returns the user or nothing). The class for each is picked by name from `DEFAULT_PLUGINS`:
@@ -88,7 +88,7 @@ DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_
 
 We call these three names **[server slots](glossary.md#server-slot)**. They are not the agent plugins of [14](14-plugins.md): a slot is one class the server needs, and you swap it by naming another class. This chapter fills the `store` and `auth` slots; [24](24-docker-sandbox.md) fills `sandbox`.
 
-### SqliteStore: one file, five tables
+### Opening the store
 
 `SqliteStore` lives in `apps/server/src/simp_server/store.py`. It uses SQLite through `aiosqlite`, a small package that wraps the standard `sqlite3` so that calls are `async` and do not block the server. The whole database is one file, `<data_dir>/simp.db`. `data_dir` comes from `settings.toml`; by default it is `~/.simp-server`. A file stays after the process stops (break 1).
 
@@ -99,36 +99,68 @@ Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteSto
 ```text
 db = CONNECT to <data_dir>/simp.db
 SET journal_mode = WAL
-RUN SCHEMA          // CREATE TABLE IF NOT EXISTS ... for the five tables
+RUN SCHEMA          // CREATE TABLE IF NOT EXISTS ... for every table
 ```
 
 **[WAL](glossary.md#wal)** (write-ahead log) is a SQLite mode. Readers do not wait for a writer, and a crash does not leave a half-written database. After that, `open()` updates old files. The server was built in stages, and a `simp.db` from an earlier stage has no `cost`, `password` or `disabled` column. So `open()` adds them with `ALTER TABLE`, and marks old users with no token as disabled. This way an admin can update the code and keep the same file.
 
-The five tables, and what each is for (all columns: [ref-objects · Server store tables](ref-objects.md#server-store-tables)):
-
-| Table | One row is | Used in |
-|---|---|---|
-| `users` | a user: name, static token hash, password hash, `disabled` | [Token hashes](#token-hashes), [scrypt passwords](#scrypt-passwords) |
-| `tokens` | one per-device login token hash | [Token hashes](#token-hashes) |
-| `sessions` | a session: owner, title, profile, sandbox | [Loading a session](#loading-a-session) |
-| `entries` | one saved message or event, with its `seq` | [Loading a session](#loading-a-session), [Saving events](#saving-events) |
-| `usage` | one model call: tokens and cost | [23 Limits](23-limits.md) |
-
-Every table except `users` has a `user_id` column, and every read of a session, its entries or its usage has `user_id` in its `WHERE`. This is the fix for break 3:
-
-Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.get_session`
-
-```text
-get_session(user_id, sid):
-    rows = SELECT sessions WHERE id = sid AND user_id = user_id
-    RETURN first row, or nothing
-```
-
-Example: Ana owns session `s1`. Bob sends a request for `s1`. The query runs with Bob's id, finds no row, and the server answers 404. There is no special "is this yours?" check to forget; it is in the SQL. (The few queries that look up a user, like `user_by_token` and `login` below, have no user yet, so they search by token or name.)
+The schema makes five tables at once, but we meet each one below at the moment Ana's flow first writes to it (all columns: [ref-objects · Server store tables](ref-objects.md#server-store-tables)).
 
 Why SQLite and not Postgres? The server runs on one machine ([26](26-system-tests-deploy.md)). SQLite needs no extra server process, and a backup is a copy of one file. The cost is that only one write runs at a time. For one team on one machine, writes are small and fast, so this is fine.
 
+Now Ana arrives. Before she can do anything, the server must know who she is.
+
+### scrypt passwords
+
+**IN:** a name and a password. **OUT:** a new per-device token, or nothing.
+
+Ana opens the web client ([25](25-web-client.md)) and types her name and password. To check them, the server first needs a row for her. That is the first table, `users`:
+
+```sql
+users(id, name, token_sha256, password, disabled)
+```
+
+The row is written by `add_user`, from `/api/signup` or from the admin command `simp-server seed` (see [Token hashes](#token-hashes) for the token part). Passwords use **[scrypt](glossary.md#scrypt)**, a slow hash from Python's `hashlib`. Each password gets a **[salt](glossary.md#salt)**: random bytes mixed into the hash, so two users with the same password get different hashes. The result goes into `users.password`:
+
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `_scrypt`, `hash_password`, `check_password`
+
+```text
+_scrypt(password, salt):
+    RETURN scrypt(password, salt, n=2**14, r=8, p=1)    // common safe cost values
+
+hash_password(password):
+    salt = 16 random bytes
+    RETURN "scrypt$<salt hex>$<_scrypt(password, salt) hex>"
+
+check_password(password, stored):
+    IF no stored hash:
+        _scrypt(password, dummy salt)   // same time whether or not the user exists
+        RETURN false
+    split stored into salt and h
+    RETURN constant-time compare(_scrypt(password, salt), h)
+```
+
+Two choices here are about time. If the user does not exist, we still run scrypt once, so an attacker cannot learn which names exist by timing the answer. And `hmac.compare_digest` compares in constant time, so the time does not show how many bytes matched.
+
+scrypt is slow on purpose, and slow code would block the event loop. So the store calls it with `asyncio.to_thread(...)`. `login` checks Ana's password, then makes a new per-device token, which the next section explains:
+
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.login`
+
+```text
+login(name, password):
+    rows = SELECT id, password FROM users WHERE name = name AND disabled = 0
+    IF NOT check_password(password, stored hash or none)   // run in a thread
+        RETURN nothing
+    token = new random token
+    INSERT into tokens (sha(token), user id, now)
+    RETURN token
+```
+
+The routes are in `server.py`: `/api/signup`, `/api/login`, `/api/logout`. Sign-up is closed unless `signup_code` is set in settings, so a stranger who finds the port cannot make an account. The code is checked with `hmac.compare_digest`. The name must match `[a-z0-9_-]{2,32}` and the password needs at least `MIN_PASSWORD = 8` characters.
+
 ### Token hashes
+
+Ana now holds a token from `login`. Every next request carries it.
 
 **IN:** an HTTP request with a header. **OUT:** the user `{id, name}`, or nothing (then HTTP 401).
 
@@ -137,9 +169,10 @@ A **[token](glossary.md#token-auth)** is a long random string. The client sends 
 There are two kinds of token. A **[static token](glossary.md#static-token)** is one long-lived token per user, kept in `users.token_sha256`. The admin makes it on the command line with `simp-server seed --name ana`, which prints it once; `simp-server rotate --name ana` replaces it. A **[per-device token](glossary.md#per-device-token)** is made by each password login and kept as one row in the `tokens` table, so `logout` can delete just that device.
 
 ```sql
-users(id, name, token_sha256, password, disabled)
-tokens(token_sha256, user_id, created)
+tokens(token_sha256, user_id, created)   -- one row per device login
 ```
+
+The hash is made by `sha`, and `add_user` (seen above) uses the same `sha` for the static token:
 
 Real code: [store.py](../../apps/server/src/simp_server/store.py) — `sha`, `SqliteStore.add_user`
 
@@ -155,7 +188,7 @@ add_user(name, password = none, token = yes):
     RETURN t
 ```
 
-This fixes break 2. If someone copies `simp.db`, they get hashes, not tokens, and a hash cannot be sent back as a token. Why a fast hash like SHA-256 is enough here: a token is 32 random bytes, so nobody can guess it. A password can be guessed, so it gets a slow hash ([below](#scrypt-passwords)).
+This fixes break 2. If someone copies `simp.db`, they get hashes, not tokens, and a hash cannot be sent back as a token. Why a fast hash like SHA-256 is enough here: a token is 32 random bytes, so nobody can guess it. A password can be guessed, so it gets the slow scrypt hash ([above](#scrypt-passwords)).
 
 One query checks both kinds of token:
 
@@ -184,53 +217,29 @@ authenticate(request):
     RETURN nothing
 ```
 
-### scrypt passwords
-
-**IN:** a name and a password. **OUT:** a new per-device token, or nothing.
-
-A person cannot remember a 32-byte token, so the web client ([25](25-web-client.md)) asks for a name and a password. Passwords use **[scrypt](glossary.md#scrypt)**, a slow hash from Python's `hashlib`. Each password gets a **[salt](glossary.md#salt)**: random bytes mixed into the hash, so two users with the same password get different hashes. The result goes into `users.password`:
-
-Real code: [store.py](../../apps/server/src/simp_server/store.py) — `_scrypt`, `hash_password`, `check_password`
-
-```text
-_scrypt(password, salt):
-    RETURN scrypt(password, salt, n=2**14, r=8, p=1)    // common safe cost values
-
-hash_password(password):
-    salt = 16 random bytes
-    RETURN "scrypt$<salt hex>$<_scrypt(password, salt) hex>"
-
-check_password(password, stored):
-    IF no stored hash:
-        _scrypt(password, dummy salt)   // same time whether or not the user exists
-        RETURN false
-    split stored into salt and h
-    RETURN constant-time compare(_scrypt(password, salt), h)
-```
-
-Two choices here are about time. If the user does not exist, we still run scrypt once, so an attacker cannot learn which names exist by timing the answer. And `hmac.compare_digest` compares in constant time, so the time does not show how many bytes matched.
-
-scrypt is slow on purpose, and slow code would block the event loop. So the store calls it with `asyncio.to_thread(...)`. `login` checks the password, then makes a new per-device token:
-
-Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.login`
-
-```text
-login(name, password):
-    rows = SELECT id, password FROM users WHERE name = name AND disabled = 0
-    IF NOT check_password(password, stored hash or none)   // run in a thread
-        RETURN nothing
-    token = new random token
-    INSERT into tokens (sha(token), user id, now)
-    RETURN token
-```
-
-The routes are in `server.py`: `/api/signup`, `/api/login`, `/api/logout`. Sign-up is closed unless `signup_code` is set in settings, so a stranger who finds the port cannot make an account. The code is checked with `hmac.compare_digest`. The name must match `[a-z0-9_-]{2,32}` and the password needs at least `MIN_PASSWORD = 8` characters.
-
 ### Loading a session
 
 **IN:** the user and a session id. **OUT:** a `Run` in memory, with the same history as before the restart.
 
-Every saved message and event is one row in `entries`:
+Ana opens her fizzbuzz session. The session itself is one row in the `sessions` table (owner, title, profile, sandbox), written by `add_session`:
+
+```sql
+sessions(id, user_id, ...)   -- one row per session
+```
+
+Every table except `users` has a `user_id` column, and every read of a session, its entries or its usage has `user_id` in its `WHERE`. This is the fix for break 3:
+
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.get_session`
+
+```text
+get_session(user_id, sid):
+    rows = SELECT sessions WHERE id = sid AND user_id = user_id
+    RETURN first row, or nothing
+```
+
+Example: Ana owns session `s1`. Bob sends a request for `s1`. The query runs with Bob's id, finds no row, and the server answers 404. There is no special "is this yours?" check to forget; it is in the SQL. (The few queries that look up a user, like `user_by_token` and `login` above, have no user yet, so they search by token or name.)
+
+The session's history lives in the next table. Every saved message and event is one row in `entries`:
 
 ```sql
 entries(session_id, user_id, seq, type, json)   -- one row per message or event
@@ -278,6 +287,8 @@ After loading: 2 messages, a log of 4 events, `run_state = "idle"`, `seq = 6`. T
 **IN:** a message or an event during a run. **OUT:** one new row in `entries`, with the next `seq`.
 
 [21](21-transport.md) showed `Run.append` (a core message) and `Run.durable` (an event clients must not lose). The part that matters here is their last line: both add 1 to `self.seq` and call `store.add_entry(user_id, sid, seq, type, data)`, with type `"msg"` for a message and the event type for an event. Because both write to one table with one counter, "read rows in `seq` order" gives the exact order things happened, for the history and the log alike.
+
+Each model call also writes one row to the last table, `usage` (tokens and cost, again with `user_id`). [23 Limits](23-limits.md) reads it.
 
 ### recover
 
