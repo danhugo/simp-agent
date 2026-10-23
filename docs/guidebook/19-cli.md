@@ -38,17 +38,17 @@ A person at a terminal needs more:
 - Press Ctrl-C to stop a run, without killing the program.
 - Say yes or no before the agent runs `bash` or writes a file ([08](08-hooks-approval.md)).
 
-The CLI (command-line interface: the program you run in a terminal) is the thin layer that does this. It adds no agent behaviour of its own; it only connects keys and screen to the session. It lives in `apps/cli/src/simp_cli/` (the three files are listed at the top).
+The CLI (command-line interface: the program you run in a terminal) is the thin layer that does this. It adds no agent behaviour of its own; it only connects keys and screen to the session. It lives in `apps/cli/src/simp_cli/` (the three files are listed at the top). The CLI is the first of two front doors to the same `AgentSession`; the server in [20](20-server-run.md) is the second.
 
-## Naive version
+## Starting point: 18's AgentSession, called from Python
 
-The first idea: a loop with `input()` and one `asyncio.run` per line.
+At the end of [18](18-profiles-plugins.md) we use the `AgentSession` of [13](13-session.md) like this: build it, `subscribe` to its events ([06](06-events-abort.md)), and `await session.prompt(...)`. The first idea for a CLI is to put exactly that inside an `input()` loop, with one `asyncio.run` per line:
 
 ```text
-session = new AgentSession(Model())
-ON each event:
-    IF it is message_end of an assistant message:
-        PRINT the message text
+session = AgentSession(model, tools)
+session.subscribe(FUNCTION(event):
+    IF event is message_end of an assistant message:
+        PRINT the message text)
 
 LOOP forever:
     line = read a line from the keyboard ("> ")
@@ -56,16 +56,16 @@ LOOP forever:
     START a new event loop, run session.prompt(line), WAIT until it ends
 ```
 
-This is a sketch, not code from the repo.
-
-It works for one fizzbuzz turn. It breaks when:
+This is a sketch, not code from the repo. It works for one fizzbuzz turn. It breaks when:
 
 1. **Nothing streams.** You see the answer only at `message_end`. A long answer looks like a hang.
 2. **You cannot type while it runs.** `input()` is not called until `asyncio.run` returns. So no steering, no follow-up.
 3. **Ctrl-C kills everything.** It raises `KeyboardInterrupt` and the program dies. It does not call `session.abort()` ([06](06-events-abort.md)).
-4. **Nothing is saved.** There is no store, so no resume.
-5. **No approval.** The agent runs `bash` with no question.
+4. **Nothing is saved.** No store is passed, so no resume.
+5. **No approval.** No `approve` is passed, so the agent runs `bash` with no question.
 6. **Each line makes a new event loop.** `asyncio.run` is called again and again on one session. Anything async the session made in the last run (its abort event, a task still running) belonged to the old loop, so it is lost or breaks.
+
+None of these needs a new agent. The session already has every knob; the CLI only has to wire keys, screen and disk to it.
 
 ## Real design
 

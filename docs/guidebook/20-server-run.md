@@ -2,7 +2,7 @@
 
 **Goal:** Run a session on a server with a typed protocol.
 
-**Builds on:** [19 The CLI](19-cli.md) · **Next:** [21 Transport](21-transport.md)
+**Builds on:** [19 The CLI](19-cli.md), [13 Sessions](13-session.md), [06 Events and abort](06-events-abort.md) · **Next:** [21 Transport](21-transport.md)
 
 ## Where we are
 
@@ -31,38 +31,35 @@ In [19](19-cli.md) you ran the agent in a terminal: one person, one screen, one 
 
 The terminal never had these problems. A run takes minutes, but an HTTP request should not wait that long, so the run must live on the server, not inside one request. The browser is TypeScript and the server is Python: two programs that must agree on every message shape, or one side breaks in silence when the other renames a field. Many things can happen at once: Ana can send a prompt while a run is busy, press "abort" twice, or answer an approval that is already gone, so the server must say what is allowed *now*. And a tab that closes and comes back must see the full story.
 
-This chapter builds two things. A **[protocol](glossary.md#protocol)** is the fixed list of messages that go between server and browser. A **[Run](glossary.md#run)** is one server object per conversation: it owns the `AgentSession` ([13](13-session.md)), turns its events into protocol messages, and keeps one clear **[run state](glossary.md#run-state)**, a name like `idle` or `running`.
+This chapter builds two things. A **[protocol](glossary.md#protocol)** is the fixed list of messages that go between server and browser. A **[Run](glossary.md#run)** is one server object per conversation: it owns the `AgentSession` ([13](13-session.md)), turns its events into protocol messages, and keeps one clear **[run state](glossary.md#run-state)**, a name like `idle` or `running`. Do not mix it up with an agent [run](glossary.md#run-agent) ([05](05-agent-loop.md)): the `Run` lives as long as the conversation, and it starts many agent runs, one per prompt.
 
-## Naive version
+## Starting point: 19's `run()`, behind a web request
 
-The simplest idea: one dict of sessions, and an endpoint that runs the prompt and returns the messages.
+[19](19-cli.md#print-mode) ended with print mode. Its heart makes one `AgentSession` ([13](13-session.md)) and prints its events ([06](06-events-abort.md)):
 
 ```text
-sessions = empty map: id -> AgentSession
-
-ON POST /sessions/{sid}:
-    sessions[sid] = new AgentSession(Model())
-    RETURN {id: sid}
-
-ON POST /sessions/{sid}/prompt with body:
-    s = sessions[sid]
-    run s.prompt(body["text"]) and WAIT     // waits for the whole run
-    RETURN all messages of s as dicts
+store = JsonlStore(file "<sid>.jsonl" in session_dir(cwd))
+session = AgentSession(model, tools, store,
+                       messages = store.load(),
+                       get_api_key = env_api_key(model),
+                       approve = none IF -y ELSE ask)
+session sends each event to a new LinePrinter
+WHEN Ctrl-C comes: call session.abort()
 ```
 
-This is a sketch, not code from the repo.
+Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__init__.py), function `run`.
 
-It works for one happy fizzbuzz run. It breaks when:
+The server is a second front door to this same `AgentSession`. The simplest move: put this code inside an HTTP handler, run `session.prompt(text)`, wait, and return the messages. It breaks when:
 
-1. **The run is long.** The request hangs for minutes. Proxies and browsers time out. The user sees nothing until the end: no live text.
-2. **Two prompts come at once.** Both call `s.prompt()` on the same session. Two loops now share one message list.
+1. **The run is long.** The request hangs for minutes. Proxies and browsers time out. The user sees no live text, because no `LinePrinter` is there to get the events.
+2. **Two prompts come at once.** Both call `session.prompt()` on the same session. Two loops now share one message list.
 3. **The body is any dict.** `{"txt": "hi"}` gives a `KeyError` and a 500. Nothing tells the browser what shapes exist.
 4. **The tab reloads.** The answer of the running request is lost. There is no way to say "give me what I missed". (Fixed in [21](21-transport.md).)
-5. **Approval** ([08](08-hooks-approval.md)) cannot work: the request is blocked, so the user has no way to send "allow". (Fixed in [21](21-transport.md).)
+5. **Approval** ([08](08-hooks-approval.md)) cannot work: `ask` reads the terminal, and the request is blocked, so the user has no way to send "allow". (Fixed in [21](21-transport.md).)
 
 ## Real design
 
-The server lives in `apps/server/src/simp_server/`. We build it by following one request, Ana's "write fizzbuzz.py", from start to end: the server starts, the prompt comes in, the server finds the `Run` for the session, the `Run` drives the agent through its states, events go out, and a side call names the session. Each step fixes one or more of the naive problems above. Last, we give the browser the same message types.
+The server lives in `apps/server/src/simp_server/`. We build it by following one request, Ana's "write fizzbuzz.py", from start to end: the server starts, the prompt comes in, the server finds the `Run` for the session, the `Run` drives the agent through its states, events go out, and a side call names the session. Each step fixes one or more of the breaks above. Last, we give the browser the same message types.
 
 This chapter owns the **messages** and the **Run's state**. [21 Transport](21-transport.md) then moves them over the wire: the `seq` counter, replay after a reconnect, the command queue and approval (problems 4 and 5). [22 Store and auth](22-store-auth.md) saves the log and loads a session again.
 
@@ -309,5 +306,5 @@ uv run pytest apps/server/tests/test_protocol.py -q
 
 So far the `Run` makes durable events, but nobody receives them. [21](21-transport.md) sends them to the browser and takes commands back.
 
-**Builds on:** [19 The CLI](19-cli.md) · **Next:** [21 Transport](21-transport.md)
+**Builds on:** [19 The CLI](19-cli.md), [13 Sessions](13-session.md), [06 Events and abort](06-events-abort.md) · **Next:** [21 Transport](21-transport.md)
 
