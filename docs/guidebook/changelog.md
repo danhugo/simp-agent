@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-23
 
+- ch05 batch 3: run/turn/tool call as 3 short sentences; Step 4 pseudocode cut to the stop_reason check (full loop below); `_llm_turn` send/add sentence fixed; Stop and run-end repeats after the full loop now link back to Step 4, which keeps the one full explanation.
 - ch05 batch 2: plain-words intro to agent_loop inputs (send, add, cancel, why _llm_turn gets send/add); Step 4 Stop/run-end in plain words without asyncio.Event/_end; err() at top of Step 1; naive `request` variable; LoopConfig shows only this chapter's fields; _llm_turn shows view/key/stream_fn in plain words; bullet notes and "Some other points" turned into prose, repeats cut; env made concrete; test tools take `ctx` (test_core.py renamed too). (checked at agent/__init__.py:47-66, :200-235)
 - ch05 batch 1: agent_loop example now reads README.md (2 turns, 4 new messages; was a.txt, wrongly "seven"); Steps call `run_tool(tools, call, ctx)`; agent_loop pseudocode uses `RETURN _end(send, msg, new)` and has the abort check after the tools; `AgentTool.execute` returns text (`Awaitable[str]`); run_tool diagram shows the `prepare_arguments failed` exit; double blank lines removed. ch00 Part 2 line updated. (checked at agent/__init__.py:22, :74, :158-197)
 

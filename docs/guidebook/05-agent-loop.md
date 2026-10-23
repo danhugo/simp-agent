@@ -35,7 +35,7 @@ The model cannot do anything by itself. It only writes text and tool calls. Some
 
 Each step can go wrong. The model can ask for a tool that does not exist. It can send bad arguments. The tool can crash. The provider can fail. The loop must handle all of these **without crashing**, because a crash loses the whole run.
 
-Three words we use from here on, from big to small. A **[run](glossary.md#run-agent)** is everything from the user's message until the loop stops (normally `agent_start` … `agent_end`). In this chapter one run is one call to `agent_loop()`; later the `Agent` class starts a run with `agent.prompt()` or `agent.continue_()` ([06](06-events-abort.md)). A run has one or more **[turns](glossary.md#turn)**. A turn is one model call plus the tools that call asked for. Inside a turn, the model can make zero or more **[tool calls](glossary.md#tool-call)**: each one asks for one tool, and we *execute* that tool once. So in this book the noun "run" always means the whole run, never one tool and never one model call. For a tool we say "execute the tool", and for the model we say "model call" or "turn".
+Three words we use from here on, from big to small. A **[run](glossary.md#run-agent)** is everything from the user's message until the loop stops; here it is one call to `agent_loop()` (later `agent.prompt()`, [06](06-events-abort.md)). A **[turn](glossary.md#turn)** is one model call plus the tools that call asked for; a run has one or more turns. A **[tool call](glossary.md#tool-call)** is the model asking for one tool, which we then *execute* once; a turn has zero or more of them. So "run" never means one tool or one model call.
 
 Take the example below: the user asks "What is in README.md?". It is one run with two turns. In turn 1 the model asks for `read`, and the `read` tool executes. In turn 2 the model answers with text and asks for nothing, so the run ends.
 
@@ -147,15 +147,7 @@ Now the missing file. `read` raises `FileNotFoundError`, and the model receives 
 
 ```text
 IF msg.stop_reason is "error" or "aborted":
-    RETURN the new messages       // after the turn_end and agent_end events
-
-FOR call IN msg.tool_calls:
-    IF msg.stop_reason is "length":     // args may be cut off: never execute them
-        result = error ToolResultMessage(call.id, call.name,
-                 "Tool call was truncated (max tokens); not executed")
-    ELSE:
-        result = WAIT for run_tool(tools, call, ctx)    // Steps 1-3
-    ADD result to history
+    RETURN the new messages       // the full loop is below
 ```
 
 So for the provider failure, the loop now stops because it *checked* `stop_reason`, not by luck. The error message stays in the history, and the caller can see it.
@@ -328,7 +320,7 @@ Now the loop that does this. This is a small version: it leaves out steering and
 
 Its inputs, in plain words: `messages` is the history so far (the loop appends to this same list), `prompts` are the new user messages for this run, and `config` is the `LoopConfig` above. `emit` is how the app listens: the loop gives it every event. Inside, `send(event)` tells the app's listeners about one event, and `add(message)` keeps a message in the history and also tells the listeners about it. `cancel` is the Stop flag from Steps 3 and 4.
 
-Why does `_llm_turn` get `send` and `add` too? It `send` and `add` also reports events: `send` for each piece of the streamed answer, and `add` for the few messages it puts in the history itself (a note when the tool list changed, and steering messages from [07](07-steering.md)).
+`_llm_turn` gets `send` and `add` too. It uses `send` for each piece of the streamed answer, and `add` for the few messages it puts in the history itself (a note when the tool list changed, and steering messages, [07](07-steering.md)).
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
 
@@ -357,7 +349,7 @@ FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> n
                 ctx = ToolContext(cancel, config.env, config.cwd, on_update)
                 result = WAIT for run_tool(the current tools, call, ctx)
             add(result)
-        IF cancel is set:                      // user pressed Stop during the tools
+        IF cancel is set:                      // Stop during the tools: see Step 4
             msg = an aborted AssistantMessage; add(msg)
             SEND turn_end, agent_end; RETURN new
         SEND event {turn_end, msg}
@@ -386,11 +378,9 @@ flowchart TD
     H -- no --> END2([agent_end, return new messages])
 ```
 
-(The diagram leaves out one exit: if the user aborts during the tool batch, the loop adds an `aborted` message and ends. That is [06](06-events-abort.md).)
+(The diagram leaves out the Stop-during-tools exit; see [Step 4](#step-by-step-from-naive-to-real).)
 
-One pass of the inner `while` is one [turn](glossary.md#turn): one model call plus the tools it asked for. How does the loop know it is done? It sets `has_calls = bool(calls)`. If the model asked for no tools, there is nothing left to execute, so the inner loop ends. This is the only "done" signal, which means the model itself decides when it has finished.
-
-The other ways a run ends (error, aborted) and why cut-off calls never execute are in [Step 4](#step-by-step-from-naive-to-real). Retrying after a provider error is a separate job ([15](15-retry.md)).
+One pass of the inner `while` is one [turn](glossary.md#turn): one model call plus the tools it asked for. Normally the run ends when the model asks for no tools (`has_calls` is false), so the model itself decides when it is done. Every way a run ends, and why cut-off calls never execute, is in [Step 4](#step-by-step-from-naive-to-real). Retrying after a provider error is a separate job ([15](15-retry.md)).
 
 Every tool call gets a result: unknown tool, bad arguments, a crash or a cut-off call all still add a `ToolResultMessage`. Why does this matter? Providers reject a history where a tool call has no result ([01](01-pick-clean.md#2-clean-transform_messages)), so without it the next model call would fail. The one exception is Stop: the skipped calls get no result, and `transform_messages` repairs that before the next send ([06](06-events-abort.md)). The tools execute one after another, in the order the model gave, so the results stay in the same order as the calls.
 
