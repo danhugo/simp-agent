@@ -403,3 +403,6 @@ A thinking block that carries a `signature` from Anthropic. It must be sent back
 
 ## `get_final_message()`
 An Anthropic SDK method. After the stream ends, it returns the full message the SDK built from all events: content, `stop_reason`, `usage`. Home: [03](03-parse.md#anthropic-the-sdk-builds-the-message).
+
+## Host
+The program that runs the agent and sets things the model must not change: the CLI, the server, or the eval runner. Example: the host sets the `bash` time cap with `make_tools(bash_max_timeout_s=...)`. Home: [10](10-coding-tools.md#group-3--run-bash).
