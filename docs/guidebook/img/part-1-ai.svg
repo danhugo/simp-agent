@@ -6,7 +6,7 @@
 <text x="220" y="110" font-size="15" fill="#2563eb" font-weight="700" text-anchor="start">GOING OUT  →  the question</text>
 <text x="220" y="500" font-size="15" fill="#16a34a" font-weight="700" text-anchor="start">←  COMING BACK  —  the answer, piece by piece</text>
 <rect x="30" y="125" width="170" height="890" rx="18" fill="#e0e7ff" stroke="#6366f1" stroke-width="2.5" filter="url(#s)"/>
-<text x="115" y="165" font-size="20" fill="#312e81" font-weight="700" text-anchor="middle">The Agent</text>
+<text x="115" y="165" font-size="20" fill="#312e81" font-weight="700" text-anchor="middle">The app</text>
 <text x="115" y="190" font-size="13" fill="#4338ca" font-weight="normal" text-anchor="middle">(your app)</text>
 <text x="115" y="240" font-size="13" fill="#3730a3" font-weight="700" text-anchor="middle">Gives:</text>
 <text x="115" y="260" font-size="13" fill="#3730a3" font-weight="normal" text-anchor="middle">Model</text>
@@ -26,14 +26,14 @@
 <rect x="420" y="130" width="200" height="215" rx="14" fill="#fff" stroke="#2563eb" stroke-width="2" filter="url(#s)"/>
 <circle cx="520" cy="158" r="16" fill="#2563eb"/>
 <text x="520" y="164" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">1</text>
-<text x="520" y="198" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Pick the driver</text>
+<text x="520" y="198" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Pick the provider</text>
 <text x="520" y="220" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Look at Model.api.</text>
 <text x="520" y="237" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Choose the code that</text>
-<text x="520" y="254" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">talks to that company.</text>
+<text x="520" y="254" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">talks to that vendor.</text>
 <text x="432" y="280" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
 <text x="460" y="280" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">Model</text>
 <text x="432" y="298" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">OUT</text>
-<text x="460" y="298" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">a driver function</text>
+<text x="460" y="298" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">a provider</text>
 <rect x="430" y="310" width="180" height="24" rx="12" fill="#f5f3ff"/>
 <text x="440" y="327" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch01</text>
 <text x="478" y="327" font-size="11" fill="#5b21b6" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">stream()</text>
@@ -56,7 +56,7 @@
 <text x="1360" y="164" font-size="17" fill="#fff" font-weight="700" text-anchor="middle">3</text>
 <text x="1360" y="198" font-size="16" fill="#1e3a8a" font-weight="700" text-anchor="middle">Translate</text>
 <text x="1360" y="220" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">Rewrite messages and</text>
-<text x="1360" y="237" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">tools in the company's</text>
+<text x="1360" y="237" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">tools in the vendor's</text>
 <text x="1360" y="254" font-size="12.5" fill="#334155" font-weight="normal" text-anchor="middle">own JSON format.</text>
 <text x="1272" y="280" font-size="11" fill="#2563eb" font-weight="700" text-anchor="start">IN</text>
 <text x="1300" y="280" font-size="11.5" fill="#334155" font-weight="normal" text-anchor="start">Context</text>
@@ -111,11 +111,11 @@
 <text x="1062" y="199" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">but every message is now</text>
 <text x="1062" y="216" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">safe for this model.</text>
 <text x="1062" y="233" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start"></text>
-<text x="1062" y="250" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">The driver picked in ①</text>
+<text x="1062" y="250" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">The provider picked in ①</text>
 <text x="1062" y="267" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">will use it.</text>
 <rect x="1470" y="160" width="160" height="102" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
 <text x="1480" y="180" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="start">API request</text>
-<text x="1482" y="199" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">company JSON:</text>
+<text x="1482" y="199" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">vendor JSON:</text>
 <text x="1482" y="216" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">model, messages,</text>
 <text x="1482" y="233" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">tools, max_tokens,</text>
 <text x="1482" y="250" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="Menlo, monospace">stream: true</text>
@@ -153,7 +153,7 @@
 <rect x="1470" y="550" width="160" height="102" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1480" y="570" font-size="12.5" fill="#16a34a" font-weight="700" text-anchor="start">Raw chunks</text>
 <text x="1482" y="589" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">tiny pieces in the</text>
-<text x="1482" y="606" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">company's format,</text>
+<text x="1482" y="606" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">vendor's format,</text>
 <text x="1482" y="623" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">e.g. a few words or</text>
 <text x="1482" y="640" font-size="11.5" fill="#475569" font-weight="normal" text-anchor="start">a bit of JSON</text>
 <rect x="1050" y="550" width="200" height="204" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
@@ -211,7 +211,7 @@
 <rect x="840" y="840" width="790" height="175" rx="14" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2" filter="url(#s)"/>
 <text x="860" y="868" font-size="15" fill="#334155" font-weight="700" text-anchor="start">The Agent decides what next (looks at stop_reason)  → Part 2</text>
 <text x="860" y="898" font-size="13" fill="#475569" font-weight="normal" text-anchor="start">tool_use →  run each ToolCall  →  make a ToolResultMessage  →  add both to Context.messages  →  call stream() again (back to ①)</text>
-<text x="860" y="922" font-size="13" fill="#475569" font-weight="normal" text-anchor="start">stop     →  the turn is over; show the text to the user</text>
+<text x="860" y="922" font-size="13" fill="#475569" font-weight="normal" text-anchor="start">stop     →  the run ends; show the text to the user</text>
 <text x="860" y="946" font-size="13" fill="#475569" font-weight="normal" text-anchor="start">length / error / aborted  →  stop, retry, or compact the chat (Ch15, Ch16, Ch17)</text>
 <rect x="860" y="972" width="150" height="24" rx="12" fill="#ede9fe"/>
 <text x="872" y="989" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="start">Ch05 agent loop</text>
