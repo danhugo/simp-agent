@@ -1,16 +1,46 @@
 # Part 4 big picture: the session layer
 
-**In one sentence:** Part 4 builds `AgentSession`, one object that owns an `Agent` for a whole conversation. You give it a **profile**, plugin names, a **store** and a task text. It runs the agent, saves every finished message right away, and gives back the new messages and a stream of events.
+**In one sentence:** Part 4 builds `AgentSession`, one object that owns an `Agent` for a whole conversation: it saves every message, lets plugins join in, and fixes errors, so a chat can last for days.
 
-Read this page before [13](13-session.md), and come back to it any time you get lost in [13](13-session.md)–[18](18-profiles-plugins.md). It adds no new facts; it only puts the pieces of those six chapters side by side.
+Read this page before [13](13-session.md). Come back to it any time you get lost in [13](13-session.md)–[18](18-profiles-plugins.md). It adds no new facts. The plain walk-through comes first; the map (picture and tables) is at the end.
 
-## The picture
+## Example: the user comes back the next day
+
+Yesterday the user asked **"What is in README.md?"** and then asked the agent to write `fizzbuzz.py`. Today they open the app again and type **"now add tests"**.
+
+After Part 3 we have an agent that can read files, run commands and answer. But everything lives in memory. When the app closes, the history is gone, so today the agent has no idea what `fizzbuzz.py` is. There are more problems that only show up in long, real use. The model API may say "too many requests" (`429`) for a moment, and the run just stops. After many turns the history grows bigger than the model's window, and the model refuses the call. Every team wants something a little different (hide secrets, a "plan first" mode), and they should not have to edit the loop for it. And each app needs a way to pick the model from a settings file.
+
+Somebody must keep the history on disk, give it back the next day, retry short failures, shrink the history when it gets too big, and let small add-ons hook in. **That "somebody" is the session.**
+
+## The core idea
+
+The agent loop from Part 2 stays the same. The session wraps it from the outside, and talks to it only through the hooks the loop already has: `prepare_next_turn`, `before_tool_call`, `after_tool_call`, the system prompt function and the events. Nothing in Part 2 changes.
+
+The second idea is that history is only ever added to, never changed. Each finished message is written to the [store](glossary.md#sessionstore) the moment it ends, so a crash loses at most the message in progress. When the history gets too big we do not delete old messages; we add a summary marker, and the model sees a shorter *view* built from the full history.
+
+## What each chapter adds
+
+**[13 Sessions](13-session.md): keep the chat.** 13 builds `AgentSession`. It owns one `Agent`, saves each finished message to a `SessionStore`, loads it back the next day, and builds the system prompt from named [prompt sections](glossary.md#prompt-section). It also writes [tool approval](glossary.md#tool-approval) as one `before_tool_call` hook (shown early in [08](08-hooks-approval.md)).
+
+**[14 Plugins](14-plugins.md): let add-ons hook in.** A [plugin](glossary.md#plugin) is any object with methods of known names, such as `input`, `context`, `tool_call` or `tool_result`. The session calls them at the right moment. Through the [PluginAPI](glossary.md#pluginapi) a plugin may add tools, prompt sections or saved entries.
+
+**[15 Retry](15-retry.md): survive short failures.** When the last message is a retryable error (like `429`), the session waits 2 s, 4 s, 8 s… and calls `agent.continue_()`, up to 3 times.
+
+**[16 Compaction](16-compaction.md): shrink a long history.** When the history is near the model's window, the session asks the model for a summary, saves a `CompactionEntry`, and from then on sends only the summary plus recent messages.
+
+**[17 Context overflow](17-overflow.md): recover when it is too late.** If the model still says "prompt is too long", the session compacts once and continues, instead of stopping.
+
+**[18 Profiles and built-in plugins](18-profiles-plugins.md): make it usable.** A [profile](glossary.md#profile) is a plain dict from the settings file; `build_model()` turns it into a `Model`. `build_plugins()` turns plugin names into objects, and two real plugins ship: `RedactSecrets` and `PlanMode`.
+
+## The map
+
+### The picture
 
 ![The session layer: blocks, objects and chapters](img/part-4-session.svg)
 
 Read the top row left to right: the task goes in, and each model turn is prepared. The grey box is the agent loop from Part 2. Then read the bottom row right to left: tools run, messages are saved, and errors are fixed. Blocks are steps. Cards on the arrows are the data passed between steps. Purple tags say which chapter builds the block.
 
-## The blocks
+### The blocks
 
 | # | Block | What it does | IN | OUT | Code (file · function) | Chapter |
 |---|---|---|---|---|---|---|
@@ -25,15 +55,11 @@ Read the top row left to right: the task goes in, and each model turn is prepare
 
 Not numbered: the agent loop (call the model, run tools, repeat) is Part 2, [05](05-agent-loop.md)–[08](08-hooks-approval.md). The real store, `JsonlStore`, lives in the CLI app: `apps/cli/src/simp_cli/__init__.py` ([13](13-session.md)).
 
-## Which block is inside which
+### Which block is inside which
 
-- **`AgentSession` is the whole Part.** It holds one `Agent` and gives it three hooks: `prepare_next_turn=_prepare` (4), `before_tool_call` and `after_tool_call` (6). The system prompt (5) is also a function the agent calls each turn.
-- **`prompt()` = Start (2) + Input hooks (3) + `_run()`.** `continue_()` is the same without Input hooks.
-- **`_run()` = the agent run + Recover (8).** It runs the start function once (`agent.prompt` or `agent.continue_`), then loops while the last message is an error.
-- **One agent turn = Prepare view (4) + Build prompt (5) + model call + Tool hooks (6).** Save (7) happens on every `message_end` event, so a crash loses at most the message in progress.
-- **Compaction is used in two places:** in Prepare view (4) when the history is near the window, and in Recover (8) after an overflow error. Both call the same `AgentSession.compact()`.
-- **Build (1) is outside the session.** The app (CLI or server) calls `build_model` and `build_plugins`, then makes the `AgentSession`.
-- [14](14-plugins.md) adds the plugin sockets; [18](18-profiles-plugins.md) ships two real plugins that use them: `RedactSecrets` (hooks `tool_result`, `tool_update`, `context`) and `PlanMode` (hook `tool_call`, a prompt section, a custom entry).
+`AgentSession` is the whole Part. It holds one `Agent` and gives it three hooks: `prepare_next_turn=_prepare` (block 4), and `before_tool_call` and `after_tool_call` (block 6). The system prompt (5) is also a function the agent calls each turn. `prompt()` is Start (2) + Input hooks (3) + `_run()`; `continue_()` is the same without the Input hooks. `_run()` runs the start function once (`agent.prompt` or `agent.continue_`), then Recover (8) loops while the last message is an error. One agent turn is Prepare view (4) + Build prompt (5) + the model call + Tool hooks (6). Save (7) happens on every `message_end` event.
+
+Compaction is used in two places: in Prepare view (4) when the history is near the window, and in Recover (8) after an overflow error. Both call the same `AgentSession.compact()`. Build (1) is outside the session: the app (CLI or server) calls `build_model` and `build_plugins`, then makes the `AgentSession`. [14](14-plugins.md) adds the plugin sockets; [18](18-profiles-plugins.md) ships two plugins that use them: `RedactSecrets` (hooks `tool_result`, `tool_update`, `context`) and `PlanMode` (hook `tool_call`, a prompt section, a custom entry).
 
 The small chart below shows only the nesting:
 
@@ -55,7 +81,7 @@ flowchart LR
 
 **Rule for the whole Part:** history is append-only. Compaction adds a `CompactionEntry` and plugins add `CustomEntry`s; nothing is deleted. The LLM sees only the view that `build_view()` makes from it.
 
-## The objects
+### The objects
 
 | Object | Fields | Meaning |
 |---|---|---|
@@ -69,9 +95,9 @@ flowchart LR
 | [CompactionEntry](glossary.md#compaction-entry) | `summary`, `first_kept_index`, `read_files`, `modified_files` | Marker in history: "everything before this index is replaced by this summary". |
 | [CompactionSettings](glossary.md#compaction) | `enabled`, `reserve_tokens`, `keep_recent_tokens` | When to compact, and how much recent history to keep. |
 
-## One worked example: "now add tests" the next day
+### The worked example with all blocks
 
-Yesterday the agent wrote `fizzbuzz.py`. The history is in a JSONL file. Today you type "now add tests" with the `redact_secrets` plugin on.
+The same "now add tests" story, now with block numbers. The history is in a JSONL file, and the `redact_secrets` plugin is on.
 
 1. **Build:** the app calls `build_model(profile)` → a `Model`, and `build_plugins(["redact_secrets"])` → `[RedactSecrets()]`. It makes `AgentSession(model, store=JsonlStore(path), messages=store.load(), plugins=...)`. Yesterday's messages are back.
 2. **Start:** `AGENTS.md` (if there is one) becomes the `context_file` section. `RedactSecrets.setup` collects secret values from env vars.
