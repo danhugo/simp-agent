@@ -69,4 +69,16 @@
 <text x="347" y="388" font-weight="700">07 steering / follow-up</text>
 <text x="347" y="406">the user types while the agent works</text>
 </g>
+<!-- steer path (07) -->
+<marker id="o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ea580c"/></marker>
+<rect x="40" y="380" width="230" height="60" rx="14" fill="#fff" stroke="#ea580c" stroke-width="2" filter="url(#s)"/>
+<text x="155" y="405" font-size="16" fill="#0f172a" font-weight="700" text-anchor="middle">The user types a steer</text>
+<text x="155" y="427" font-size="13" fill="#334155" text-anchor="middle">while a tool runs: agent.steer()</text>
+<rect x="40" y="520" width="230" height="60" rx="14" fill="#ffedd5" stroke="#ea580c" stroke-width="2"/>
+<text x="155" y="545" font-size="16" fill="#9a3412" font-weight="700" text-anchor="middle">steering list</text>
+<text x="155" y="567" font-size="13" fill="#334155" text-anchor="middle">waits; the tool is not cut</text>
+<path d="M155,440 L155,512" fill="none" stroke="#ea580c" stroke-width="2.5" stroke-dasharray="8 6" marker-end="url(#o)"/>
+<path d="M270,550 C330,550 330,500 372,495" fill="none" stroke="#ea580c" stroke-width="2.5" stroke-dasharray="8 6" marker-end="url(#o)"/>
+<text x="155" y="610" font-size="13" fill="#9a3412" text-anchor="middle">read at the start of the next turn,</text>
+<text x="155" y="628" font-size="13" fill="#9a3412" text-anchor="middle">added after the tool result</text>
 </svg>
