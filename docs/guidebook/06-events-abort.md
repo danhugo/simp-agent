@@ -247,22 +247,22 @@ So the history gets `AssistantMessage("README.md says this proj", stop_reason="a
 
 ### Moment 2: Stop while a tool runs
 
-Reading README.md is too fast to stop, so take a longer step: the model asked to run `bash` with `npm test`, and the user presses Stop while it runs.
+**Stop during a tool.** This time the model has already answered: it asked to run `bash` with `npm test`, and the tests take a minute. The user presses Stop while they run.
 
-**What stops.** The tool. A long tool such as `bash` ([10](10-coding-tools.md)) watches `ctx.cancel` and kills its process. As 05 Step 4 said, the tool's error then becomes the text "Interrupted by the user" (`run_tool` checks `ctx.cancel.is_set()`). If more calls wait in the same turn, they do not run (moment 3).
+The model call is over, so there is no stream to close. Now the **tool** must stop. `bash` ([10](10-coding-tools.md)) watches `ctx.cancel`; when the flag is set, it kills the `npm test` process. The tool ends with an error, and `run_tool` turns it into the result "Interrupted by the user" ([05 Step 4](05-agent-loop.md)). This is not special to `bash`: any tool that is running when Stop comes and stops because of the flag gets the same result (the tools that run commands, such as `ls`, `grep` and `find`, pass the flag on to `env.exec`). A tool that does not watch the flag just finishes, and keeps its normal result. Tool calls of the same turn that have not started yet are skipped and get no result in the history. Before the next model call, `transform_messages` adds "No result provided" for each of them, so every call still has a result.
 
-**What goes into the history.** That tool result, and then an `aborted` message that the loop adds itself, because the model had already finished. The check sits right after the tool batch:
+Right after the tools, the loop checks the flag and ends the run. The model's message finished normally, so it is not marked `aborted`. The loop therefore adds one small `aborted` message itself, to record that the user stopped:
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
 
 ```text
-IF cancel is set:                // after the tool batch
+IF cancel is set:                // right after the tools
     msg = _aborted()
     add(msg)
     RETURN _end(send, msg, new)
 ```
 
-**What the model sees next time.** The tool call and its result, which is a normal, valid pair. The aborted message is dropped from the view.
+The history now holds the model's `bash` call, its result "Interrupted by the user", and the `aborted` message. When the user asks something next, the model sees the call and its result, a normal pair, but not the `aborted` message: `transform_messages` ([01](01-pick-clean.md)) drops aborted messages before sending.
 
 ### Moment 3: Stop between tools
 
