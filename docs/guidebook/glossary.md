@@ -117,7 +117,7 @@ One of two optional functions in `LoopConfig` (and `Agent`) that wrap each tool 
 Asking a human before a risky tool runs. Built as one `before_tool_call` in `AgentSession`: `approve(call)` answers `"allow"`, `"always"` (remember this tool name) or anything else (deny). Only `bash`, `write` and `edit` ask, and the question ends on abort. Home: [08](08-hooks-approval.md#approval-a-before_tool_call-that-asks-a-human).
 
 ## Truncation
-How tools keep output small (`coding/truncate.py`): keep whole lines under 2000 lines and 50 KB. `truncate_head` / `head` keep the start (read, ls, grep, find); `truncate_tail` / `tail` keep the end (bash). The wrappers add a note so the model knows it was cut. Home: [10](10-coding-tools.md#truncation-truncate_head-and-truncate_tail).
+How tools keep output small (`coding/truncate.py`): keep whole lines under 2000 lines and 50 KB. `truncate_head` / `head` keep the start (read, ls, grep, find); `truncate_tail` / `tail` keep the end (bash). The wrappers add a note so the model knows it was cut. Home: [10](10-coding-tools.md#when-readmemd-is-too-big-truncation).
 
 ## System prompt
 The first text of every model request: who the model is and how to work. Default made by `coding.system_prompt(tools, cwd)`: role, tool list, short rules, date and cwd. The session rebuilds it every turn from prompt sections. Home: [11](11-system-prompt.md#system_prompt-the-base-text).
@@ -414,4 +414,4 @@ A thinking block that carries a `signature` from Anthropic. It must be sent back
 An Anthropic SDK method. After the stream ends, it returns the full message the SDK built from all events: content, `stop_reason`, `usage`. Home: [03](03-parse.md#anthropic-the-sdk-builds-the-message).
 
 ## Host
-The program that runs the agent and sets things the model must not change: the CLI, the server, or the eval runner. Example: the host sets the `bash` time cap with `make_tools(bash_max_timeout_s=...)`. Home: [10](10-coding-tools.md#group-3--run-bash).
+The program that runs the agent and sets things the model must not change: the CLI, the server, or the eval runner. Example: the host sets the `bash` time cap with `make_tools(bash_max_timeout_s=...)`. Home: [10](10-coding-tools.md#running-a-command-bash).
