@@ -17,11 +17,11 @@ Big picture of Part 2: [part-2-agent](05-0-part-2-agent.md).
 
 We keep the story from [07](07-steering.md). The user asked "What is in README.md?", then steered with "Also read CHANGELOG.md". The model called `read` twice. Reading is safe, so nobody needs to be asked.
 
-Then the user sent the follow-up "write a summary to NOTES.md". Now the model calls `write` with `{"path": "NOTES.md", ...}`. Today the loop just runs it. NOTES.md may already hold the user's own notes, and they are gone. Soon there will also be a `bash` tool ([10](10-coding-tools.md)), and `bash` can do much worse. The user needs a way to say **"no, do not run that"** to one call.
+Then the user sent the follow-up "write a summary to NOTES.md". Now the model calls `write` with `{"path": "NOTES.md", ...}`. Today the loop just runs it: when the model asks for a tool, the loop executes it at once. **Nobody asks the user, and the user has no way to stop that one call.** If NOTES.md already holds the user's own notes, they are gone. And the `bash` tool ([10](10-coding-tools.md)) can run any command, such as `rm -rf`, so a wrong call can do much more damage.
 
 ## Problem
 
-The model wants to `write` NOTES.md. Writing a file is risky, and so are `edit` and `bash`: they change files or run commands, and a mistake cannot be undone. So before such a call runs, the user must be asked first, and must be able to say no.
+So before a risky call runs (`write` and `edit` change files, `bash` runs commands), the loop must **ask the user**, and the user must be able to **say no to that one call**.
 
 ## Starting point: the tool step from 05 and 06
 
