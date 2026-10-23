@@ -90,9 +90,9 @@ FUNCTION system_prompt(tools, cwd, context = None):
     RETURN out
 ```
 
-The role sentence says the assistant reads, runs, edits and writes, which pushes the model to act. The tool list is made from the `name` and `description` of the tools we pass in, the same ones `make_tools` built in [10](10-coding-tools.md#make_tools-names-descriptions-schemas). Because it is built and not written by hand, it can never name a tool that does not exist.
+The role sentence says the assistant reads, runs, edits and writes, which pushes the model to act. The tool list is made from the `name` and `description` of the tools we pass in, the same ones `make_tools` built in [10](10-coding-tools.md#how-the-list-is-built-make_tools). Because it is built and not written by hand, it can never name a tool that does not exist.
 
-Each of the three rules has a reason. "Be concise" keeps answers short, which saves [context](glossary.md#context). "Use read before edit" matters because `edit` needs an exact text match ([10](10-coding-tools.md#edit)), and the model's memory of a file may be old. "Paths are relative to the working directory" matches how the tools join paths to `ctx.cwd`.
+Each of the three rules has a reason. "Be concise" keeps answers short, which saves [context](glossary.md#context). "Use read before edit" matters because `edit` needs an exact text match ([10](10-coding-tools.md#changing-a-file-write-and-edit)), and the model's memory of a file may be old. "Paths are relative to the working directory" matches how the tools join paths to `ctx.cwd`.
 
 The date and the folder come last, after the optional project section. It is a plain function: the same input gives the same text (only the date changes), so it is easy to test and easy to replace.
 
