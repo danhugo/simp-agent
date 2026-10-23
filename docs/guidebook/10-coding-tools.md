@@ -208,7 +208,7 @@ FUNCTION ls(args, ctx):
     RETURN head(out)
 ```
 
-`list_dir` first asks: does the env have a method called `list_dir`? An env may add one if it can list faster. `LocalEnv` from [09](09-exec-env.md#localenv-this-machine) does not: its method is called `list`, and it returns dicts (`name`, `is_dir`, `size`), not the plain names with a `/` after folders that the model should see. So in practice `list_dir` runs `ls -1Ap` through `ctx.env.exec`: one name per line (`-1`), dotfiles but not `.` and `..` (`-A`), a `/` after folders (`-p`). Because it goes through `exec`, the same code works in a Docker env ([24](24-docker-sandbox.md)). The path goes through `shlex.quote`, which wraps it in quotes for the shell, so a name with spaces or `;` cannot break the command.
+`list_dir` first asks: does the env have a method called `list_dir`? An env may add one if it can list faster. `LocalEnv` from [09](09-exec-env.md#step-2-localenv-reads-the-file) does not: its method is called `list`, and it returns dicts (`name`, `is_dir`, `size`), not the plain names with a `/` after folders that the model should see. So in practice `list_dir` runs `ls -1Ap` through `ctx.env.exec`: one name per line (`-1`), dotfiles but not `.` and `..` (`-A`), a `/` after folders (`-p`). Because it goes through `exec`, the same code works in a Docker env ([24](24-docker-sandbox.md)). The path goes through `shlex.quote`, which wraps it in quotes for the shell, so a name with spaces or `;` cannot break the command.
 
 `ls` sorts case-insensitively, keeps `limit` entries, says how many were hidden, and passes through `head` for the byte limit. An empty folder says `(empty directory)` instead of an empty string, so the model does not wonder if the tool failed.
 
@@ -243,7 +243,7 @@ FUNCTION _limited(code, out, limit, empty):
     RETURN head(text)
 ```
 
-For `rg` and `grep`, exit code 1 means "no matches", not "error". So 0 and 1 are both fine, and anything else (a bad regex, a missing folder) is raised. No results gives a clear text (`No matches found` / `No files found`). Too many results gives a note that asks the model to narrow the search. One small catch: `find` uses the same helper, but for `find` and `fd` exit code 1 **is** an error. It is not raised; the error message (stderr is part of the output, see [09](09-exec-env.md#exec-run-stream-stop)) comes back as if it were the result. The model still sees the message, so this is a small gap, not a silent one.
+For `rg` and `grep`, exit code 1 means "no matches", not "error". So 0 and 1 are both fine, and anything else (a bad regex, a missing folder) is raised. No results gives a clear text (`No matches found` / `No files found`). Too many results gives a note that asks the model to narrow the search. One small catch: `find` uses the same helper, but for `find` and `fd` exit code 1 **is** an error. It is not raised; the error message (stderr is part of the output, see [09](09-exec-env.md#step-4-a-second-request-bash)) comes back as if it were the result. The model still sees the message, so this is a small gap, not a silent one.
 
 Both tools also check the search path:
 
@@ -286,7 +286,7 @@ FUNCTION write(args, ctx):
     RETURN "Wrote N chars to path"       // short: do not echo the content back
 ```
 
-One line of work. The env already makes parent folders ([09](09-exec-env.md#localenv-this-machine)), so the tool description can promise "Makes parent dirs." The result is short on purpose: the model already knows the content it sent, and echoing it back would only waste context.
+One line of work. The env already makes parent folders ([09](09-exec-env.md#step-2-localenv-reads-the-file)), so the tool description can promise "Makes parent dirs." The result is short on purpose: the model already knows the content it sent, and echoing it back would only waste context.
 
 #### `edit`
 
@@ -408,7 +408,7 @@ FUNCTION make_bash(max_timeout_s):       // no default timeout
 
 At this commit the CLI reads the cap from the `bash_max_timeout_s` setting ([19](19-cli.md)); `None` means no cap.
 
-**All the hard work is in `exec`.** Streaming, cancel, timeout and the process-group kill were built in [09](09-exec-env.md#exec-run-stream-stop). `bash` just passes `ctx.cancel` and `ctx.on_update` through, so the user sees output live while it runs. `start` uses a [monotonic clock](glossary.md#monotonic-clock), so the time shown is right even if the system time changes.
+**All the hard work is in `exec`.** Streaming, cancel, timeout and the process-group kill were built in [09](09-exec-env.md#step-4-a-second-request-bash). `bash` just passes `ctx.cancel` and `ctx.on_update` through, so the user sees output live while it runs. `start` uses a [monotonic clock](glossary.md#monotonic-clock), so the time shown is right even if the system time changes.
 
 **Three endings, each with a note.** `exec` returns a code when the command finished, so we add `[exit code: N]`: the model needs it to tell pass from fail. `exec` returns `None` when the command was killed; then `ctx.cancel` tells us who killed it. If it is set, the user pressed Stop (`interrupted by the user after 1s`); if not, the timeout did (`timed out after 30 seconds`). In every case the output **so far** is kept, and `tail` keeps its end.
 
