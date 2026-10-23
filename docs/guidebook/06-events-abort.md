@@ -182,15 +182,15 @@ Three blocks watch the flag: `_stream` during the model call, the tool through `
 
 The answer "README.md says this proj…" is arriving word by word, and the user presses Stop.
 
-**What stops.** The model call, and at once. The trick is a race between two waiting tasks. Task `nxt` waits for the next event from the model. Task `stop` waits for the cancel flag. We wait until **one** of them finishes first.
+**What stops.** The model call, and at once. The trick is a race between two waiting tasks. The `next` task waits for the next piece (event) from the model (in the real code this variable is called `nxt`). Task `stop` waits for the cancel flag. We wait until **one** of them finishes first.
 
 ```mermaid
 flowchart TD
-    A["start nxt: wait for next model event"] --> W{"which finishes first?"}
+    A["start next: wait for next model event"] --> W{"which finishes first?"}
     S["stop: wait for cancel.set()"] --> W
-    W -- "nxt: an event" --> Y["pass the event on"] --> A
-    W -- "nxt: stream is over" --> E
-    W -- "stop" --> C["cancel nxt → web request closes"] --> E["return (finally: cancel stop, close it)"]
+    W -- "next: an event" --> Y["pass the event on"] --> A
+    W -- "next: stream is over" --> E
+    W -- "stop" --> C["cancel next → web request closes"] --> E["return (finally: cancel stop, close it)"]
 ```
 
 A loop that only checks the flag between events would wait for the model, so a silent model would hide the Stop. With the race, the Stop wins even when the model sends nothing. `_stream` does this. It wraps the provider stream `it`, which is the async generator returned by `stream_fn`:
@@ -203,21 +203,21 @@ FUNCTION _stream(stream_fn, model, ctx, cancel, opts):
     stop = a task that waits for cancel
     TRY:
         REPEAT:
-            nxt = a task that gets the next event from it
-            WAIT until nxt OR stop is done           // asyncio.wait(FIRST_COMPLETED)
-            IF nxt is not done:                      // stop won
-                CANCEL nxt
-                WAIT for nxt to finish
+            next = a task that gets the next event from it
+            WAIT until next OR stop is done           // asyncio.wait(FIRST_COMPLETED)
+            IF next is not done:                      // stop won
+                CANCEL next
+                WAIT for next to finish
                 RETURN
             IF the provider has ended (StopAsyncIteration):
                 RETURN
-            YIELD the event from nxt
+            YIELD the event from next
     FINALLY:
         CANCEL stop
         CLOSE it (aclose)
 ```
 
-Why does cancelling `nxt` close the web request? `nxt` is paused **inside** the provider generator. Cancelling it raises `CancelledError` at that spot. The provider's `async with` block for the HTTP client ([02](02-translate-send.md)) then exits, and that closes the connection. The `finally` part cleans up the rest: it cancels `stop` and closes the generator.
+Why does cancelling `next` close the web request? `next` is paused **inside** the provider generator. Cancelling it raises `CancelledError` at that spot. The provider's `async with` block for the HTTP client ([02](02-translate-send.md)) then exits, and that closes the connection. The `finally` part cleans up the rest: it cancels `stop` and closes the generator.
 
 **What goes into the history.** The end of [`_llm_turn`](05-agent-loop.md#_llm_turn-one-model-call) keeps the latest `partial`, the message built so far ([03](03-parse.md)). A normal stream always ends with a `done` or `error` event that carries the final message. If the stream ended without one, the loop treats it as a Stop:
 
