@@ -153,13 +153,18 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 Now follow "Also read CHANGELOG.md" from the keyboard to the model:
 
 ```mermaid
-flowchart LR
-    U["user types<br/>'Also read CHANGELOG.md'"] --> S["agent.steer(text)"]
-    S --> L["Agent.steering list"]
-    L --> G["get_steering()<br/>at the end of turn 1"]
+flowchart TD
+    U["user types 'Also read CHANGELOG.md'<br/>while read README.md runs"] --> S["agent.steer(text)"]
+    S --> L["Agent.steering list<br/>(the running tool is NOT cut)"]
+    T["turn 1: tool ends"] --> E["turn_end"]
+    L --> G["get_steering()<br/>after turn_end"]
+    E --> G
     G --> P["pending"]
-    P --> H["add(): into the history<br/>(top of turn 2)"]
-    H --> M["model call 2 sees it"]
+    P --> Q{"tool calls OR pending?"}
+    Q -- "yes (even with no tool calls)" --> TS["turn 2: turn_start"]
+    TS --> H["add(steer) to the history"]
+    H --> LT["_llm_turn: one more get_steering()<br/>just before the model call"]
+    LT --> M["model call 2 sees the steer<br/>right after the tool result"]
 ```
 
 1. The user types the text while `read README.md` runs. The UI calls `agent.steer("Also read CHANGELOG.md")`.
