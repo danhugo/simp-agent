@@ -241,7 +241,7 @@ The whole chat state of the browser client, from `apps/web/src/state.ts`. Chapte
 
 ## Server store tables
 
-The full `SCHEMA` of simp-server's SQLite store, from `apps/server/src/simp_server/store.py`. Chapter [22](22-store-auth.md#sqlitestore-one-file-five-tables) explains each table where it is used; `usage` is used in [23](23-limits.md).
+The full `SCHEMA` of simp-server's SQLite store, from `apps/server/src/simp_server/store.py`. Chapter [22](22-store-auth.md#opening-the-store) explains each table where it is used; `usage` is used in [23](23-limits.md).
 
 ```sql
 CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, name TEXT UNIQUE, token_sha256 TEXT UNIQUE, password TEXT,

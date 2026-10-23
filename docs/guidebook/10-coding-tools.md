@@ -76,7 +76,36 @@ Where it breaks:
 
 ## Real design
 
+
+We follow one request from start to end: the model calls `read` on `README.md`. Then the same path for the other steps of the `shape.py` job: look around, change a file, run a command.
+
+### `make_tools`: names, descriptions, schemas
+
+The model wants to read `README.md`. But how does it even know a tool called `read` exists? It knows only what the loop sends it: a list of [agent tools](glossary.md#agent-tool). `make_tools` builds that list.
+
+```python
+def make_tools(bash_max_timeout_s: float | None = None) -> list:
+    return [
+        AgentTool("read", "Read a text file. Output has line numbers. Use offset/limit for big files.",
+                  _obj({"path": _p("string", "File path, relative to cwd or absolute"),
+                        "offset": _p("integer", "First line to read, 1-based (default 1)"),
+                        "limit": _p("integer", f"Max lines to read (default {MAX_LINES})")}, ["path"]), read),
+        ...
+    ]
+
+
+TOOLS = make_tools()
+```
+
+`make_tools` wraps each function in an `AgentTool` with a name, a one-line description and a schema. The order is `read, write, edit, bash, grep, find, ls`. **Every** argument has a description. The model only sees these strings, never the code, so they are part of the tool's behaviour: "must match exactly once", "no timeout by default", "Dirs end with '/'". `TOOLS` is the default list with no bash cap; a host that wants a cap calls `make_tools(bash_max_timeout_s=...)`.
+
+The same names and descriptions also go into the system prompt. In [11](11-system-prompt.md), `system_prompt` writes one line per tool, like `- read: Read a text file. Output has line numbers. ...`.
+
+`_obj` (in the next section) builds each schema. `make_tools` USES the tool functions: the function is HOW a call runs, the `AgentTool` around it is WHAT the model sees.
+
 ### The shape of every tool
+
+The model sends `{"path": "README.md"}`, and `run_tool` ([05](05-agent-loop.md#run_tool-one-call-never-raises)) calls the `read` function. What does a tool function get, and what helpers does it share with the other tools?
 
 Every tool gets two things from the loop: `args`, the JSON object the model sent, and `ctx`, the [tool context](glossary.md#tool-context) from [05](05-agent-loop.md#toolcontext-what-a-tool-gets). Two tiny helpers in `coding/tools.py` are shared by all tools:
 
@@ -94,9 +123,31 @@ FUNCTION _path(ctx, path):
 
 Errors are plain exceptions. A tool raises `ValueError`, `OSError` or `RuntimeError` with a clear message, and `run_tool` ([05](05-agent-loop.md#run_tool-one-call-never-raises)) turns it into an error tool result. So no tool builds error objects by hand.
 
+### `read`
+
+Now `read` itself. It joins the path with `_path`, asks `ctx.env` for the text, and numbers the lines.
+
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `read`
+
+```text
+FUNCTION read(args, ctx):
+    lines = WAIT for ctx.env.read_file(_path(ctx, args.path)), split into lines
+    start = max(offset, 1) - 1          // offset is 1-based, default 1
+    end = start + limit                  // limit default 2000
+    out, info = truncate_head(lines[start:end], each as "number<TAB>line")
+    end = smallest of: end, number of lines, start + kept lines
+    IF end < number of lines:
+        ADD "[N more lines; use offset=M to continue]"   // the exact next call
+    RETURN out
+```
+
+`read` gets the whole file through the env and splits it into lines. `offset` is 1-based (line 1 is the first line), because the model sees 1-based numbers; values below 1 become 1. It takes at most `limit` lines and puts the line number and a tab before each one. The numbers let the model say "line 42" and come back later with `offset=42`. Then `truncate_head` applies the 50 KB limit too.
+
+The `end = smallest of ...` line works out where we **really** stopped. Three things can stop us: the `limit`, the end of the file, or the byte limit. Example: a file has 5000 lines and the model calls `read` with no offset. `start` is 0 and `end` is 2000. Say the lines are long, and the byte limit cuts after 1200 lines. Then `end = min(2000, 5000, 0 + 1200) = 1200`. Lines are left, so `read` adds `[3800 more lines; use offset=1201 to continue]`. This is not a generic "truncated" note: it tells the model the exact next call.
+
 ### Truncation: `truncate_head` and `truncate_tail`
 
-Before the tools, the one cutting rule they all share, in `coding/truncate.py`:
+Say `README.md` has 9000 lines. `read` called `truncate_head` above — what does that do, and why is it needed now? Without it, the whole file goes to the model and fills its [context](glossary.md#context). The cutting rule lives in `coding/truncate.py`, and all tools share it:
 
 Real code: [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `_cut`
 
@@ -132,9 +183,13 @@ FUNCTION truncate_tail(text):            // keep the end
 
 `truncate_tail` just reverses the lines, cuts, and reverses back. Both return the text and an info dict: `truncated`, `total_lines`, `total_bytes`, `kept_lines`.
 
-Most tools call two small wrappers instead, which also add a **note for the model**:
+`read` USES `truncate_head`: `read` decides which lines to show, `truncate_head` makes sure they fit. `read` calls it directly, because it needs the `kept_lines` number to write its own, more exact note (`[N more lines; use offset=M to continue]`).
 
-Real code: [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `head`, `tail`
+### Group 1 — look and read: `read`, `ls`, `grep`, `find`
+
+`read` is done. In the `shape.py` job, the model first needs to look around (step 1: `ls`). These four tools never change anything. Their output is cut too, but they do not need `kept_lines`, so they call a small wrapper that also adds a **note for the model**:
+
+Real code: [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `head`
 
 ```text
 FUNCTION head(text):
@@ -144,48 +199,9 @@ FUNCTION head(text):
     IF cut:
         ADD at the END "[Output truncated: showing first K of N lines]"
     RETURN out
-
-FUNCTION tail(text):
-    out, info = truncate_tail(text)
-    IF cut:
-        ADD at the START "[Output truncated: showing last K of N lines]"
-    RETURN out
 ```
 
-The note is the important part. A model that sees "showing first 2000 of 9000 lines" knows the answer is not complete and can ask again in a narrower way. A model that sees a silent cut thinks it saw everything. The note sits where the cut happened: at the end for `head`, at the start for `tail`.
-
-Which direction a tool uses depends on where the useful part is. For a file or a list of matches, the start matters, so `ls`, `grep` and `find` use `head`. For a command, the end matters (test failures and the summary come last), so `bash` uses `tail`. `read` is the one tool that calls `truncate_head` directly: it needs the `kept_lines` number to write its own, more exact note, and `head` hides that number.
-
-```mermaid
-flowchart LR
-    out["tool output"] --> which{"which tool?"}
-    which -- "read, ls, grep, find" --> H["keep first lines<br/>note at the end"]
-    which -- "bash" --> T["keep last lines<br/>note at the start"]
-```
-
-### Group 1 — look and read: `read`, `ls`, `grep`, `find`
-
-These four tools never change anything. In our example they are steps 1 and 2: `ls` to see `shape.py`, `read` to see the bug.
-
-#### `read`
-
-Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `read`
-
-```text
-FUNCTION read(args, ctx):
-    lines = WAIT for ctx.env.read_file(_path(ctx, args.path)), split into lines
-    start = max(offset, 1) - 1          // offset is 1-based, default 1
-    end = start + limit                  // limit default 2000
-    out, info = truncate_head(lines[start:end], each as "number<TAB>line")
-    end = smallest of: end, number of lines, start + kept lines
-    IF end < number of lines:
-        ADD "[N more lines; use offset=M to continue]"   // the exact next call
-    RETURN out
-```
-
-`read` gets the whole file through the env and splits it into lines. `offset` is 1-based (line 1 is the first line), because the model sees 1-based numbers; values below 1 become 1. It takes at most `limit` lines and puts the line number and a tab before each one. The numbers let the model say "line 42" and come back later with `offset=42`. Then `truncate_head` applies the 50 KB limit too.
-
-The `end = smallest of ...` line works out where we **really** stopped. Three things can stop us: the `limit`, the end of the file, or the byte limit. Example: a file has 5000 lines and the model calls `read` with no offset. `start` is 0 and `end` is 2000. Say the lines are long, and the byte limit cuts after 1200 lines. Then `end = min(2000, 5000, 0 + 1200) = 1200`. Lines are left, so `read` adds `[3800 more lines; use offset=1201 to continue]`. This is not a generic "truncated" note: it tells the model the exact next call.
+The note is the important part. A model that sees "showing first 2000 of 9000 lines" knows the answer is not complete and can ask again in a narrower way. A model that sees a silent cut thinks it saw everything. The note sits where the cut happened: at the end for `head`, at the start for `tail`. For a file list or a list of matches the start matters, so `ls`, `grep` and `find` all use `head`.
 
 #### `ls`
 
@@ -374,7 +390,7 @@ def name():
 
 ### Group 3 — run: `bash`
 
-`bash` runs any command: tests, builds, `git`. In our example it is steps 3 and 5, running `pytest`.
+The model has changed `shape.py`. Now it must check the fix: does `pytest` pass? `bash` runs any command: tests, builds, `git`. In our example it is steps 3 and 5, running `pytest`.
 
 `bash` is made by a **factory**: a function that builds and returns the tool function. `make_bash(max_timeout_s)` returns `bash`, and `bash` remembers `max_timeout_s`. Why a factory? The cap is set once by the **[host](glossary.md#host)** (the program that runs the agent: the CLI, the server, the eval runner), not by the model. The model only sends `args`, so it cannot change a value that lives inside the function.
 
@@ -412,25 +428,24 @@ At this commit the CLI reads the cap from the `bash_max_timeout_s` setting ([19]
 
 **Three endings, each with a note.** `exec` returns a code when the command finished, so we add `[exit code: N]`: the model needs it to tell pass from fail. `exec` returns `None` when the command was killed; then `ctx.cancel` tells us who killed it. If it is set, the user pressed Stop (`interrupted by the user after 1s`); if not, the timeout did (`timed out after 30 seconds`). In every case the output **so far** is kept, and `tail` keeps its end.
 
-### `make_tools`: names, descriptions, schemas
+For a command, the useful part is the **end** (test failures and the summary come last), so `bash` uses the other wrapper, `tail`. It puts its note at the start, where the cut happened:
 
-```python
-def make_tools(bash_max_timeout_s: float | None = None) -> list:
-    return [
-        AgentTool("read", "Read a text file. Output has line numbers. Use offset/limit for big files.",
-                  _obj({"path": _p("string", "File path, relative to cwd or absolute"),
-                        "offset": _p("integer", "First line to read, 1-based (default 1)"),
-                        "limit": _p("integer", f"Max lines to read (default {MAX_LINES})")}, ["path"]), read),
-        ...
-    ]
+Real code: [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `tail`
 
-
-TOOLS = make_tools()
+```text
+FUNCTION tail(text):
+    out, info = truncate_tail(text)
+    IF cut:
+        ADD at the START "[Output truncated: showing last K of N lines]"
+    RETURN out
 ```
 
-`make_tools` wraps each function in an `AgentTool` with a name, a one-line description and a schema. The order is `read, write, edit, bash, grep, find, ls`. **Every** argument has a description. The model only sees these strings, never the code, so they are part of the tool's behaviour: "must match exactly once", "no timeout by default", "Dirs end with '/'". `TOOLS` is the default list with no bash cap; a host that wants a cap calls `make_tools(bash_max_timeout_s=...)`.
-
-The same names and descriptions also go into the system prompt. In [11](11-system-prompt.md), `system_prompt` writes one line per tool, like `- read: Read a text file. Output has line numbers. ...`.
+```mermaid
+flowchart LR
+    out["tool output"] --> which{"which tool?"}
+    which -- "read, ls, grep, find" --> H["keep first lines<br/>note at the end"]
+    which -- "bash" --> T["keep last lines<br/>note at the start"]
+```
 
 ## Test
 

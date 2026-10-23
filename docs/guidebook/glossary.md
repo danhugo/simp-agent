@@ -288,7 +288,7 @@ The `": ping"` comment sent every 15 seconds on an idle SSE stream, so proxies k
 An asyncio object one task waits on until another task sets its result. Home: [21](21-transport.md#approval-over-the-wire).
 
 ## Store
-The server slot that saves users, sessions, events and usage. By default `SqliteStore`. Home: [22](22-store-auth.md#sqlitestore-one-file-five-tables).
+The server slot that saves users, sessions, events and usage. By default `SqliteStore`. Home: [22](22-store-auth.md#opening-the-store).
 
 ## Auth
 The server slot that finds the user for a request. By default `StaticTokenAuth`. Home: [22](22-store-auth.md#token-hashes).
@@ -309,7 +309,7 @@ One long-lived token per user, saved only as its sha256 in `users.token_sha256`.
 A token made by each password login and saved in the `tokens` table. `logout` deletes only that row. Home: [22](22-store-auth.md).
 
 ## WAL
-SQLite write-ahead log mode. Readers do not wait for the writer, and a crash does not break the file. Home: [22](22-store-auth.md#sqlitestore-one-file-five-tables).
+SQLite write-ahead log mode. Readers do not wait for the writer, and a crash does not break the file. Home: [22](22-store-auth.md#opening-the-store).
 
 ## Scrypt
 A slow, salted password hash from Python's `hashlib`. It is slow on purpose, so guessing is expensive. Home: [22](22-store-auth.md#scrypt-passwords).
