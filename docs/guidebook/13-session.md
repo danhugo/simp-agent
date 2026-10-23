@@ -63,84 +63,13 @@ It works for one happy run of the fizzbuzz task. It breaks when:
 2. **You want to save somewhere else.** The server wants a database ([22](22-store-auth.md)), tests want a list in memory. The file path is fixed inside the code.
 3. **Each app repeats this.** The CLI and the server both need the same wiring.
 
-We fix these one at a time below. Each part says the problem, what we do and why, then the code.
+We fix these below in the order a user meets them: open a session (3), ask and save (1), pick a store (2), then close and reopen. Each part says the problem, what we do and why, then the code.
 
 ## Real design
 
-### Save each message when it ends
-
-Problem 1: saving only at the end loses the whole run on a crash. The agent already sends a `message_end` event for every finished message ([06](06-events-abort.md)): the user message, each assistant reply, each tool result. So the session listens to the agent's events and saves right there.
-
-Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `_on_agent_event`
-
-```text
-self.agent.subscribe(self._on_agent_event)       // in __init__
-...
-FUNCTION _on_agent_event(e):
-    IF e is message_end AND there is a store:
-        WAIT for store.append(e.message)   // save right away: crash safe
-    WAIT for self._emit(e)                 // pass it on to the session's subscribers
-```
-
-Now a crash loses at most the message that was still streaming. Streaming deltas are not saved; only final messages are.
-
-Why `append` and not "rewrite the whole list"? Because history is **[append-only](glossary.md#append-only-history)**: a finished message never changes. So we write it once and never touch it again. Adding one line is cheap; rewriting the file every time is not.
-
-After saving, the session forwards the event with `_emit`. Apps subscribe to the **session**, not to the agent:
-
-Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `subscribe`
-
-```text
-FUNCTION subscribe(fn):
-    ADD fn to self._subs
-    RETURN a function that removes fn    // call it to unsubscribe
-```
-
-### Hide the storage behind two methods
-
-Problem 2: the file path is fixed in the code. The server wants a database; tests want a list. So the session only knows two methods. That is the `SessionStore` protocol:
-
-```python
-class SessionStore(Protocol):
-    # a message, CompactionEntry or CustomEntry, called right away (crash safe). May be async (awaited).
-    def append(self, entry) -> Any: ...
-
-    def load(self) -> list: ...  # used by the app: AgentSession(messages=store.load())
-```
-
-A **[SessionStore](glossary.md#sessionstore)** has only `append` (save one entry) and `load` (give back the list). The library does not know about files or databases. That keeps the `session` layer free of IO choices (see the layer rule in [00](00-overview.md)).
-
-A list in memory is now a full store. The tests use this one:
-
-```python
-class ListStore:
-    def __init__(self, items=()):
-        self.items = list(items)
-
-    def append(self, entry):
-        self.items.append(entry)
-
-    def load(self):
-        return list(self.items)
-```
-
-A database store needs `await`, a list does not. So the session calls `await _maybe_await(self.store.append(...))`, using the same **[`_maybe_await`](glossary.md#_maybe_await)** helper as the hooks in [08](08-hooks-approval.md): both kinds of store work.
-
-The comment in the protocol says `append` can also get two entries that are not messages: a `CompactionEntry` ([16](16-compaction.md)) and a plugin's `CustomEntry` ([14](14-plugins.md)). You can ignore them for now; they are saved the same way but never sent to the model.
-
-### Let the app load
-
-The session does not load by itself. The app does it and passes the list in:
-
-```python
-AgentSession(model, store=store, messages=store.load())
-```
-
-Why? The app decides *which* session to resume: a session id the user typed, the latest one, or a new one. The CLI, for example, has `latest_session(cwd)`, which picks the newest `.jsonl` file in the folder for this project. The library does not need to know any of this; it just takes a list.
-
 ### One class that owns the agent
 
-Problem 3: the CLI and the server must not repeat the wiring. So **[AgentSession](glossary.md#agentsession)** builds the `Agent` with good defaults, connects the store, and gives apps one place to `subscribe`, `prompt` and `continue_`. It does not copy the loop. It *owns* one `Agent` and plugs into its hooks.
+The user opens a session. Problem 3 comes first: the CLI and the server must not repeat the wiring. So **[AgentSession](glossary.md#agentsession)** builds the `Agent` with good defaults, connects the store (below), and gives apps one place to `subscribe`, `prompt` and `continue_`. It does not copy the loop. It *owns* one `Agent` and plugs into its hooks.
 
 Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.__init__`
 
@@ -156,7 +85,7 @@ CLASS AgentSession:
             prepare_next_turn = self._prepare,
             before_tool_call  = self._before_tool_call,
             after_tool_call   = self._after_tool_call)
-        self.agent.subscribe(self._on_agent_event)  // saving, above
+        self.agent.subscribe(self._on_agent_event)  // saving, below
 ```
 
 The session fills the agent's three hooks from [08](08-hooks-approval.md) with its own methods. Why: later chapters (plugins, compaction) add features inside those methods, and the loop never changes. The defaults keep the call short: no `tools` means the coding tools (`TOOLS`), no `env` means `LocalEnv()` ([09](09-exec-env.md)), and no `system_prompt` means the coding prompt from [11](11-system-prompt.md). `session.messages` simply returns `self.agent.messages`, so there is one list, not two copies that could drift apart.
@@ -238,9 +167,70 @@ Because `self._build_prompt` is the prompt function the `Agent` gets, the loop c
 
 `test_session.py::test_context_file_in_system_prompt` checks this: it writes `AGENTS.md` with `use tabs` and checks that the first system prompt contains it.
 
+### Save each message when it ends
+
+Now the user asks, and the agent runs. Problem 1: saving only at the end loses the whole run on a crash. The agent already sends a `message_end` event for every finished message ([06](06-events-abort.md)): the user message, each assistant reply, each tool result. So the session listens to the agent's events and saves right there.
+
+Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `_on_agent_event`
+
+```text
+self.agent.subscribe(self._on_agent_event)       // in __init__
+...
+FUNCTION _on_agent_event(e):
+    IF e is message_end AND there is a store:
+        WAIT for store.append(e.message)   // save right away: crash safe (store: next part)
+    WAIT for self._emit(e)                 // pass it on to the session's subscribers
+```
+
+Now a crash loses at most the message that was still streaming. Streaming deltas are not saved; only final messages are.
+
+Why `append` and not "rewrite the whole list"? Because history is **[append-only](glossary.md#append-only-history)**: a finished message never changes. So we write it once and never touch it again. Adding one line is cheap; rewriting the file every time is not.
+
+After saving, the session forwards the event with `_emit`. Apps subscribe to the **session**, not to the agent:
+
+Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `subscribe`
+
+```text
+FUNCTION subscribe(fn):
+    ADD fn to self._subs
+    RETURN a function that removes fn    // call it to unsubscribe
+```
+
+### Hide the storage behind two methods
+
+Problem 2: what is `store`? The file path must not be fixed in the code: the server wants a database; tests want a list. So the session only knows two methods: `append`, which saving needs now, and `load`, which we need when the user comes back. That is the `SessionStore` protocol:
+
+```python
+class SessionStore(Protocol):
+    # a message, CompactionEntry or CustomEntry, called right away (crash safe). May be async (awaited).
+    def append(self, entry) -> Any: ...
+
+    def load(self) -> list: ...  # used by the app: AgentSession(messages=store.load())
+```
+
+A **[SessionStore](glossary.md#sessionstore)** has only `append` (save one entry) and `load` (give back the list). The library does not know about files or databases. That keeps the `session` layer free of IO choices (see the layer rule in [00](00-overview.md)).
+
+A list in memory is now a full store. The tests use this one:
+
+```python
+class ListStore:
+    def __init__(self, items=()):
+        self.items = list(items)
+
+    def append(self, entry):
+        self.items.append(entry)
+
+    def load(self):
+        return list(self.items)
+```
+
+A database store needs `await`, a list does not. So the session calls `await _maybe_await(self.store.append(...))`, using the same **[`_maybe_await`](glossary.md#_maybe_await)** helper as the hooks in [08](08-hooks-approval.md): both kinds of store work.
+
+The comment in the protocol says `append` can also get two entries that are not messages: a `CompactionEntry` ([16](16-compaction.md)) and a plugin's `CustomEntry` ([14](14-plugins.md)). You can ignore them for now; they are saved the same way but never sent to the model.
+
 ### JsonlStore: the real store in the CLI
 
-The library has no file store. The CLI has one, in `apps/cli/src/simp_cli/__init__.py`. It makes the 4 lines from [the goal](#the-goal-what-is-saved):
+The library has no file store. The CLI has one, and it is where yesterday's fizzbuzz conversation is written, in `apps/cli/src/simp_cli/__init__.py`. It makes the 4 lines from [the goal](#the-goal-what-is-saved):
 
 Real code: [simp_cli/\_\_init\_\_.py](../../apps/cli/src/simp_cli/__init__.py) — `JsonlStore`
 
@@ -256,6 +246,16 @@ CLASS JsonlStore:                         // one finished entry per line
 ```
 
 Mode `"a"` adds at the end and never rewrites, so a crash can lose at most the line being written. `to_dict` / `from_dict` ([ref-objects](ref-objects.md#going-to-json-and-back)) turn entries into plain dicts and back; the `role` field picks the class. The files live at `~/.simp-agent/sessions/<cwd-slug>/<id>.jsonl`, where `session_dir(cwd)` makes the slug from the project path (`/home/me/project` becomes `home-me-project`). The server keeps its history in a database instead ([22](22-store-auth.md)), with the same two methods.
+
+### Let the app load
+
+Today the user closes the app and opens it again. Now `load` is needed. The session does not load by itself. The app does it and passes the list in:
+
+```python
+AgentSession(model, store=store, messages=store.load())
+```
+
+Why? The app decides *which* session to resume: a session id the user typed, the latest one, or a new one. The CLI, for example, has `latest_session(cwd)`, which picks the newest `.jsonl` file in the folder for this project. The library does not need to know any of this; it just takes a list.
 
 ## Test
 
@@ -291,10 +291,10 @@ uv run pytest packages/simp_agent/tests/test_session.py::test_store_gets_every_m
 ## Recap
 
 - `AgentSession` owns one `Agent` and connects to its hooks and events.
-- `SessionStore` is `append` + `load`. The session appends each finished message right away.
-- Resume = `AgentSession(..., messages=store.load())`.
 - `start()` runs once before the first run and adds the context file.
 - The system prompt is a table of prompt sections; `_build_prompt` joins them every turn.
+- `SessionStore` is `append` + `load`. The session appends each finished message right away.
 - `JsonlStore` in the CLI is the real file store: one JSON line per entry.
+- Resume = `AgentSession(..., messages=store.load())`.
 
 **Builds on:** [12 Evals](12-evals.md) · **Next:** [14 Plugins](14-plugins.md) — plugins use the session's hooks and prompt sections.

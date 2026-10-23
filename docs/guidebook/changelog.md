@@ -5,6 +5,8 @@ Changes to this book, newest first. Each entry names the project commit the text
 ## 2026-10-23
 
 - ch08 one-shot: README story continued (`read` calls never ask; follow-up `write NOTES.md` is the call that asks); naive bullets → prose; Step by step cut to 4 steps with no code repeat; "deny makes a result" said once; LoopConfig signatures given once; ToolContext/truncation linked to 05; diagram gets the truncation branch; session state and "read it step by step" as prose; approval table uses the story; after-hook test named; Recap as prose. (checked at agent/__init__.py:63-66, :163-180, :246, :316-317; session/__init__.py:95, :193-218)
+- ch13 flow reorder: Real design now follows the user: open (AgentSession) → ask (prompt/start, prompt sections) → save on message_end → SessionStore append/ListStore → JsonlStore → close and reopen (load). Text moved, not cut; forward refs fixed; Recap reordered.
+
 
 - ch07 one-shot: README story (steer "Also read CHANGELOG.md" during `read README.md`, follow-up "write a summary to NOTES.md"); a.py/b.py/c.py example replaced; one-run rule and tool-result rule linked to 06, not re-explained; naive bullets → prose; Step-by-step no longer repeats Real design pseudocode; `_take` merged into the Agent block; "steer never stops work" said once; lambdas/comment-note/MAX_QUEUED detail cut; abort exit after batch and f1/f2 test check fixed; Recap as prose. (checked at agent/__init__.py:55-56, :148-191, :203-211, :236-312)
 
