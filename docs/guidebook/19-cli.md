@@ -26,6 +26,8 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
+Picture a real morning. You open a terminal in your project folder and type `simp-agent "write fizzbuzz.py"`. You want to see the answer appear word by word. Halfway through you see the agent pick the wrong file name, and you want to tell it so without waiting. Before it runs `bash`, you want to say yes or no. Tomorrow you want to type `simp-agent -c` and go on from where you stopped.
+
 At the end of Part 4 we have an `AgentSession` ([13](13-session.md)) with plugins, retry, compaction and profiles ([14](14-plugins.md)–[18](18-profiles-plugins.md)). It can write `fizzbuzz.py`. But you can only use it from Python code.
 
 A person at a terminal needs more:
@@ -36,7 +38,7 @@ A person at a terminal needs more:
 - Press Ctrl-C to stop a run, without killing the program.
 - Say yes or no before the agent runs `bash` or writes a file ([08](08-hooks-approval.md)).
 
-The CLI is the thin layer that does this. It lives in `apps/cli/src/simp_cli/` (the three files are listed at the top).
+The CLI (command-line interface: the program you run in a terminal) is the thin layer that does this. It adds no agent behaviour of its own; it only connects keys and screen to the session. It lives in `apps/cli/src/simp_cli/` (the three files are listed at the top).
 
 ## Naive version
 
@@ -63,11 +65,11 @@ It works for one fizzbuzz turn. It breaks when:
 3. **Ctrl-C kills everything.** It raises `KeyboardInterrupt` and the program dies. It does not call `session.abort()` ([06](06-events-abort.md)).
 4. **Nothing is saved.** There is no store, so no resume.
 5. **No approval.** The agent runs `bash` with no question.
-6. **Each line makes a new event loop.** `asyncio.run` is called again and again on one session. Async state from the last run is gone.
+6. **Each line makes a new event loop.** `asyncio.run` is called again and again on one session. Anything async the session made in the last run (its abort event, a task still running) belonged to the old loop, so it is lost or breaks.
 
 ## Real design
 
-The real CLI fixes each break above; each section says which one. It also splits into two modes: a simple **print mode** for one task, and a full **REPL** for chat.
+The real CLI fixes each break above; each section says which one. It also splits into two modes: a simple **print mode** for one task (you give the task on the command line, it runs once and exits), and a full **REPL** (read–eval–print loop: a chat screen where you type many lines) for chat.
 
 ### main: pick a mode
 
@@ -83,18 +85,15 @@ EXIT with the code from repl(model, args)
 
 Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__init__.py), function `main`.
 
-`main()` reads flags with `argparse`. If there is a task (`-p "task"` or plain words), it runs **[print mode](glossary.md#print-mode)**. With no task, it starts the **[REPL](glossary.md#repl)**. The REPL import is inside `main`, so print mode does not load `prompt_toolkit`.
+`main()` reads flags with `argparse`. If there is a task (`-p "task"` or plain words), it runs **[print mode](glossary.md#print-mode)**. With no task, it starts the **[REPL](glossary.md#repl)**. The REPL import is inside `main`, so print mode does not load `prompt_toolkit` (the library that draws the REPL screen). If building the model fails with a `ValueError` (for example, an unknown profile), `main` prints the error and exits with code 1.
 
 `pyproject.toml` maps the command to this function: `simp-agent = "simp_cli:main"`.
 
 ### Keys come from the environment
 
-Before it picks a mode, `main` builds the model. `resolve_config` takes a profile from `~/.simp-agent/settings.json` ([18](18-profiles-plugins.md)) and puts CLI flags on top. One CLI rule matters here: **an API key is never read from the file**. Why: a settings file is easy to share or commit by mistake.
+Before it picks a mode, `main` builds the model. `resolve_config` takes a profile from `~/.simp-agent/settings.json` ([18](18-profiles-plugins.md#profiles-and-build_model)) and puts CLI flags on top. One CLI rule matters here: **an API key is never read from the file**. Why: a settings file is easy to share or commit by mistake.
 
-So `resolve_config` removes `"api_key"` from the profile. The file can only name an environment variable, `api_key_env`. Example:
-
-- settings: `{"api_key_env": "MY_KEY"}`, and `$MY_KEY` is set → the key is `$MY_KEY`.
-- `$MY_KEY` not set → `OPENAI_API_KEY` for OpenAI-style APIs (or `"dummy"`, for servers with no key), else `ANTHROPIC_API_KEY`.
+So `resolve_config` removes `"api_key"` from the profile. The file can only name an environment variable, `api_key_env`. For example, if the settings say `{"api_key_env": "MY_KEY"}` and `$MY_KEY` is set, the key is the value of `$MY_KEY`. If `$MY_KEY` is not set, the CLI falls back to `OPENAI_API_KEY` for OpenAI-style APIs (or `"dummy"`, for local servers with no key), and to `ANTHROPIC_API_KEY` otherwise.
 
 Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__init__.py), functions `resolve_config` and `env_api_key`.
 
@@ -102,7 +101,7 @@ Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__ini
 
 ### Sessions on disk
 
-Both modes use `JsonlStore` from [13](13-session.md). Each working folder has its own sessions:
+Both modes use `JsonlStore` from [13](13-session.md#jsonlstore-the-real-store-in-the-cli). Each working folder has its own sessions:
 
 ```text
 FUNCTION session_dir(cwd):
@@ -114,7 +113,7 @@ Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__ini
 
 Example: working in `/Users/a/proj` → sessions live in `~/.simp-agent/sessions/Users-a-proj/`, one `<id>.jsonl` file per session. This fixes break 4 (nothing saved).
 
-So `-c` / `--continue` means "the latest session **for this folder**". `latest_session(cwd)` picks the file with the newest modified time. `--resume ID` opens one session by id. A new session gets `uuid.uuid4().hex[:8]` as its id.
+So `-c` / `--continue` means "the latest session **for this folder**". `latest_session(cwd)` picks the file with the newest modified time; if the folder has no session yet, you simply get a new one. `--resume ID` opens one session by id. `-r` shows a list of this folder's sessions so you can pick one by number. A new session gets `uuid.uuid4().hex[:8]` as its id.
 
 ### Print mode
 
@@ -134,12 +133,7 @@ WHEN Ctrl-C comes: call session.abort()
 
 Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__init__.py), function `run`.
 
-Four things happen:
-
-- The store is loaded and passed as `messages=`. That is the resume pattern from [13](13-session.md).
-- `approve=None if args.yes else ask`. With `-y`, nothing asks. Else `ask` asks on the terminal (see below).
-- Ctrl-C (`SIGINT`) calls `session.abort()`. The run stops cleanly. The program does not die.
-- A `LinePrinter` subscribes to session events.
+The store is loaded and passed as `messages=`, which is the resume pattern from [13](13-session.md#jsonlstore-the-real-store-in-the-cli). The tools come from `make_tools`, the coding tools of [10](10-coding-tools.md). With `-y` nothing asks for approval; else `ask` asks on the terminal (see [Approval in the terminal](#approval-in-the-terminal)). Ctrl-C (`SIGINT`, the signal the terminal sends) calls `session.abort()` ([06](06-events-abort.md#abort-one-asyncioevent)), so the run stops cleanly and the program does not die. Last, a `LinePrinter` subscribes to session events to print them.
 
 At the end, `run` returns exit code `1` if the last message has `stop_reason` `"error"` or `"aborted"`, else `0`. So a shell script can check if the task worked.
 
@@ -172,9 +166,7 @@ RETURN an Application with:
 
 Real code: [apps/cli/src/simp_cli/repl.py](../../apps/cli/src/simp_cli/repl.py), method `Repl.build_app`.
 
-- `live`: the `Chat.live` components, plus the approval question if one is waiting.
-- `prompt`: one input line. Its prefix is `> `, `… ` while running, or `Allow? [y/N/a] ` while asking.
-- `bar`: a toolbar with model id, session id, about how many tokens (`estimate_tokens` from [16](16-compaction.md)), and state (`idle`, `running`, `compacting`, `retrying`).
+The `live` row shows what is still changing (the streaming answer, tools waiting for a result; see [Components](#components)), plus the approval question if one is waiting. The `prompt` row is one input line; its prefix is `> `, `… ` while running, or `Allow? [y/N/a] ` while asking. The `bar` row is a toolbar with the model id, the session id, about how many tokens are used (`estimate_tokens` from [16](16-compaction.md#when-estimate_tokens-and-should_compact)), and the state (`idle`, `running`, `compacting`, `retrying`).
 
 Finished components go above the app with `run_in_terminal`. Why not full screen? Because then the text stays in the normal terminal: you can scroll back and copy it like any other output.
 
@@ -187,7 +179,7 @@ FUNCTION start(run):
 
 Real code: [apps/cli/src/simp_cli/repl.py](../../apps/cli/src/simp_cli/repl.py), method `Repl.start`.
 
-So the input line stays alive while the agent works. This fixes breaks 1, 2 and 6 of the naive version: one event loop, streaming, and typing during a run.
+So the input line stays alive while the agent works. This fixes breaks 2 and 6 of the naive version: there is one event loop for the whole REPL, and you can type during a run. Break 1 (streaming) is fixed by the `live` row, which is redrawn as deltas come in.
 
 ### Components
 
@@ -203,16 +195,9 @@ Real code: [apps/cli/src/simp_cli/components.py](../../apps/cli/src/simp_cli/com
 
 `_render` uses `rich` to draw into a string, not into the real terminal. So `render` is pure: a test can call `render(80)` and read the lines.
 
-There are four components: `UserMsg`, `AssistantMsg`, `ToolCall` and `Notice`. Some details:
+There are four components: `UserMsg`, `AssistantMsg`, `ToolCall` and `Notice`. `AssistantMsg` shows plain text while streaming and Markdown only when `done`; the code comment says why: "half-done markdown jumps around". `ToolCall` shows at most `TOOL_LINES = 12` lines of output, then `… (N more lines)`. A `CompactionEntry` ([16](16-compaction.md)) shows as the notice `— earlier history compacted —`.
 
-- `AssistantMsg` shows plain text while streaming and Markdown only when `done`. The comment says why: "half-done markdown jumps around".
-- `ToolCall` shows at most `TOOL_LINES = 12` lines of output, then `… (N more lines)`.
-- A `CompactionEntry` ([16](16-compaction.md)) shows as the notice `— earlier history compacted —`.
-
-`Chat` turns messages and events into components. It has two places:
-
-- `live`: components still changing (the streaming answer, tools waiting for a result).
-- `commit(c)`: a finished component. It goes to normal terminal scrollback, once.
+`Chat` turns messages and events into components, and keeps them in two places. `live` holds components that still change. `commit(c)` sends a finished component to normal terminal scrollback, once.
 
 The key method is `on_message`. It takes one finished message:
 
@@ -254,12 +239,7 @@ FUNCTION route(line, running):        // gives back (kind, text)
 
 Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__init__.py), function `route`.
 
-`Repl.submit` acts on the result:
-
-- `prompt` → `self.start(self.session.prompt(text))`.
-- `steer` → `self.session.steer(text)`. A **[steer](glossary.md#steer)** message goes in at the next turn ([07](07-steering.md)).
-- `follow_up` → `self.session.follow_up(text)`. Runs after the agent would stop.
-- `command` → `Repl.command`: `/help`, `/history`, `/new`, `/sessions`, `/compact`, `/exit`.
+`Repl.submit` acts on the result. A `prompt` starts a run with `self.start(self.session.prompt(text))`. A `steer` calls `self.session.steer(text)`, and a `follow_up` calls `self.session.follow_up(text)`; these are the two queues of [07](07-steering.md#the-agent-side-two-lists-and-a-mode) (a **[steer](glossary.md#steer)** message goes in at the next turn, a follow-up runs after the agent would stop). A `command` goes to `Repl.command`, which knows `/help`, `/history`, `/new`, `/sessions`, `/compact`, and `/exit` (or `/quit`).
 
 Some commands need an idle agent. While running, `/new`, `/sessions` and `/compact` say `busy: Ctrl-C to abort first`.
 
@@ -280,7 +260,7 @@ While running, Ctrl-C aborts the run. When idle, the first Ctrl-C only warns; a 
 
 ### Approval in the terminal
 
-The session already has the approval policy ([08](08-hooks-approval.md)). In `session/__init__.py`, `approve(call)` returns `"allow"`, `"deny"` or `"always"`. Only `bash`, `write` and `edit` ask (`needs_approval`). `"always"` adds the tool name to `always_allowed`. The CLI only has to ask the human.
+The session already has the approval policy ([08](08-hooks-approval.md#approval-a-before_tool_call-that-asks-a-human)): it calls an `approve(call)` function that returns `"allow"`, `"deny"` or `"always"`, and only for `bash`, `write` and `edit`. The CLI only has to supply that function, which asks the human.
 
 Both modes turn the typed text into an answer with one function:
 
@@ -301,7 +281,7 @@ Anything else is `"deny"`. The safe answer is the default.
 ```text
 FUNCTION ask(call):     // blocking input is fine: nothing else runs while a tool waits
     PRINT "? " + describe_call(call)
-    REMOVE the Ctrl-C handler for now     // so Ctrl-C raises inside input()
+    REMOVE the Ctrl-C handler for now     // so Ctrl-C raises KeyboardInterrupt inside input()
     TRY:   RETURN approval_answer(input("Allow? [y/N/a] "))
     IF Ctrl-C:        call session.abort(); RETURN "deny"
     IF input ended:   RETURN "deny"
@@ -310,7 +290,9 @@ FUNCTION ask(call):     // blocking input is fine: nothing else runs while a too
 
 Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__init__.py), function `ask` inside `run`.
 
-**In the REPL**, a blocking `input()` would freeze the screen. So `approve` is async and waits on a future:
+Why remove the handler? While the asyncio handler is set, Ctrl-C only calls `session.abort()`; `input()` never sees it and keeps waiting. Removing it for a moment lets Ctrl-C break out of `input()`.
+
+**In the REPL**, a blocking `input()` would freeze the screen. So `approve` is async and waits on a **[future](glossary.md#future)**: an empty box that one side waits on and the other side fills with `set_result`.
 
 ```text
 FUNCTION approve(call):      // async
@@ -340,19 +322,14 @@ def test_route():
     assert cli.route("  ", True) == ("empty", "")
 ```
 
-What it checks:
-
-- The same text `hi` is a new `prompt` when idle, but a `steer` while running.
-- `>>` while running is a `follow_up`, and the `>>` is removed.
-- A `/` line is always a command, even while running.
-- Spaces only is `empty`.
+It checks that the same text `hi` is a new `prompt` when idle but a `steer` while running, that `>>` while running is a `follow_up` with the `>>` removed, that a `/` line is always a command, even while running, and that spaces only is `empty`.
 
 No terminal, no model, no event loop. That is why `route` is a pure function and the REPL "only wires it to the terminal" (the comment above it in `__init__.py`).
 
 Other tests in the same files use the same idea:
 
 - `test_approval_answer_default_no` and `test_interrupt_action` test the other pure functions.
-- `test_deny_skips_tool` and `test_always_asks_once_and_read_never_asks` run an `AgentSession` on `FakeProvider` ([04](04-label-test.md)) with an `approve` function.
+- `test_deny_skips_tool` and `test_always_asks_once_and_read_never_asks` are the approval tests already shown in [08](08-hooks-approval.md#test).
 - `test_print_mode_full_lines_no_ansi` (in `test_tui.py`) feeds deltas to `LinePrinter` and checks it prints only full lines, with no ANSI.
 - `test_pty_streaming_screen` starts a real REPL in a pseudo terminal and reads the screen with `pyte`. It checks that the answer shows while it still streams.
 
