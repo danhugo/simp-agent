@@ -35,13 +35,13 @@ So we must make the history smaller **before** that happens. And we must do it w
 
 ## Naive version
 
-Drop old messages:
+Where compaction plugs in: the [view](glossary.md#view-llm-view) step. Before every model call the loop asks the `prepare_next_turn` hook for the view ([05](05-agent-loop.md#_llm_turn-one-model-call)), and the session fills that hook with `_prepare` ([13](13-session.md#one-class-that-owns-the-agent)). The simplest idea is to drop old messages there:
 
 ```python
 def trim(messages, keep=20):
     return messages[-keep:]
 
-# before each model call:
+# in the prepare_next_turn hook, which builds the view before each model call (05):
 view = trim(agent.messages)
 ```
 

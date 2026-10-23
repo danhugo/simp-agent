@@ -32,13 +32,13 @@ We want a **[plugin](glossary.md#plugin)** instead: a plain object that the sess
 
 ## Naive version
 
-A first try for "no bash": the session's `before_tool_call` asks every plugin.
+In [13](13-session.md#one-class-that-owns-the-agent), `AgentSession` gave the agent its own `_before_tool_call`, `_after_tool_call` and `_prepare` hooks. Plugins go inside those methods, so the loop does not change. A first try for "no bash": the session's `_before_tool_call` asks every plugin.
 
 Naive sketch (not in the repo):
 
 ```text
-CLASS Session:
-    FUNCTION before(call, ctx):              // the ch 08 before_tool_call
+CLASS AgentSession:
+    FUNCTION _before_tool_call(call, ctx):   // the ch 08 before_tool_call hook
         FOR EACH plugin p:
             r = p.tool_call(call)            // every plugin MUST have tool_call
             IF r has "block":

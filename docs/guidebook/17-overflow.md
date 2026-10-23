@@ -57,7 +57,7 @@ This fixes our one overflow with one provider. It breaks in three ways.
 
 First, each provider says it differently. Anthropic says "prompt is too long", but OpenAI says "maximum context length" or "context_length_exceeded", so the check misses them. Second, it can loop forever. If one compaction cannot make the request small enough (for example, one huge recent turn that `find_cut` in [16](16-compaction.md#where-find_cut) must keep), it compacts, fails, and compacts again, and it pays for a summary call each time. Third, if `compact()` itself fails, it still calls the model again and gets the same error.
 
-There is also a trap in the code we already have. The retry loop of [15](15-retry.md) must never treat an overflow as a short failure, or it would wait and send the same too-big request again.
+Where it plugs in: the same place as retry, `AgentSession._run` ([15](15-retry.md#the-retry-loop-in-_run)), after the run of the agent loop ends with an error message. There is also a trap in the code we already have. The retry loop of [15](15-retry.md) must never treat an overflow as a short failure, or it would wait and send the same too-big request again.
 
 | Problem | Fix | Section |
 |---|---|---|

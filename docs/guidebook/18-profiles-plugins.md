@@ -49,7 +49,7 @@ So this chapter has two jobs. Both turn plain text from a settings file into rea
 
 ## Naive version
 
-Pass the dict straight to `Model`:
+Where it plugs in: a profile only makes the inputs of `AgentSession` ([13](13-session.md#one-class-that-owns-the-agent)): the `Model` and the list of plugins ([14](14-plugins.md)). The session, the agent and the loop do not change. First try: pass the dict straight to `Model`:
 
 ```python
 from simp_agent.ai import Model
