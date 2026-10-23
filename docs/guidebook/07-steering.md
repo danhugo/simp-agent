@@ -24,7 +24,7 @@ The two messages also need different times. "Also read CHANGELOG.md" should reac
 - a [steer](glossary.md#steer) message is delivered as soon as it is safe, in the middle of the run;
 - a [follow-up](glossary.md#follow-up) message waits until the agent would stop, then starts more work in the same run.
 
-"As soon as it is safe" matters. [06](06-events-abort.md#naive-version) showed that every tool call must be followed by its tool result, or the vendor returns a 400 error. So we cannot put the user's message into the history at the moment they type it:
+"As soon as it is safe" matters. [06](06-events-abort.md#starting-point-05s-loop-with-nobody-listening) showed that every tool call must be followed by its tool result, or the vendor returns a 400 error. So we cannot put the user's message into the history at the moment they type it:
 
 ```text
 assistant: call c1 read README.md
