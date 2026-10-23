@@ -338,7 +338,7 @@ First, a run in plain words. The user asks "What is in README.md?" Two turns hap
 
 The run returns four new messages: the user prompt, the assistant message and tool result of turn 1, then the final assistant message.
 
-Now the loop that does this. This is a small version: it leaves out steering and follow-ups ([07](07-steering.md)), tool events and abort ([06](06-events-abort.md)), and hooks ([08](08-hooks-approval.md)).
+Now the loop that does this. This is a small version: it leaves out steering and follow-ups ([07](07-steering.md)), tool events and most of abort ([06](06-events-abort.md)), and hooks ([08](08-hooks-approval.md)).
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
 
@@ -359,6 +359,7 @@ FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> n
             RETURN _end(send, msg, new)        // turn_end, agent_end
         calls = the tool calls in msg
         FOR EACH call in calls:
+            IF cancel is set: STOP this FOR loop   // skip the remaining calls
             IF msg.stop_reason is "length":    // args may be cut off: never execute them
                 result = error ToolResultMessage "Tool call was truncated (max tokens); not executed"
             ELSE:
