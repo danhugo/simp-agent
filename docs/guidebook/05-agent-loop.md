@@ -57,8 +57,8 @@ flowchart LR
 ```text
 FUNCTION naive_loop(system_prompt, messages, tools, model):
     REPEAT forever:
-        ctx = Context(system_prompt, messages, tools)
-        FOR EACH event from ai.stream(model, ctx):
+        request = Context(system_prompt, messages, tools)
+        FOR EACH event from ai.stream(model, request):
             IF event type is "done" or "error": msg = event message
         ADD msg to messages
         calls = the tool calls in msg
@@ -69,9 +69,9 @@ FUNCTION naive_loop(system_prompt, messages, tools, model):
             ADD ToolResultMessage(call.id, call.name, text) to messages
 ```
 
-Here `Context` is the request we send to the model. It is not the `ctx` we meet in Step 3.
+Here `Context` is the request we send to the model.
 
-It works for the **happy path**: the case where nothing goes wrong. Let us follow one example through it and see where it breaks. The user asks: *"What is in README.md?"* We have one tool, `read`, which takes `{"path": ...}` and returns the file's text.
+It works for the **happy path**: the case where nothing goes wrong. Let us follow one example through it and see where it breaks. The user asks: *"What is in README.md?"* We have one tool, `read`, which takes `{"path": ...}` and returns the file's text. (Later in this chapter `read` becomes an `AgentTool`; its real code is in [10](10-coding-tools.md).)
 
 If all goes well, the model answers with a tool call `read({"path": "README.md"})`. The loop executes `read`, adds the file's text to the history, and calls the model again. Now the model has the text, so it writes a short summary with no tool calls, and the loop returns. Good. But models make mistakes, files go missing and networks fail. Here is what the naive loop does then.
 
@@ -97,16 +97,17 @@ We fix the naive loop one problem at a time, with the same README.md example. Ea
 
 First, one small helper. When something goes wrong with a tool call, `run_tool` uses `err(text)` to build the answer. It makes a normal `ToolResultMessage` for that call, with the error text as its content and `is_error=True`. The `is_error` flag marks the result as a failure, so the provider and the UI can show it as one. The important part is that it is still a normal tool result. It goes into the history, and the model reads it on the next turn like any other result.
 
-`RETURN` here gives the result back to `agent_loop`, which called `result = WAIT for run_tool(tools, call, ctx)`. `agent_loop` calls the after hook ([08](08-hooks-approval.md)), adds the result to the history, and the model reads it on the next turn.
-
 **Step 1 — find the tool safely.** Instead of a dict lookup, we search the list of tools. If no tool has that name, we return an error result instead of crashing:
 
 ```text
 FUNCTION run_tool(tools, call, ctx):
+    err(text) = ToolResultMessage(call.id, call.name, text, is_error = yes)
     tool = FIND the tool in tools whose name is call.name, or nothing
     IF tool is nothing:
         RETURN err("Tool <call.name> not found")
 ```
+
+`RETURN` here gives the result back to `agent_loop`, the caller of `run_tool`. `agent_loop` adds the result to the history, and the model reads it on the next turn.
 
 Back to the typo. The model asked for `raed`. The run does not crash any more. The history now holds a tool result with the text `Tool raed not found`. On the next turn the model reads it, sees its mistake, and calls `read({"path": "README.md"})`. The run goes on.
 
@@ -122,7 +123,7 @@ FUNCTION run_tool(tools, call, ctx):
 
 So for `read({})` the tool never executes. The model gets the text `Invalid arguments for read: 'path' is a required property`. That is clear enough that on the next turn it sends `{"path": "README.md"}`.
 
-**Step 3 — catch tool errors.** We wrap the tool call in `try`, and turn any exception into text. The tool now also gets a second argument, a `ctx` (a `ToolContext`: the extra object each tool gets, see Step 6). Step 6 explains `ctx` fully; here we only need one part of it, `ctx.cancel`, which is set when the user presses Stop.
+**Step 3 — catch tool errors.** We wrap the tool call in `try`, and turn any exception into text. The tool now also gets a second argument, `ctx`: a small helper object that each tool call gets (Step 6). Here we only need one part of it, `ctx.cancel`, which is set when the user presses Stop.
 
 ```text
 FUNCTION run_tool(tools, call, ctx):
@@ -140,22 +141,13 @@ Now the missing file. `read` raises `FileNotFoundError`, and the model receives 
 
 **Step 4 — check `stop_reason`.** After each model call, before any tool executes, the loop checks why the model stopped. `error` (the provider failed) and `aborted` (the user pressed Stop) both mean there is nothing useful to execute, so the loop ends on purpose.
 
-**How Stop works.** Pressing Stop does not send `aborted`. It only sets the **[cancel flag](glossary.md#abort)**, an `asyncio.Event` that the `Agent` keeps (`agent.abort()` sets it). The model stream, the executing tool (`ctx.cancel`) and the loop all watch it, and whoever is running reacts:
-- Stop while the model answers: the stream closes and the message gets `stop_reason` `aborted`.
-- Stop while a tool executes: the model already finished, so no message is `aborted` yet. The tool returns "Interrupted by the user", the remaining calls of that turn are skipped (they get no result), and after the tools the loop adds an `aborted` message itself.
+**How Stop works.** Pressing Stop happens in two parts. First, it sets a flag, the **[cancel flag](glossary.md#abort)**. The model call, the tool that is executing and the loop all watch this flag. Second, an `aborted` label goes into the history, so later everyone can see why the run ended. Who writes that label depends on when the user pressed Stop. If the model was still answering, its answer stops and gets `stop_reason` `aborted`. If a tool was executing, the model had already finished, so the tool returns "Interrupted by the user", the other calls of that turn are skipped, and the loop adds an `aborted` message itself. How the flag works inside is [06](06-events-abort.md).
 
-The flag says "stop now"; the `aborted` label in the history records "we stopped", so the app knows why the run ended. Details in [06](06-events-abort.md).
-
-**When a run ends.** A [run](#problem) (one call to the loop) ends in only three ways:
-1. the message has `stop_reason` `error` or `aborted`;
-2. the cancel flag is set after a turn's tools executed;
-3. normally: the model asks for no tools, and no steering or follow-up message is waiting ([07](07-steering.md)).
-
-Ways 1 and 2 call `_end`, which sends `turn_end` and `agent_end` and returns the new messages. Way 3 sends `agent_end` at the end of the loop.
+**When a run ends.** A [run](#problem) ends in only three ways. The model's message has `stop_reason` `error` or `aborted`. Or the user pressed Stop while the tools of a turn were executing. Or, the normal way, the model asks for no more tools (and no new message from the user is waiting, [07](07-steering.md)). In every case the loop sends a last `agent_end` event and returns the new messages.
 
 ```text
 IF msg.stop_reason is "error" or "aborted":
-    RETURN _end(send, msg, new)   // send turn_end and agent_end, return the new messages
+    RETURN the new messages       // after the turn_end and agent_end events
 
 FOR call IN msg.tool_calls:
     IF msg.stop_reason is "length":     // args may be cut off: never execute them
@@ -165,8 +157,6 @@ FOR call IN msg.tool_calls:
         result = WAIT for run_tool(tools, call, ctx)    // Steps 1-3
     ADD result to history
 ```
-
-`agent_loop` returns what `_end` gives back. (In [06](06-events-abort.md), `agent.prompt()` returns it.)
 
 So for the provider failure, the loop now stops because it *checked* `stop_reason`, not by luck. The error message stays in the history, and the caller can see it.
 
@@ -189,7 +179,7 @@ The app passes `stream_fn = ai.stream`. A test passes `FakeProvider` ([04](04-la
 ctx = ToolContext(cancel, config.env, config.cwd, on_update)
 ```
 
-It has four parts. `cancel` is the Stop flag that we already used in Step 3. `env` is the place where file and shell work really happens (the local disk, by default). `cwd` is the working folder, so `README.md` means the README.md in the user's project, not wherever the program started. `on_update` is a function the tool can call with a short text to report progress while it works, for example the output of a long command; the UI can show it right away.
+It has four parts. `cancel` is the Stop flag that we already used in Step 3. `env` is the place where file and shell work really happens. By default it is `LocalEnv`: file reads and shell commands on your own disk ([09](09-exec-env.md)). A Docker env can replace it ([24](24-docker-sandbox.md)). `cwd` is the working folder, so `README.md` means the README.md in the user's project, not wherever the program started. `on_update` is a function the tool can call with a short text to report progress while it works, for example the output of a long command; the UI can show it right away.
 
 Here is the whole path in one table:
 
@@ -309,21 +299,17 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 CLASS LoopConfig:
     model
     tools = empty list
-    get_tools = nothing    // re-read every turn (wins over tools); changes are told to the model
-    ...
+    get_tools = nothing    // if set: called every turn, wins over tools
     stream_fn = ai.stream  // swap for a fake in tests
-    ...
     get_api_key = nothing
     env = a new LocalEnv
     cwd = the current folder
+    // other fields: later chapters (07 steering, 08 hooks, 16 compaction)
 ```
 
-- `stream_fn` defaults to `ai.stream`. A test passes `FakeProvider(...)` instead. This is the [stream function](glossary.md#stream-function) shape from [01](01-pick-clean.md#out-the-shape-of-a-model-call) paying off: the loop cannot tell the difference.
-- `get_api_key(provider)` is called **before every model call**, so a key that can expire (e.g. a login token) can refresh in the middle of a long run. `api_key_opts` turns it into `{"api_key": ...}`. If it is `None`, no key is passed and the provider returns a "no API key" error ([01](01-pick-clean.md#1-pick-_providers-register_provider)).
-- `env` and `cwd` go into every `ToolContext`.
-- `get_tools`, if set, is called every turn and wins over `tools`. So the tool list can change during a run. The `Agent` class sets `get_tools=lambda: self.tools`, so changing `agent.tools` takes effect at the next turn.
+`stream_fn` defaults to `ai.stream`, and a test passes `FakeProvider(...)` instead; thanks to the [stream function](glossary.md#stream-function) shape from [01](01-pick-clean.md#out-the-shape-of-a-model-call), the loop cannot tell the difference. `get_tools`, if set, is called every turn, so the tool list can change during a run (the `Agent` class uses it so that changing `agent.tools` takes effect at the next turn). `get_api_key(provider)` is called before every model call, so a key that can expire, like a login token, can refresh in the middle of a long run; if it is not set, no key is passed and the provider returns a "no API key" error ([01](01-pick-clean.md#1-pick-_providers-register_provider)). `env` and `cwd` go into every `ToolContext`.
 
-The other fields (`get_steering`, `get_follow_up`, `prepare_next_turn`, `before_tool_call`, `after_tool_call`, `convert_to_llm`, `transform_context`, `declared_tools`) all have "do nothing" defaults. Later chapters fill them in. That is why the loop in this chapter can stay small: the hooks exist, but they are empty.
+All the other fields have "do nothing" defaults, and later chapters fill them in: steering and follow-ups in [07](07-steering.md), tool hooks in [08](08-hooks-approval.md), and the history view in [16](16-compaction.md). That is why the loop in this chapter can stay small.
 
 ### `agent_loop`: the loop
 
@@ -339,6 +325,10 @@ First, a run in plain words. The user asks "What is in README.md?" Two turns hap
 The run returns four new messages: the user prompt, the assistant message and tool result of turn 1, then the final assistant message.
 
 Now the loop that does this. This is a small version: it leaves out steering and follow-ups ([07](07-steering.md)), tool events and most of abort ([06](06-events-abort.md)), and hooks ([08](08-hooks-approval.md)).
+
+Its inputs, in plain words: `messages` is the history so far (the loop appends to this same list), `prompts` are the new user messages for this run, and `config` is the `LoopConfig` above. `emit` is how the app listens: the loop gives it every event. Inside, `send(event)` tells the app's listeners about one event, and `add(message)` keeps a message in the history and also tells the listeners about it. `cancel` is the Stop flag from Steps 3 and 4.
+
+Why does `_llm_turn` get `send` and `add` too? It `send` and `add` also reports events: `send` for each piece of the streamed answer, and `add` for the few messages it puts in the history itself (a note when the tool list changed, and steering messages from [07](07-steering.md)).
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
 
@@ -356,7 +346,7 @@ FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> n
         msg = WAIT for _llm_turn(system_prompt, messages, config, cancel, send, add)
         add(msg)
         IF msg.stop_reason is "error" or "aborted":
-            RETURN _end(send, msg, new)        // turn_end, agent_end
+            SEND turn_end, agent_end; RETURN new
         calls = the tool calls in msg
         FOR EACH call in calls:
             IF cancel is set: STOP this FOR loop   // skip the remaining calls
@@ -365,11 +355,11 @@ FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> n
             ELSE:
                 on_update = FUNCTION (text): SEND event tool_execution_update for this call
                 ctx = ToolContext(cancel, config.env, config.cwd, on_update)
-                result = WAIT for run_tool(_tools(config), call, ctx)
+                result = WAIT for run_tool(the current tools, call, ctx)
             add(result)
         IF cancel is set:                      // user pressed Stop during the tools
             msg = an aborted AssistantMessage; add(msg)
-            RETURN _end(send, msg, new)
+            SEND turn_end, agent_end; RETURN new
         SEND event {turn_end, msg}
         has_calls = (calls is not empty)
     SEND event {agent_end, new}
@@ -400,15 +390,9 @@ flowchart TD
 
 One pass of the inner `while` is one [turn](glossary.md#turn): one model call plus the tools it asked for. How does the loop know it is done? It sets `has_calls = bool(calls)`. If the model asked for no tools, there is nothing left to execute, so the inner loop ends. This is the only "done" signal, which means the model itself decides when it has finished.
 
-Errors end the run, but never the program. A provider error does not raise; it comes back as an `AssistantMessage` with `stop_reason="error"` ([01](01-pick-clean.md), [02](02-translate-send.md)). The loop adds this message to the history and returns, so the caller can see what went wrong. Retrying is a separate job ([15](15-retry.md)).
+The other ways a run ends (error, aborted) and why cut-off calls never execute are in [Step 4](#step-by-step-from-naive-to-real). Retrying after a provider error is a separate job ([15](15-retry.md)).
 
-Some other points:
-
-- **Inputs.** `messages` is the full history. The loop **appends** to it (mutates it). `prompts` are the new user messages for this run. The return value is only the **new** messages, so the caller can save or show them.
-- **`add(m)`** does two things: it appends `m` to `messages` and to `new`, and it emits `message_start` / `message_end` events. Every message goes through `add`, so events and history never disagree. Events are the topic of [06](06-events-abort.md).
-- **Cut-off calls are never executed.** When `stop_reason == "length"`, each call gets an error result "Tool call was truncated (max tokens); not executed". Executing a tool with half-written arguments (say, a `write` with half a file) would be dangerous. The model still gets a result for each call, so the next request is valid.
-- **Every tool call gets a result.** Unknown tool, bad args, crash, truncated: in every case the loop adds a `ToolResultMessage`. Providers reject a tool call with no result ([01](01-pick-clean.md#2-clean-transform_messages)), so this keeps the history sendable. (One exception: after an abort the remaining calls are skipped; `transform_messages` repairs that later, see [01](01-pick-clean.md#2-clean-transform_messages) and [06](06-events-abort.md).)
-- **Tools execute one after another**, in the order the model gave, so results stay in the same order as the calls. (A design reason, not written in the code: two tools never edit the same file at the same time.)
+Every tool call gets a result: unknown tool, bad arguments, a crash or a cut-off call all still add a `ToolResultMessage`. Why does this matter? Providers reject a history where a tool call has no result ([01](01-pick-clean.md#2-clean-transform_messages)), so without it the next model call would fail. The one exception is Stop: the skipped calls get no result, and `transform_messages` repairs that before the next send ([06](06-events-abort.md)). The tools execute one after another, in the order the model gave, so the results stay in the same order as the calls.
 
 ### `_llm_turn`: one model call
 
@@ -420,26 +404,24 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 
 ```text
 // inside FUNCTION _llm_turn(system_prompt, messages, config, cancel, send, add):
-    tools = _tools(config)                  // read again every turn
+    tools = config.get_tools() if set, else config.tools    // read again every turn
+    view = the messages to send (by default, the whole history)
     ...
     IF system_prompt is a function: system_prompt = WAIT for system_prompt()
-    llm_msgs = ai.transform_messages(config.convert_to_llm(config.transform_context(view)))
+    llm_msgs = ai.transform_messages(view)
     msg = nothing; partial = nothing
-    opts = WAIT for api_key_opts(config.get_api_key, config.model)
-    FOR EACH event from _stream(config.stream_fn, config.model,
-                                Context(system_prompt, llm_msgs, tools), cancel, opts):
+    key = {"api_key": WAIT for config.get_api_key(config.model.provider)}, or {} if not set
+    FOR EACH event from config.stream_fn(config.model,
+                                Context(system_prompt, llm_msgs, tools), key):
+                                // wrapped so that Stop can cut it off (06)
         SEND event {message_update, event}
         partial = event.partial, if it has one
         IF event type is "done" or "error": msg = event message
 ```
 
-- The tool list is read again **every turn**.
-- `system_prompt` is typed `str`, but it may also be a function (sync or async) that returns the string. A function is called every turn, so the prompt can change between turns. (What goes in the prompt is [11](11-system-prompt.md).)
-- `transform_messages` ([01](01-pick-clean.md#2-clean-transform_messages)) cleans the history before it is sent. The view goes through `transform_context` and `convert_to_llm` first; both do nothing by default.
-- The final message is taken from the last `done` or `error` event — the one rule of a stream function.
-- `_stream` wraps `stream_fn` so the call can be stopped in the middle; that is [06](06-events-abort.md).
+The tool list and the system prompt are read again every turn. `system_prompt` is usually a string, but it may also be a function that returns the string, so the prompt can change between turns (what goes in it is [11](11-system-prompt.md)). The `view` is the list of messages we send; by default it is the whole history, and [16](16-compaction.md) makes it shorter. `transform_messages` ([01](01-pick-clean.md#2-clean-transform_messages)) cleans it before it is sent. The final message is taken from the last `done` or `error` event, the one rule of a stream function. In the real code the call goes through a small wrapper, `_stream`, so that Stop can cut it off in the middle ([06](06-events-abort.md)).
 
-The skipped lines (the `prepare_next_turn` hook, a steering poll, and a "Tools added / removed" note when the tool list changed) belong to [07](07-steering.md) and [16](16-compaction.md); the note is shown when tools change during a run.
+The skipped lines (a steering poll and the "Tools added / removed" note) belong to [07](07-steering.md). The `view` is made by the `prepare_next_turn` hook, and two more hooks, `transform_context` and `convert_to_llm`, can change it before `transform_messages`; all three do nothing by default, and [16](16-compaction.md) uses `prepare_next_turn`.
 
 ## Test
 
@@ -450,7 +432,7 @@ def call(name, **args):
     return AssistantMessage([ToolCall("c1", name, args)], stop_reason="tool_use")
 
 
-async def echo(args, cancel):
+async def echo(args, ctx):
     return f"echo {args['x']}"
 
 
@@ -466,7 +448,7 @@ async def run(*replies, tools=(ECHO, BOOM)):
     return new, [e["type"] for e in events]
 ```
 
-(`boom` always raises `RuntimeError("kaboom")`. The second parameter is named `cancel` in the test, but it receives the `ToolContext`.)
+(`boom` always raises `RuntimeError("kaboom")`.)
 
 Each [scripted reply](glossary.md#scripted-reply) is one model answer. The test for the main path:
 
@@ -510,7 +492,7 @@ uv run pytest packages/simp_agent/tests/test_core.py
 >
 > **One schema, two jobs.** `parameters` tells the model what to send and also checks what it sent. No second check to keep in sync. The cost: a JSON schema cannot check everything (for example, "this file must exist"); the tool still checks that itself.
 >
-> **Tools execute one after another.** Results keep the same order as the calls, and two tools never touch the same file at once. The cost: many slow tools in one turn take longer than they would in parallel.
+> **Tools execute one after another.** Results keep the same order as the calls, and two tools never touch the same file at once (a design reason; the code does not say it). The cost: many slow tools in one turn take longer than they would in parallel.
 
 ## Exercises
 

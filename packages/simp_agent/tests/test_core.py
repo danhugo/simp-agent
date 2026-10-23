@@ -14,11 +14,11 @@ def call(name, **args):
     return AssistantMessage([ToolCall("c1", name, args)], stop_reason="tool_use")
 
 
-async def boom(args, cancel):
+async def boom(args, ctx):
     raise RuntimeError("kaboom")
 
 
-async def echo(args, cancel):
+async def echo(args, ctx):
     return f"echo {args['x']}"
 
 
