@@ -62,13 +62,19 @@ It works for one happy fizzbuzz run. It breaks when:
 
 ## Real design
 
-The server lives in `apps/server/src/simp_server/`. We build it in five steps. Each step fixes one or more of the naive problems above.
+The server lives in `apps/server/src/simp_server/`. We build it by following one request, Ana's "write fizzbuzz.py", from start to end: the server starts, the prompt comes in, the server finds the `Run` for the session, the `Run` drives the agent through its states, events go out, and a side call names the session. Each step fixes one or more of the naive problems above. Last, we give the browser the same message types.
 
 This chapter owns the **messages** and the **Run's state**. [21 Transport](21-transport.md) then moves them over the wire: the `seq` counter, replay after a reconnect, the command queue and approval (problems 4 and 5). [22 Store and auth](22-store-auth.md) saves the log and loads a session again.
 
+### Starting the server
+
+*Step 1.* Before any request, we need a command to start the server. `apps/server/src/simp_server/__main__.py` looks at the first word. `simp-server run` starts the real server in `server.py`. The other words (`seed`, `passwd`, `users`, `revoke`, `rotate`, `backup`, `pause`, `resume`) are admin commands from [22](22-store-auth.md) and [23](23-limits.md). `build-sandbox` builds the sandbox image ([24](24-docker-sandbox.md)). Anything else runs a fake server (`fake.py`) that plays a scripted run with no model. **Why a fake:** the web client and its browser tests ([25](25-web-client.md), [26](26-system-tests-deploy.md)) can then run with no API key and no cost.
+
+Real code: [apps/server/src/simp_server/__main__.py](../../apps/server/src/simp_server/__main__.py), function `main`.
+
 ### Protocol models
 
-*Step 1.*
+*Step 2.* The server is up, and the browser sends its first JSON. To read it safely, we need typed messages.
 
 **Problem 3:** the body is any dict, and the browser does not know which shapes exist.
 
@@ -82,7 +88,7 @@ BASE MODEL _M for every message:
 
 Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_server/protocol.py), class `_M`.
 
-**Why Pydantic:** one class gives us checking on the way in, JSON on the way out, and a JSON Schema for TypeScript (step 4). **Why these rules:** `extra="forbid"` turns `{"type": "prompt", "txt": "hi"}` into a clear error, not a silent drop. The second rule sounds backwards, but think of the server's output: when the server sends a model, every field with a default is filled in, so it is always in the JSON. Marking it "required" lets TypeScript trust that it is there, with no `?` and no `undefined` checks.
+**Why Pydantic:** one class gives us checking on the way in, JSON on the way out, and a JSON Schema for TypeScript (the last step, below). **Why these rules:** `extra="forbid"` turns `{"type": "prompt", "txt": "hi"}` into a clear error, not a silent drop. The second rule sounds backwards, but think of the server's output: when the server sends a model, every field with a default is filled in, so it is always in the JSON. Marking it "required" lets TypeScript trust that it is there, with no `?` and no `undefined` checks.
 
 Every model has a `type` field with one fixed value, like `type: Literal["prompt"] = "prompt"`. That field is the **[discriminator](glossary.md#discriminator)**: one field whose value says which model the JSON is.
 
@@ -100,9 +106,38 @@ There are three groups of messages. The **handshake** comes first: the browser s
 
 The full list of event names and every `Snapshot` field is in [ref-objects · Server protocol messages](ref-objects.md#server-protocol-messages). How they are used is [21](21-transport.md).
 
+### The Run
+
+*Step 3.* The prompt is parsed. Now the server needs the one object that owns this conversation.
+
+**Problems 1 and 2:** a run takes minutes, and two prompts must never start two loops on one session.
+
+**What we do:** one owner per conversation. `apps/server/src/simp_server/server.py` has `class Run`. Its docstring: "AgentSession + durable protocol log + in-flight buffers." Every HTTP route asks `SessionManager.get(user, sid)` for the `Run` of a session. On first use it loads the saved log, opens the sandbox and makes one `Run`; after that it returns the same `Run` from `self.runs`. So two requests for one session always reach the same object.
+
+The constructor builds an `AgentSession`. Look for `this Run` below: the `Run` passes itself in three places.
+
+```text
+session = new AgentSession(model,
+              store       = this Run,             // Run has append()
+              env         = env,
+              stream_fn   = guarded_stream,       // budget check, see 23
+              get_api_key = the manager's key for this model,
+              approve     = this Run's approve,
+              messages    = the saved history,
+              plugins     = redact_secrets, plan_mode + the profile's plugins,
+              plugin_config = redact_secrets gets the manager's API keys)
+session sends each event to this Run's on_event
+```
+
+`stream_fn` and `env` come from later chapters: `guarded_stream` checks the money budget before each model call ([23](23-limits.md)), and `env` is the sandbox ([24](24-docker-sandbox.md)). `redact_secrets` and `plan_mode` are always on. API keys must never reach the model, so the server hands its own keys to `redact_secrets` through `plugin_config` and they are always hidden. The web UI has a plan-mode switch, so the plugin must always be there for that switch to work.
+
+Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.__init__`.
+
+So the `Run` is the session's `SessionStore` ([13](13-session.md)), its approval callback ([08](08-hooks-approval.md)) and an event subscriber ([06](06-events-abort.md)). **Why:** that is the whole link between the library and the server. The library does not know a server exists. What `approve` and `on_event` do is [21](21-transport.md).
+
 ### Run state machine
 
-*Step 2.*
+*Step 4.* To start the work, the `Run` changes its state. So first we need the list of states and the legal moves.
 
 **Problem:** the user can press "abort" twice, or answer an approval that is already gone. The server must know what is allowed *now*.
 
@@ -143,35 +178,6 @@ stateDiagram-v2
 One move is missing on purpose: after a server restart, `recover` (below) jumps from any busy state straight to `error` without the table.
 
 **Why a table:** a wrong move like `idle -> waiting_approval` raises at once, on the server. Without it, the UI would just show a strange state and nobody would know why.
-
-### The Run
-
-*Step 3.*
-
-**Problems 1 and 2:** a run takes minutes, and two prompts must never start two loops on one session.
-
-**What we do:** one owner per conversation. `apps/server/src/simp_server/server.py` has `class Run`. Its docstring: "AgentSession + durable protocol log + in-flight buffers." Every HTTP route asks `SessionManager.get(user, sid)` for the `Run` of a session. On first use it loads the saved log, opens the sandbox and makes one `Run`; after that it returns the same `Run` from `self.runs`. So two requests for one session always reach the same object.
-
-The constructor builds an `AgentSession`. Look for `this Run` below: the `Run` passes itself in three places.
-
-```text
-session = new AgentSession(model,
-              store       = this Run,             // Run has append()
-              env         = env,
-              stream_fn   = guarded_stream,       // budget check, see 23
-              get_api_key = the manager's key for this model,
-              approve     = this Run's approve,
-              messages    = the saved history,
-              plugins     = redact_secrets, plan_mode + the profile's plugins,
-              plugin_config = redact_secrets gets the manager's API keys)
-session sends each event to this Run's on_event
-```
-
-`stream_fn` and `env` come from later chapters: `guarded_stream` checks the money budget before each model call ([23](23-limits.md)), and `env` is the sandbox ([24](24-docker-sandbox.md)). `redact_secrets` and `plan_mode` are always on. API keys must never reach the model, so the server hands its own keys to `redact_secrets` through `plugin_config` and they are always hidden. The web UI has a plan-mode switch, so the plugin must always be there for that switch to work.
-
-Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.__init__`.
-
-So the `Run` is the session's `SessionStore` ([13](13-session.md)), its approval callback ([08](08-hooks-approval.md)) and an event subscriber ([06](06-events-abort.md)). **Why:** that is the whole link between the library and the server. The library does not know a server exists. What `approve` and `on_event` do is [21](21-transport.md).
 
 The state is one field, `self.info.run_state`. A run is **busy** when the state is `running`, `waiting_approval` or `aborting`; `_run` and `recover` below use this word.
 
@@ -221,13 +227,15 @@ POST Prompt("write fizzbuzz.py")        state idle
 
 **Why this fixes problem 2:** text that comes in while busy never calls `start()` again; [21 · The command queue](21-transport.md#the-command-queue) queues it as a steer or follow-up. One `Run`, one loop.
 
-**One side job: the title call.** When the first assistant message is saved and the session has no title yet, `Run` starts `title_task`, a background task running `_title()`. It makes one extra small model call with `TITLE_PROMPT` ("Name this coding session in 3 to 6 words..."), records its usage like any call ([23](23-limits.md)), saves the answer with `store.set_title` and sends a durable `SessionTitle` event (`type: "session_title"`). If the call fails, the title just stays empty. This is the **[title call](glossary.md#title-call)** that [23](23-limits.md) and [26](26-system-tests-deploy.md) refer to.
-
 **After a restart: `recover`.** If the process dies in the middle of a run, the saved state is still busy but no loop runs. When the session is loaded again, `Run.recover()` closes the run: open approvals and tool calls get "aborted" answers, and the state becomes `error`. Its home, with a full before/after example, is [22 · recover](22-store-auth.md#recover).
+
+### The title call
+
+*Step 5.* When the first assistant message is saved and the session has no title yet, `Run` starts `title_task`, a background task running `_title()`. It makes one extra small model call with `TITLE_PROMPT` ("Name this coding session in 3 to 6 words..."), records its usage like any call ([23](23-limits.md)), saves the answer with `store.set_title` and sends a durable `SessionTitle` event (`type: "session_title"`). If the call fails, the title just stays empty. This is the **[title call](glossary.md#title-call)** that [23](23-limits.md) and [26](26-system-tests-deploy.md) refer to.
 
 ### gen_protocol → protocol.gen.ts
 
-*Step 4.*
+*Step 6.* The request is done on the server side. One question is left: how does the web client get the same types?
 
 **Problem 3, browser side:** the browser is TypeScript. If someone renames a Python field, the browser breaks in silence.
 
@@ -263,12 +271,6 @@ Run as a script, it writes `apps/web/src/protocol.gen.ts`. With `--check`, it on
 
 **Why:** the web client ([25](25-web-client.md)) imports these types. Rename a Python field and the TS build fails, so the two sides cannot drift.
 
-### Starting the server
-
-*Step 5.* Last, we need a command to start it all. `apps/server/src/simp_server/__main__.py` looks at the first word. `simp-server run` starts the real server in `server.py`. The other words (`seed`, `passwd`, `users`, `revoke`, `rotate`, `backup`, `pause`, `resume`) are admin commands from [22](22-store-auth.md) and [23](23-limits.md). `build-sandbox` builds the sandbox image ([24](24-docker-sandbox.md)). Anything else runs a fake server (`fake.py`) that plays a scripted run with no model. **Why a fake:** the web client and its browser tests ([25](25-web-client.md), [26](26-system-tests-deploy.md)) can then run with no API key and no cost.
-
-Real code: [apps/server/src/simp_server/__main__.py](../../apps/server/src/simp_server/__main__.py), function `main`.
-
 ## Test
 
 `apps/server/tests/test_protocol.py` tests the protocol, the state machine and the fake server. Here is the state machine test, `test_hello_and_state_machine`:
@@ -303,7 +305,7 @@ uv run pytest apps/server/tests/test_protocol.py -q
 
 ## Recap
 
-`protocol.py` holds every wire message as a Pydantic model that rejects unknown fields and is picked by its `type` field. From the same models, `gen_protocol.py` writes `apps/web/src/protocol.gen.ts`, and `test_no_ts_drift` fails if the two drift apart. The run state is one of five names, and `set_state()` is the only way to change it: each move is checked against `TRANSITIONS` and logged as a `RunState` event. Each conversation has one `Run`, made by `SessionManager.get()`. The `Run` is its session's store, approval callback and event subscriber; `start()` runs the work in a background task, and `_run()` never leaves a run stuck busy.
+`simp-server run` starts the server. `protocol.py` holds every wire message as a Pydantic model that rejects unknown fields and is picked by its `type` field. Each conversation has one `Run`, made by `SessionManager.get()`. The `Run` is its session's store, approval callback and event subscriber; `start()` runs the work in a background task, and `_run()` never leaves a run stuck busy. The run state is one of five names, and `set_state()` is the only way to change it: each move is checked against `TRANSITIONS` and logged as a `RunState` event. After the first answer, the title call names the session. From the same models, `gen_protocol.py` writes `apps/web/src/protocol.gen.ts`, and `test_no_ts_drift` fails if the two drift apart.
 
 So far the `Run` makes durable events, but nobody receives them. [21](21-transport.md) sends them to the browser and takes commands back.
 
