@@ -224,7 +224,7 @@ CLASS PlanMode (name "plan_mode"):
         RETURN nothing
 ```
 
-There are two layers. The prompt section ([13](13-session.md#prompt-sections-the-system-prompt-rebuilt-every-turn)) *asks* the model to plan only; order 1000 puts it after every other section. This saves wasted turns, but a model can ignore a prompt. So the `tool_call` hook *enforces* it: a `write`, `edit` or `bash` call is blocked, and the model gets the usual denial result from [14](14-plugins.md#_hook-one-place-for-every-call), so it knows why.
+There are two layers. The prompt section ([13](13-session.md#prompt-sections-how-the-system-prompt-is-built)) *asks* the model to plan only; order 1000 puts it after every other section. This saves wasted turns, but a model can ignore a prompt. So the `tool_call` hook *enforces* it: a `write`, `edit` or `bash` call is blocked, and the model gets the usual denial result from [14](14-plugins.md#_hook-one-place-for-every-call), so it knows why.
 
 The on/off state is saved as a `CustomEntry` through `api.append_entry` ([14](14-plugins.md#pluginapi-what-a-plugin-may-do)): it is in history, but never sent to the model. When a session is loaded again, `setup` finds the **last** such entry and restores the state, so plan mode survives a restart with no extra file. `config["enabled"]` is only the start value for a brand-new session.
 
