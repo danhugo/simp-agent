@@ -182,15 +182,18 @@ Three blocks watch the flag: `_stream` during the model call, the tool through `
 
 The answer "README.md says this proj…" is arriving word by word, and the user presses Stop.
 
-**What stops.** The model call, and at once. The trick is a race between two waiting tasks. The `next` task waits for the next piece (event) from the model (in the real code this variable is called `nxt`). Task `stop` waits for the cancel flag. We wait until **one** of them finishes first.
+**What stops.** The model call, and at once. Recall from [05](05-agent-loop.md) that `_llm_turn` calls the model through `_stream(...)`. `_stream` opens the model stream (`stream_fn`, normally `ai.stream`) and starts one `stop` task **once**; it waits for the cancel flag. Then, in a loop, it starts a `next` task that waits for the next piece (event) from the model (in the real code this variable is called `nxt`), and waits until **one** of the two tasks finishes first. If `next` wins with an event, the event is sent on and the loop starts a new `next`. If `next` says the stream is over, or `stop` wins, the loop ends. At the end, `_stream` always cancels `stop` and closes the stream, and control goes back to `_llm_turn`.
 
 ```mermaid
 flowchart TD
-    A["start next: wait for next model event"] --> W{"which finishes first?"}
-    S["stop: wait for cancel.set()"] --> W
-    W -- "next: an event" --> Y["pass the event on"] --> A
-    W -- "next: stream is over" --> E
-    W -- "stop" --> C["cancel next → web request closes"] --> E["return (finally: cancel stop, close it)"]
+    L["_llm_turn calls _stream(...)"] --> O["open the model stream (stream_fn, normally ai.stream)<br/>start the stop task once: wait for cancel"]
+    O --> N["start next: wait for the next model event"]
+    N --> W{"which finishes first?"}
+    W -- "next: an event" --> Y["send the event on (becomes message_update)"] --> N
+    W -- "next: the stream is over" --> F
+    W -- "stop" --> C["cancel next → the web request closes"] --> F["finally: cancel stop, close the stream"]
+    F --> R["back to _llm_turn"]
+    U["user presses Stop"] --> AB["agent.abort() → cancel.set()"] -. "stop finishes" .-> W
 ```
 
 A loop that only checks the flag between events would wait for the model, so a silent model would hide the Stop. With the race, the Stop wins even when the model sends nothing. `_stream` does this. It wraps the provider stream `it`, which is the async generator returned by `stream_fn`:
