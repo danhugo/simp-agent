@@ -31,25 +31,30 @@ So we want three things. First, a way to **look** at a call before it runs, and 
 
 The answer is two [tool hooks](glossary.md#tool-hook): functions the caller gives to the loop, which run just before and just after each tool call. [Tool approval](glossary.md#tool-approval), "ask the human first", is then built as one of them.
 
-## Naive version
+## Starting point: the tool step from 05 and 06
 
-The first idea is to ask right inside the loop:
+We do not write a new loop. Here is the tool step of `agent_loop` as [06](06-events-abort.md#starting-point-05s-loop-with-nobody-listening) left it (steering from [07](07-steering.md) does not touch this part):
 
 ```text
-DANGEROUS = {bash, write, edit}
+FOR EACH call in msg:
+    IF cancel is set: STOP this FOR loop
+    SEND tool_execution_start
+    result = run_tool(call, ctx)
+    SEND tool_execution_end
+    add(result)
+```
 
-FUNCTION run_calls(calls, tools, history):
-    FOR EACH call IN calls:
-        IF call.name IN DANGEROUS:
-            answer = input("Run {call.name} {call.arguments}? [y/n]")
-            IF answer is not "y":
-                CONTINUE                     // skip: no result is added
-        ADD run_tool(tools, call) to history
+Every call runs. The first idea is to put a question right here:
+
+```text
+    IF call.name IN {bash, write, edit}:
+        answer = input("Run {call.name} {call.arguments}? [y/n]")
+        IF answer is not "y": CONTINUE        // skip: no result is added
 ```
 
 The user answers `n` to the `write`, and it breaks in several ways. The skipped call gets no tool result, but [06](06-events-abort.md) taught us that every tool call must get one, so the next model request is invalid. Even if it were valid, the model is never told that the user said no, so it may just try `write` again. The list of risky tools and `input()` sit inside the loop, so a web server or a test cannot use it. `input()` also blocks: if the user presses **Stop** ([06](06-events-abort.md)) while the question is open, nothing ends the wait. And there is still no place to change a result after a tool runs.
 
-## Step by step: from naive to real
+## Step by step: grow the tool step
 
 We fix it one problem at a time.
 

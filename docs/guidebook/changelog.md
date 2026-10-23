@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-23
 
+- Part 2 continuity (ch05-08): ch07 drops NaiveAgent and starts from 06's Agent._run + agent_loop (user messages read only at start); ch08 drops the separate run_calls and starts from 06's tool step in agent_loop; "Step by step" titles now say they grow the loop; "cancel event" → "cancel flag" in 05-0 and 06; "inbox" wording cut. ch05 kept (already recaps Part 1 ai.stream/AssistantMessage/FakeProvider).
 - ch06: dropped the separate naive_loop; starts from 05's agent_loop with each event marked where it is sent; new "Where the events go" (send → Agent → subscribers → UI); abort now says where Stop comes from (user → app → agent.abort() → 05 cancel flag) and which blocks watch it; Mermaid picture of events out / Stop in; 07 link updated. (checked at agent/__init__.py:142-235, :258-282)
 - ch24 flow reorder: Real design follows one session: Ana opens a session → sandbox slot (open call first, then protocol) → DockerSandbox.open with the image explained inside it → bash runs via DockerEnv → session ends (manager close/remove/close_all text moved here) → EnvConformance last. Text moved, not cut.
 - ch20 flow reorder: Real design now follows one request: start server (__main__) → protocol models (parse the prompt) → the Run → run state machine (set_state, start, _turn, recover) → title call (own section) → gen_protocol last. Text moved, not cut; step labels, Recap and links (glossary title call, 21 _turn link) updated.
