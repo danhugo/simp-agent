@@ -224,7 +224,7 @@ The full text of live events is saved later: text and thinking in `AssistantMess
 
 ## Web client `ChatState`
 
-The whole chat state of the browser client, from `apps/web/src/state.ts`. Chapter [25](25-web-client.md#5-events-arrive-the-reducer-statets) explains the reducer that fills it.
+The whole chat state of the browser client, from `apps/web/src/state.ts`. Chapter [25](25-web-client.md#events-arrive-the-reducer-statets) explains the reducer that fills it.
 
 | Field | Type | Meaning |
 |---|---|---|

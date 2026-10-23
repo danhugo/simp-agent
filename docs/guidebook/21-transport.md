@@ -42,12 +42,12 @@ The road out must carry every event (text pieces, tool results, an approval ques
         ...                      # save in the store
 ```
 
-So the events exist, in order, with numbers. But no one reads them. Ana's tab has no way to get them, and no way to send "stop" or "allow". If we add the simplest road, one unbounded queue per tab that gets each new event, it breaks when:
+So the events exist, in order, with numbers. But no one reads them. Ana's tab has no way to get them, and no way to send "stop" or "allow". If we add the simplest road, one unbounded queue per tab that gets each new event, it breaks in four ways:
 
-1. **A tab reconnects.** Events sent while it was away are gone. The tab never learns that `fizzbuzz.py` was written.
-2. **A tab is slow.** The queue has no limit. A tab that stops reading makes memory grow forever.
-3. **A tab joins mid-message.** It gets the next text delta (a [live event](glossary.md#live-event), with no `seq`, not saved), but not the text before it. The answer on screen starts in the middle.
-4. **There is no way back in.** Nothing takes "abort" or "allow" from the client.
+- **Reconnect break: a tab reconnects.** Events sent while it was away are gone. The tab never learns that `fizzbuzz.py` was written.
+- **Slow-tab break: a tab is slow.** The queue has no limit. A tab that stops reading makes memory grow forever.
+- **Mid-message break: a tab joins mid-message.** It gets the next text delta (a [live event](glossary.md#live-event), with no `seq`, not saved), but not the text before it. The answer on screen starts in the middle.
+- **No-way-in break: there is no way back in.** Nothing takes "abort" or "allow" from the client.
 
 ## Step by step: from 20's Run to real
 
@@ -55,14 +55,7 @@ We grow the same `Run`. Each step fixes one break.
 
 **Step 1: a set of reader queues.** Add `subs`, a set of queues, one per open tab. `Run._send` puts each event in every queue. `durable` calls it for saved events, and `on_event` calls it for live deltas.
 
-**Step 2: replay on subscribe.** `log` is already numbered, so a tab can say "I saw up to N". Return the missed events with the queue.
-
-```python
-    def subscribe(self, after: int):
-        q = asyncio.Queue()
-        self.subs.add(q)
-        return [e for e in self.log if e["seq"] > after], q
-```
+**Step 2: replay on subscribe.** `log` is already numbered, so a tab can say "I saw up to N". `subscribe(after)` adds a new queue to `subs` and returns it, together with every event in `log` whose `seq` is above N.
 
 Why: a tab that comes back gets what it missed. To see why nothing comes twice, you need one rule of asyncio: it switches from one task to another **only at an `await`**. This function has no `await`, so it runs in one piece:
 
@@ -78,14 +71,7 @@ Seq 4 is in the copy and not in `q`; seq 5 is in `q` and not in the copy. No gap
 
 Why: live deltas have no `seq` and are not saved. A tab that joins mid-message needs the text so far. The snapshot gives it.
 
-**Step 4: bound the queue and drop slow tabs.**
-
-```python
-        q = asyncio.Queue(QUEUE_MAX)
-        ...
-            except asyncio.QueueFull:
-                self.subs.discard(q)
-```
+**Step 4: bound the queue and drop slow tabs.** Give each queue a size limit. When `_send` finds a queue full, it removes that queue from `subs`.
 
 Why: a tab that stops reading must not grow memory, and must never make the run wait. Dropping it is safe because of Step 2: when it reconnects, the replay gives it back every durable event it lost, exactly.
 
@@ -117,11 +103,11 @@ ON GET /api/sessions/{sid}/events?after=N (logged-in user u):
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), functions `post_command` and `events` inside `create_app`.
 
-Events go out with **[SSE](glossary.md#sse)** (Server-Sent Events). SSE is one long HTTP response with `text/event-stream` type. The server writes small text blocks into it, one per event. The browser reads them with a small fetch-based reader (see [25](25-web-client.md#3-the-page-listens-sse-over-fetch-subscribe)).
+Events go out with **[SSE](glossary.md#sse)** (Server-Sent Events). SSE is one long HTTP response with `text/event-stream` type. The server writes small text blocks into it, one per event. The browser reads them with a small fetch-based reader (see [25](25-web-client.md#the-page-listens-sse-over-fetch-subscribe)).
 
 Commands come in with a normal `POST`. The body is JSON, checked by the `Command` parser from [20](20-server-run.md#protocol-models). A bad body gets `422`.
 
-Why not WebSocket? SSE is one-way, which is all we need out, since commands already have their own `POST`. Plain HTTP works through proxies, and when the stream ends our client reconnects by itself, with backoff ([25](25-web-client.md#3-the-page-listens-sse-over-fetch-subscribe)). That is how a dropped tab "learns" it was dropped: its stream simply ends. Both routes need auth ([22](22-store-auth.md)).
+Why not WebSocket? SSE is one-way, which is all we need out, since commands already have their own `POST`. Plain HTTP works through proxies, and when the stream ends our client reconnects by itself, with backoff ([25](25-web-client.md#the-page-listens-sse-over-fetch-subscribe)). That is how a dropped tab "learns" it was dropped: its stream simply ends. Both routes need auth ([22](22-store-auth.md)).
 
 Each event is written by `sse` in `apps/server/src/simp_server/fake.py`:
 
@@ -197,7 +183,7 @@ q     = a new queue; the next text delta arrives here
 
 The tab already had 1 to 3, so nothing comes twice. It shows "Hello " from the snapshot and adds the next deltas after it.
 
-The SSE route finds `after` and calls `subscribe`. The tab gives N with `?after=N`, or with the [`Last-Event-ID`](glossary.md#last-event-id) header that our client sends on every connect ([25](25-web-client.md#3-the-page-listens-sse-over-fetch-subscribe)):
+The SSE route finds `after` and calls `subscribe`. The tab gives N with `?after=N`, or with the [`Last-Event-ID`](glossary.md#last-event-id) header that our client sends on every connect ([25](25-web-client.md#the-page-listens-sse-over-fetch-subscribe)):
 
 ```text
 after = the ?after=N value, ELSE the Last-Event-ID header, ELSE 0
@@ -206,7 +192,7 @@ first, q = run.subscribe(after)
 
 The docstring says "No await here": that is the rule from [Step 2](#step-by-step-from-20s-run-to-real).
 
-The snapshot fixes break 3 from the [starting point](#starting-point-20s-run-with-no-road-to-the-browser). `in_flight` (`p.InFlight`) holds the text, thinking and tool output of the message that is still streaming. `Run.on_event` keeps it up to date while deltas arrive:
+The snapshot fixes the mid-message break from the [starting point](#starting-point-20s-run-with-no-road-to-the-browser). `in_flight` (`p.InFlight`) holds the text, thinking and tool output of the message that is still streaming. `Run.on_event` keeps it up to date while deltas arrive:
 
 ```text
 IF the event is message_update with a text_delta or thinking_delta:
@@ -218,7 +204,7 @@ IF the event is message_update with a text_delta or thinking_delta:
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.on_event`.
 
-Each delta carries an [`offset`](glossary.md#offset): where it starts in the full text. A tab that joined late gets "Hello " in the snapshot, then a delta with `offset=6`. If the offset equals the length it already has, the piece fits; if not, the tab knows it is out of step ([25 · appendAt](25-web-client.md#6-deltas-fit-together-appendat) shows what it does).
+Each delta carries an [`offset`](glossary.md#offset): where it starts in the full text. A tab that joined late gets "Hello " in the snapshot, then a delta with `offset=6`. If the offset equals the length it already has, the piece fits; if not, the tab knows it is out of step ([25 · appendAt](25-web-client.md#deltas-fit-together-appendat) shows what it does).
 
 ### The SSE loop
 
@@ -250,7 +236,7 @@ FUNCTION _send(ev):
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run._send`.
 
-Each queue holds at most `QUEUE_MAX` (1000) events. `put_nowait` never waits. If a queue is full, the server removes it from `subs`. The SSE loop above then sends what is left and ends. The browser reconnects with `Last-Event-ID` and gets the missed durable events plus a fresh snapshot. The run never waits for a tab. This fixes break 2.
+Each queue holds at most `QUEUE_MAX` (1000) events. `put_nowait` never waits. If a queue is full, the server removes it from `subs`. The SSE loop above then sends what is left and ends. The browser reconnects with `Last-Event-ID` and gets the missed durable events plus a fresh snapshot. The run never waits for a tab. This fixes the slow-tab break.
 
 Because the run only talks to queues, a run with **zero** tabs works the same. The fizzbuzz task keeps going after you close the browser, and every durable event is saved.
 
@@ -338,7 +324,7 @@ async def test_reconnect_with_last_event_id_no_gaps_or_dups(env):
 
 `env`, `drain` and `wait_for` are small helpers at the top of the test file: `env` builds a `Run` with a fresh store, `drain` empties a queue into a list, and `wait_for` waits until a condition is true. `FakeProvider` ([04](04-label-test.md)) gives two simple replies, so no real model is needed. A tab subscribes, sees only the first 3 durable events of the first run, then closes. A second run happens while it is away. The tab reconnects with the last `seq` it saw, and the old part plus the replay must equal the full `run.log`: each `seq` once, in order. The replay must end with a snapshot whose `last_seq` is the current counter.
 
-This is break 1 from the starting point. Other tests in the file: `test_mid_delta_reconnect_snapshot`, `test_approve_then_abort`, `test_slow_client_dropped_never_blocks`, `test_closed_tabs_run_finishes_and_is_persisted`.
+This is the reconnect break from the starting point. Other tests in the file: `test_mid_delta_reconnect_snapshot`, `test_approve_then_abort`, `test_slow_client_dropped_never_blocks`, `test_closed_tabs_run_finishes_and_is_persisted`.
 
 Run it:
 

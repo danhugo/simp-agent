@@ -19,8 +19,8 @@ All of this goes in the [system prompt](glossary.md#system-prompt): the first, f
 You are an expert coding assistant. You help the user by reading files, running commands, editing code, and writing new files.
 
 Available tools:
-- read: Read a text file. ...
-- bash: Run a shell command ...
+- read: Read a text file. Output has line numbers. Use offset/limit for big files.
+- bash: Run a shell command in cwd. Returns stdout+stderr (the tail if long) and exit code. Optional timeout in seconds; no timeout by default.
 
 Be concise. Use read before edit. Paths are relative to the working directory.
 
@@ -72,7 +72,7 @@ flowchart LR
     LT --> CTX["Context(system_prompt, messages, tools)"]
 ```
 
-Who owns the prompt function is the session, built in [13](13-session.md). In this chapter you only need to know that some function joins the two texts and the loop calls it.
+The prompt function is any small function with no arguments that returns the joined text, for example one that calls `system_prompt(tools, cwd)` and adds the context file text after it. The loop only calls it; [13](13-session.md) builds on this.
 
 ### `system_prompt`: the base text
 
@@ -96,7 +96,7 @@ Each of the three rules has a reason. "Be concise" keeps answers short, which sa
 
 The date and the folder come last, after the optional project section. It is a plain function: the same input gives the same text (only the date changes), so it is easy to test and easy to replace.
 
-The `context` argument is for hosts that call `system_prompt` directly. The session in [13](13-session.md) does not use it. It adds the same `# Project Context` text as a separate piece, because the file must be read through the env, which is async and is done once at start, while the base text is rebuilt cheaply every turn from the live tools and folder.
+The `context` argument is for code that calls `system_prompt` once and is done. A prompt function can instead read the file once at start (reading through the env is async) and add the same `# Project Context` text itself, while the base text is rebuilt cheaply every turn from the live tools and folder.
 
 ### `CONTEXT_FILES` and `load_context_file`: the context file
 
@@ -140,9 +140,17 @@ INSIDE _llm_turn:
         ...
 ```
 
-The loop does not know how the text is made; it only sees "a string, or something that gives a string". Calling a small function costs almost nothing, and the prompt is then never out of date when tools, plugins or modes change. Each provider puts the final string where its API wants it ([02](02-translate-send.md)): `system=` for Anthropic, a `system` (or `developer`) message for OpenAI.
+The loop does not know how the text is made; it only sees "a string, or something that gives a string". Calling a small function costs almost nothing. Each provider puts the final string where its API wants it ([02](02-translate-send.md)): `system=` for Anthropic, a `system` (or `developer`) message for OpenAI.
 
-The session builds this function from [prompt sections](glossary.md#prompt-section): `system_prompt` as section `coding` (order 0), the context file as section `context_file` (order 10), and plugin sections after them. If you pass your own `system_prompt` string to the session, it replaces both, and no context file is loaded. All of this is built in [13](13-session.md).
+### One turn, end to end
+
+Now follow "What is in README.md?" through one run in `/work/app`, with an `AGENTS.md` that says "always answer in one short paragraph". At start, `load_context_file(env, "/work/app")` tries `AGENTS.override.md`, gets `OSError`, then finds `AGENTS.md` and returns its path and text. The user's message goes into the loop with a prompt function, not a string.
+
+In the first turn `_llm_turn` sees that the prompt is a function and calls it. The function calls `system_prompt(tools, "/work/app")`, which gives the text shown at the top of this chapter, and adds `# Project Context`, `## /work/app/AGENTS.md` and the rule. `_llm_turn` puts this string into `Context(system_prompt, llm_msgs, tools)` and streams it to the provider, which sends it as `system=` for Anthropic. The model reads the role, sees `read` in the tool list, and replies with a tool call `read(path="README.md")`. The tool joins the path to `/work/app` and returns the file.
+
+In the second turn `_llm_turn` calls the function again. The tools and folder have not changed, so the text is the same, but if a tool had been added it would now be listed. The model sees the file content and the project rule, and answers in one short paragraph. The loop ends because there is no tool call.
+
+[13](13-session.md) builds the real prompt function out of [prompt sections](glossary.md#prompt-section).
 
 ## Test
 
