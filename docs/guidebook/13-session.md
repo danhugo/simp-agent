@@ -25,11 +25,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-At the end of Part 3 we have an `Agent` ([06](06-events-abort.md)) with coding tools ([10](10-coding-tools.md)) and a system prompt ([11](11-system-prompt.md)). It can write `fizzbuzz.py`. But:
-
-- When the program stops, the conversation is gone. You cannot say "now add tests" tomorrow.
-- Every app (CLI, server) would have to wire the agent, the tools, the prompt and the saving by itself, again and again.
-- A crash in the middle of a run loses everything since the last save.
+Yesterday the user asked the agent to write `fizzbuzz.py`. Today they open the app and type "now add tests". At the end of Part 3 we have an `Agent` ([06](06-events-abort.md)) with coding tools ([10](10-coding-tools.md)) and a system prompt ([11](11-system-prompt.md)), but all its history lives in memory. When the program stopped yesterday, the conversation was gone, so today the agent has no idea what `fizzbuzz.py` is. Two more problems sit next to this one. A crash in the middle of a run would lose everything since the last save. And every app (the CLI, the server) would have to wire the agent, the tools, the prompt and the saving by itself, again and again.
 
 We need one object that owns the agent for a whole conversation and saves each message as soon as it is final. That object is the **[session](glossary.md#session)**.
 
@@ -128,7 +124,9 @@ class ListStore:
         return list(self.items)
 ```
 
-A database store needs `await`. So the session does not call `store.append(...)` alone; it wraps it: `await _maybe_await(self.store.append(...))`. **[`_maybe_await`](glossary.md#_maybe_await)** (from `agent/__init__.py`, [08](08-hooks-approval.md)) awaits the result only if it is awaitable. A sync store returns `None`, and that is fine too.
+A database store needs `await`, a list does not. So the session calls `await _maybe_await(self.store.append(...))`, using the same **[`_maybe_await`](glossary.md#_maybe_await)** helper as the hooks in [08](08-hooks-approval.md): both kinds of store work.
+
+The comment in the protocol says `append` can also get two entries that are not messages: a `CompactionEntry` ([16](16-compaction.md)) and a plugin's `CustomEntry` ([14](14-plugins.md)). You can ignore them for now; they are saved the same way but never sent to the model.
 
 ### Let the app load
 
@@ -138,7 +136,7 @@ The session does not load by itself. The app does it and passes the list in:
 AgentSession(model, store=store, messages=store.load())
 ```
 
-Why? The app decides *which* session to resume: a session id, the latest one, or a new one. The library just takes a list.
+Why? The app decides *which* session to resume: a session id the user typed, the latest one, or a new one. The CLI, for example, has `latest_session(cwd)`, which picks the newest `.jsonl` file in the folder for this project. The library does not need to know any of this; it just takes a list.
 
 ### One class that owns the agent
 
@@ -149,7 +147,7 @@ Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/se
 ```text
 CLASS AgentSession:
     FUNCTION __init__(model, tools, store, env, cwd, system_prompt, messages):
-                                     // other arguments arrive in later chapters
+                                     // more arguments (plugins, retries, compaction...) come in 14–18
         self.agent = NEW Agent(
             prompt   = self._build_prompt,          // a function, rebuilt every turn (prompt sections, below)
             tools    = TOOLS if tools is None, else tools,
@@ -161,9 +159,7 @@ CLASS AgentSession:
         self.agent.subscribe(self._on_agent_event)  // saving, above
 ```
 
-- `prepare_next_turn`, `before_tool_call` and `after_tool_call` are the agent's hooks ([08](08-hooks-approval.md)). The session fills them, so later chapters can add features without changing the loop.
-- Good defaults keep the call short: `tools=None` means the coding tools (`TOOLS`), `env=None` means `LocalEnv()` ([09](09-exec-env.md)), `system_prompt=None` means the coding prompt from [11](11-system-prompt.md).
-- `messages` is a property that returns `self.agent.messages`, so there is one list, not two copies.
+The session fills the agent's three hooks from [08](08-hooks-approval.md) with its own methods. Why: later chapters (plugins, compaction) add features inside those methods, and the loop never changes. The defaults keep the call short: no `tools` means the coding tools (`TOOLS`), no `env` means `LocalEnv()` ([09](09-exec-env.md)), and no `system_prompt` means the coding prompt from [11](11-system-prompt.md). `session.messages` simply returns `self.agent.messages`, so there is one list, not two copies that could drift apart.
 
 The session also passes through `steer`, `follow_up` ([07](07-steering.md)) and `abort` ([06](06-events-abort.md)).
 
@@ -188,10 +184,9 @@ FUNCTION start():
     ...                                         // more setup in later chapters
 ```
 
-- `prompt(text)` adds a user message and runs. `continue_()` runs again without a new message, for example after a resume where the last message was a tool result.
-- `_run` is where later chapters add more steps around the run. For now, think of it as "run the agent".
-- **Why `start()`?** Reading the [context file](glossary.md#context-file) (`AGENTS.md`, [11](11-system-prompt.md)) needs async env IO, and `__init__` cannot `await`. So the work goes into `start()`, which `prompt` and `continue_` call first. The `_started` flag makes it run only once.
-- So `AGENTS.md` is read **once per session**. If you edit it mid-session, it has no effect until a new session.
+`prompt(text)` adds a user message and runs. `continue_()` runs again without a new message, for example after a resume where the last saved message was a tool result. `_run` wraps the agent run; in the real code it already holds the retry loop of [15](15-retry.md), but for now read it as "run the agent".
+
+Why a separate `start()`? Reading the [context file](glossary.md#context-file) (`AGENTS.md`, [11](11-system-prompt.md)) goes through the env, which is async, and `__init__` cannot `await`. So the work moves into `start()`, which `prompt` and `continue_` call first, and the `_started` flag makes it run only once. One result to know: `AGENTS.md` is read **once per session**. If you edit it mid-session, the change shows up only in a new session.
 
 `start()` adds the file with `add_prompt_section`. The next part explains what that is.
 
@@ -204,12 +199,12 @@ You are an expert coding assistant. ... <- section "coding", order 0
                                        
 # Project Context                      <- section "context_file", order 10
 
-## AGENTS.md
+## /home/me/project/AGENTS.md
 
 use tabs
 ```
 
-Later, plugins add their own sections (default order 100) after these.
+(The header holds the full path that `load_context_file` returns.) Later, plugins add their own sections (default order 100) after these.
 
 **The table.** The session keeps a small table of **[prompt sections](glossary.md#prompt-section)**. Each section has an id, an order and a value.
 
@@ -235,16 +230,11 @@ FUNCTION _build_prompt():
     RETURN parts joined with a blank line
 ```
 
-The rules, one at a time:
+Sections are sorted by order, then by `seq`, the moment the id was first added, so two sections with the same order still come out in a fixed order. Adding the same id again replaces the value but keeps its place, so a plugin can update its text without moving around. A value can be a function of `ctx`: the coding section calls `system_prompt_for` ([11](11-system-prompt.md)) with the **current** tools and cwd, so if the tools change, the prompt follows on the next turn. (`ctx` also carries `model` and `messages`, for plugins in [14](14-plugins.md).) Empty text is skipped, so a function can return `""` to switch itself off; `remove_prompt_section(id)` removes a section for good. `AGENTS.md` gets its own section for the same reason: it can come and go without touching the coding text.
 
-- **Sort by order, then by `seq`.** `seq` is when the id was first added. Why: two sections with the same order still come out in a fixed order.
-- **Adding the same id again replaces the value but keeps its place.** Why: a plugin can update its text without moving around.
-- **A value can be a function of `ctx`.** The coding section is one: it calls `system_prompt_for` ([11](11-system-prompt.md)) with the **current** tools and cwd. Why: if the tools change, the prompt follows on the next turn.
-- **Empty text is skipped.** Why: a function can return `""` to switch itself off. `remove_prompt_section(id)` removes a section for good.
-- **The app can replace the default.** If the app passes its own `system_prompt` string, it becomes the `"base"` section, and no coding text or context file is added. Our tests do this with `system_prompt="s"`.
-- **`AGENTS.md` is its own section.** Why: it can be added or removed alone, without touching the coding text.
+The app can also replace the default. If it passes its own `system_prompt` string, that becomes the `"base"` section, and no coding text or context file is added. Our tests do this with `system_prompt="s"`.
 
-The session passes `self._build_prompt` to the `Agent` as the prompt. The loop calls it before **every** model call ([11](11-system-prompt.md) showed that the prompt can be a function). So any section change shows up on the next turn.
+Because `self._build_prompt` is the prompt function the `Agent` gets, the loop calls it before **every** model call ([11](11-system-prompt.md)), and any section change shows up on the next turn.
 
 `test_session.py::test_context_file_in_system_prompt` checks this: it writes `AGENTS.md` with `use tabs` and checks that the first system prompt contains it.
 
@@ -265,12 +255,7 @@ CLASS JsonlStore:                         // one finished entry per line
         RETURN from_dict(json of line) FOR EACH non-empty line
 ```
 
-- Mode `"a"` adds at the end and never rewrites. A crash can lose at most the line being written.
-- `to_dict` / `from_dict` ([ref-objects](ref-objects.md#going-to-json-and-back)) turn messages into plain dicts and back. The `role` field picks the class.
-- Files live at `~/.simp-agent/sessions/<cwd-slug>/<id>.jsonl` (see `session_dir`).
-- The server has its own store on a database ([22](22-store-auth.md)). Both follow the same two-method protocol.
-
-Besides messages, a store can also get two other entry types: a compaction entry ([16](16-compaction.md)) and a plugin's custom entry. Both are saved but never sent to the model. Fields: [ref-objects](ref-objects.md#two-history-entries-that-are-not-messages).
+Mode `"a"` adds at the end and never rewrites, so a crash can lose at most the line being written. `to_dict` / `from_dict` ([ref-objects](ref-objects.md#going-to-json-and-back)) turn entries into plain dicts and back; the `role` field picks the class. The files live at `~/.simp-agent/sessions/<cwd-slug>/<id>.jsonl`, where `session_dir(cwd)` makes the slug from the project path (`/home/me/project` becomes `home-me-project`). The server keeps its history in a database instead ([22](22-store-auth.md)), with the same two methods.
 
 ## Test
 
@@ -286,11 +271,7 @@ async def test_store_gets_every_message_in_order():
     assert AgentSession(Model(), [], store=store, messages=store.load()).messages == store.items  # app restores
 ```
 
-What it checks:
-
-- `FakeProvider` ([04](04-label-test.md)) answers with a call to an unknown tool `nope`, then `ok`. The unknown tool still makes a tool result (an error), so the run has four messages: the 4 lines of [the goal](#the-goal-what-is-saved).
-- The store got **every** message, **in order**, and equals the session history.
-- The last line is a resume: a new session built from `store.load()` has the same history.
+The helper `session(...)` builds an `AgentSession` with `tools=[]` and `system_prompt="s"`, so `nope` is unknown because the session has no tools at all. `FakeProvider` ([04](04-label-test.md)) answers with that tool call, then `ok`. The unknown tool still makes a tool result (an error), so the run has four messages: the 4 lines of [the goal](#the-goal-what-is-saved). The first assert checks that the store got **every** message, **in order**, and equals the session history. The last line is a resume: a new session built from `store.load()` has the same history.
 
 Run it:
 
