@@ -38,7 +38,7 @@ The fix is to repair after the error. Chapter 16 **prevents** an overflow before
 | Prevent: auto compaction ([16](16-compaction.md)) | before each model call, in `_prepare` | `should_compact` on an estimate | compact, then call |
 | Repair: overflow recovery (this chapter) | after a failed call, in `_run` | `is_context_overflow` on the provider error | compact once, then call again |
 
-Prevention handles most cases. Repair is the safety net for the times the guess was wrong. The provider is the only one who knows the real token count, so its error is the final word.
+Prevention handles most cases. Repair is the safety net for the times the guess was wrong.
 
 ## Naive version
 
@@ -55,9 +55,9 @@ FUNCTION run(session, text):
 
 This fixes our one overflow with one provider. It breaks in three ways.
 
-First, each provider says it differently. Anthropic says "prompt is too long", but OpenAI says "maximum context length" or "context_length_exceeded", so the check misses them. Second, it can loop forever. If one compaction cannot make the request small enough (for example, one huge recent turn that `find_cut` in [16](16-compaction.md#where-find_cut) must keep), it compacts, fails, and compacts again, and it pays for a summary call each time. Third, if `compact()` itself fails, it still calls the model again and gets the same error.
+The check looks only for "too long". That is Anthropic's wording ("prompt is too long"). OpenAI says "maximum context length" or "context_length_exceeded", so the check misses them. Even when the check works, the loop has no end. Sometimes one compaction cannot make the request small enough, for example when one huge recent turn must stay (`find_cut` in [16](16-compaction.md#where-find_cut) keeps it). Then the loop compacts, fails, and compacts again, and each time it pays for a summary call. And if `compact()` itself fails, the loop still calls the model again and gets the same error.
 
-Where it plugs in: the same place as retry, `AgentSession._run` ([15](15-retry.md#the-retry-loop-in-_run)), after the run of the agent loop ends with an error message. There is also a trap in the code we already have. The retry loop of [15](15-retry.md) must never treat an overflow as a short failure, or it would wait and send the same too-big request again.
+Where does the fix go? In the same place as retry: `AgentSession._run` ([15](15-retry.md#the-retry-loop-in-_run)). It runs after the agent loop ends with an error message. The retry loop from [15](15-retry.md) also needs a change. It must not see an overflow as a short failure. If it did, it would wait and then send the same too-big request again.
 
 | Problem | Fix | Section |
 |---|---|---|

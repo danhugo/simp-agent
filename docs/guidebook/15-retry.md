@@ -50,17 +50,15 @@ It helps with one `429`, but it has four problems. It retries everything, so "no
 
 ## Step by step: from naive to real
 
-The real loop lives in `AgentSession._run`. Both `prompt()` and `continue_()` of the session call it ([13](13-session.md)), so both get retry. We fix the four problems one by one inside it.
+The real loop lives in `AgentSession._run`. Both `prompt()` and `continue_()` of the session call it ([13](13-session.md)), so both get retry. It fixes each of the four problems.
 
-**Step 1 — only retry errors that can go away.** A new function in `ai`, `is_retryable(error, kind)`, looks at the error text and at a second field, the [`error_kind`](glossary.md#error_kind). It is shown in full [below](#which-errors-are-retryable).
+It only retries errors that can go away. A new function in `ai`, `is_retryable(error, kind)`, looks at the error text and at a second field, the [`error_kind`](glossary.md#error_kind).
 
-**Step 2 — wait longer each time.** The fixed 2 seconds becomes `retry_base_delay * 2 ** (attempt - 1)`. With the default base of 2 seconds the waits are 2, 4 and 8 seconds. This is exponential [backoff](glossary.md#backoff): a busy server gets more room each time.
+The wait grows each time. The fixed 2 seconds becomes `retry_base_delay * 2 ** (attempt - 1)`. With the default base of 2 seconds the waits are 2, 4 and 8 seconds. This is exponential [backoff](glossary.md#backoff): a busy server gets more room each time.
 
-**Step 3 — let abort stop the wait.** The sleep becomes a wait on the session's own abort event, with a time limit of `delay` seconds. Abort sets the event, and the wait ends at once.
+Abort can now stop the wait. The sleep becomes a wait on the session's own abort event, with a time limit of `delay` seconds. Abort sets the event, and the wait ends at once.
 
-**Step 4 — tell the UI.** The session sends an `auto_retry_start` event before each wait and one `auto_retry_end` at the end, so the user sees "retrying".
-
-We need nothing new to hide the failed replies from the model. That is already done by `transform_messages`, as the [retry loop](#the-retry-loop-in-_run) section explains.
+And the UI is told. The session sends an `auto_retry_start` event before each wait and one `auto_retry_end` at the end, so the user sees "retrying".
 
 ## Real design
 
@@ -86,7 +84,7 @@ Two inputs decide. The first is the **error text**. Providers do not share error
 
 The second is the **error kind**. When `AssistantMessage.error_kind` is `"fatal"`, `"budget"` or `"policy"`, the error is never retried, even if the text looks retryable. `stream()` sets `"fatal"` when there is no API key. The server sets `"budget"` when a user is over their limit ([23](23-limits.md)). The text alone cannot tell "the provider rate-limits you" from "our own budget stops you", so our code marks its own errors with a kind. `"policy"` is in the set, but no code at `2fc2776` sets it yet; it is room for later.
 
-A context overflow ("prompt is too long") is not retryable either: the same too-big request would fail again. It has its own path, compaction ([16](16-compaction.md), [17](17-overflow.md)).
+A context overflow ("prompt is too long") is not retryable either: the same too-big request would fail again. The session handles it in a different way, by making the history smaller.
 
 ### The retry loop in `_run`
 
@@ -100,13 +98,13 @@ FUNCTION _run(start):
     overflowed = false, attempt = 0
     WHILE the last message is an assistant message with stop_reason "error":
         IF auto_compact AND not overflowed AND is_context_overflow(error):
-            compact once; IF that fails: STOP the loop      // chapter 17, skip for now
+            compact once; IF that fails: STOP the loop      // a different fix, not retry
         ELSE IF is_retryable(error, error_kind) AND attempt < max_retries:
             attempt = attempt + 1
             delay = retry_base_delay * 2 ** (attempt - 1)   // 2, 4, 8 seconds
             SEND event auto_retry_start {attempt, max_attempts, delay, error}
             WAIT for self._abort, but at most `delay` seconds
-            IF abort came first: STOP the loop              // see "Abort during backoff"
+            IF abort came first: STOP the loop
         ELSE:
             STOP the loop
         ADD to new: RUN a.continue_()    // ask again with the same history
@@ -116,7 +114,7 @@ FUNCTION _run(start):
     RETURN new
 ```
 
-The defaults are `retry_base_delay=2.0` and `max_retries=3`. The compaction branch belongs to [17](17-overflow.md); for now, read it as "a different fix for a different error".
+The defaults are `retry_base_delay=2.0` and `max_retries=3`. The first branch is for a context overflow: the session makes the history smaller once and asks again. It is a different fix for a different error, so this chapter does not look at it more.
 
 **A retry is `continue_()`, not a new prompt.** The failed reply stays in history, because history is append-only ([13](13-session.md)). We do not send the user's text again. `continue_()` asks the model again with the same history. Before each call, `transform_messages` in `ai` drops assistant turns with `stop_reason` `"error"` or `"aborted"` from what is sent ([01](01-pick-clean.md#2-clean-transform_messages)). So the user and the store still see the error, but the model never sees its own failed reply.
 
@@ -124,7 +122,7 @@ The defaults are `retry_base_delay=2.0` and `max_retries=3`. The compaction bran
 
 ### Abort during backoff
 
-The wait in Step 3 is this line:
+The wait is this line:
 
 ```python
 await asyncio.wait_for(self._abort.wait(), delay)
@@ -146,14 +144,7 @@ Why a separate event? During backoff the agent is **not** running. There is no m
 
 ### Order of checks and edge cases
 
-Each time round the `while`, `_run` asks these questions, in this order:
-
-1. **Is the last message an assistant error?** If not, stop. A normal reply ends the loop. An abort during a model call gives `stop_reason="aborted"`, not `"error"`, so it also ends the loop with no retry.
-2. **Is it a context overflow, is `auto_compact` on, and have we not compacted yet?** Then compact once and continue ([17](17-overflow.md)). If the compaction fails, stop. `is_retryable` also says "no" for an overflow, so the backoff path never retries one.
-3. **Is it retryable, and is `attempt < max_retries`?** Then wait and continue.
-4. **Otherwise** stop. The error stays as the last message.
-
-A few edge cases follow from this code. `error_kind` wins over the text: `AssistantMessage(stop_reason="error", error="429", error_kind="budget")` is not retried, and the server's budget check (`apps/server/src/simp_server/budget.py`) relies on exactly this. `max_retries=0` turns retry off, because `attempt < 0` is never true. The counter is per run: `attempt` starts at 0 in each `_run`, so the next prompt gets 3 full tries again. Overflow and retry share one loop, so after a compaction the next call can still fail with `429` and get retried. Events are sent only if something was retried (`if attempt:`), so a fatal error alone sends neither. If all 3 tries fail, `auto_retry_end` has `success=False` and the last message is the last error.
+A few edge cases follow from this loop. An abort during a model call gives `stop_reason="aborted"`, not `"error"`, so it ends the loop with no retry. `error_kind` wins over the text: `AssistantMessage(stop_reason="error", error="429", error_kind="budget")` is not retried, and the server's budget check (`apps/server/src/simp_server/budget.py`) relies on exactly this. `max_retries=0` turns retry off, because `attempt < 0` is never true. The counter is per run: `attempt` starts at 0 in each `_run`, so the next prompt gets 3 full tries again. Overflow and retry share one loop, so after the history is made smaller the next call can still fail with `429` and get retried. Events are sent only if something was retried (`if attempt:`), so a fatal error alone sends neither. If all 3 tries fail, `auto_retry_end` has `success=False` and the last message is the last error.
 
 Two limits are known. The regex is wide: any text with `connection`, `network` or a number from 500 to 599 matches, so "connection refused" is retried too. That is fine because a retry is cheap and there are only 3 of them. And the wait has no random part (no [jitter](glossary.md#jitter)): if many clients hit a rate limit at the same moment, they all retry at the same moment again, 2, 4 and 8 seconds later.
 
