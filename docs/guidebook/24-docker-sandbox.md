@@ -41,31 +41,27 @@ The root check of `LocalEnv` keeps the *file* tools (`read`, `write`, `edit`, `l
 
 For one person on a laptop, this is fine: it is their own machine. For Ana and Bob together, it is not. Each session's commands must run in a closed box, apart from the server and from each other. That box is a **[sandbox](glossary.md#sandbox)**. We build it with Docker: a **[container](glossary.md#container)** is a process that sees its own files, its own users and its own limits, started from a ready-made image. It shares the host's kernel, so it starts in about a second, much faster than a full virtual machine.
 
-## Naive version
+## Starting point: 23's server, with LocalSandbox in the slot
 
-The first idea: put `docker run` in front of every command.
+Here is the real `LocalSandbox.open` the server uses today (`server.py`, trimmed):
 
-Naive sketch (not in the repo):
-
-```text
-CLASS NaiveDockerEnv extends LocalEnv:
-    FUNCTION exec(command, cwd, timeout, cancel, on_output):
-        START "docker run --rm -v <root>:/work -w /work python:3.13-slim sh -c <command>"
-        WAIT for output, at most timeout seconds
-        IF timeout:
-            kill the process          // kills the docker program on the host only
-            RETURN (none, "")
-        RETURN (exit code, output)
+```python
+async def open(self, session_id: str) -> LocalEnv:
+    d = self.root / session_id
+    d.mkdir(parents=True, exist_ok=True)
+    return LocalEnv(str(d.resolve()))
 ```
 
-It prints FizzBuzz. But it breaks in four ways:
+The session gets a plain `LocalEnv` from [09](09-exec-env.md). The first idea is the smallest swap: keep this `open`, but make `exec` of that env put `docker run --rm -v <root>:/work python:3.13-slim sh -c <command>` in front of every command, and on timeout kill the `docker` process on the host.
+
+That prints FizzBuzz. But it breaks in four ways:
 
 1. **Slow.** A new container starts for every `bash` call, and the agent makes many.
 2. **Still open.** The container runs as root, has the network, and has no memory or process limit. `curl` and the fork bomb still work.
 3. **Timeout and cancel do not stop the command.** Killing the `docker` program on the host leaves the command inside the container running. `cancel` and `on_output` are ignored, and `cwd` is thrown away.
 4. **Nobody owns it.** Nothing says when a session's box starts, when it stops, and when its files go away.
 
-## Step by step: from naive to real
+## Step by step: from LocalSandbox to DockerSandbox
 
 In plain words, each step fixes one break:
 
@@ -221,7 +217,7 @@ IF not done:
 3. We run `docker exec simp-<id> kill -9 -- -4711`. The shell and `sleep` die inside the box.
 4. `exec` returns `(None, "1\n2\nFizz\n…")`.
 
-With `kill -9 4711` (no minus), only the shell would die and `sleep 30` would keep running, which is exactly break 3 of the naive version.
+With `kill -9 4711` (no minus), only the shell would die and `sleep 30` would keep running, which is exactly break 3 of the starting point.
 
 ### close, remove, close_all
 

@@ -23,7 +23,9 @@ Somebody must sit between the browser and `AgentSession` and solve all six. **Th
 
 ## The core idea
 
-The session from Part 4 stays the same. The server wraps each loaded session in a **[Run](glossary.md#run)**: a small object that holds the session, its state (idle, running, waiting for approval…) and the list of what has happened so far.
+Nothing in Part 5 is a new agent. The CLI and the server are two front doors to the same [`AgentSession`](13-session.md) from Part 4. The server wraps one `AgentSession` in a `Run`. The transport sends the same [events](06-events-abort.md) the session already emits. The store saves the same messages. `DockerEnv` is just another `ExecutionEnv`, a swap for the `LocalEnv` from [09](09-exec-env.md).
+
+The server wraps each loaded session in a **[Run](glossary.md#run)**: a small object that holds the session, its state (idle, running, waiting for approval…) and the list of what has happened so far. Do not mix it up with the agent [run](glossary.md#run-agent) from [05](05-agent-loop.md): that is one call of the loop. A server `Run` lives longer and starts many agent runs, one per prompt.
 
 Only two HTTP routes carry everything. **Commands go in** by POST: the browser sends small JSON messages like `{"type": "prompt", "text": "write fizzbuzz.py"}`. **Events come out** by one long-open GET that uses SSE ("server-sent events": the server keeps the reply open and writes one event per line, as they happen).
 

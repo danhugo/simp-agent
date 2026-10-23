@@ -29,7 +29,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-At the end of [25](25-web-client.md), Ana opens the browser, types "write `fizzbuzz.py`", and watches the answer stream in. The server runs her session ([20](20-server-run.md)), streams events ([21](21-transport.md)), saves them ([22](22-store-auth.md)), checks her budget ([23](23-limits.md)) and runs `bash` in a container ([24](24-docker-sandbox.md)). Each of these pieces has its own unit tests. Two questions are still open.
+At the end of [25](25-web-client.md), Ana opens the browser, types "write `fizzbuzz.py`", and watches the answer stream in. The server runs her `AgentSession` from [13](13-session.md) inside a server [Run](glossary.md#run) ([20](20-server-run.md); one Run object lives for the whole session, while each prompt inside it is one agent [run](glossary.md#run-agent) from [05](05-agent-loop.md)), streams the same events from [06](06-events-abort.md) ([21](21-transport.md)), saves the same messages ([22](22-store-auth.md)), checks her budget ([23](23-limits.md)) and runs `bash` in a container, a swap for the env of [09](09-exec-env.md) ([24](24-docker-sandbox.md)). Each of these pieces has its own unit tests. Two questions are still open.
 
 The first is: **do the pieces work together?** A unit test for the transport never clicks a button in a real browser. A bug can hide between the web client and the server, for example a word shown twice after Ana reloads the page. We want tests that act like Ana, end to end. But a real model is a bad partner for such a test. It costs money, it is slow, and it writes different words every time, so a test cannot say "the answer must be `Echo: hello`".
 
@@ -39,15 +39,15 @@ So the chapter has two halves. Part A tests the whole system with a fake model. 
 
 ## Part A: test the whole system
 
-### Naive version: test with the real model
+### Starting point: 25's app, and 04's fake model
 
-The first idea is to start the real server, open a browser, ask the real model "write fizzbuzz.py", and check the answer. This is slow, costs money, and fails at random, because the model never writes the same words twice. We need a test partner that is **[deterministic](glossary.md#deterministic)**: same input, same output, every time.
+At the end of [25](25-web-client.md) we have the web client talking to the server. Each server Run wraps one `AgentSession` from [13](13-session.md), and the server builds that session with `stream_fn=self.guarded_stream`, which wraps `mgr.stream_fn` (by default `ai.stream`, the real model). We also have a fake model already: [04](04-label-test.md) built `FakeProvider`, a `stream_fn` that plays [scripted replies](glossary.md#scripted-reply).
 
-The model is the only part with this problem. The store, auth, budget and tools give the same result for the same input. So we fake only the model, and keep everything else real.
+If we test the app as it is, with the real model, the test is slow, costs money, and fails at random, because the model never writes the same words twice. We need a test partner that is **[deterministic](glossary.md#deterministic)**: same input, same output, every time. The model is the only part with this problem. The store, auth, budget and tools give the same result for the same input. So we swap only the `stream_fn`, as in 04, and keep everything else real. `FakeProvider` plays replies in a fixed order, but in a browser test the user decides what to type, so the server needs a fake that answers based on the message.
 
 ### FakeLLM: a model that always says the same thing
 
-In [04](04-label-test.md) we saw that the agent never calls a model directly. It calls a `stream_fn`. So the server can be given a fake one. `apps/server/src/simp_server/fakellm.py` has it:
+`apps/server/src/simp_server/fakellm.py` has it:
 
 Real code: [fakellm.py](../../apps/server/src/simp_server/fakellm.py) — `stream`
 
@@ -68,7 +68,7 @@ FUNCTION stream(model, ctx, api_key):
 
 The rules are checked from top to bottom, and the first match wins. Each rule exists for one kind of test. The plain echo tests normal streaming. A message that starts with "tool" makes a `bash` call, so a test can see the approval card ([08](08-hooks-approval.md)) and a real tool result. A message that starts with "slow" streams 40 chunks, three times slower, which gives a test time to reload the page, press Stop, or steer while the run is busy. The first rule answers the [title call](glossary.md#title-call); it is the only rule that looks at the system prompt, not the last message.
 
-FakeLLM then yields the same events a real provider yields ([03](03-parse.md)): `start`, `thinking_delta`, some `text_delta`, `done`. It sends a `thinking_delta` too, so the web client's "thinking" area is also tested. The wait between chunks comes from `SIMP_FAKE_DELAY` (default `0.05` seconds).
+FakeLLM then yields the same events a real provider yields ([03](03-parse.md), and the server sends them on as the events of [06](06-events-abort.md)): `start`, `thinking_delta`, some `text_delta`, `done`. It sends a `thinking_delta` too, so the web client's "thinking" area is also tested. The wait between chunks comes from `SIMP_FAKE_DELAY` (default `0.05` seconds).
 
 The server picks it with one flag in `apps/server/src/simp_server/server.py`:
 
@@ -149,11 +149,11 @@ FOR EACH field IN the record:
 
 Python's `logging` puts many fields on each record (file name, line number, thread...). `_STD` is the list of those normal fields, so only your own extras, like `run_id` or `user`, are added. Now a tool like `jq` can find every line of one run. The server calls `ops.setup_logging()` when it starts, and passes `log_config=None` to uvicorn so uvicorn does not replace our JSON handler with its own.
 
-### Naive version: copy the data folder
+### First try: copy the data folder
 
 For backups, the simplest idea is to copy the server's data folder (`~/.simp-server`, from [22](22-store-auth.md)).
 
-Naive sketch (not in the repo):
+Sketch of the first try (not in the repo):
 
 ```text
 MAKE a new folder "home"
@@ -252,7 +252,7 @@ test("tool call: Allow shows the result, Deny is reported", async ({ page }) => 
 
 Follow it through the whole system. "tool please" starts with "tool", so FakeLLM asks for `bash` with `echo hi-from-tool`. The server pauses for approval and the browser shows a card. The test clicks Allow, the real tool runs, the result goes back to FakeLLM, and FakeLLM answers "Tool said: hi-from-tool". One test touches the web client, transport, approval, the tool runner and the session. Then it checks the Deny path. Other tests in the same files cover Stop, steering, files, budget, sign up and sign in, and token rotate and revoke.
 
-**The ops tests.** `apps/server/tests/test_ops.py` has three. `test_json_log_line` logs with `extra={"run_id": "r1", "session": "s1"}` and checks that the JSON line has both fields. `test_backup_and_restore` is the naive version turned into a test: it opens a WAL database, inserts `42`, and keeps the connection open ("backup must work while the server holds the db"); it also writes `.env`. It checks that `.env` is not in the tar, that `settings.toml` and `workspaces/s1/a.txt` are, and that the restored database still returns `(42,)`. `test_backup_keeps_newest` makes 5 old backups and one `other.txt`, runs `backup(..., keep=3)`, and checks that only the 3 newest `simp-*` files and `other.txt` are left.
+**The ops tests.** `apps/server/tests/test_ops.py` has three. `test_json_log_line` logs with `extra={"run_id": "r1", "session": "s1"}` and checks that the JSON line has both fields. `test_backup_and_restore` is the first try turned into a test: it opens a WAL database, inserts `42`, and keeps the connection open ("backup must work while the server holds the db"); it also writes `.env`. It checks that `.env` is not in the tar, that `settings.toml` and `workspaces/s1/a.txt` are, and that the restored database still returns `(42,)`. `test_backup_keeps_newest` makes 5 old backups and one `other.txt`, runs `backup(..., keep=3)`, and checks that only the 3 newest `simp-*` files and `other.txt` are left.
 
 Run them with `uv run pytest apps/server/tests/test_ops.py`.
 

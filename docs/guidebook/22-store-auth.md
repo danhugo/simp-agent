@@ -33,38 +33,23 @@ There is a second problem. Bob, Ana's colleague, uses the same server. Nothing s
 
 So we need two things. A **[store](glossary.md#store)**: one place on disk for users, sessions, events and cost. And **[auth](glossary.md#auth)**: a way to check who sends each request.
 
-## Naive version
+## Starting point: 21's Run, with the store left open
 
-The simplest idea: keep everything in Python dicts, and keep tokens as plain text.
+[21](21-transport.md#seq-one-counter-for-everything) ended with a `Run` that numbers each durable event and each `"msg"` row of its [`AgentSession`](13-session.md), then hands the row to the store (`server.py`, commit `2fc2776`):
 
-Naive sketch (not in the repo):
-
-```text
-users    = empty map   // token -> name
-sessions = empty map   // session id -> list of events
-
-add_user(name):
-    token = new random token
-    users[token] = name          // plain token kept as-is
-    RETURN token
-
-user_by_token(token):
-    RETURN users[token] or nothing
-
-add_event(sid, event):
-    ADD event to sessions[sid]   // not tied to any user
-
-t = add_user("ana")
-add_event("s1", {type: user_message, text: "write fizzbuzz.py"})
-// prints: ana {s1: [...]}
+```python
+await self.mgr.store.add_entry(self.user_id, self.sid, self.seq, "msg", to_dict(entry))   # Run.append
+await self.mgr.store.add_entry(self.user_id, self.sid, ev["seq"], ev["type"], ev)         # Run.durable
 ```
 
-It works for one happy demo. It breaks in four ways:
+So far `store` is only a name. The easy fill is Python dicts with plain-text tokens (`token -> user`, `session id -> rows`). That works for one happy demo and breaks in four ways:
 
 1. **The process stops.** All dicts are gone. Ana's token no longer works and her chat is lost.
-2. **Someone reads the data.** If we dump `users` to a file, the file holds working tokens. Anyone who copies the file can log in as anyone.
-3. **Two users share the server.** `sessions` is not tied to a user. If Bob guesses Ana's session id, he reads her chat.
+2. **Someone reads the data.** If we dump the token map to a file, the file holds working tokens. Anyone who copies the file can log in as anyone.
+3. **Two users share the server.** If rows are keyed by session id alone, Bob can guess Ana's session id and read her chat.
 4. **A run dies in the middle.** Nothing marks it as stopped. The tab waits forever, and the last tool call has no result.
+
+This chapter fills in `store` (a real `SqliteStore`) and the `auth` that turns a token into a user, keeping the same `add_entry` calls.
 
 ## Real design
 

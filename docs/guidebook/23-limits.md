@@ -29,7 +29,7 @@ At the end of [22](22-store-auth.md), Ana and Bob share one server. Each has a l
 
 Ana asks for `fizzbuzz.py`. The tests keep failing. The model edits the file, runs the tests, edits again. The agent loop ([05](05-agent-loop.md)) keeps calling the model as long as the model asks for tools, and every call costs money. Ana goes to a meeting. Fifty calls later the bill is real, and nobody was watching.
 
-At the same time Bob opens three sessions, looks at them, and closes the tab. Each session is a `Run` in the server's memory ([20](20-server-run.md)), and each `Run` holds a sandbox: a folder today, a Docker container in [24](24-docker-sandbox.md). If the server keeps every `Run` forever, RAM fills up and containers keep running for nobody.
+At the same time Bob opens three sessions, looks at them, and closes the tab. Each session is a server [`Run`](glossary.md#run) in memory ([20](20-server-run.md)): one `Run` wraps one `AgentSession`, and each prompt it handles is one agent [run](glossary.md#run-agent) of the loop. Each `Run` holds a sandbox: a folder today, a Docker container in [24](24-docker-sandbox.md). If the server keeps every `Run` forever, RAM fills up and containers keep running for nobody.
 
 So this chapter adds three things:
 
@@ -37,53 +37,22 @@ So this chapter adds three things:
 2. A **kill switch**: the admin can stop *all* model calls at once, for example after a bug or a leaked API key.
 3. **[Idle release](glossary.md#idle-release)**: close runs nobody uses, and load them back from the store when the user returns.
 
-## Naive version
+## Starting point: 22's Run, with no limits
 
-The simplest budget: check the spend before a run starts, and add up the cost when it ends.
-
-Naive sketch (not in the repo):
+At the end of [22](22-store-auth.md), each server `Run` wraps one `AgentSession` ([13](13-session.md)), and the `SessionManager` keeps loaded runs in memory and reloads them from the SQLite store. The model door is passed straight through:
 
 ```text
-PRICE_IN = 3.0, PRICE_OUT = 15.0   // USD per 1M tokens
-DAY_LIMIT = 2.0
-spent = {ana: 0}                   // in memory
-
-FUNCTION cost(usage):
-    RETURN (usage.input * PRICE_IN + usage.output * PRICE_OUT) / 1,000,000
-
-FUNCTION fake_model_call(i):
-    RETURN {input: 200,000, output: 5,000}   // a long context: costs $0.675
-
-FUNCTION run(user, max_calls = 50):
-    IF spent[user] >= DAY_LIMIT:            // check once, at the start
-        RETURN "refused"
-    total = 0
-    FOR EACH i in 0..max_calls:             // the agent loop keeps asking for tools
-        ADD cost(fake_model_call(i)) to total
-    ADD total to spent[user]                // count once, at the end
-    RETURN "spent $total"
-
-run("ana")   // spent $33.75   <- limit was $2
-run("ana")   // refused        <- too late
+SessionManager(settings, store, sandbox, stream_fn)   // stream_fn = ai.stream
+Run: session = AgentSession(model, store, env, stream_fn = manager.stream_fn)
 ```
 
-Key idea: check once, count once. Limit: one run can spend far past the limit.
+This breaks in three ways for this chapter:
 
-It breaks in three ways. First, the check comes too early and the count too late: Ana's one run spends $33.75 against a $2 limit. Second, `spent` lives in memory and grows only at the end, so if the server crashes mid-run, the money is gone but not recorded. Third, nothing can stop all loops at once without killing the server.
+1. Nothing checks money. The agent loop ([05](05-agent-loop.md)) calls `stream_fn` again and again, so Ana's one run can spend far past any limit. A check only at the start of a run is too early, and a count only at the end is too late.
+2. A count kept in memory dies with a crash or a restart. The spend must live in the store, one row per call.
+3. Nothing can stop all loops at once without killing the server, and nothing frees runs nobody uses.
 
-## Step by step: from naive to real
-
-Each step fixes one break. Real design below shows the code.
-
-**Step 1 — check before every call.** Move the check inside the loop and count after each call. Now Ana's run stops soon after the limit, not 48 calls later.
-
-**Step 2 — count in the store.** Write one usage row per model call into the SQLite store from [22](22-store-auth.md), and sum rows to know the spend. A row survives a crash; a dict does not.
-
-**Step 3 — put the check in one place.** Every model call goes through one function, `stream_fn` ([01](01-pick-clean.md#out-the-shape-of-a-model-call)). Wrap it once, and the agent, retries and the [title call](glossary.md#title-call) are all checked. Nothing can skip it.
-
-**Step 4 — add the kill switch as one more reason to refuse.** The same check asks "did the admin pause the server?" before every call.
-
-**Step 5 — free idle runs.** A run that nobody watches and that is not working can leave memory. The store can rebuild it later, so nothing is lost.
+The fix grows this same code: wrap `stream_fn` once inside `Run` (every model call, retries and the [title call](glossary.md#title-call) pass through it), write a usage row after each call, add a kill switch as one more reason to refuse, and let the `SessionManager` evict idle runs.
 
 ## Real design
 
@@ -359,7 +328,7 @@ Other tests in the file cover the day limit (`test_day_budget_and_pause`), the k
 
 ## Exercises
 
-1. Call `budget.cost({"price_in": 3, "price_out": 15}, {"input": 200_000, "output": 5_000})`. What do you get? (Check with the naive version: $0.675.)
+1. Call `budget.cost({"price_in": 3, "price_out": 15}, {"input": 200_000, "output": 5_000})`. What do you get? (Expected: $0.675.)
 2. Write a `check` that always returns `"stop"`. Wrap a `FakeProvider` with `budget.guard`, call it once, and print the event. How many calls did the fake record?
 
 ## Recap

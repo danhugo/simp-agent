@@ -2,7 +2,7 @@
 
 **Goal:** Build the browser UI on the protocol.
 
-**Builds on:** [24 Docker sandbox](24-docker-sandbox.md) · **Next:** [26 System tests and deploy](26-system-tests-deploy.md)
+**Builds on:** [21 Transport](21-transport.md), [20 Protocol models](20-server-run.md#protocol-models) · **Previous:** [24 Docker sandbox](24-docker-sandbox.md) · **Next:** [26 System tests and deploy](26-system-tests-deploy.md)
 
 ## Where we are
 
@@ -34,33 +34,22 @@ Recall what the server gives a client ([20](20-server-run.md), [21](21-transport
 
 A browser client sounds easy: open the stream and print what comes in. Three facts make it hard. First, the stream needs Ana's [Bearer token](glossary.md#bearer-token) in an `Authorization` header ([22](22-store-auth.md)), and the browser's built-in SSE reader, `EventSource`, cannot send headers. Second, the stream breaks: Wi-Fi drops, the laptop sleeps, Ana presses reload in the middle of a long answer. When the page connects again it must not show a word twice and must not skip one. Third, many event kinds change the same screen: text, finished messages, tool output, approval requests, run state, title and plan mode. If each one changes the page in its own way, the screen slowly drifts away from the truth on the server.
 
-## Naive version
+## Starting point: 21's two routes, with no page on top
 
-The simplest idea: use `EventSource` and add every text delta to a string.
+[21](21-transport.md#sse-out-post-in) ended with two HTTP routes on the server. Events go out on one long SSE response, and each block is written by `sse`:
 
-```ts
-// naive.ts — runs in a browser page with <div id="out">
-const sid = "abc123";
-let text = "";
-const out = document.getElementById("out")!;
-
-const es = new EventSource(`/api/sessions/${sid}/events`); // no way to add a token header
-es.onmessage = (m) => {
-  const ev = JSON.parse(m.data);
-  if (ev.type === "text_delta") {
-    text += ev.delta;                 // trust every delta
-    out.textContent = text;
-  }
-  if (ev.type === "assistant_message") {
-    text = "";                        // message done, clear the bubble
-    out.textContent = ev.text;
-  }
-};
+```text
+ON GET  /api/sessions/{sid}/events?after=N   -> "id: <seq>" (durable only), "event: <type>", "data: <json>", blank line
+ON POST /api/sessions/{sid}/commands         -> one Command, checked by the parser from 20
 ```
 
-Run the fizzbuzz task with this and it breaks in three ways, one for each fact above. It gets a 401 on the first call, because `EventSource` has no way to send the token, and putting the token in the URL would leak it into server logs. If it did connect, a reconnect would break the text: the page has `"Let me w"`, the line drops, and on reconnect `EventSource` cannot tell the server which events it already has, so the same deltas can arrive again and `text +=` adds them twice (`"Let me wLet me w..."`). And every other event kind (tool output, approvals, run state) needs its own `if` that pokes the page, with no single place that says "this is the state of the chat".
+These are the same [events](glossary.md#event) the agent sends in [06](06-events-abort.md), saved and numbered by the server. Today only a program like `curl` reads them. The first thing a browser would try is its built-in reader, `EventSource`, plus `text += ev.delta` for each `text_delta`. That breaks in three ways, one for each fact above:
 
-## Step by step: from naive to real
+- **401 on the first call.** `EventSource` cannot send the `Authorization` header, and a token in the URL would leak into server logs.
+- **Text shown twice after a reconnect.** The page has `"Let me w"`, the line drops, and `EventSource` cannot tell the server which events it already has. The same deltas can come again, and `text +=` adds them twice (`"Let me wLet me w..."`).
+- **No single chat state.** Tool output, approvals and run state each need their own `if` that pokes the page, so the screen drifts away from the server.
+
+## Step by step: from the routes to a page
 
 We fix the three breaks in five small steps. The real code for each is in the next section.
 
@@ -288,5 +277,5 @@ These tests check the reducer alone. The full promise, "reload the page and noth
 
 Ana now has a browser page. `subscribe()` reads SSE over `fetch`, so it can send her token, and it reconnects forever with `Last-Event-ID` set to the last applied `seq`, waiting up to 10 s between tries. `reduce()` is the only place that changes chat state: it skips durable events it already has, `appendAt()` drops delta dups and gaps, and the `snapshot` replaces all live state on each connect. `Chat.tsx` only reads the state and sends commands, and `state.test.ts` checks the reducer. Next, [26](26-system-tests-deploy.md) tests the whole system in a real browser and shows how to deploy it.
 
-**Builds on:** [24 Docker sandbox](24-docker-sandbox.md) · **Next:** [26 System tests and deploy](26-system-tests-deploy.md)
+**Builds on:** [21 Transport](21-transport.md), [20 Protocol models](20-server-run.md#protocol-models) · **Previous:** [24 Docker sandbox](24-docker-sandbox.md) · **Next:** [26 System tests and deploy](26-system-tests-deploy.md)
 

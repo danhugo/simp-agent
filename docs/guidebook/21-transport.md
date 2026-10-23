@@ -26,68 +26,36 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-Go back to Ana from [20](20-server-run.md#problem). She types "write `fizzbuzz.py`" in a browser tab. In chapter 20 we built the `Run` that does the work on the server, but the run lives in Python and Ana's screen lives in a browser. Nothing yet connects them. This chapter builds that connection: the **transport**, the road that carries events out to the browser and commands back in.
+Go back to Ana from [20](20-server-run.md#problem). She types "write `fizzbuzz.py`" in a browser tab. In [20](20-server-run.md) we built the `Run`: it wraps her `AgentSession` and turns its events into protocol messages. But the run lives in Python and Ana's screen lives in a browser. Nothing yet connects them. This chapter builds that connection: the **transport**, the road that carries events out to the browser and commands back in.
 
 The road out must carry every event (text pieces, tool results, an approval question) to every open tab, live. The road in must carry what Ana sends: a prompt, "stop", "allow this bash call". That part is easy. The hard part is that the network is not kind. Ana's Wi-Fi drops for ten seconds in the middle of the run, and when the tab comes back it must get what it missed, with no gaps and no duplicates. Her colleague opens the same session on a slow laptop, and that slow tab must never slow down the agent. Ana closes her laptop, and the run must keep going and still be saved. And when the agent asks "may I run `bash`?" ([08](08-hooks-approval.md)), the answer now comes over HTTP, maybe from a different tab than the one that saw the question.
 
-## Naive version
+## Starting point: 20's Run, with no road to the browser
 
-The simplest idea: keep a list of queues, one per client, and put every event in each queue.
+[20](20-server-run.md) ended with a real `Run`. It wraps one `AgentSession` ([13](13-session.md)). `Run.on_event` gets the same events as in [06](06-events-abort.md) and turns them into protocol messages. `Run.durable` gives each saved one the next [`seq`](glossary.md#seq), adds it to `log` and saves it. Trimmed, that part looks like this:
 
 ```python
-import asyncio
-
-class Run:
-    def __init__(self):
-        self.subs = []
-
-    def subscribe(self) -> asyncio.Queue:
-        q = asyncio.Queue()          # no limit
-        self.subs.append(q)
-        return q
-
-    def send(self, ev: dict) -> None:
-        for q in self.subs:
-            q.put_nowait(ev)
-
-async def main():
-    run = Run()
-    tab = run.subscribe()
-    run.send({"type": "user_message", "text": "write fizzbuzz.py"})
-    run.subs.remove(tab)             # the network drops
-    run.send({"type": "tool_result", "content": "wrote fizzbuzz.py"})
-    tab = run.subscribe()            # the tab reconnects
-    run.send({"type": "run_state", "state": "idle"})
-    print([(await tab.get())["type"] for _ in range(tab.qsize())])
-
-asyncio.run(main())
-# ['run_state']  -- the tool_result is lost
+    async def durable(self, cls, **kw) -> None:
+        self.seq += 1
+        ev = cls(seq=self.seq, **kw).model_dump()
+        self.log.append(ev)
+        ...                      # save in the store
 ```
 
-It works while the network is perfect. It breaks when:
+So the events exist, in order, with numbers. But no one reads them. Ana's tab has no way to get them, and no way to send "stop" or "allow". If we add the simplest road, one unbounded queue per tab that gets each new event, it breaks when:
 
 1. **A tab reconnects.** Events sent while it was away are gone. The tab never learns that `fizzbuzz.py` was written.
 2. **A tab is slow.** The queue has no limit. A tab that stops reading makes memory grow forever.
-3. **A tab joins mid-message.** It gets the next text delta, but not the text before it. The answer on screen starts in the middle.
-4. **There is no way back in.** Nothing here takes "abort" or "allow" from the client.
+3. **A tab joins mid-message.** It gets the next text delta (a [live event](glossary.md#live-event), with no `seq`, not saved), but not the text before it. The answer on screen starts in the middle.
+4. **There is no way back in.** Nothing takes "abort" or "allow" from the client.
 
-## Step by step: from naive to real
+## Step by step: from 20's Run to real
 
-We fix the four breaks one by one.
+We grow the same `Run`. Each step fixes one break.
 
-**Step 1: number the events.** Chapter 20 already split server events into [durable events](glossary.md#durable-event) (saved, like a tool result or a run state) and [live events](glossary.md#live-event) (small streaming text pieces that are not saved, because the full text is saved later in the finished message). We give each durable event the next number, its [`seq`](glossary.md#seq), and keep them in a log.
+**Step 1: a set of reader queues.** Add `subs`, a set of queues, one per open tab. `Run._send` puts each event in every queue. `durable` calls it for saved events, and `on_event` calls it for live deltas.
 
-```python
-    def send(self, ev: dict) -> None:
-        self.seq += 1
-        ev = {**ev, "seq": self.seq}
-        self.log.append(ev)
-        ...
-```
-
-Why: now every event has a place in a line. A client can say "I saw up to N".
-
-**Step 2: replay on subscribe.** Return the missed events with the queue.
+**Step 2: replay on subscribe.** `log` is already numbered, so a tab can say "I saw up to N". Return the missed events with the queue.
 
 ```python
     def subscribe(self, after: int):
@@ -125,7 +93,7 @@ Why: a tab that stops reading must not grow memory, and must never make the run 
 
 Why: the client needs a way to say "stop" or "allow".
 
-These five steps are the whole idea. The rest of the chapter shows how the real code in `server.py` does each one, in the order an event travels: the two HTTP routes, the counter, the replay, the stream loop, the slow-tab rule, and then the road in (commands and approval).
+The rest of the chapter shows how the real code in `server.py` does each step, in the order an event travels: the two HTTP routes, the counter, the replay, the stream loop, the slow-tab rule, and then the road in (commands and approval).
 
 ## Real design
 
@@ -171,7 +139,7 @@ Note the `id:` line. It is only there when the event has a `seq`. That is the ke
 
 ### seq: one counter for everything
 
-Only durable events get a `seq` (the two kinds are in Step 1 above). `seq` is a number that goes up by one for each saved row. `Run.durable` makes a durable event:
+Only durable events get a `seq` (saved; the other kind, live events, are not). `seq` is a number that goes up by one for each saved row. `Run.durable` makes a durable event:
 
 ```text
 FUNCTION durable(cls, fields):
@@ -236,9 +204,9 @@ after = the ?after=N value, ELSE the Last-Event-ID header, ELSE 0
 first, q = run.subscribe(after)
 ```
 
-The docstring says "No await here": that is the rule from [Step 2](#step-by-step-from-naive-to-real).
+The docstring says "No await here": that is the rule from [Step 2](#step-by-step-from-20s-run-to-real).
 
-The snapshot fixes problem 3 of the naive version. `in_flight` (`p.InFlight`) holds the text, thinking and tool output of the message that is still streaming. `Run.on_event` keeps it up to date while deltas arrive:
+The snapshot fixes break 3 from the [starting point](#starting-point-20s-run-with-no-road-to-the-browser). `in_flight` (`p.InFlight`) holds the text, thinking and tool output of the message that is still streaming. `Run.on_event` keeps it up to date while deltas arrive:
 
 ```text
 IF the event is message_update with a text_delta or thinking_delta:
@@ -282,7 +250,7 @@ FUNCTION _send(ev):
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run._send`.
 
-Each queue holds at most `QUEUE_MAX` (1000) events. `put_nowait` never waits. If a queue is full, the server removes it from `subs`. The SSE loop above then sends what is left and ends. The browser reconnects with `Last-Event-ID` and gets the missed durable events plus a fresh snapshot. The run never waits for a tab. This fixes problem 2.
+Each queue holds at most `QUEUE_MAX` (1000) events. `put_nowait` never waits. If a queue is full, the server removes it from `subs`. The SSE loop above then sends what is left and ends. The browser reconnects with `Last-Event-ID` and gets the missed durable events plus a fresh snapshot. The run never waits for a tab. This fixes break 2.
 
 Because the run only talks to queues, a run with **zero** tabs works the same. The fizzbuzz task keeps going after you close the browser, and every durable event is saved.
 
@@ -370,7 +338,7 @@ async def test_reconnect_with_last_event_id_no_gaps_or_dups(env):
 
 `env`, `drain` and `wait_for` are small helpers at the top of the test file: `env` builds a `Run` with a fresh store, `drain` empties a queue into a list, and `wait_for` waits until a condition is true. `FakeProvider` ([04](04-label-test.md)) gives two simple replies, so no real model is needed. A tab subscribes, sees only the first 3 durable events of the first run, then closes. A second run happens while it is away. The tab reconnects with the last `seq` it saw, and the old part plus the replay must equal the full `run.log`: each `seq` once, in order. The replay must end with a snapshot whose `last_seq` is the current counter.
 
-This is the case the naive version failed. Other tests in the file: `test_mid_delta_reconnect_snapshot`, `test_approve_then_abort`, `test_slow_client_dropped_never_blocks`, `test_closed_tabs_run_finishes_and_is_persisted`.
+This is break 1 from the starting point. Other tests in the file: `test_mid_delta_reconnect_snapshot`, `test_approve_then_abort`, `test_slow_client_dropped_never_blocks`, `test_closed_tabs_run_finishes_and_is_persisted`.
 
 Run it:
 
@@ -384,7 +352,7 @@ uv run pytest apps/server/tests/test_server.py::test_reconnect_with_last_event_i
 
 ## Exercises
 
-1. Run the naive version, then add Step 1 and Step 2. Does the reconnecting tab now see the `tool_result`?
+1. Remove the replay from `subscribe` (return `[]` instead of the missed events). Which assert in the reconnect test fails?
 2. In `subscribe`, change `e["seq"] > after` to `>=`. Which event comes twice? Run the reconnect test to see it fail.
 
 ## Recap
