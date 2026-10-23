@@ -123,7 +123,7 @@ The first text of every model request: who the model is and how to work. Default
 A project file with rules for agents. The first of `CONTEXT_FILES` (`AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD`) found in `cwd`, read through the env, added once as the "Project Context" section. Home: [11](11-system-prompt.md#context_files-and-load_context_file-the-context-file).
 
 ## Prompt section
-One part of the system prompt in `AgentSession`: an id, an order and a string or `fn(ctx)`. `_build_prompt` sorts them, skips empty ones and joins them before each model call. Introduced in [11](11-system-prompt.md#the-loop-calls-the-prompt-function-every-turn); home: [13](13-session.md#prompt-sections-the-system-prompt-rebuilt-every-turn).
+One part of the system prompt in `AgentSession`: an id, an order and a string or `fn(ctx)`. `_build_prompt` sorts them, skips empty ones and joins them before each model call. Introduced in [11](11-system-prompt.md#the-loop-calls-the-prompt-function-every-turn); home: [13](13-session.md#prompt-sections-how-the-system-prompt-is-built).
 
 ## Eval
 A test of the real agent with a real model on fixed tasks, checked by a program. It reports pass/fail plus turns, tokens, cost and time. Runner: `evals/run.py`. Home: [12](12-evals.md).
