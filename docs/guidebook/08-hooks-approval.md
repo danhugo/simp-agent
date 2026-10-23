@@ -111,7 +111,15 @@ flowchart TD
     Y --> N[next model call reads the result]
 ```
 
-Follow the `write NOTES.md` call from start to end. The model's reply holds the call. The loop first sends `tool_execution_start`, so the UI already shows "write NOTES.md" **before** the hook runs; the human sees which call they are asked about. Then `before_tool_call` runs, and the human is asked. If they allow it, the hook returns `None` and `run_tool` writes the file. If they deny it, the hook returns `"denied"`, `run_tool` is skipped, and the call gets the error result `User denied: denied`. Next, `after_tool_call` runs on both paths: after a real run **and after a deny**. So a hook that logs or rewrites results has one place to see them all. If it returns `None`, the old result stays, so a hook that only watches does not need to return anything. Then `tool_execution_end` is sent, the result goes into the history, and the next model call reads it. A deny is not an abort: the model reads "User denied" and answers in a new way.
+The `write NOTES.md` call goes through five steps:
+
+1. **`tool_execution_start`**: the UI shows "write NOTES.md", so the user sees what they are asked about.
+2. **`before_tool_call`** asks the user. *Allow*: it returns `None`, and `run_tool` writes the file. *Deny*: it returns a reason (here `"denied"`), `run_tool` is skipped, and the result is the error `User denied: denied`.
+3. **`after_tool_call`** runs on both paths and may replace the result. Returning `None` keeps it.
+4. **`tool_execution_end`**: the result goes into the history.
+5. **The next model call** reads it.
+
+A deny does not stop the run: the model reads "User denied" and tries another way.
 
 Only truncated calls skip both hooks: the loop never runs them, so there is nothing to ask about.
 
