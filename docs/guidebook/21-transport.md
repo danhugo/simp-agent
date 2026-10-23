@@ -308,7 +308,7 @@ Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_se
 
 `start` does not wait for the run. It sets state `running` and starts `_run` as an asyncio task. So the POST returns `{"ok": true}` at once, and the results come over SSE.
 
-When a run ends, `_turn` starts the next one from any follow-up that came too late for the loop ([20 · The Run](20-server-run.md#the-run)).
+When a run ends, `_turn` starts the next one from any follow-up that came too late for the loop ([20 · Run state machine](20-server-run.md#run-state-machine)).
 
 `Abort` sets state `aborting` and calls `session.abort()` ([06](06-events-abort.md)), but only if the run is busy and not already aborting, so a double click does nothing. `Compact` and `Continue` return `409` while busy.
 

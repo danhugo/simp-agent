@@ -141,7 +141,7 @@ One long conversation with the agent, across many prompts and restarts. Owned by
 The class in `session/__init__.py` that owns one `Agent` and adds saving, plugins, retry, compaction and overflow recovery. Home: [13](13-session.md).
 
 ## Title call
-After the first assistant message, `Run` starts `title_task`: one small model call that names the session, saves it with `store.set_title` and sends a `session_title` event. Home: [20](20-server-run.md#the-run).
+After the first assistant message, `Run` starts `title_task`: one small model call that names the session, saves it with `store.set_title` and sends a `session_title` event. Home: [20](20-server-run.md#the-title-call).
 
 ## SessionStore
 A protocol with two methods, `append(entry)` and `load()`: where a session saves its history. `append` may be sync or async. Home: [13](13-session.md).
