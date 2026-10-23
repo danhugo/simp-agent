@@ -21,9 +21,7 @@ Then the user sent the follow-up "write a summary to NOTES.md". Now the model ca
 
 ## Problem
 
-So we want three things. First, a way to **look** at a call before it runs, and maybe say no. Second, a way to **change** a result after it runs (for example, cut a huge output). Third, both must stay **out of** `agent_loop`. The loop should not know which tools are risky, or how to ask a human: a CLI asks with `y/n`, a web app shows a button, a test answers at once.
-
-The answer is two [tool hooks](glossary.md#tool-hook): functions the caller gives to the loop, which run just before and just after each tool call. [Tool approval](glossary.md#tool-approval), "ask the human first", is then built as one of them.
+The model wants to `write` NOTES.md. Writing a file is risky, and so are `edit` and `bash`: they change files or run commands, and a mistake cannot be undone. So before such a call runs, the user must be asked first, and must be able to say no.
 
 ## Starting point: the tool step from 05 and 06
 
@@ -38,7 +36,7 @@ FOR EACH call in msg:
     add(result)
 ```
 
-Every call runs. The first idea is to put a question right here:
+Every call runs. Some tools are risky: `write` and `edit` change files, `bash` runs commands. The simplest way to ask first is Python's `input()`: it prints a question in the terminal and waits until the user types `y` or `n`. So the first idea is to ask right here, just before `run_tool`, for those three tools:
 
 ```text
     IF call.name IN {bash, write, edit}:
@@ -48,7 +46,7 @@ Every call runs. The first idea is to put a question right here:
 
 If the user answers `n`, the naive loop just skips the `write` call. That breaks two things. The call gets no result, so the next model request is rejected ([06](06-events-abort.md)). And the model never learns that the user said no, so it may simply try `write` again. Both have one fix: a denied call still gets a result, and the result says why.
 
-The bigger problem is *where* the question lives. `input()` and the list of risky tools are written inside the loop, so only a terminal can answer: a web server or a test cannot, and while `input()` waits, not even Stop can end it. So the loop should not ask the user itself. It should call a **hook** that the app gives it: one before a tool runs (allow or deny), and one after (change the result).
+The bigger problem is *where* the question lives. `input()` and the list of risky tools are written inside the loop, so only a terminal can answer: a web server or a test cannot, and while `input()` waits, not even Stop can end it. So the loop should not ask the user itself. It should call a **hook** that the app gives it: one before a tool runs (allow or deny), and one after (change the result). These are the two [tool hooks](glossary.md#tool-hook), and [tool approval](glossary.md#tool-approval), "ask the human first", is built as one of them.
 
 ## Step by step: grow the tool step
 
