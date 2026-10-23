@@ -67,7 +67,7 @@ In plain words, each step fixes one break:
 
 1. **Start the box once per session**, keep it alive doing nothing, and send each command into it. This fixes *slow*.
 2. **Close every door we do not need** when starting it: no root, no network, a limit on processes and memory, a read-only system. This fixes *still open*.
-3. **Kill the whole command inside the box** on timeout or cancel, the same group kill as [09](09-exec-env.md#process-group-kill), just done from inside. This fixes the timeout.
+3. **Kill the whole command inside the box** on timeout or cancel, the same group kill as [09](09-exec-env.md#step-5-stop-kills-the-whole-group), just done from inside. This fixes the timeout.
 4. **Give the server a slot** that opens, closes and removes a box per session, so the session manager decides when. This fixes *nobody owns it*.
 
 Real design walks these in the order the server meets them: first the slot (4), then the box (1, 2), then the commands (3).
@@ -182,7 +182,7 @@ The values come from the `[sandbox]` table in `settings.toml`, so an admin can g
 
 The container is up and waiting. Now the model calls `bash` (or `read`), and the tool asks the env that `open` returned. `DockerEnv` is a subclass of `LocalEnv` that keeps one extra field, the container name. The module docstring says the split: "File ops run on the host (LocalEnv with root containment) on a dir bind-mounted at /work; only exec goes through `docker exec`."
 
-Why are file tools safe on the host, when `bash` was not? Because they never run user text as a program. They only read and write paths, and `LocalEnv._path` already refuses any path outside the root ([09](09-exec-env.md#path-safety)). So `DockerEnv` inherits them unchanged, fast and already tested. Only `exec` is new.
+Why are file tools safe on the host, when `bash` was not? Because they never run user text as a program. They only read and write paths, and `LocalEnv._path` already refuses any path outside the root ([09](09-exec-env.md#step-3-_path-checks-the-path)). So `DockerEnv` inherits them unchanged, fast and already tested. Only `exec` is new.
 
 **Mapping `cwd`.** A tool passes `cwd` as a host path, but the container only knows `/work`. `_cwd` first runs `_path` (so the root check still applies), then swaps the root for `/work`:
 
@@ -192,7 +192,7 @@ def _cwd(self, cwd: str) -> str:
     return str(Path("/work") / rel)
 ```
 
-**Running and killing a command.** In [09](09-exec-env.md#process-group-kill), `LocalEnv` starts the shell in a new process group and kills the whole group on timeout. Here the command runs inside the container, where the host cannot see its pid. So we ask the box to tell us:
+**Running and killing a command.** In [09](09-exec-env.md#step-5-stop-kills-the-whole-group), `LocalEnv` starts the shell in a new process group and kills the whole group on timeout. Here the command runs inside the container, where the host cannot see its pid. So we ask the box to tell us:
 
 Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv.exec`
 

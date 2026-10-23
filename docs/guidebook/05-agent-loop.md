@@ -163,7 +163,7 @@ real:   reply = config.stream_fn(model, request)
 
 The app passes `stream_fn = ai.stream`. A test passes `FakeProvider` ([04](04-label-test.md)), which returns a scripted answer, such as "call `read` README.md". No real model, and the same answer every time.
 
-`stream_fn` lives in [`LoopConfig`](glossary.md#loopconfig), the one object that holds all the loop's inputs except the history (we meet the other fields as we need them).
+`stream_fn` lives in [`LoopConfig`](glossary.md#loopconfig), the one object that holds the loop's settings (`system_prompt`, the history, `emit` and `cancel` are passed to `agent_loop` on their own; we meet the other fields as we need them).
 
 **Step 6 — give the tool a context.** Last, the tool needs to know where it works. Each tool call gets one `ToolContext` object, `ctx`, built from the loop's settings:
 

@@ -117,11 +117,11 @@ ON GET /api/sessions/{sid}/events?after=N (logged-in user u):
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), functions `post_command` and `events` inside `create_app`.
 
-Events go out with **[SSE](glossary.md#sse)** (Server-Sent Events). SSE is one long HTTP response with `text/event-stream` type. The server writes small text blocks into it, one per event. The browser reads them with a small fetch-based reader (see [25](25-web-client.md#fetch-based-sse)).
+Events go out with **[SSE](glossary.md#sse)** (Server-Sent Events). SSE is one long HTTP response with `text/event-stream` type. The server writes small text blocks into it, one per event. The browser reads them with a small fetch-based reader (see [25](25-web-client.md#3-the-page-listens-sse-over-fetch-subscribe)).
 
 Commands come in with a normal `POST`. The body is JSON, checked by the `Command` parser from [20](20-server-run.md#protocol-models). A bad body gets `422`.
 
-Why not WebSocket? SSE is one-way, which is all we need out, since commands already have their own `POST`. Plain HTTP works through proxies, and when the stream ends our client reconnects by itself, with backoff ([25](25-web-client.md#fetch-based-sse)). That is how a dropped tab "learns" it was dropped: its stream simply ends. Both routes need auth ([22](22-store-auth.md)).
+Why not WebSocket? SSE is one-way, which is all we need out, since commands already have their own `POST`. Plain HTTP works through proxies, and when the stream ends our client reconnects by itself, with backoff ([25](25-web-client.md#3-the-page-listens-sse-over-fetch-subscribe)). That is how a dropped tab "learns" it was dropped: its stream simply ends. Both routes need auth ([22](22-store-auth.md)).
 
 Each event is written by `sse` in `apps/server/src/simp_server/fake.py`:
 
@@ -197,7 +197,7 @@ q     = a new queue; the next text delta arrives here
 
 The tab already had 1 to 3, so nothing comes twice. It shows "Hello " from the snapshot and adds the next deltas after it.
 
-The SSE route finds `after` and calls `subscribe`. The tab gives N with `?after=N`, or with the [`Last-Event-ID`](glossary.md#last-event-id) header that our client sends on every connect ([25](25-web-client.md#fetch-based-sse)):
+The SSE route finds `after` and calls `subscribe`. The tab gives N with `?after=N`, or with the [`Last-Event-ID`](glossary.md#last-event-id) header that our client sends on every connect ([25](25-web-client.md#3-the-page-listens-sse-over-fetch-subscribe)):
 
 ```text
 after = the ?after=N value, ELSE the Last-Event-ID header, ELSE 0
@@ -218,7 +218,7 @@ IF the event is message_update with a text_delta or thinking_delta:
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.on_event`.
 
-Each delta carries an [`offset`](glossary.md#offset): where it starts in the full text. A tab that joined late gets "Hello " in the snapshot, then a delta with `offset=6`. If the offset equals the length it already has, the piece fits; if not, the tab knows it is out of step ([25 · appendAt](25-web-client.md#appendat) shows what it does).
+Each delta carries an [`offset`](glossary.md#offset): where it starts in the full text. A tab that joined late gets "Hello " in the snapshot, then a delta with `offset=6`. If the offset equals the length it already has, the piece fits; if not, the tab knows it is out of step ([25 · appendAt](25-web-client.md#6-deltas-fit-together-appendat) shows what it does).
 
 ### The SSE loop
 

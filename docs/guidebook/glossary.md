@@ -120,10 +120,10 @@ How tools keep output small (`coding/truncate.py`): keep whole lines under 2000 
 The first text of every model request: who the model is and how to work. Default made by `coding.system_prompt(tools, cwd)`: role, tool list, short rules, date and cwd. The session rebuilds it every turn from prompt sections. Home: [11](11-system-prompt.md#system_prompt-the-base-text).
 
 ## Context file
-A project file with rules for agents. The first of `CONTEXT_FILES` (`AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD`) found in `cwd`, read through the env, added once as the "Project Context" section. Home: [11](11-system-prompt.md#context_files-and-load_context_file-the-project-file).
+A project file with rules for agents. The first of `CONTEXT_FILES` (`AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD`) found in `cwd`, read through the env, added once as the "Project Context" section. Home: [11](11-system-prompt.md#context_files-and-load_context_file-the-context-file).
 
 ## Prompt section
-One part of the system prompt in `AgentSession`: an id, an order and a string or `fn(ctx)`. `_build_prompt` sorts them, skips empty ones and joins them before each model call. Introduced in [11](11-system-prompt.md#prompt-sections-building-the-prompt-every-turn); home: [13](13-session.md#prompt-sections-the-system-prompt-rebuilt-every-turn).
+One part of the system prompt in `AgentSession`: an id, an order and a string or `fn(ctx)`. `_build_prompt` sorts them, skips empty ones and joins them before each model call. Introduced in [11](11-system-prompt.md#the-loop-calls-the-prompt-function-every-turn); home: [13](13-session.md#prompt-sections-the-system-prompt-rebuilt-every-turn).
 
 ## Eval
 A test of the real agent with a real model on fixed tasks, checked by a program. It reports pass/fail plus turns, tokens, cost and time. Runner: `evals/run.py`. Home: [12](12-evals.md).
@@ -273,7 +273,7 @@ The event sent after a (re)connect with `last_seq`, run state, in-flight text an
 A standard JSON format that describes data shapes. Used here to generate TypeScript types. Home: [20](20-server-run.md#gen_protocol--protocolgents).
 
 ## SSE
-Server-Sent Events: one long HTTP response where the server writes events as text blocks. Our browser client reads them with `fetch`, not `EventSource`, because `EventSource` cannot send the `Authorization` header ([25](25-web-client.md#fetch-based-sse)). Home: [21](21-transport.md#sse-out-post-in). OpenAI Responses names each event in its `type` ([03](03-parse.md#openai-responses-named-events)).
+Server-Sent Events: one long HTTP response where the server writes events as text blocks. Our browser client reads them with `fetch`, not `EventSource`, because `EventSource` cannot send the `Authorization` header ([25](25-web-client.md#3-the-page-listens-sse-over-fetch-subscribe)). Home: [21](21-transport.md#sse-out-post-in). OpenAI Responses names each event in its `type` ([03](03-parse.md#openai-responses-named-events)).
 
 ## `seq`
 A number that grows by one for each saved row of a session. Clients use it to ask for the events they missed. Home: [21](21-transport.md#seq-one-counter-for-everything).
@@ -336,13 +336,13 @@ Removing an unused `Run` from memory and closing its sandbox. Files and log stay
 Evicting runs that were not used for `idle_minutes`. Home: [23](23-limits.md#idle-release-evict-runs-nobody-uses).
 
 ## Reducer
-A pure function `(state, event) -> new state`. In the web client, `reduce()` is the only place chat state changes. Home: [25](25-web-client.md#the-reducer-statets).
+A pure function `(state, event) -> new state`. In the web client, `reduce()` is the only place chat state changes. Home: [25](25-web-client.md#5-events-arrive-the-reducer-statets).
 
 ## In-flight buffer
 Text of the assistant message that is still streaming, kept by the server `Run` (`self.inflight`) so a late or reloaded tab gets it in the snapshot. Home: [21](21-transport.md#replay-after-then-snapshot-then-live).
 
 ## Gap / dup delta
-A delta that does not start at the end of the text: a skipped one (gap) or a repeated one (dup). The web client drops both; see [Offset](#offset). Home: [25](25-web-client.md#appendat).
+A delta that does not start at the end of the text: a skipped one (gap) or a repeated one (dup). The web client drops both; see [Offset](#offset). Home: [25](25-web-client.md#6-deltas-fit-together-appendat).
 
 ## Bearer token
 A secret sent in the header `Authorization: Bearer <token>` on every call to the server. See [Token (auth)](#token-auth). Home: [22](22-store-auth.md).
@@ -351,7 +351,7 @@ A secret sent in the header `Authorization: Bearer <token>` on every call to the
 A clock that only goes forward (`time.monotonic()`). Changing the computer's time does not move it, so it is safe for measuring how long something took. Used in [10](10-coding-tools.md) and [23](23-limits.md).
 
 ## Offset
-The position in the full text where a delta starts. `appendAt()` uses it to drop repeated (dup) and skipped (gap) deltas. Home: [25](25-web-client.md#appendat).
+The position in the full text where a delta starts. `appendAt()` uses it to drop repeated (dup) and skipped (gap) deltas. Home: [25](25-web-client.md#6-deltas-fit-together-appendat).
 
 ## Sandbox
 A closed place where a session's commands run, apart from the server and other users. Home: [24](24-docker-sandbox.md#the-sandbox-slot).
@@ -378,7 +378,7 @@ A tool that controls a real browser from test code. Home: [26](26-system-tests-d
 Gives the same output for the same input, every time. Home: [26](26-system-tests-deploy.md#fakellm-a-model-that-always-says-the-same-thing).
 
 ## Online backup
-SQLite's built-in way to copy a database safely while it is open and in use. Home: [26](26-system-tests-deploy.md#opspy-logs-and-backup).
+SQLite's built-in way to copy a database safely while it is open and in use. Home: [26](26-system-tests-deploy.md#opsbackup-a-safe-copy).
 
 ## `launchd`
 The macOS service manager. It starts, restarts and schedules programs from `.plist` files. Home: [26](26-system-tests-deploy.md#launchd-run-it-as-a-service-on-a-mac).
