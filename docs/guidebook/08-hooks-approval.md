@@ -13,19 +13,13 @@ flowchart LR
 
 Big picture of Part 2: [part-2-agent](05-0-part-2-agent.md).
 
-*This chapter adds the last piece of the `agent` layer: a gate in front of every tool call.*
-
-Code in this chapter (commit `2fc2776`):
-
-- `packages/simp_agent/src/simp_agent/agent/__init__.py` — `LoopConfig.before_tool_call` / `after_tool_call`, the tool step in `agent_loop`, `_maybe_await`, and the same two arguments on `Agent`
-- `packages/simp_agent/src/simp_agent/session/__init__.py` — `AgentSession._before_tool_call` (approval; a preview of [13](13-session.md))
-- `apps/cli/tests/test_cli.py` and `apps/cli/tests/test_sockets.py` — the tests
-
-## Problem
+## Example: the model wants to write a file
 
 We keep the story from [07](07-steering.md). The user asked "What is in README.md?", then steered with "Also read CHANGELOG.md". The model called `read` twice. Reading is safe, so nobody needs to be asked.
 
 Then the user sent the follow-up "write a summary to NOTES.md". Now the model calls `write` with `{"path": "NOTES.md", ...}`. Today the loop just runs it. NOTES.md may already hold the user's own notes, and they are gone. Soon there will also be a `bash` tool ([10](10-coding-tools.md)), and `bash` can do much worse. The user needs a way to say **"no, do not run that"** to one call.
+
+## Problem
 
 So we want three things. First, a way to **look** at a call before it runs, and maybe say no. Second, a way to **change** a result after it runs (for example, cut a huge output). Third, both must stay **out of** `agent_loop`. The loop should not know which tools are risky, or how to ask a human: a CLI asks with `y/n`, a web app shows a button, a test answers at once.
 
@@ -70,62 +64,40 @@ result = ToolResultMessage(call.id, call.name, "User denied: {reason}", is_error
 
 **Step 4: do not block forever.** Both functions get the [tool context](glossary.md#tool-context) `ctx` from [05](05-agent-loop.md). It holds `cancel`, so a hook that waits for a human can also stop waiting when Stop is pressed.
 
-The rest of the chapter shows the real code for these four steps.
-
 ## Real design
 
-### Two hooks in `LoopConfig`
+### Where the hooks plug into `agent_loop`
 
-Like `get_steering` in [07](07-steering.md), the loop only **asks** the caller. `LoopConfig` has two optional fields (`packages/simp_agent/src/simp_agent/agent/__init__.py`):
-
-```text
-LoopConfig:
-    before_tool_call(call, ctx)         -> None = run the tool; a string = deny with this reason
-    after_tool_call(call, result, ctx)  -> a new ToolResultMessage, or None = keep result
-                                           (also runs after a deny)
-```
-
-Real code: [agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `LoopConfig`
-
-Both default to `None`: no hook, no change. A hook may be a plain function (a test passes a `lambda`) or an `async def` (a web app waits for a click). The loop handles both with one small helper:
-
-```text
-FUNCTION _maybe_await(r):
-    IF r can be awaited: RETURN (WAIT for r)    // async hook
-    RETURN r                                    // plain hook
-```
-
-Real code: [agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `_maybe_await`
-
-### Where the hooks run
-
-Here is the tool step of `agent_loop`. The rest of the loop is in [05](05-agent-loop.md) and [07](07-steering.md); the truncation branch is from [05](05-agent-loop.md) and is not changed.
+The four steps all land in the tool step of `agent_loop`. Here it is with the new lines marked. The rest of the loop is in [05](05-agent-loop.md) and [07](07-steering.md); the truncation branch is from [05](05-agent-loop.md) and is not changed. One name in it is new to you: `run_tool` needs the list of tools, and `_tools(config)` is a tiny helper that gives it. It returns `config.get_tools()` if the caller set that function (an `Agent` does, so tools can change between turns), else the fixed list `config.tools`.
 
 ```text
 FOR EACH call IN calls:
-    IF cancel is set: STOP the loop
+    IF cancel is set: STOP this FOR loop
     IF msg.stop_reason == "length":
         result = error result "Tool call was truncated (max tokens); not executed"
     ELSE:
         SEND event {tool_execution_start, call}
         ctx = ToolContext(cancel, config.env, config.cwd, on_update)
-        deny = None
-        IF config.before_tool_call: deny = WAIT for _maybe_await(before_tool_call(call, ctx))
-        IF deny is not None:
-            result = ToolResultMessage(call.id, call.name, "User denied: {deny}", is_error=True)
-        ELSE:
+        deny = None                                                          // NEW
+        IF config.before_tool_call: deny = WAIT for before_tool_call(call, ctx)   // NEW
+        IF deny is not None:                                                 // NEW
+            result = ToolResultMessage(call.id, call.name, "User denied: {deny}", is_error=True)   // NEW
+        ELSE:                                                                // NEW
             result = WAIT for run_tool(_tools(config), call, ctx)
-        IF config.after_tool_call:
-            result = WAIT for _maybe_await(after_tool_call(call, result, ctx)), OR keep result if None
+        IF config.after_tool_call:                                           // NEW
+            result = WAIT for after_tool_call(call, result, ctx), OR keep result if None
         SEND event {tool_execution_end, call, result}
     ADD result to history
 ```
 
 Real code: [agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `agent_loop`
 
+### The path of one call
+
 ```mermaid
 flowchart TD
-    T{"stop_reason == length?"} -- yes --> X["error result: truncated"]
+    M["model asks: write NOTES.md"] --> T{"stop_reason == length?"}
+    T -- yes --> X["error result: truncated"]
     T -- no --> A[tool_execution_start]
     A --> B{before_tool_call}
     B -- None --> C[run_tool]
@@ -136,13 +108,36 @@ flowchart TD
     E -- "None: keep result" --> H
     H --> Y[add to history]
     X --> Y
+    Y --> N[next model call reads the result]
 ```
 
-Follow the `write NOTES.md` call through it. The loop first sends `tool_execution_start`, so the UI already shows "write NOTES.md" **before** the hook runs; the human sees which call they are asked about. Then `before_tool_call` runs. If it returns `"denied"`, the call gets the error result `User denied: denied`, and the loop goes on to the next call and the next model turn. A deny is not an abort: the model reads the result and answers in a new way.
+Follow the `write NOTES.md` call from start to end. The model's reply holds the call. The loop first sends `tool_execution_start`, so the UI already shows "write NOTES.md" **before** the hook runs; the human sees which call they are asked about. Then `before_tool_call` runs, and the human is asked. If they allow it, the hook returns `None` and `run_tool` writes the file. If they deny it, the hook returns `"denied"`, `run_tool` is skipped, and the call gets the error result `User denied: denied`. Next, `after_tool_call` runs on both paths: after a real run **and after a deny**. So a hook that logs or rewrites results has one place to see them all. If it returns `None`, the old result stays, so a hook that only watches does not need to return anything. Then `tool_execution_end` is sent, the result goes into the history, and the next model call reads it. A deny is not an abort: the model reads "User denied" and answers in a new way.
 
-`after_tool_call` runs on both paths, after a real run and after a deny (the code comment says "Also runs after a deny"). So a hook that logs or rewrites results has one place to see them all. If it returns `None`, the old result stays, so a hook that only watches does not need to return anything. Only truncated calls skip both hooks: the loop never runs them, so there is nothing to ask about.
+Only truncated calls skip both hooks: the loop never runs them, so there is nothing to ask about.
 
 Note the check is `deny is not None`, not "is it truthy". The string is the signal. Even an empty string `""` means deny (the model gets `User denied: `). Only `None` means go on.
+
+### The two fields in `LoopConfig`
+
+Like `get_steering` in [07](07-steering.md), the loop only **asks** the caller. The two hooks are optional fields of `LoopConfig`:
+
+```text
+LoopConfig:
+    before_tool_call(call, ctx)         -> None = run the tool; a string = deny with this reason
+    after_tool_call(call, result, ctx)  -> a new ToolResultMessage, or None = keep result
+```
+
+Real code: [agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `LoopConfig`
+
+Both default to `None`: no hook, no change. A hook may be a plain function (a test passes a `lambda`) or an `async def` (a web app waits for a click). In the real code, each "WAIT for hook(...)" above goes through one small helper, so the loop handles both kinds:
+
+```text
+FUNCTION _maybe_await(r):
+    IF r can be awaited: RETURN (WAIT for r)    // async hook
+    RETURN r                                    // plain hook
+```
+
+Real code: [agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `_maybe_await`
 
 ### The same hooks on `Agent`
 
@@ -222,7 +217,7 @@ async def test_before_tool_call_hook_in_loop():
     assert msgs[-1] is DONE  # the loop continued
 ```
 
-The [FakeProvider](04-label-test.md) first asks for `bash`, then replies `"ok"`. The test checks that the hook saw the call, the tool did **not** run, the result is an error with the reason, and the loop went on to the second reply.
+The test uses `bash` instead of our `write`; any tool name works the same. The [FakeProvider](04-label-test.md) first asks for `bash`, then replies `"ok"`. The test checks that the hook saw the call, the tool did **not** run, the result is an error with the reason, and the loop went on to the second reply.
 
 The after-hook test, `test_after_tool_call_and_prepare_arguments` (`apps/cli/tests/test_sockets.py`), changes a result through `Agent`:
 
@@ -258,7 +253,7 @@ uv run pytest apps/cli/tests/test_cli.py apps/cli/tests/test_sockets.py
 
 ## Recap
 
-`LoopConfig` and `Agent` take two [tool hooks](glossary.md#tool-hook). `before_tool_call(call, ctx)` runs after `tool_execution_start`; it returns `None` to run the tool, or a reason string to deny it. A deny becomes the error result `User denied: <reason>`, and the loop goes on. `after_tool_call(call, result, ctx)` runs after a real run and after a deny, and may return a new result. Truncated calls skip both. Hooks may be plain or async.
+`LoopConfig` and `Agent` take two [tool hooks](glossary.md#tool-hook). `before_tool_call(call, ctx)` runs after `tool_execution_start`; it returns `None` to run the tool, or a reason string to deny it. A deny becomes the error result `User denied: <reason>`, and the loop goes on. `after_tool_call(call, result, ctx)` runs on both paths and may return a new result. Truncated calls skip both. Hooks may be plain or async.
 
 [Tool approval](glossary.md#tool-approval) is one `before_tool_call` in `AgentSession`. In our story, the two `read` calls run freely, and the `write NOTES.md` call asks first. "allow" runs it once, "always" runs it and stops asking for `write`, anything else denies, and Stop ends the question.
 

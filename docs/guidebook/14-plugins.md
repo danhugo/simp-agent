@@ -230,7 +230,7 @@ CLASS PluginAPI:
     ...                                  // send_message, set_model, abort, emit, ...
 ```
 
-`add_prompt_section` uses the [prompt sections](glossary.md#prompt-section) of [13](13-session.md#prompt-sections-the-system-prompt-rebuilt-every-turn). The default order 100 puts a plugin's section after `coding` (0) and `context_file` (10). `append_entry` saves a [custom entry](glossary.md#custom-entry): plugin data that is saved and replayed on resume, but never sent to the model. `emit` sends an event with the plugin's name in it. The full list is in [Reference · objects](ref-objects.md#pluginapi-methods).
+`add_prompt_section` uses the [prompt sections](glossary.md#prompt-section) of [13](13-session.md#prompt-sections-how-the-system-prompt-is-built). The default order 100 puts a plugin's section after `coding` (0) and `context_file` (10). `append_entry` saves a [custom entry](glossary.md#custom-entry): plugin data that is saved and replayed on resume, but never sent to the model. `emit` sends an event with the plugin's name in it. The full list is in [Reference · objects](ref-objects.md#pluginapi-methods).
 
 Why a small API and not the session itself? Plugins then depend only on these names. The session can change inside without breaking them.
 

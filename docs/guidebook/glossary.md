@@ -111,7 +111,7 @@ A user message queued to run after the agent would stop. `Agent.follow_up(text)`
 How many queued messages one read takes: `"one-at-a-time"` (default, the oldest only) or `"all"`. Set by `Agent.steering_mode` and `Agent.follow_up_mode`. Home: [07](07-steering.md#the-agent-side-two-lists-and-a-mode).
 
 ## Tool hook
-One of two optional functions in `LoopConfig` (and `Agent`) that wrap each tool call: `before_tool_call(call, ctx)` returns `None` to run the tool or a reason string to deny it (the call then gets the error result `User denied: <reason>`); `after_tool_call(call, result, ctx)` may return a new result, and runs after a deny too. Home: [08](08-hooks-approval.md#two-hooks-in-loopconfig).
+One of two optional functions in `LoopConfig` (and `Agent`) that wrap each tool call: `before_tool_call(call, ctx)` returns `None` to run the tool or a reason string to deny it (the call then gets the error result `User denied: <reason>`); `after_tool_call(call, result, ctx)` may return a new result, and runs after a deny too. Home: [08](08-hooks-approval.md#the-two-fields-in-loopconfig).
 
 ## Tool approval
 Asking a human before a risky tool runs. Built as one `before_tool_call` in `AgentSession`: `approve(call)` answers `"allow"`, `"always"` (remember this tool name) or anything else (deny). Only `bash`, `write` and `edit` ask, and the question ends on abort. Home: [08](08-hooks-approval.md#approval-a-before_tool_call-that-asks-a-human).
@@ -126,7 +126,7 @@ The first text of every model request: who the model is and how to work. Default
 A project file with rules for agents. The first of `CONTEXT_FILES` (`AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD`) found in `cwd`, read through the env, added once as the "Project Context" section. Home: [11](11-system-prompt.md#context_files-and-load_context_file-the-context-file).
 
 ## Prompt section
-One part of the system prompt in `AgentSession`: an id, an order and a string or `fn(ctx)`. `_build_prompt` sorts them, skips empty ones and joins them before each model call. Introduced in [11](11-system-prompt.md#the-loop-calls-the-prompt-function-every-turn); home: [13](13-session.md#prompt-sections-the-system-prompt-rebuilt-every-turn).
+One part of the system prompt in `AgentSession`: an id, an order and a string or `fn(ctx)`. `_build_prompt` sorts them, skips empty ones and joins them before each model call. Introduced in [11](11-system-prompt.md#the-loop-calls-the-prompt-function-every-turn); home: [13](13-session.md#prompt-sections-how-the-system-prompt-is-built).
 
 ## Eval
 A test of the real agent with a real model on fixed tasks, checked by a program. It reports pass/fail plus turns, tokens, cost and time. Runner: `evals/run.py`. Home: [12](12-evals.md).
