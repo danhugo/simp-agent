@@ -51,16 +51,16 @@ SYSTEM = "You are a helpful assistant."
 FUNCTION main():
     rules = open("AGENTS.md").read()     // crash if missing
     prompt = SYSTEM + rules
-    RUN the agent loop with prompt and the user message "What is in README.md?"
+    agent_loop(prompt, [], [UserMessage("What is in README.md?")], LoopConfig(model, tools=TOOLS))   // the call from 05
 ```
 
-This breaks in five ways. The model gets no tool list, no folder and no date, so it guesses. `open` reads the host disk, but in the Docker sandbox ([24](24-docker-sandbox.md)) the project lives inside a container, so it reads the wrong place; this is exactly the mistake [09](09-exec-env.md) taught us to avoid. Most folders have no `AGENTS.md`, so the program crashes. Some teams name the file `CLAUDE.md`, which it never finds. And the prompt is built once, so a tool added later is never listed.
+This breaks in five ways. The model gets no tool list, no folder and no date, so it guesses. `open` reads the host disk, but in the Docker env ([24](24-docker-sandbox.md)) the project lives inside a container, so it reads the wrong place; this is exactly the mistake [09](09-exec-env.md) taught us to avoid. Most folders have no `AGENTS.md`, so the program crashes. Some teams name the file `CLAUDE.md`, which it never finds. And the prompt is built once, so a tool added later is never listed.
 
 The real code fixes these one by one. A function builds the text from the real tools and folder. A list of file names is tried in order. Each name is read through the env, and a missing file just means "try the next name". Finally, the loop takes the prompt as a function and calls it before every model call.
 
 ## Real design
 
-There are three small pieces. Two plain helpers in `coding/__init__.py` make text and keep no state: `system_prompt` builds the base text, and `load_context_file` finds the project file. The third piece is a small change in the loop: `_llm_turn` accepts a function in place of the string, so the text is rebuilt every turn.
+There are three small pieces. Two plain helpers in `coding/__init__.py` make text and keep no state: `system_prompt` builds the base text, and `load_context_file` finds the context file. The third piece is a small change in the loop: `_llm_turn` accepts a function in place of the string, so the text is rebuilt every turn.
 
 ```mermaid
 flowchart LR
@@ -84,7 +84,7 @@ FUNCTION system_prompt(tools, cwd, context = None):
     out = role sentence ("You are an expert coding assistant ...")
     ADD "Available tools:" + tool_list
     ADD "Be concise. Use read before edit. Paths are relative to the working directory."
-    IF context is given:                 // (path, text) of the project file
+    IF context is given:                 // (path, text) of the context file
         ADD "# Project Context", then "## <path>", then the text
     ADD "Current date: <today>" and "Current working directory: <cwd>"
     RETURN out
@@ -98,7 +98,7 @@ The date and the folder come last, after the optional project section. It is a p
 
 The `context` argument is for hosts that call `system_prompt` directly. The session in [13](13-session.md) does not use it. It adds the same `# Project Context` text as a separate piece, because the file must be read through the env, which is async and is done once at start, while the base text is rebuilt cheaply every turn from the live tools and folder.
 
-### `CONTEXT_FILES` and `load_context_file`: the project file
+### `CONTEXT_FILES` and `load_context_file`: the context file
 
 A [context file](glossary.md#context-file) is a Markdown file in the project that holds the team's rules for agents.
 
@@ -127,7 +127,7 @@ There is one known limit: only `cwd` is searched. It does not walk up to parent 
 
 ### The loop calls the prompt function every turn
 
-In [05](05-agent-loop.md), `agent_loop` took `system_prompt` as a string. Inside it, `_llm_turn` is the step that makes one model call. At this commit it also accepts a function:
+In [05](05-agent-loop.md), `agent_loop` took `system_prompt` as a string, its first argument: `agent_loop(system_prompt(tools, cwd), messages, prompts, config)`. The prompt is not a `LoopConfig` field, unlike `tools` and `env`. Inside it, `_llm_turn` is the step that makes one model call. At this commit it also accepts a function:
 
 Real code: [agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `_llm_turn`
 
