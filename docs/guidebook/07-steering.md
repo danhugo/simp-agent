@@ -48,35 +48,24 @@ Code in this chapter (commit `2fc2776`):
 - `packages/simp_agent/src/simp_agent/agent/__init__.py`: `LoopConfig.get_steering` / `get_follow_up`, the two `while` loops of `agent_loop`, the steering read in `_llm_turn`, and on `Agent`: `steer`, `follow_up`, `_take`, `clear_queues`, `has_queued`
 - `packages/simp_agent/tests/test_queues_compaction.py`: the queue tests
 
-## Naive version
+## Starting point: 06's `Agent` and loop
 
-A first try: keep one inbox. If a run is going, store the text; when the run ends, send everything as a new run.
+We do not write a new agent. We start from what [06](06-events-abort.md) ended with. `Agent._run` refuses a second run while one is going ([06](06-events-abort.md#the-agent-class-state-on-top-of-the-loop)), and `agent_loop` reads the user's messages only once, at the start ([06](06-events-abort.md#starting-point-05s-loop-with-nobody-listening)):
 
 ```text
-CLASS NaiveAgent(loop_fn):
-    running = false
-    inbox = empty list
-
-    FUNCTION say(text):
-        IF running:
-            ADD UserMessage(text) to inbox      // keep it for later
-            RETURN
-        START run([UserMessage(text)]) in the background
-
-    FUNCTION run(prompts):
-        running = true
-        WAIT for loop_fn(prompts)               // runs until the model stops
-        running = false
-        IF inbox is not empty:                  // deliver at the very end
-            msgs = TAKE everything from inbox
-            WAIT for run(msgs)
+FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel):
+    SEND agent_start
+    FOR EACH p in prompts: add(p)             // the only place user messages come in
+    WHILE the model asked for tools:          // one pass = one turn
+        ...                                   // model call, tool calls, abort exit
+    SEND agent_end
 ```
 
-This is safe (the history stays valid), but it breaks in four ways. First, "Also read CHANGELOG.md" comes too late: the inbox is read only when the whole run is over, so the model has already answered about README.md alone. Second, the urgent message and the "later" message go to the same inbox, so the agent cannot treat them differently. Third, everything in the inbox goes out as one batch, but sometimes the user wants each message handled as its own task. Last, each delivery is a new run, with a new `agent_start` and `agent_end` [event](glossary.md#event). A UI that shows "busy" until `agent_end` flickers off and on.
+So with 06's code, "Also read CHANGELOG.md" has nowhere to go. The easy patch is to keep the text in `Agent` and call `prompt()` again when the run ends. That is safe (the history stays valid), but it breaks in four ways. First, the message comes too late: the model has already answered about README.md alone. Second, the urgent message and the "later" message go to the same place, so the agent cannot treat them differently. Third, everything waiting goes out as one batch, but sometimes the user wants each message handled as its own task. Last, each delivery is a new run, with a new `agent_start` and `agent_end` [event](glossary.md#event). A UI that shows "busy" until `agent_end` flickers off and on.
 
-## Step by step: from naive to real
+## Step by step: grow the loop
 
-**Step 1: two queues, not one inbox.** `Agent` keeps two lists, `steering` and `follow_ups`. The user (or the UI) picks one by calling `steer(text)` or `follow_up(text)`. This fixes the second problem.
+**Step 1: two queues, not one place.** `Agent` keeps two lists, `steering` and `follow_ups`. The user (or the UI) picks one by calling `steer(text)` or `follow_up(text)`. This fixes the second problem.
 
 **Step 2: the loop reads steering at safe points, inside the run.** Instead of waiting for the run to end, the loop asks "is a steer waiting?" each time the history is complete, so "Also read CHANGELOG.md" reaches the next model call. This fixes the first problem. We call each place where the loop asks a **read point**; the next section shows all three.
 
@@ -267,7 +256,7 @@ uv run pytest packages/simp_agent/tests/test_queues_compaction.py
 
 ## Why this way
 
-> **Two queues, because there are two needs.** "Change what you are doing" must arrive soon; "then do this" must wait. One inbox cannot do both.
+> **Two queues, because there are two needs.** "Change what you are doing" must arrive soon; "then do this" must wait. One place cannot do both.
 >
 > **Deliver only at safe points.** Every tool call keeps its result, so the history stays valid. The price is that steer never stops work; that is Stop's job.
 >

@@ -98,7 +98,7 @@ Read the top row left to right (build the question, ask the model), then the bot
 
 Blocks 6, 7 and 8 run once **for each** tool call in the reply, in order. `tool_execution_start` is sent before block 6 and `tool_execution_end` after block 8, so a denied call gets both events too.
 
-Words: the **view** is the list of messages sent in one call (it may be shorter than the history). The **cancel event** is the `asyncio.Event` behind [abort](glossary.md#abort). The **queues** are the steer and follow-up lists in `Agent`.
+Words: the **view** is the list of messages sent in one call (it may be shorter than the history). The **cancel flag** is the `asyncio.Event` behind [abort](glossary.md#abort). The **queues** are the steer and follow-up lists in `Agent`.
 
 Paths are under `packages/simp_agent/src/simp_agent/`.
 
@@ -107,7 +107,7 @@ Paths are under `packages/simp_agent/src/simp_agent/`.
 - **`agent_loop()` is the whole Part.** It does blocks 1, 2, 5, 6, 8 and 9 itself.
 - **One model turn = `_llm_turn()`** = blocks 3 and 4. Inside block 4, `_stream()` wraps `stream_fn`. `stream_fn` is `ai.stream()` from Part 1 (or `FakeProvider` in tests, [04](04-label-test.md)).
 - **`run_tool()`** is block 7 only. The hooks (6, 8) are *around* it, in `agent_loop()`.
-- **The `Agent` class** ([06](06-events-abort.md)) is *outside* the loop. It keeps the history, the subscribers, the cancel event and the two queues. Each `prompt()` builds a `LoopConfig` and calls `agent_loop()` once.
+- **The `Agent` class** ([06](06-events-abort.md)) is *outside* the loop. It keeps the history, the subscribers, the cancel flag and the two queues. Each `prompt()` builds a `LoopConfig` and calls `agent_loop()` once.
 - **Events** ([06](06-events-abort.md)) are not a block. Every block sends them through one `emit` function; `Agent` gives them to each subscriber.
 - **[Tool approval](glossary.md#tool-approval)** is not in this Part's code. It is one `before_tool_call` (block 6) written in `AgentSession` → Part 4, [13](13-session.md). [08](08-hooks-approval.md) shows it early.
 
@@ -143,7 +143,7 @@ If something else raises (for example a subscriber), `Agent` ends the run with a
 | [Tool context](glossary.md#tool-context) (`ToolContext`) | `cancel`, `env`, `cwd`, `on_update` | What a tool (and a hook) gets besides its args. `on_update(text)` sends `tool_execution_update`. |
 | [LoopConfig](glossary.md#loopconfig) | `model`, `tools` / `get_tools`, `stream_fn`, `get_steering`, `get_follow_up`, `prepare_next_turn`, `get_api_key`, `env`, `cwd`, `before_tool_call`, `after_tool_call`, … | All settings of one run. Every hook has a "do nothing" default. |
 | [Event](glossary.md#event) | a dict with `type`: `agent_start`, `turn_start`, `message_start`, `message_update`, `message_end`, `tool_execution_start` / `_update` / `_end`, `turn_end`, `agent_end` | One signal to the subscribers. `message_update` carries one Part 1 [stream event](glossary.md#stream-event). |
-| [Abort](glossary.md#abort) | one `asyncio.Event` (the cancel event) | `Agent.abort()` sets it. The stream closes, tools see `ctx.cancel`, the run ends `aborted`. |
+| [Abort](glossary.md#abort) | one `asyncio.Event` (the cancel flag) | `Agent.abort()` sets it. The stream closes, tools see `ctx.cancel`, the run ends `aborted`. |
 | [Steer](glossary.md#steer) / [Follow-up](glossary.md#follow-up) queue | a list of `UserMessage` | Steer = add at the next turn. Follow-up = add only when the loop would stop. |
 | [Queue mode](glossary.md#queue-mode) | `"one-at-a-time"` (default) or `"all"` | How many queued messages are taken each time. |
 | [Tool hook](glossary.md#tool-hook) | `before_tool_call(call, ctx)`, `after_tool_call(call, result, ctx)` | Sync or async. Gate or change one tool call. |
