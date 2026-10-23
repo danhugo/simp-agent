@@ -233,7 +233,7 @@ FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel) -> n
             ELSE:
                 on_update = FUNCTION (text): SEND event tool_execution_update for this call
                 ctx = ToolContext(cancel, config.env, config.cwd, on_update)
-                result = WAIT for run_tool(the current tools, call, ctx)
+                result = WAIT for run_tool(the current tools, call, ctx)   // tool = an AgentTool, see below
             add(result)
         IF cancel is set:                      // Stop during the tools: see Step 4
             msg = an aborted AssistantMessage; add(msg)
@@ -271,6 +271,8 @@ Every tool call gets a result: unknown tool, bad arguments, a crash or a cut-off
 
 ### `_llm_turn`: one model call
 
+Each turn starts with one model call. What happens inside it?
+
 This is the model call inside the loop: the line `msg = WAIT for _llm_turn(...)` in `agent_loop` above. It is also where Step 5's `stream_fn` is called.
 
 `_llm_turn` builds the request and streams one answer. Its core:
@@ -300,6 +302,8 @@ The tool list and the system prompt are read again every turn. `system_prompt` i
 The skipped lines (a steering poll and the "Tools added / removed" note) belong to [07](07-steering.md). The `view` is made by the `prepare_next_turn` hook. Two more hooks, `transform_context` and `convert_to_llm`, can change it before `transform_messages`. In a bare `LoopConfig` all three do nothing; the `Agent` class sets `prepare_next_turn` to `build_view` by default, and [16](16-compaction.md) explains it.
 ### `run_tool`: one call, never raises
 
+The model asked for `read(path="README.md")`. `agent_loop` hands that call to `run_tool`. What does `run_tool` do with it?
+
 This is Steps 1–3 in real code: the same three checks, in one function.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`run_tool`)
@@ -308,7 +312,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 FUNCTION run_tool(tools, call, ctx) -> ToolResultMessage:
     err(text) = ToolResultMessage(call.id, call.name, text, is_error = yes)
 
-    tool = FIND the tool in tools whose name is call.name
+    tool = FIND the tool in tools whose name is call.name   // tool = an AgentTool, see below
     IF no tool: RETURN err("Tool <call.name> not found")
     TRY:
         IF tool.prepare_arguments: call.arguments = tool.prepare_arguments(call.arguments)
@@ -341,6 +345,8 @@ Only one thing is new compared with Steps 1–3: `prepare_arguments`, an optiona
 
 ### Tools: `AgentTool`
 
+`run_tool` looked up `read` in the tool list. Each item in that list is an `AgentTool`: the description the model sees (`name`, `description`, `parameters` = `ai.Tool`) plus the code that really runs (`execute`). So `AgentTool` is WHAT a tool is; `run_tool` is HOW one call to it is executed safely: find it by name, check the args against its parameters, call its `execute`, and turn any error into a result.
+
 This is the tool from the naive loop, made real. Why do we need a new class? From [01](01-pick-clean.md), `ai.Tool` is only a description for the model: `name`, `description`, `parameters` (a JSON schema). The `ai` layer never executes tools. But the loop must also have the code that executes the tool. So `AgentTool` is `ai.Tool` plus `execute`:
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`AgentTool`)
@@ -357,6 +363,8 @@ CLASS AgentTool(ai.Tool):          // name, description, parameters + the code
 Because `AgentTool` **is** an `ai.Tool`, we can pass the same list to the model (as descriptions) and to the loop (to execute them).
 
 ### `ToolContext`: what a tool gets
+
+`execute(args, ctx)` gets a second argument. What is in `ctx`?
 
 This is Step 6 in real code: the one object each tool call gets.
 
@@ -382,6 +390,8 @@ A tool should not reach for globals. Everything it needs comes in this one objec
 Why one object and not four arguments? We can add a field later without changing every tool. And the same tool code works on a laptop or in a Docker sandbox ([24](24-docker-sandbox.md)): only `env` changes.
 
 ### `LoopConfig`: the settings
+
+Where do the tool list, `env`, `cwd` and `stream_fn` come from? From one settings object.
 
 This is Step 5 in real code: `stream_fn` and the other settings are inputs to the loop, not fixed inside it.
 
