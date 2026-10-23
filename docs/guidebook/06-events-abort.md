@@ -182,7 +182,9 @@ Three blocks watch the flag: `_stream` during the model call, the tool through `
 
 The answer "README.md says this proj…" is arriving word by word, and the user presses Stop.
 
-**What stops.** The model call, and at once. Recall from [05](05-agent-loop.md) that `_llm_turn` calls the model through `_stream(...)`. `_stream` opens the model stream (`stream_fn`, normally `ai.stream`) and starts one `stop` task **once**; it waits for the cancel flag. Then, in a loop, it starts a `next` task that waits for the next piece (event) from the model (in the real code this variable is called `nxt`), and waits until **one** of the two tasks finishes first. If `next` wins with an event, the event is sent on and the loop starts a new `next`. If `next` says the stream is over, or `stop` wins, the loop ends. At the end, `_stream` always cancels `stop` and closes the stream, and control goes back to `_llm_turn`.
+**What stops.** The model call, and at once. Recall from [05](05-agent-loop.md) that `_llm_turn` calls the model through `_stream(...)`, which opens the model stream (`stream_fn`, normally `ai.stream`).
+
+Normally we read a stream with `async for ev in stream`. Each round waits for the stream to give the next event, and while it waits, the code is stuck on that line: it cannot notice Stop. So `_stream` takes that one waiting step, "get the next event from the stream", and runs it as a background job, a **task**, called `next`. A second task, `stop`, only watches the cancel flag; it is started once. `_stream` waits for **both at once** and acts on whichever finishes first. If `next` finishes, a new event has arrived: send it on, and start a new `next` for the event after it. If `stop` finishes, the user pressed Stop: cancel `next`, so we stop waiting for the model and the web request closes. Either way, at the end `_stream` cancels `stop`, closes the stream and goes back to `_llm_turn`. (In the real code the `next` task is called `nxt`.)
 
 ```mermaid
 flowchart TD
