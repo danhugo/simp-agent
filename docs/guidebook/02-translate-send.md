@@ -269,7 +269,8 @@ Text items have their own id too, like tool call items: each answer text is a `m
 `phase` tells which stage a message item is: `commentary` = talk in the middle of work ("Let me read the file first."), `final_answer` = the last answer to the user. It is optional; the parser saves it only if OpenAI sent it.
 
 ```text
-id = signature.id IF signature, ELSE "msg_pi_<i>"   // a new id we make up
+id = signature.id IF signature, ELSE "msg_pi_<i>" (first text) or "msg_pi_<i>_<n>" (n-th text)   // a new id we make up
+IF len(id) > 64: id = "msg_" + hash(id)   // OpenAI allows at most 64 chars
 ```
 
 *With signature* (from `gpt-5`):

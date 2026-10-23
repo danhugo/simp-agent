@@ -199,7 +199,7 @@ export function reduce(s: ChatState, ev: ServerEvent): ChatState {
       return { ...s, items: [...s.items, { kind: "assistant", seq: ev.seq, msg: ev }], inFlight: emptyInFlight() };
 ```
 
-The rule is needed because the server can send the same durable event twice: an event saved while a reconnect is being set up can come once in the replay and once on the live queue. With the rule, the second copy does nothing. When the full `assistant_message` arrives, the in-flight bubble is cleared and the finished message takes its place in `items`.
+The rule is needed because of a reconnect: the tab asks for events after the last `seq` it has, and the replay can still hold an event the tab already shows (one connection never sends an event twice, see [21](21-transport.md)). With the rule, the second copy does nothing. When the full `assistant_message` arrives, the in-flight bubble is cleared and the finished message takes its place in `items`.
 
 The other cases follow the same pattern. A `tool_result` is stored in `results`, keyed by its `call_id`, so the screen can show it under the tool call. `approval_request` sets `pending`. `approval_resolved` stores the decision in `decisions` and clears `pending`, but only if it is for the same `call_id`. `run_state` sets `runState`. A `notice` with text `"plan mode on"` or `"plan mode off"` also flips `planMode` (plan mode is from [18](18-profiles-plugins.md)). `compaction` becomes a notice like `Context compacted (… → … tokens)` (compaction is from [16](16-compaction.md)).
 

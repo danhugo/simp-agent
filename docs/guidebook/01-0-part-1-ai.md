@@ -63,7 +63,7 @@ flowchart LR
 | [ToolCall](glossary.md#tool-call) | `id`, `name`, `arguments` | "Run this tool with these inputs." |
 | [Stream event](glossary.md#stream-event) | `start`, `text_delta`, `thinking_*`, `toolcall_*`, `done`, `error` | One signal from the stream. The last one (`done`/`error`) holds the final message. |
 | [Delta](glossary.md#delta) | a small string | One piece of text, thinking or tool-call JSON inside a `*_delta` event. |
-| [Usage](glossary.md#usage) | `input`, `output` | Token counts of one call. |
+| [Usage](glossary.md#usage) | `input`, `output` (some providers add `reasoning`, info only) | Token counts of one call. |
 
 ## One worked example: "What is in README.md?"
 
