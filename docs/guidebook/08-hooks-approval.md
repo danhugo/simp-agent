@@ -121,7 +121,7 @@ The `write NOTES.md` call goes through five steps:
 
 A deny does not stop the run: the model reads "User denied" and tries another way.
 
-Only truncated calls skip both hooks: the loop never runs them, so there is nothing to ask about.
+One case skips both hooks: a call from a reply that was cut off at the token limit (`stop_reason` `length`, [05 Step 4](05-agent-loop.md)). Its arguments may be half-written, so the loop never runs it and gives it an error result at once. With nothing to run, there is nothing to ask the user about and no result to change.
 
 Note the check is `deny is not None`, not "is it truthy". The string is the signal. Even an empty string `""` means deny (the model gets `User denied: `). Only `None` means go on.
 
