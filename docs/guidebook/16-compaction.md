@@ -342,7 +342,7 @@ The summary call uses the same model and the same API key as the chat. On succes
 
 Apps can also call `compact()` by hand. The CLI has a `/compact` command for that ([19](19-cli.md)).
 
-Because compaction runs inside `prepare_next_turn`, it happens **inside** a turn, not only between prompts. A long tool loop gets compacted in the middle. And the summary call is slow, so the user may type a steer message during it. [07](07-steering.md#when-each-queue-is-read) set this up: steering is read right after `prepare_next_turn` returns, so that message still goes into the same turn (`test_steer_during_compaction_same_turn`).
+Because compaction runs inside `prepare_next_turn`, it happens **inside** a turn, not only between prompts. A long tool loop gets compacted in the middle. And the summary call is slow, so the user may type a steer message during it. [07](07-steering.md#the-loop-from-05-with-two-new-places) set this up: steering is read right after `prepare_next_turn` returns, so that message still goes into the same turn (`test_steer_during_compaction_same_turn`).
 
 ### Replay a real compaction
 

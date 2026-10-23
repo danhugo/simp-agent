@@ -96,13 +96,13 @@ A small dict with a `"type"` key (`agent_start`, `turn_start`, `message_update`,
 Stopping a run in the middle by setting one `asyncio.Event` (`cancel`, or `Agent.abort()`). It closes the model stream, stops tools, and ends the run with an assistant message whose `stop_reason` is `aborted`. Home: [06](06-events-abort.md#abort-one-asyncioevent).
 
 ## Steer
-A user message typed while the agent works, meant to reach the model soon. `Agent.steer(text)` queues it; the loop reads it (through `LoopConfig.get_steering`) before the first turn, just before each model call, and after each tool batch. It never cuts a tool batch. Home: [07](07-steering.md#when-each-queue-is-read).
+A user message typed while the agent works, meant to reach the model soon. `Agent.steer(text)` queues it; the loop reads it (through `LoopConfig.get_steering`) before the first turn, just before each model call, and at the end of each turn (after its tools). It never reads while a reply's tools run. Home: [07](07-steering.md#the-loop-from-05-with-two-new-places).
 
 ## Safe point
-A place in the history where every tool call already has its tool result. Steering messages are added only here (the read points), so the request stays valid. Home: [07](07-steering.md#problem).
+A place in the history where every tool call already has its tool result. Steering messages are added only here (where the loop reads the queues), so the request stays valid. Home: [07](07-steering.md#problem).
 
 ## Follow-up
-A user message queued to run after the agent would stop. `Agent.follow_up(text)` queues it; the loop reads it (through `LoopConfig.get_follow_up`) only when there are no tool calls and no steering left, and it continues the same run. Home: [07](07-steering.md#two-loops-inner-for-steering-outer-for-follow-ups).
+A user message queued to run after the agent would stop. `Agent.follow_up(text)` queues it; the loop reads it (through `LoopConfig.get_follow_up`) only when there are no tool calls and no steering left, and it continues the same run. Home: [07](07-steering.md#the-loop-from-05-with-two-new-places).
 
 ## Queue mode
 How many queued messages one read takes: `"one-at-a-time"` (default, the oldest only) or `"all"`. Set by `Agent.steering_mode` and `Agent.follow_up_mode`. Home: [07](07-steering.md#the-agent-side-two-lists-and-a-mode).
