@@ -100,6 +100,8 @@ Inside the loop, every event goes through `send`. `send` only passes it on to `e
 {type: agent_end, messages: [user, assistant c1, tool result c1, assistant answer]}  // UI: not busy
 ```
 
+Look at which messages get a `message_update`. The user's question and the tool result are complete from the start, so `add()` sends `message_start` and then `message_end` at once, with nothing between them. Only the model's reply streams: `_llm_turn` sends one `message_update` for each raw provider event it receives. Now look at the order for the model's reply: its `message_update` events come *before* `message_start`. This is because `_llm_turn` returns the message only when the stream ends, and only then does `add()` put it in the history and send `message_start` and `message_end`. So `message_start` does not mean "the model starts talking". The first `message_update` is what tells a UI that the model has started.
+
 The [run](glossary.md#run-agent) and the [turns](glossary.md#turn) from 05 are now visible: a run is `agent_start` … `agent_end`, and each turn is `turn_start` … `turn_end`. The table adds what the trace does not show:
 
 | Event | Extra keys | When |
