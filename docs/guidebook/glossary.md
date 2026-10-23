@@ -11,6 +11,9 @@ A program that takes a task in plain words, asks a language model what to do, ru
 ## Item (Responses)
 One piece of an OpenAI Responses answer, with its own id: a reasoning item (`rs_...`, encrypted), a text `message` item (`msg_...`) or a `function_call` item (`fc_...`). See [chapter 2](02-translate-send.md).
 
+## Label
+Block 6 of the pipeline, and the three fields it sets: `ai.stream` writes `api`, `provider` and `model` on every message it passes on, so Clean can later see who wrote each turn. Home: [04](04-label-test.md#the-entry-point-stream-runs-1-2-6).
+
 ## Layer
 One folder of the `simp_agent` library (`ai`, `agent`, `coding`, `session`, `plugins`, `testing`). A layer imports only layers to its left; `test_layers.py` checks this. Home: [00](00-overview.md#the-layer-map).
 
@@ -30,7 +33,7 @@ Which model to call and how (class `Model` in `ai`): `id`, `provider`, `api`, `m
 What the model is told about one tool (class `Tool` in `ai`): `name`, `description`, `parameters` (JSON schema). Home: [ref-objects](ref-objects.md#request-objects-tool-context-model).
 
 ## AssistantMessage
-The model's reply: `content` blocks (`TextContent`, `ThinkingContent`, `ToolCall`), `stop_reason`, `usage`, `error`, `error_kind`, and `api`/`provider`/`model` stamped by `ai.stream`. Home: [01](01-pick-clean.md#what-is-inside-messages), fields: [ref-objects](ref-objects.md#messages); overview: [Part 1](01-0-part-1-ai.md).
+The model's reply: `content` blocks (`TextContent`, `ThinkingContent`, `ToolCall`), `stop_reason`, `usage`, `error`, `error_kind`, and `api`/`provider`/`model` labels set by `ai.stream`. Home: [01](01-pick-clean.md#what-is-inside-messages), fields: [ref-objects](ref-objects.md#messages); overview: [Part 1](01-0-part-1-ai.md).
 
 ## Stream event
 One dict yielded by a stream function: `start`, `text_delta`, `thinking_start/delta/end`, `toolcall_start/delta/end`, then `done` or `error` with the final `AssistantMessage`. Not the same as an agent [event](#event). Home: [03](03-parse.md); overview: [Part 1](01-0-part-1-ai.md).

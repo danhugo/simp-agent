@@ -68,7 +68,7 @@ tool_calls(): RETURN only the ToolCall blocks
 | `stop_reason` | the loop ([ch 05](05-agent-loop.md)) decides "run tools?" from `tool_calls()`, and uses `stop_reason` for `error`/`aborted`/`length` ([06](06-events-abort.md), [15](15-retry.md)) |
 | `usage` | [usage](glossary.md#usage); compaction estimates size ([ch 16](16-compaction.md)) |
 | `error`, `error_kind` | providers never raise, they return this ([ch 02](02-translate-send.md)); `is_retryable` reads it ([ch 04](04-label-test.md), [15](15-retry.md)) |
-| `api`, `provider`, `model` | stamped by Label ([ch 04](04-label-test.md)); read by Clean's thinking rule ([ch 01](01-pick-clean.md#thinking-who-can-read-it-back)) |
+| `api`, `provider`, `model` | labels set by Label ([ch 04](04-label-test.md)); read by Clean's thinking rule ([ch 01](01-pick-clean.md#thinking-who-can-read-it-back)) |
 
 ## Content blocks
 
