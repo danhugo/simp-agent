@@ -19,24 +19,16 @@ Big picture of Part 5: [part-5-system](19-0-part-5-system.md).
 
 Code in this chapter (commit `2fc2776`):
 
-- `apps/server/src/simp_server/server.py` — `Run.subscribe`, `Run._send`, `Run.durable`, `Run.command`, `Run.approve`, `create_app` (the SSE and POST routes)
+- `apps/server/src/simp_server/server.py` — `Run.subscribe`, `Run._send`, `Run.durable`, `Run.append`, `Run.on_event`, `Run.command`, `Run.approve`, `create_app` (the SSE and POST routes)
 - `apps/server/src/simp_server/fake.py` — `sse`
 - `apps/server/src/simp_server/protocol.py` — `Snapshot`, `InFlight`, `PendingApproval`, `Approve`
 - `apps/server/tests/test_server.py` — the reconnect, approval and slow-client tests
 
 ## Problem
 
-The `Run` from [20](20-server-run.md) runs the fizzbuzz task on the server, but a browser cannot see it yet. We still need two roads:
+Go back to Ana from [20](20-server-run.md#problem). She types "write `fizzbuzz.py`" in a browser tab. In chapter 20 we built the `Run` that does the work on the server, but the run lives in Python and Ana's screen lives in a browser. Nothing yet connects them. This chapter builds that connection: the **transport**, the road that carries events out to the browser and commands back in.
 
-- **Out:** every event (text deltas, tool results, approval requests) must reach every open browser tab, live.
-- **In:** the user must send commands: a prompt, "stop", "allow this bash call".
-
-And the network is not kind:
-
-- A tab can lose its connection in the middle of a run. When it comes back, it must get what it missed, with **no gaps and no duplicates**.
-- A tab can be slow. A slow tab must never slow down the agent.
-- A tab can close. The run must keep going and still be saved.
-- The agent may wait for a human "allow" ([08](08-hooks-approval.md)). That answer now comes over HTTP, maybe from another tab.
+The road out must carry every event (text pieces, tool results, an approval question) to every open tab, live. The road in must carry what Ana sends: a prompt, "stop", "allow this bash call". That part is easy. The hard part is that the network is not kind. Ana's Wi-Fi drops for ten seconds in the middle of the run, and when the tab comes back it must get what it missed, with no gaps and no duplicates. Her colleague opens the same session on a slow laptop, and that slow tab must never slow down the agent. Ana closes her laptop, and the run must keep going and still be saved. And when the agent asks "may I run `bash`?" ([08](08-hooks-approval.md)), the answer now comes over HTTP, maybe from a different tab than the one that saw the question.
 
 ## Naive version
 
@@ -83,12 +75,7 @@ It works while the network is perfect. It breaks when:
 
 We fix the four breaks one by one.
 
-**Step 1: number the events.** First we split events into two kinds:
-
-- **[Durable events](glossary.md#durable-event)**: user message, assistant message, tool result, approval request and answer, run state, notices. They are saved and have a `seq`.
-- **[Live events](glossary.md#live-event)**: `text_delta`, `thinking_delta`, `tool_output`. They are small pieces of an unfinished message. They are **not** saved and have no `seq`.
-
-Then we give each durable event a [`seq`](glossary.md#seq), and keep a log.
+**Step 1: number the events.** Chapter 20 already split server events into [durable events](glossary.md#durable-event) (saved, like a tool result or a run state) and [live events](glossary.md#live-event) (small streaming text pieces that are not saved, because the full text is saved later in the finished message). We give each durable event the next number, its [`seq`](glossary.md#seq), and keep them in a log.
 
 ```python
     def send(self, ev: dict) -> None:
@@ -109,7 +96,15 @@ Why: now every event has a place in a line. A client can say "I saw up to N".
         return [e for e in self.log if e["seq"] > after], q
 ```
 
-Why: a tab that comes back gets what it missed. There is no `await`, so no event can slip in between the copy and the `add`. No gaps, no duplicates.
+Why: a tab that comes back gets what it missed. To see why nothing comes twice, you need one rule of asyncio: it switches from one task to another **only at an `await`**. This function has no `await`, so it runs in one piece:
+
+```text
+agent task:      send(seq 4) ............................ send(seq 5)
+subscribe task:            [copy log up to 4, add q]
+                           no await = nothing runs in between
+```
+
+Seq 4 is in the copy and not in `q`; seq 5 is in `q` and not in the copy. No gaps, no duplicates.
 
 **Step 3: add a snapshot.** Add the state right now (`last_seq`, `run_state`, `in_flight`, `pending_approval`) to the end of the replay.
 
@@ -124,11 +119,13 @@ Why: live deltas have no `seq` and are not saved. A tab that joins mid-message n
                 self.subs.discard(q)
 ```
 
-Why: a tab that stops reading must not grow memory, and must never make the run wait. It reconnects and catches up with Step 2.
+Why: a tab that stops reading must not grow memory, and must never make the run wait. Dropping it is safe because of Step 2: when it reconnects, the replay gives it back every durable event it lost, exactly.
 
 **Step 5: take commands in.** Add a `POST` route and a `Run.command` method. An approval waits on a future that an `Approve` command sets.
 
-Why: the client needs a way to say "stop" or "allow". Now put it all together, in real code below.
+Why: the client needs a way to say "stop" or "allow".
+
+These five steps are the whole idea. The rest of the chapter shows how the real code in `server.py` does each one, in the order an event travels: the two HTTP routes, the counter, the replay, the stream loop, the slow-tab rule, and then the road in (commands and approval).
 
 ## Real design
 
@@ -154,9 +151,9 @@ Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_se
 
 Events go out with **[SSE](glossary.md#sse)** (Server-Sent Events). SSE is one long HTTP response with `text/event-stream` type. The server writes small text blocks into it, one per event. The browser reads them with a small fetch-based reader (see [25](25-web-client.md#fetch-based-sse)).
 
-Commands come in with a normal `POST`. The body is JSON, checked by the protocol models from [20](20-server-run.md) (`p.command`). A bad body gets `422`.
+Commands come in with a normal `POST`. The body is JSON, checked by the `Command` parser from [20](20-server-run.md#protocol-models). A bad body gets `422`.
 
-Why not WebSocket? SSE is one-way, which is all we need out. Plain HTTP works through proxies, and our client reconnects by itself, with backoff. Both routes need auth ([22](22-store-auth.md)).
+Why not WebSocket? SSE is one-way, which is all we need out, since commands already have their own `POST`. Plain HTTP works through proxies, and when the stream ends our client reconnects by itself, with backoff ([25](25-web-client.md#fetch-based-sse)). That is how a dropped tab "learns" it was dropped: its stream simply ends. Both routes need auth ([22](22-store-auth.md)).
 
 Each event is written by `sse` in `apps/server/src/simp_server/fake.py`:
 
@@ -187,10 +184,11 @@ FUNCTION durable(cls, fields):
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.durable`.
 
-It adds the event to the in-memory `log`, sends it to live clients, and saves it. The store has one more kind of row. The agent itself must save its own core messages (the list the model sees, [13](13-session.md)), so it can resume later. These rows have the type `"msg"`. They are not protocol events, and tabs never see them. The `Run` is also the `SessionStore` of its `AgentSession`, so its `append` saves them, with the **same** counter:
+It adds the event to the in-memory `log`, sends it to live tabs, and saves it.
+
+The store also holds a second kind of row that tabs never see. To resume after a restart, the agent must save its own core messages (the list the model sees, [13](13-session.md)). The `Run` is the `SessionStore` of its `AgentSession`, so the session calls `Run.append` for each message, and that saves a row of type `"msg"` with the **same** counter:
 
 ```text
-// SessionStore for AgentSession: core messages share the seq counter with protocol events
 FUNCTION append(entry):
     seq = seq + 1
     SAVE entry in the store as row (user, session, seq, "msg")
@@ -198,7 +196,7 @@ FUNCTION append(entry):
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.append`.
 
-So core messages (`"msg"` rows, used to resume the agent) and protocol events live in one ordered stream. `self.log` keeps only the protocol events (`e["type"] != "msg"`). The [`ponytail:` comment](glossary.md#ponytail-comment) (a marked shortcut, see [27](27-limits-choices-extend.md)) in `__init__` says it plainly: `# ponytail: whole log in memory`.
+Why one counter? So the store is one ordered stream: on resume, core messages and protocol events come back in the exact order they happened. The cost is that `log` (protocol events only) has **holes**: seq 1 might be a `run_state`, seq 2 and 3 `"msg"` rows, seq 4 the next event. That is fine, because a tab only ever asks "everything after N", never "event number N+1". The [`ponytail:` comment](glossary.md#ponytail-comment) (a marked shortcut, see [27](27-limits-choices-extend.md)) in `__init__` names the other cost: `# ponytail: whole log in memory`. After a restart that log is rebuilt from the store ([22](22-store-auth.md)).
 
 ### Replay: `after`, then snapshot, then live
 
@@ -217,18 +215,14 @@ FUNCTION subscribe(after):
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.subscribe`.
 
-Three parts, in this order:
+The answer has three parts, in this order: the missed log events (`seq > after`), then a [snapshot](glossary.md#snapshot) of the state right now, then the queue `q` for everything after. `last_seq` is the counter right now, so it can be a `"msg"` row's number, bigger than the last event the tab saw; the tab uses it as its new "seen up to" mark.
 
-1. **Missed events:** every log event with `seq > after`. No gaps.
-2. **A [snapshot](glossary.md#snapshot):** the state right now. `last_seq`, `run_state`, the pending approval, and `in_flight`.
-3. **Live:** the queue `q`, for everything after.
-
-**Example.** The log has durable events with seq 1 to 5. The model is in the middle of a reply: "Hello " has streamed so far. A tab reconnects with `after=3`. It gets:
+**Example.** The log has durable events with seq 1, 2, 4 and 6 (3 and 5 are `"msg"` rows). The model is in the middle of a reply: "Hello " has streamed so far. A tab reconnects with `after=3`. It gets:
 
 ```text
 first = [ event seq 4,
-          event seq 5,
-          snapshot(last_seq = 5, run_state = "running",
+          event seq 6,
+          snapshot(last_seq = 6, run_state = "running",
                    in_flight.text = "Hello ", pending_approval = none) ]
 q     = a new queue; the next text delta arrives here
 ```
@@ -242,7 +236,7 @@ after = the ?after=N value, ELSE the Last-Event-ID header, ELSE 0
 first, q = run.subscribe(after)
 ```
 
-The docstring says "No await here". That matters. asyncio only switches tasks at an `await`. With no `await`, no new event can be sent between "copy the log" and "add the queue". So nothing is missed and nothing comes twice.
+The docstring says "No await here": that is the rule from [Step 2](#step-by-step-from-naive-to-real).
 
 The snapshot fixes problem 3 of the naive version. `in_flight` (`p.InFlight`) holds the text, thinking and tool output of the message that is still streaming. `Run.on_event` keeps it up to date while deltas arrive:
 
@@ -256,7 +250,7 @@ IF the event is message_update with a text_delta or thinking_delta:
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.on_event`.
 
-Each delta carries an [`offset`](glossary.md#offset): where it starts in the full text. A tab that joined late gets "Hello " in the snapshot, then a delta with `offset=6`. It can check that the pieces fit.
+Each delta carries an [`offset`](glossary.md#offset): where it starts in the full text. A tab that joined late gets "Hello " in the snapshot, then a delta with `offset=6`. If the offset equals the length it already has, the piece fits; if not, the tab knows it is out of step ([25 · appendAt](25-web-client.md#appendat) shows what it does).
 
 ### The SSE loop
 
@@ -274,9 +268,7 @@ FUNCTION gen():
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), function `gen` inside `events` in `create_app`.
 
-- First it sends the replay and the snapshot.
-- Then it waits for live events. If nothing comes for `HEARTBEAT` (15 seconds; see [Heartbeat](glossary.md#heartbeat)), it checks two things: is the client gone, and is its token still valid? If both are fine, it sends `": ping"`. A line that starts with `:` is a comment in SSE. It keeps proxies from closing the idle connection.
-- `finally` removes the queue, so a closed tab stops getting events.
+It first sends the replay and the snapshot, then waits for live events. The odd loop test means: keep going while this tab is still subscribed, and if it was dropped, still send what is left in its queue before ending. If nothing comes for `HEARTBEAT` (15 seconds; see [Heartbeat](glossary.md#heartbeat)), it checks whether the client is gone or its token is no longer valid; if both are fine, it sends `": ping"`. A line that starts with `:` is a comment in SSE, so the browser ignores it, but proxies see traffic and do not close the idle connection. `finally` removes the queue, so a closed tab stops getting events.
 
 ### Slow clients are dropped, never waited for
 
@@ -312,22 +304,13 @@ IF c is Prompt, FollowUp or Steer:
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.command`.
 
-- If the run is idle, any text starts a new run.
-- If the run is busy, the text goes into the agent's steering or follow-up queue ([07](07-steering.md)). A `Prompt` while busy becomes a follow-up.
-- At most `MAX_QUEUED` (20) messages can wait. More gets `429`.
+"Busy" means the state is `running`, `waiting_approval` or `aborting`. If the run is idle, any text starts a new run. If it is busy, the text goes into the agent's steering or follow-up queue ([07](07-steering.md)), and a `Prompt` while busy becomes a follow-up. At most `MAX_QUEUED` (20) messages can wait; one more gets `429`, so a stuck button cannot fill memory.
 
 `start` does not wait for the run. It sets state `running` and starts `_run` as an asyncio task. So the POST returns `{"ok": true}` at once, and the results come over SSE.
 
-When a run ends, `_turn` checks for follow-ups that came too late for the loop:
+When a run ends, `_turn` starts the next one from any follow-up that came too late for the loop ([20 · The Run](20-server-run.md#the-run)).
 
-```text
-IF the agent still has follow-ups:      // came in after the loop decided to stop
-    TAKE the first one, and start a new run with its text
-```
-
-Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run._turn`.
-
-`Abort` sets state `aborting` and calls `session.abort()` ([06](06-events-abort.md)). `Compact` and `Continue` return `409` while busy.
+`Abort` sets state `aborting` and calls `session.abort()` ([06](06-events-abort.md)), but only if the run is busy and not already aborting, so a double click does nothing. `Compact` and `Continue` return `409` while busy.
 
 ### Approval over the wire
 
@@ -361,7 +344,7 @@ ELSE IF c is Approve:
 
 Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_server/server.py), method `Run.command`.
 
-The `call_id` must match the pending call. A second tab that clicks late gets `409`, so one call is never answered twice. The decision is `"allow"`, `"deny"` or `"always"` (`Decision` in `protocol.py`).
+The `call_id` must match the pending call. A second tab that clicks late gets `409`, so one call is never answered twice. Why an error and not a silent ignore? The late tab must learn its click did nothing; it then shows the `approval_resolved` event that is already on its way. The decision is `"allow"`, `"deny"` or `"always"` (`Decision` in `protocol.py`).
 
 If the user aborts while waiting, the task is cancelled. The `except` branch saves `approval_resolved` with `"aborted"`, so every tab sees the question closed. A tab that connects during the wait gets the question from `pending_approval` in the snapshot.
 
@@ -385,13 +368,7 @@ async def test_reconnect_with_last_event_id_no_gaps_or_dups(env):
     assert again[-1]["type"] == "snapshot" and again[-1]["last_seq"] == run.seq
 ```
 
-What it checks:
-
-- `FakeProvider` ([04](04-label-test.md)) gives two simple replies. No real model.
-- A tab subscribes, sees part of the first run (only the first 3 durable events), then closes.
-- A second run happens while the tab is away.
-- The tab reconnects with the last `seq` it saw. Old part + replay = the full `run.log`, each `seq` **once**, **in order**.
-- The replay ends with a snapshot whose `last_seq` is the current `seq`.
+`env`, `drain` and `wait_for` are small helpers at the top of the test file: `env` builds a `Run` with a fresh store, `drain` empties a queue into a list, and `wait_for` waits until a condition is true. `FakeProvider` ([04](04-label-test.md)) gives two simple replies, so no real model is needed. A tab subscribes, sees only the first 3 durable events of the first run, then closes. A second run happens while it is away. The tab reconnects with the last `seq` it saw, and the old part plus the replay must equal the full `run.log`: each `seq` once, in order. The replay must end with a snapshot whose `last_seq` is the current counter.
 
 This is the case the naive version failed. Other tests in the file: `test_mid_delta_reconnect_snapshot`, `test_approve_then_abort`, `test_slow_client_dropped_never_blocks`, `test_closed_tabs_run_finishes_and_is_persisted`.
 
@@ -412,13 +389,7 @@ uv run pytest apps/server/tests/test_server.py::test_reconnect_with_last_event_i
 
 ## Recap
 
-- Events go out on SSE (`GET /events`); commands come in on `POST /commands`.
-- Durable events get a `seq` from one counter, shared with core messages.
-- `subscribe(after)` returns missed events, then a snapshot, then a live queue, with no `await` in between.
-- The snapshot carries in-flight text, run state and any pending approval.
-- Queues are bounded; a full queue drops the client, which reconnects with `Last-Event-ID`.
-- Busy runs queue text as steer or follow-up, up to 20.
-- Approval is a future, answered by an `Approve` command with the matching `call_id`.
+Events go out on one long SSE response and commands come in on plain `POST`s. Each durable event takes the next `seq` from one counter shared with the agent's `"msg"` rows, so the log has holes but one order. A tab that (re)connects says "after N" and gets the missed events, a snapshot (with the text still streaming and any open approval), then a live queue, all with no `await` in between. Queues are bounded, and a full one drops the tab, which reconnects and catches up. On the way in, a busy run queues text as steer or follow-up, and an approval is a future that the matching `Approve` command sets. [22](22-store-auth.md) next shows where these rows are saved and who may read them.
 
 **Builds on:** [20 The server run](20-server-run.md) · **Next:** [22 Store and auth](22-store-auth.md)
 
