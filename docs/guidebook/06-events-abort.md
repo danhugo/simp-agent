@@ -26,25 +26,52 @@ Code in this chapter (commit `2fc2776`):
 - `packages/simp_agent/src/simp_agent/agent/__init__.py`: the `send` / `add` helpers inside `agent_loop`, `_emit_all`, `_end`, `_stream`, the end of `_llm_turn`, `Agent`
 - `packages/simp_agent/tests/test_harden.py`: the abort and subscriber tests
 
-## Naive version
+## Starting point: 05's loop, with nobody listening
 
-A first try: give the loop one callback for the text and one function that says "stopped?".
+We do not write a new loop. We start from the `agent_loop` of [05](05-agent-loop.md#agent_loop-the-loop). It already calls `send(...)` at each important moment; 05 just did not say who hears it. Here is that loop again, short, with each event marked where it is sent:
 
 ```text
-FUNCTION naive_loop(messages, model, ctx, on_text, stopped):
-    FOR EACH event ev IN ai.stream(model, ctx):
-        IF stopped():                 // checked only when an event arrives
-            RETURN messages           // nothing added to history
-        IF ev is "text_delta":
-            on_text(ev.delta)
-        IF ev is "done" or "error":
-            ADD ev.message to messages
-    RETURN messages
+FUNCTION agent_loop(system_prompt, messages, prompts, config, emit, cancel):
+    SEND agent_start                          // the run starts
+    FOR EACH p in prompts: add(p)             // add() sends message_start, message_end
+    WHILE the model asked for tools:          // one pass = one turn
+        SEND turn_start
+        msg = _llm_turn(...)                  // _stream inside: one message_update per stream piece
+        add(msg)                              // message_start, message_end
+        FOR EACH call in msg:
+            IF cancel is set: STOP this FOR loop
+            SEND tool_execution_start
+            result = run_tool(call, ctx)      // the tool may send tool_execution_update
+            SEND tool_execution_end
+            add(result)                       // message_start, message_end
+        IF cancel is set: add an aborted message; SEND turn_end, agent_end; RETURN
+        SEND turn_end
+    SEND agent_end                            // the run is over
 ```
 
-The first problem is about watching. We need one callback per kind of thing: `on_text`, then `on_tool_start`, `on_tool_end`, and so on. Every new feature changes the signature. The other four problems are about stopping. The check waits for the model, so if the provider sends nothing for 20 seconds, Stop is seen only after 20 seconds. We leave the `for` loop, but nobody closes the stream, so the web request can stay open. The user saw "README.md says this proj…" on screen, but the history keeps nothing, so the screen and the history disagree. And if the model asked for three tools and the user stops after the first one, the history has tool calls with no result. Vendors reject that with a 400 error.
+The blocks are the same as in the [Part 2 big picture](05-0-part-2-agent.md#walk-the-question-through-the-loop): ask the model (`_llm_turn`), run the tools (`run_tool`), put each message into the history (`add`), and repeat.
 
-The next section fixes watching. The section after it fixes stopping. The last one puts both behind one small class.
+So the loop already **speaks**. Two things are still missing. First, nobody **listens**: in 05, `emit` is just one function the caller passes in, and there is no place where a UI and a log can both sign up. Second, nobody can **stop** it from outside: 05 Step 4 gave the loop a [cancel flag](glossary.md#abort), but no button reaches it, and we have not looked at how each block reacts to it. If the loop only checked the flag between turns, three things would go wrong. A silent model would hide the Stop for as long as it says nothing. The web request would stay open and keep costing tokens. And if the model asked for three tools and the user stops after the first one, the history would have tool calls with no result, and vendors reject that with a 400 error.
+
+The picture shows the whole chapter. Events go **out** of the loop's blocks, to the `Agent`, then to each subscriber. The Stop comes **in** from the user, through `agent.abort()`, to the cancel flag, and the blocks that watch the flag react.
+
+```mermaid
+flowchart LR
+    U1([user presses Stop]) --> APP1[app] --> AB["agent.abort()"] --> CF{{cancel flag}}
+    subgraph LOOP["agent_loop"]
+        ADD["add()"]
+        LLM["_llm_turn / _stream"]
+        RT["run_tool (ctx.cancel)"]
+        CHK["loop: before each tool, after the batch"]
+    end
+    CF -.-> LLM
+    CF -.-> RT
+    CF -.-> CHK
+    LOOP -- "send(event)" --> AG[Agent] --> S1[UI] --> U2([what the user sees])
+    AG --> S2[log]
+```
+
+The next section follows the events out. The section after it follows the Stop in. The last one shows the `Agent` class that sits between them.
 
 ## Events: one stream of small dicts
 
@@ -135,13 +162,19 @@ FUNCTION _end(send, msg, new):
 
 So every run ends with `agent_end`, and the UI can always clear its "busy" state there.
 
+### Where the events go
+
+Follow one event out. `send` hands it to `emit`. When the app uses the `Agent` class (below), that `emit` is `_emit_all(agent._subs, e)`, so the event goes to **each subscriber** in the order they signed up with `agent.subscribe(fn)`. One subscriber can be the UI, another can be a log. The UI turns each event into what the user sees in our README example: `message_update` with a `text_delta` puts the words "README.md says…" on screen, `tool_execution_start` shows "reading README.md…", and `agent_end` turns off the busy spinner. The loop never draws anything; it only says what happened.
+
 ## Abort: one asyncio.Event
 
-The cancel flag from 05 is one `asyncio.Event` named `cancel`. `agent_loop` takes it as an input, and the caller calls `cancel.set()` from anywhere, for example a key press or an HTTP request. The same object is `ctx.cancel` in every [tool context](glossary.md#tool-context). So one `set()` reaches the model call, the loop and every tool at once, and the caller does not need to know what is running right now.
+The Stop **comes from** the user. The user presses Stop (a key, or a button in the web page), the app calls `agent.abort()`, and `abort()` sets the [cancel flag of 05 Step 4](05-agent-loop.md#step-by-step-from-naive-to-real). 05 already explains what the flag means; here we follow where it **goes**.
+
+The cancel flag is one `asyncio.Event` named `cancel`. `agent_loop` takes it as an input. `abort()` is just `cancel.set()`, and anybody can call it, for example a key handler or an HTTP request. The same object is `ctx.cancel` in every [tool context](glossary.md#tool-context). So one `set()` reaches the model call, the loop and every tool at once, and the caller does not need to know what is running right now.
 
 As 05 said, a Stop is data, not an exception: the run ends with an assistant message whose `stop_reason` is `aborted` (made by `_aborted()` when there is no other message to mark). The caller reads `new[-1].stop_reason`.
 
-Our user can press Stop at three moments. For each one we ask the same three questions: **what stops**, **what goes into the history**, and **what the model sees next time**.
+Three blocks watch the flag: `_stream` during the model call, the tool through `ctx.cancel`, and the loop itself (before each tool and after the batch). That gives three moments when our user can press Stop. For each one we ask the same three questions: **what stops**, **what goes into the history**, and **what the model sees next time**.
 
 ### Moment 1: Stop while the model is writing
 
@@ -158,7 +191,7 @@ flowchart TD
     W -- "stop" --> C["cancel nxt → web request closes"] --> E["return (finally: cancel stop, close it)"]
 ```
 
-The naive loop only waited for the model, so a silent model hid the Stop. With the race, the Stop wins even when the model sends nothing. `_stream` does this. It wraps the provider stream `it`, which is the async generator returned by `stream_fn`:
+A loop that only checks the flag between events would wait for the model, so a silent model would hide the Stop. With the race, the Stop wins even when the model sends nothing. `_stream` does this. It wraps the provider stream `it`, which is the async generator returned by `stream_fn`:
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_stream`)
 
