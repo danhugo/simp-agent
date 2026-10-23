@@ -98,7 +98,9 @@ The session folder lives on the host. The container sees the same folder at `/wo
 
 ### The sandbox slot
 
-The server does not know about Docker. It knows a small protocol, `Sandbox`, in `server.py`:
+Follow one request. Ana opens a session. The session manager loads it ([20](20-server-run.md)) and needs a place where her tools will run, so it calls `self.sandbox.open(row["sandbox_ref"])`; `sandbox_ref` is the name the store keeps for the session's box. To make that call, the server needs a slot it can fill with either a local or a Docker sandbox.
+
+The server does not know about Docker. The protocol is `Sandbox`, in `server.py`:
 
 ```python
 class Sandbox(Protocol):
@@ -117,8 +119,6 @@ This is a **[sandbox slot](glossary.md#sandbox-slot)**, one of the [server slots
 docker = {"sandbox": "simp_server.sandboxes.docker:DockerSandbox"} if os.environ.get("SIMP_SANDBOX") == "docker" else {}
 ```
 
-The session manager calls the slot at the moments you already know. When it loads a session ([20](20-server-run.md)), it calls `self.sandbox.open(row["sandbox_ref"])`; `sandbox_ref` is the name the store keeps for the session's box. When it evicts an idle run ([23](23-limits.md)), it calls `close`; the docstring says "Free RAM and the container; files and log stay". When a session is deleted, it calls `close` and then `remove`. On shutdown it closes each open run and then calls `close_all()` if the sandbox has one.
-
 Why a slot, and not Docker everywhere? Because the server code stays the same in both worlds. One person on a laptop needs no Docker, and the tests run without it. But forgetting to switch on a shared server would be dangerous, so the server checks:
 
 ```python
@@ -129,22 +129,6 @@ def check_sandbox(settings: dict, n_users: int) -> str | None:
 With more than one user and `LocalSandbox`, it returns an error message, and the server refuses to start (or to add the second user), unless you set `allow_local_sandbox = true` on purpose.
 
 One more door is closed outside the box. The model API keys sit in the server's environment, and a child process inherits the environment. So `take_keys()` reads the keys and *removes* them from `os.environ`: "Removed from os.environ so sandboxed commands never see them." Even `env` inside `bash` cannot print them.
-
-### The image
-
-`apps/server/sandboxes/Dockerfile` builds the image `simp-sandbox:latest`, the template each container starts from:
-
-```dockerfile
-FROM python:3.13-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find git coreutils procps \
-    && ln -s /usr/bin/fdfind /usr/local/bin/fd && rm -rf /var/lib/apt/lists/* \
-    && useradd -u 1000 -m -s /bin/sh sandbox && mkdir /work && chown 1000:1000 /work
-USER 1000:1000
-WORKDIR /work
-CMD ["sleep", "infinity"]
-```
-
-It has Python and the programs the agent likes to call (`rg`, `fd`, `git`), a normal user with id 1000, and an empty `/work` that this user owns. You build it once with `simp-server build-sandbox`, which runs `build_image()`, that is `docker build -t simp-sandbox:latest apps/server/sandboxes`.
 
 ### DockerSandbox.open: one hardened container per session
 
@@ -169,6 +153,20 @@ FUNCTION open(session_id):
 
 The id check comes first because the id becomes both a folder name and a container name; `../x` must never reach either. The reuse check and `sleep infinity` are step 1: the container starts once and then just waits, and every command later enters it with `docker exec`. `docker rm -f` is there because a crashed server can leave a container with the same name behind. The old-folder move is for sessions made by an earlier server version, which kept files in `<data_dir>/sandboxes`.
 
+**The image.** Before `docker run` can start anything, it needs an image. `apps/server/sandboxes/Dockerfile` builds the image `simp-sandbox:latest`, the template each container starts from:
+
+```dockerfile
+FROM python:3.13-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find git coreutils procps \
+    && ln -s /usr/bin/fdfind /usr/local/bin/fd && rm -rf /var/lib/apt/lists/* \
+    && useradd -u 1000 -m -s /bin/sh sandbox && mkdir /work && chown 1000:1000 /work
+USER 1000:1000
+WORKDIR /work
+CMD ["sleep", "infinity"]
+```
+
+It has Python and the programs the agent likes to call (`rg`, `fd`, `git`), a normal user with id 1000, and an empty `/work` that this user owns. You build it once with `simp-server build-sandbox`, which runs `build_image()`, that is `docker build -t simp-sandbox:latest apps/server/sandboxes`.
+
 The session folder is a **[bind mount](glossary.md#bind-mount)**: a host folder shown inside the container at `/work`. A file the agent writes in the box is a normal file on the host, so it survives the container.
 
 Step 2 is the flags. Turning off every power the box does not need, and adding limits, is called **[hardening](glossary.md#hardening)**. Each flag closes one door from the Problem:
@@ -186,7 +184,7 @@ The values come from the `[sandbox]` table in `settings.toml`, so an admin can g
 
 ### DockerEnv: files on the host, commands in the box
 
-`DockerEnv` is a subclass of `LocalEnv` that keeps one extra field, the container name. The module docstring says the split: "File ops run on the host (LocalEnv with root containment) on a dir bind-mounted at /work; only exec goes through `docker exec`."
+The container is up and waiting. Now the model calls `bash` (or `read`), and the tool asks the env that `open` returned. `DockerEnv` is a subclass of `LocalEnv` that keeps one extra field, the container name. The module docstring says the split: "File ops run on the host (LocalEnv with root containment) on a dir bind-mounted at /work; only exec goes through `docker exec`."
 
 Why are file tools safe on the host, when `bash` was not? Because they never run user text as a program. They only read and write paths, and `LocalEnv._path` already refuses any path outside the root ([09](09-exec-env.md#path-safety)). So `DockerEnv` inherits them unchanged, fast and already tested. Only `exec` is new.
 
@@ -227,13 +225,15 @@ With `kill -9 4711` (no minus), only the shell would die and `sleep 30` would ke
 
 ### close, remove, close_all
 
+The request ends. The session manager calls the slot again at moments you already know. When it evicts an idle run ([23](23-limits.md)), it calls `close`; the docstring says "Free RAM and the container; files and log stay". When a session is deleted, it calls `close` and then `remove`. On shutdown it closes each open run and then calls `close_all()` if the sandbox has one.
+
 `close(session_id)` drops the env from `envs` and runs `docker rm -f` on its container. The folder stays. The next `open` starts a fresh container on the same folder, so `fizzbuzz.py` is still there. That is why eviction in [23](23-limits.md) is cheap to undo: a container costs memory while it waits, the files cost nothing.
 
 `remove(session_id)` deletes the folder, in both the new and the old place, after the same id check. `close_all()` closes every open container at once with `asyncio.gather`, so a server shutdown leaves no containers running.
 
 ### Passing EnvConformance
 
-How do we know `DockerEnv` acts exactly like `LocalEnv`? We reuse **`EnvConformance`** from [09](09-exec-env.md#test): one test class with checks for files, listing, root containment, exit codes, streaming, `cwd`, timeout and cancel. Any env that passes it can be given to the tools.
+That is the whole life of one session. One question is left: how do we know `DockerEnv` acts exactly like `LocalEnv`? We reuse **`EnvConformance`** from [09](09-exec-env.md#test): one test class with checks for files, listing, root containment, exit codes, streaming, `cwd`, timeout and cancel. Any env that passes it can be given to the tools.
 
 One line in it was written for Docker:
 
