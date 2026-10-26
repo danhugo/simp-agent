@@ -58,7 +58,7 @@ That prints FizzBuzz, but it is slow, because a new container starts for every `
 
 ## Step by step: from LocalSandbox to DockerSandbox
 
-In plain words, the fix is to start the box once per session, keep it alive doing nothing, and send each command into it. When we start it, we close every door we do not need: no root, no network, a limit on processes and memory, a read-only system. On timeout or cancel we kill the whole command inside the box, the same group kill as [09](09-exec-env.md#step-5-stop-kills-the-whole-group), just done from inside. And the session manager, which already decides when a session loads and goes away, also decides when its box opens, closes and is removed.
+In plain words, the fix is to start the box once per session, keep it alive doing nothing, and send each command into it. When we start it, we close every door we do not need: no root, no network, a limit on processes and memory, a read-only system. On timeout or cancel we kill the whole command inside the box, the same group kill as [09](09-exec-env.md#step-5-stop-kills-the-whole-process-group), just done from inside. And the session manager, which already decides when a session loads and goes away, also decides when its box opens, closes and is removed.
 
 ## Real design
 
@@ -140,7 +140,7 @@ One more door is closed outside the box. The model API keys sit in the server's 
 
 The container is up and waiting. Now the model calls `bash` (or `read`), and the tool asks the env that `open` returned. `DockerEnv` is a subclass of `LocalEnv` that keeps one extra field, the container name. The module docstring says the split: "File ops run on the host (LocalEnv with root containment) on a dir bind-mounted at /work; only exec goes through `docker exec`."
 
-Why are file tools safe on the host, when `bash` was not? Because they never run user text as a program. They only read and write paths, and `LocalEnv._path` already refuses any path outside the root ([09](09-exec-env.md#step-3-_path-checks-the-path)). So `DockerEnv` inherits them unchanged, fast and already tested. Only `exec` is new.
+Why are file tools safe on the host, when `bash` was not? Because they never run user text as a program. They only read and write paths, and `LocalEnv._path` already refuses any path outside the root ([09](09-exec-env.md#step-3-_path-keeps-every-path-inside-the-project)). So `DockerEnv` inherits them unchanged, fast and already tested. Only `exec` is new.
 
 **Mapping `cwd`.** A tool passes `cwd` as a host path, but the container only knows `/work`. `_cwd` first runs `_path` (so the root check still applies), then swaps the root for `/work`:
 
@@ -150,7 +150,7 @@ def _cwd(self, cwd: str) -> str:
     return str(Path("/work") / rel)
 ```
 
-**Running and killing a command.** In [09](09-exec-env.md#step-5-stop-kills-the-whole-group), `LocalEnv` starts the shell in a new process group and kills the whole group on timeout. Here the command runs inside the container, where the host cannot see its pid. So we ask the box to tell us:
+**Running and killing a command.** In [09](09-exec-env.md#step-5-stop-kills-the-whole-process-group), `LocalEnv` starts the shell in a new process group and kills the whole group on timeout. Here the command runs inside the container, where the host cannot see its pid. So we ask the box to tell us:
 
 Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv.exec`
 
@@ -229,59 +229,6 @@ self.root = tmp_path / f"root-{uuid.uuid4().hex[:8]}"  # unique: Docker names co
 
 The folder name becomes the session id, and so the container name. A unique name per test means tests never fight over one container.
 
-## Test
-
-`apps/server/tests/test_docker_sandbox.py` is skipped when Docker is missing (`_docker_ok()`), and builds the image first if it is not there yet. It has three parts.
-
-The conformance part is tiny. Its `make_env` points `workspaces_dir` at the test's temp folder and opens the folder name as a session, so every `EnvConformance` check runs against a real container:
-
-```python
-class TestDockerEnvConformance(EnvConformance):
-    @pytest.fixture
-    def make_env(self, sandbox, tmp_path):
-        async def make(root):
-            sandbox.workspaces_dir = root.parent
-            return await sandbox.open(root.name)
-        return make
-```
-
-`test_hardening` checks each row of the flag table from inside the box:
-
-```python
-async def test_hardening(sandbox, tmp_path):
-    env = await sandbox.open(f"s1-{uuid.uuid4().hex[:8]}")
-    run = lambda cmd: env.exec(cmd, ".", 30, asyncio.Event())
-    assert (await run("id -u"))[1].strip() == "1000"
-    code, out = await run("python -c 'import socket; socket.create_connection((\"1.1.1.1\", 53), timeout=3)'")
-    assert code != 0
-    assert (await run("touch /etc/x"))[0] != 0  # read-only rootfs
-    assert (await run("touch /tmp/x && touch /work/x"))[0] == 0
-    assert (await run("grep CapEff /proc/self/status"))[1].split()[1] == "0000000000000000"  # no caps
-    code, out = await run("for i in $(seq 400); do sleep 5 & done; wait")
-    assert "fork" in out.lower() or "resource" in out.lower()  # pids limit hit
-```
-
-In order: the user is 1000, not root; a network connection fails; `/etc` cannot be written but `/tmp` and `/work` can; the effective capabilities are all zero; and starting 400 processes fails because the limit is 256.
-
-The last test, `test_open_close`, checks that opening the same id twice gives the same env, that `../x` raises `ValueError`, and that after `close` the container is gone.
-
-Run it (needs Docker):
-
-```sh
-uv run pytest apps/server/tests/test_docker_sandbox.py -q
-```
-
-## Why this way
-
-> **One long-lived container per session; files on the host, only `exec` in the box.** Starting the container once makes each `bash` call fast. Keeping file tools on the host reuses `LocalEnv` and its root check, so only `exec` is new code, and `EnvConformance` proves both envs act the same. The slot keeps Docker out of the server core: one person can use `LocalSandbox`, a shared server switches with one setting, and `check_sandbox` stops you from forgetting. The cost: you need Docker and a built image, and each open container uses memory, which is why idle sessions are closed ([23](23-limits.md)).
-
-## Exercises
-
-1. Set `network = "bridge"` in the `[sandbox]` table. Which line of `test_hardening` would fail, and why?
-2. Open a session, write a file, call `close`, then `open` the same id again. Is the file still there? Why?
-
-## Recap
-
-Ana's `bash` commands no longer run on the server. `DockerSandbox.open` starts one hardened container per session (user 1000, no network, limits on processes, memory and CPU, read-only system, no capabilities) with the session folder bind-mounted at `/work`. `DockerEnv` keeps the file tools on the host and sends only `exec` through `docker exec`, where `setsid` and the pid line let a timeout kill the whole group inside the box. `take_keys` hides the model keys from every command. The session manager drives it all through the `Sandbox` slot (`open`, `close`, `remove`) when a session loads, is evicted, is deleted, and at shutdown; `LocalSandbox` gives a plain folder and no isolation, so `check_sandbox` refuses several users on it unless you allow it. `EnvConformance` and `test_hardening` prove it. Next, [25](25-web-client.md) gives Ana and Bob a browser page to use all of this.
+The cost of this design: you need Docker and a built image, and each open container uses memory, which is why idle sessions are closed ([23](23-limits.md)).
 
 **Builds on:** [23 Limits](23-limits.md) · **Next:** [25 Web client](25-web-client.md)

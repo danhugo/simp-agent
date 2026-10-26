@@ -238,55 +238,6 @@ Then both the CLI and the server can switch it on through a profile ([18](18-pro
 
 Four habits keep the system healthy as it grows, and each one is a design choice from above put to work. Put new code in the highest layer that works: a plugin is better than a change to `agent`. Run `test_layers.py` after each change, so the layer rule holds. Test with `FakeProvider` first, then add an eval case ([12](12-evals.md)) like `evals/tasks/fizzbuzz.toml`, to see a real model use the feature. And when you take a shortcut, leave a `ponytail:` comment that names its ceiling, so the next reader finds the limit in the code and not in production.
 
-## Test
-
-This chapter adds no code to the repo, so it has no new test. But one existing test, from [14](14-plugins.md), checks the exact path Bob's plugin uses: a plugin that adds a tool. `session(...)` and `tool(...)` are small helpers at the top of the test file that build a session with a fake model and a do-nothing tool. It is `test_plugin_setup_events_and_api` in `apps/cli/tests/test_sockets.py`:
-
-```python
-async def test_plugin_setup_events_and_api():
-    events = []
-
-    class P:
-        name = "p"
-
-        async def setup(self, api, config):
-            self.api, self.config = api, config
-            api.register_tool(tool("extra"))
-
-        def on_event(self, e):
-            events.append(e["type"])
-
-    p = P()
-    seen = []
-    s = session(DONE, seen=seen, plugins=[p], plugin_config={"p": {"k": 1}})
-    await s.prompt("hi")
-    assert p.config == {"k": 1} and [t.name for t in seen[0].tools] == ["extra"]
-    assert "agent_start" in events and "agent_end" in events
-```
-
-`P` is a plain class that inherits nothing; it only has `name`, `setup` and `on_event`, which is what makes a plugin a [protocol](glossary.md#protocol-python) and not a base class. `setup` gets its own config from `plugin_config`, found by plugin name. The tool `extra` that the plugin registers is already in the very first request to the fake model (`seen[0].tools`), so the model can use it from the first turn. And `on_event` sees every session event from `agent_start` to `agent_end`.
-
-Run it:
-
-```sh
-uv run pytest apps/cli/tests/test_sockets.py -q -k plugin_setup
-```
-
-For the other sockets, see the tests in their chapters: providers in [01](01-pick-clean.md)–[04](04-label-test.md), store in [13](13-session.md) and [22](22-store-auth.md), sandbox in [24](24-docker-sandbox.md). And run the layer test from [00](00-overview.md) after any change.
-
-## Why this way
-
-> **Small core, sockets, and honest limits.** simp-agent does not try to have every feature. It keeps the loop small and puts new behaviour behind small protocols: providers, tools, plugins, sandbox, store, auth. Missing features are written down (`ponytail:` comments, `NOTES.md`, `docs/ROADMAP.md`) instead of half built. The cost: some things other agents have, like parallel tools or split-turn compaction, are not here yet. The gain: each part is easy to read, to test with a fake model, and to replace without touching the rest.
-
-## Exercises
-
-1. Put the `CountLines` class in a new file in `plugins/`, import it in `plugins/__init__.py`, and add `count_lines` to `known` in `build_plugins`, then call `build_plugins(["count_lines"])`. Do you get a `CountLines` object? Now a profile can turn it on by name ([18](18-profiles-plugins.md)).
-2. Pick one limit from [Known limits](#known-limits) (for example, tools run one by one). Say which layer you would change, and which socket (if any) could do it without a core change.
-
-## Recap
-
-simp-agent rests on a few choices: layers that import only downward, a fake model from day one, a `stream()` that never raises, providers that never read the environment, append-only history, a core that only classifies errors, and small protocols for everything that plugs in. Its known limits at `2fc2776` are three in the core (tools run one by one, one huge turn cannot be compacted, three provider APIs) and five at the edges (one machine, soft budgets, no login rate limit, `LocalSandbox` is not isolation, no web, MCP or sub-agent tools yet). To grow it, use `register_provider` for a model API, `AgentTool` for a tool every session needs, a plugin with `PluginAPI` for behaviour like Bob's `count_lines`, and `Sandbox`, `Store` or `Auth` for the server. Bob's tool became a plugin with no change to the core, and `test_plugin_setup_events_and_api` checks that path.
-
 ## The whole path
 
 ```mermaid

@@ -256,26 +256,7 @@ Markdown is drawn with `react-markdown`, with one change: images are never loade
 
 `Files.tsx` lets Ana browse, download and upload files in the session folder with `api.files`, `api.download` and `api.upload`. Files do not change word by word like the chat, so a plain list loaded on request is enough; there is no event stream for files.
 
-## Test
-
-The reducer has unit tests in `apps/web/src/state.test.ts` (vitest). They feed events to `reduce()` and check the state, which is easy because the reducer is pure: no page and no server are needed. The tests cover the three fixes. For deltas, they check that `appendAt` drops dups and gaps, that a new `msg_id` starts only at offset 0, and that thinking, tool output and old durable events are handled the same way. For the snapshot, they check that it replaces the bubble, that live deltas then continue with no gap or dup, and that a pending approval comes back after a reload. They also check that title and plan mode come from the snapshot and then from live events, and that Continue is offered after an `interrupted:` notice or an error but not after a later event.
-
-Run them with `cd apps/web && pnpm test`.
-
-These tests check the reducer alone. The full promise, "reload the page and nothing is lost or doubled", needs a real browser and a real server. That test is in [26 · End-to-end tests with Playwright](26-system-tests-deploy.md#end-to-end-tests-with-playwright).
-
-## Why this way
-
-> **Server is the truth; the client is a pure reducer**, so any order of reconnects ends in the same screen. `fetch` is used instead of `EventSource` because only `fetch` can send the `Authorization` header; the cost is about 15 lines of SSE parsing and a hand-written retry loop. A dropped delta is not repaired at once; the screen waits for the final `assistant_message` or the next snapshot.
-
-## Exercises
-
-1. Do it on paper. The bubble is `"Hi"`. Apply these deltas in order with `appendAt`: `(2, " there")`, `(2, " there")`, `(30, "!")`. What is the text after each one?
-2. In `state.test.ts` style, write a test: call `reduce` twice with the same `user_message` event (same `seq`). Check that `items` has length 1.
-
-## Recap
-
-Ana now has a browser page. `subscribe()` reads SSE over `fetch`, so it can send her token, and it reconnects forever with `Last-Event-ID` set to the last applied `seq`, waiting up to 10 s between tries. `reduce()` is the only place that changes chat state: it skips durable events it already has, `appendAt()` drops delta dups and gaps, and the `snapshot` replaces all live state on each connect. `Chat.tsx` only reads the state and sends commands, and `state.test.ts` checks the reducer. Next, [26](26-system-tests-deploy.md) tests the whole system in a real browser and shows how to deploy it.
+Using `fetch` instead of `EventSource` costs about 15 lines of SSE parsing and a hand-written retry loop.
 
 **Builds on:** [21 Transport](21-transport.md), [20 Protocol models](20-server-run.md#protocol-models) · **Previous:** [24 Docker sandbox](24-docker-sandbox.md) · **Next:** [26 System tests and deploy](26-system-tests-deploy.md)
 
