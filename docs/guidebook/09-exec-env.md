@@ -11,13 +11,9 @@ flowchart LR
     ai --> agent["agent ★ ExecutionEnv / LocalEnv (this chapter)"] --> coding --> session --> plugins --> testing
 ```
 
-**Builds:** blocks 5, 6 · **IN:** a path or a command · **OUT:** text, bytes, entries, or `(exit code, output)`
+**IN:** a path or a command · **OUT:** text, bytes, entries, or `(exit code, output)`
 
-Take the running example: the user asks "What is in README.md?". In Part 2 the loop could call a tool, but the tool had nothing real to work with. To answer, a `read` tool must open `README.md` on disk; later a `bash` tool must run commands like `pytest`. This chapter builds the one object that does that work for every tool.
-
-The `agent` box in the picture is the code folder: the env lives in `agent/env.py`, next to the loop, because the loop must hand it to every tool. Part 3 is about the *coding* tools that use it.
-
-That object is the [execution environment](glossary.md#execution-environment): the `env` field of the [tool context](glossary.md#tool-context) from [05](05-agent-loop.md#toolcontext-what-a-tool-gets). All tools in [10](10-coding-tools.md) go through it.
+Take the running example: the user asks "What is in README.md?". In Part 2 the loop could call a tool, but the tool had nothing real to work with. To answer, a `read` tool must open `README.md` on disk; later a `bash` tool must run commands like `pytest`. This chapter builds the [execution environment](glossary.md#execution-environment): the one object, `ctx.env` in the [tool context](glossary.md#tool-context) from [05](05-agent-loop.md#toolcontext-what-a-tool-gets), that every tool in [10](10-coding-tools.md) uses to do that work.
 
 Big picture of Part 3: [part-3-coding](09-0-part-3-coding.md).
 
@@ -29,7 +25,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-If each tool touches the disk with `open()` and runs commands with `subprocess` on its own, there is no single place to swap. Later the server runs each session inside a Docker container ([24](24-docker-sandbox.md)), and with ten tools calling `subprocess` we would change ten tools. So we put one object between the tools and the world. A first, naive try at that object shows what else it must get right.
+If each tool touches the disk with `open()` and runs commands with `subprocess` on its own, there is no single place to swap. Later the server runs each session inside a Docker container ([24](24-docker-sandbox.md)), and with ten tools calling `subprocess` we would change ten tools. So we put one object between the tools and the world; the server then swaps that one object, and no tool changes. A first, naive try at that object shows four more things it must get right.
 
 ## Naive version
 
@@ -48,7 +44,12 @@ CLASS NaiveEnv(root):
         RETURN (exit code, output)
 ```
 
-This breaks in several ways. Nothing stops a bad path: `read_file("../secret")`, or a symlink inside the root that points out, reads outside the root. Every call blocks, and the loop is `async` ([05](05-agent-loop.md)), so while a one-minute command runs no events go out and the **Stop** button ([abort](glossary.md#abort)) from [06](06-events-abort.md) is not heard; only the timeout can end it. On timeout `p.kill()` kills the shell only, so a background child like `npm run dev &` keeps running, and we return `""`, so the model never learns how far the command got. And `write_file("src/new/a.py", ...)` fails if `src/new` does not exist.
+It has four breaks:
+
+1. **A bad path escapes the root.** `read_file("../secret")`, or a symlink inside the root that points out, reads outside the root.
+2. **A blocking call freezes the loop, so Stop is not heard.** The loop is `async` ([05](05-agent-loop.md)); while a one-minute command runs, no events go out and the **Stop** button ([abort](glossary.md#abort)) from [06](06-events-abort.md) is not heard. Only the timeout can end it.
+3. **Killing only the shell leaves children alive and loses the output.** A background child like `npm run dev &` keeps running, and we return `""`, so the model never learns how far the command got.
+4. **A missing parent folder makes write fail.** `write_file("src/new/a.py", ...)` fails if `src/new` does not exist.
 
 ## Real design
 
@@ -56,9 +57,7 @@ We follow two real requests from the running example, top-down: the model calls 
 
 ### Step 1: the tool asks `ctx.env`
 
-The model sends the tool call `read(path="README.md")`. `run_tool` ([05](05-agent-loop.md)) runs the `read` tool and gives it a tool context. The tool does not open the file itself. It calls `await ctx.env.read_file(path)`. So the first question is: where does `ctx.env` come from?
-
-A tool never builds its own env. It uses `ctx.env`. The host (CLI, server, eval runner) picks which env to pass in `LoopConfig.env`. If the host gives none, the default is `LocalEnv()`. The loop puts it into each tool's context: `ToolContext(cancel, config.env, config.cwd, on_update)`.
+The model sends the tool call `read(path="README.md")`. `run_tool` ([05](05-agent-loop.md)) runs the `read` tool and gives it a tool context. The tool does not open the file itself. It calls `await ctx.env.read_file(path)`. So the first question is: where does `ctx.env` come from? The tool never builds its own env. The host (CLI, server, eval runner) picks which env to pass in `LoopConfig.env`. If the host gives none, the default is `LocalEnv()`. The loop puts it into each tool's context: `ToolContext(cancel, config.env, config.cwd, on_update)`.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`LoopConfig`, `agent_loop`)
 
@@ -71,7 +70,7 @@ flowchart LR
     Env --> Docker["DockerEnv (ch 24)"]
 ```
 
-So to move all commands into Docker, the server swaps one object. No tool changes. [DockerEnv](24-docker-sandbox.md) is that second env, built in Part 5; here it only shows that a second one can exist.
+[DockerEnv](24-docker-sandbox.md) is the second env, built in Part 5; here it only shows that a second one can exist.
 
 #### The contract: `ExecutionEnv`
 
@@ -89,11 +88,11 @@ ExecutionEnv (all async):
 
 Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`ExecutionEnv`)
 
-How the two are related: `ExecutionEnv` says WHAT an env can do; `LocalEnv` and `DockerEnv` are HOW one machine does it. The contract also says HOW the result comes back: text, bytes, entries, or `(exit code, output)`.
+`ExecutionEnv` says what an env can do; `LocalEnv` and `DockerEnv` are how one kind of machine does it.
 
 ### Step 2: `LocalEnv` reads the file
 
-The tool called `ctx.env.read_file("README.md")`. With the default host setup, `ctx.env` is a `LocalEnv`. What does it do with the call?
+The tool called `ctx.env.read_file("README.md")`. With the default host setup, `ctx.env` is a `LocalEnv`. What does it do with the call? This step also fixes two breaks: the blocking call, and the missing parent folder.
 
 `LocalEnv` is the only env in the core library. It works on the machine where Python runs. It takes one optional argument, `root`: the folder the tools may use. With no root (the `LoopConfig` default), paths are used as they are, so a relative path depends on the folder the Python process runs in. That is why the tools in [10](10-coding-tools.md) first join the path to `ctx.cwd` themselves.
 
@@ -127,7 +126,7 @@ Every method starts with `_path(path)`. What does `_path` do with `"README.md"` 
 
 ### Step 3: `_path` checks the path
 
-[Path safety](glossary.md#path-safety) means: when `LocalEnv` has a `root`, a file path can never point outside it. This book uses only this one name for the idea.
+This step fixes the bad path that escapes the root. [Path safety](glossary.md#path-safety) means: when `LocalEnv` has a `root`, a file path can never point outside it.
 
 A string check like `".." in path` is not enough: it misses symlinks and absolute paths. So `_path` first turns the path into its real, full form with `resolve()` (this removes `..` **and** follows symlinks), and only then asks "is this still inside the root?":
 
@@ -155,7 +154,7 @@ Now the result goes back. If `_path` is happy, the text of `README.md` returns t
 
 ### Step 4: a second request, `bash`
 
-Reading a file is short. Now the model calls `bash(command="pytest")`. The `bash` tool calls `ctx.env.exec(...)`. This call can be long, print a lot, and the user may press Stop. What does `exec` do with it?
+Reading a file is short. Now the model calls `bash(command="pytest")`. The `bash` tool calls `ctx.env.exec(...)`. This call can be long, print a lot, and the user may press Stop. What does `exec` do with it? This step fixes the blocking call for commands, and the lost output.
 
 `exec(command, cwd, timeout, cancel, on_output)` runs a shell command. While it runs, output streams out. Three things can end it:
 
@@ -194,7 +193,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp
 
 How to read it. stderr is merged into stdout so the model sees errors next to the line that caused them. Bad bytes are replaced, not raised, because one odd byte from a program must not crash the tool. `on_output` is what the `bash` tool passes as `ctx.on_update` ([05](05-agent-loop.md#toolcontext-what-a-tool-gets)), so each chunk becomes a `tool_execution_update` event for the UI.
 
-The end is a race. Two tasks run at the same time: `run` reads output until the command exits, and `stop` just waits for the Stop button. We wait for whichever finishes first, but no longer than `timeout`. Then the `stop` task is cancelled, because nobody needs it now. If `run` is not done, Stop or the timeout won: we kill the whole process group with `run_kill` and then still wait for `run`. Why wait? The output pipe closes only when every process in the group is dead, so this wait also reads the last bytes. We keep every chunk in `chunks`, so even after a kill we can return what came so far.
+The end is the same race as `_stream` in [06](06-events-abort.md), plus a timeout. Two things are new. After the kill we still wait for `run`: the output pipe closes only when every process in the group is dead, so this wait reads the last bytes. And every chunk is kept in `chunks`, so even after a kill the partial output returns.
 
 ```mermaid
 sequenceDiagram
@@ -218,7 +217,7 @@ sequenceDiagram
 
 ### Step 5: Stop kills the whole group
 
-`exec` called `run_kill(proc.pid)` when Stop or the timeout won. Why a group, and not just the process? Bash starts `npm test`, which starts `node`. If we kill only bash, `node` lives on and still holds port 3000.
+This step fixes the children that stay alive after the shell is killed. `exec` called `run_kill(proc.pid)` when Stop or the timeout won. Why a group, and not just the process? Bash starts `npm test`, which starts `node`. If we kill only bash, `node` lives on and still holds port 3000.
 
 So we start the shell with `start_new_session=True`. Now the shell and every child it starts share one **process group**, whose id is the shell's PID. A [process-group kill](glossary.md#process-group-kill) sends `SIGKILL` (a kill signal that cannot be caught) to the whole group at once. `run_kill(pgid)` does this; `pgid` is the process group id, which is why `exec` passes `proc.pid`.
 
@@ -246,7 +245,7 @@ Real code: [packages/simp_agent/tests/test_env.py](../../packages/simp_agent/tes
 
 That is all `LocalEnv` needs to run the whole suite. The server does the same for Docker in `apps/server/tests/test_docker_sandbox.py` (`TestDockerEnvConformance`).
 
-The most interesting check is the process-group kill:
+The most interesting check is the process-group kill. `self.run` is a small helper in the suite: it calls `env.exec` with the root as `cwd` and a fresh cancel event.
 
 ```text
 TEST test_exec_timeout_kills_tree(env):
@@ -262,7 +261,7 @@ TEST test_exec_timeout_kills_tree(env):
 
 Real code: [packages/simp_agent/src/simp_agent/testing/env_conformance.py](../../packages/simp_agent/src/simp_agent/testing/env_conformance.py) (`test_exec_timeout_kills_tree`)
 
-(`self.run` is a small helper in the suite: it calls `env.exec` with the root as `cwd` and a fresh cancel event.) The command starts a background child that would write `late.txt` after 7 seconds, then sleeps 30. The timeout is 2 seconds. The test checks: we got `None` and the early output `start`, we returned quickly, and for 8 seconds `late.txt` never appears. With the naive `p.kill()`, the background child would live and write the file.
+The command starts a background child that would write `late.txt` after 7 seconds, then sleeps 30. The timeout is 2 seconds. The test checks: we got `None` and the early output `start`, we returned quickly, and for 8 seconds `late.txt` never appears. With the naive `p.kill()`, the background child would live and write the file.
 
 No [FakeProvider](04-label-test.md) here: the env has nothing to do with models. It is tested on its own.
 
