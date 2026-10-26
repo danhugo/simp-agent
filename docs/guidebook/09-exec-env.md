@@ -42,12 +42,12 @@ CLASS NaiveEnv(root):                       // root = the project folder the too
         RETURN (exit code, output)
 ```
 
-It works for the happy case, but it breaks in four ways:
+It works for the happy case, but it breaks in four ways. Because every tool goes through the env, whatever the env gets wrong, every tool gets wrong.
 
-- **A path can leave the project.** The model asks `read_file("../.ssh/id_rsa")`, and `..` walks up out of `root`. A *symlink* (a file that points to another place) inside the project can do the same.
-- **The whole agent freezes.** `pytest` takes a minute. The agent is `async`: one thread, and Python's **[event loop](glossary.md#event-loop)** switches between waiting jobs (the [agent loop](05-agent-loop.md), the task that watches for Stop in [06](06-events-abort.md), sending events to the UI). A job gives the turn away only when it `await`s. But `open()` and a plain `WAIT` hold the thread until they finish, so the event loop is stuck: for that minute no events reach the UI, and pressing Stop does nothing.
-- **Killing the shell is not enough.** `pytest` may start a test server in the background. `KILL p` kills only the shell, so the server keeps running. And we return `""`, so the model never sees which tests ran before the timeout.
-- **A missing folder makes write fail.** `write_file("notes/NOTES.md", …)` fails if the folder `notes/` does not exist yet.
+- **A path can leave the project.** Every tool reaches files only through the env, so the env is the one place that can check a path. `NaiveEnv` does not: it just joins `root + "/" + path` and opens it. If the model asks `read_file("../.ssh/id_rsa")` (by mistake, or because a file told it to), `..` walks up out of the project, and the tool reads the user's secret SSH key, which then goes into the history and to the model provider. `write_file("../.bashrc", …)` could even change files outside the project. A *symlink* (a file that points to another place) can do the same.
+- **The whole agent freezes.** Every tool waits on the env, so a slow env call is a slow agent. `NaiveEnv` uses a plain `open()` and a plain `WAIT`. The agent is `async`: one thread, and Python's **[event loop](glossary.md#event-loop)** switches between waiting jobs (the [agent loop](05-agent-loop.md), the task that watches for Stop in [06](06-events-abort.md), sending events to the UI). A job gives the turn away only when it `await`s. But `open()` and a plain `WAIT` hold the thread until they finish. Our `pytest` takes a minute, so for that minute no events reach the UI, and pressing Stop does nothing: the user sees a frozen agent they cannot stop.
+- **Killing the shell is not enough.** Stopping a command is the env's job too, since `bash` starts it through the env. On timeout `NaiveEnv` does `KILL p`, which kills only the shell. If `pytest` started a test server in the background, the server keeps running after the agent says it stopped (and may block the next test run). And we return `""`, so the model never sees which tests ran before the timeout and cannot tell the user what failed.
+- **A missing folder makes write fail.** Writing files is the env's job, and `NaiveEnv` writes only to folders that already exist. So when the model wants to save its notes with `write_file("notes/NOTES.md", …)` and `notes/` does not exist yet, the write fails, and the model must notice, make the folder, and try again: a wasted turn.
 
 ## Real design
 
