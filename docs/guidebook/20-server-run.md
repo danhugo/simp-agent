@@ -258,43 +258,5 @@ We followed one prompt through a running server. How does the server process sta
 
 Real code: [apps/server/src/simp_server/__main__.py](../../apps/server/src/simp_server/__main__.py), function `main`.
 
-## Test
-
-`apps/server/tests/test_protocol.py` tests the protocol, the state machine and the fake server. Here is the state machine test, `test_hello_and_state_machine`:
-
-```python
-def test_hello_and_state_machine():
-    assert isinstance(p.check_hello(p.Hello(protocol_version=1)), p.Hello)
-    assert isinstance(p.check_hello(p.Hello(protocol_version=2)), p.HelloError)
-    p.check_transition("waiting_approval", "aborting")
-    with pytest.raises(ValueError):
-        p.check_transition("idle", "waiting_approval")
-```
-
-It checks the handshake and one legal and one illegal move.
-
-Other tests: `test_round_trip_every_event_and_command` dumps every event and command to JSON and parses it back. `test_no_ts_drift` checks that `protocol.gen.ts` equals `generate()` (skipped without `npx`).
-
-None of these tests call a model, so they need no API key. Run them:
-
-```
-uv run pytest apps/server/tests/test_protocol.py -q
-```
-
-## Why this way
-
-> **One typed protocol, one owner per conversation.** All wire shapes live in one Python file, and TypeScript is generated from it, so the two sides cannot drift without a failing check. Each conversation has one `Run` that owns its `AgentSession`, runs it in a background task, and changes state only through `set_state()` and the `TRANSITIONS` table. The cost: one extra code-gen step that needs Node, and the whole event log of an open session is kept in memory. That shortcut is marked with a [`ponytail:` comment](glossary.md#ponytail-comment) in `Run.__init__`; [27](27-limits-choices-extend.md) lists all of them.
-
-## Exercises
-
-1. Add `"paused"` to `RunStateName` and `TRANSITIONS` (idle to paused, paused to idle). Which test in `test_protocol.py` must you extend? Run it.
-2. In `test_hello_and_state_machine`, add a check that `error -> waiting_approval` raises `ValueError`. Does it pass without changing the table?
-
-## Recap
-
-`protocol.py` holds every wire message as a Pydantic model that rejects unknown fields and is picked by its `type` field. Each conversation has one `Run`, made by `SessionManager.get()`. The `Run` is its session's store, approval callback and event subscriber; `start()` runs the work in a background task, and `_run()` never leaves a run stuck busy. The run state is one of five names, and `set_state()` is the only way to change it: each move is checked against `TRANSITIONS` and logged as a `RunState` event. After the first answer, the title call names the session. From the same models, `gen_protocol.py` writes `apps/web/src/protocol.gen.ts`, and `test_no_ts_drift` fails if the two drift apart. `simp-server run` starts the real server.
-
-So far the `Run` makes durable events, but nobody receives them. [21](21-transport.md) sends them to the browser and takes commands back.
-
 **Builds on:** [19 The CLI](19-cli.md), [13 Sessions](13-session.md), [06 Events and abort](06-events-abort.md) · **Next:** [21 Transport](21-transport.md)
 

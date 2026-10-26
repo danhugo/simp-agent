@@ -80,10 +80,10 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-19
 - Big picture review fixes: Part 3 project file is its own prompt section (diagram + SVG), block 3 runs before every model call; FakeLLM line in Part 5 SVG; "Next" links go to the next Part page.
-- Added [Part 3 big picture](part-3-coding.md) (diagram img/part-3-coding.svg, block table, objects, worked example). Linked from README and "Where we are" in 09-12. (checked at `ca8d944`)
-- Added [Part 4 big picture](part-4-session.md) (diagram img/part-4-session.svg, block table, objects, worked example). Linked from README and "Where we are" in 13-18. (checked at `2fc2776`)
-- Added [Part 1 big picture](part-1-ai.md) (diagram img/part-1-ai.svg, block table, objects, worked example). Linked from README and "Where we are" in 01-04. Glossary: added Model, Tool, AssistantMessage, Stream event.
-- Added [Part 2 big picture](part-2-agent.md) (diagram img/part-2-agent.svg, block table, objects, worked example). Linked from README and "Where we are" in 05-08. Glossary: added LoopConfig, Agent (class).
+- Added [Part 3 big picture](09-0-part-3-coding.md) (diagram img/part-3-coding.svg, block table, objects, worked example). Linked from README and "Where we are" in 09-12. (checked at `ca8d944`)
+- Added [Part 4 big picture](13-0-part-4-session.md) (diagram img/part-4-session.svg, block table, objects, worked example). Linked from README and "Where we are" in 13-18. (checked at `2fc2776`)
+- Added [Part 1 big picture](01-0-part-1-ai.md) (diagram img/part-1-ai.svg, block table, objects, worked example). Linked from README and "Where we are" in 01-04. Glossary: added Model, Tool, AssistantMessage, Stream event.
+- Added [Part 2 big picture](05-0-part-2-agent.md) (diagram img/part-2-agent.svg, block table, objects, worked example). Linked from README and "Where we are" in 05-08. Glossary: added LoopConfig, Agent (class).
 - Part 1 big picture: picture now splits Translate and Send, numbers match the table (Label = 6), Agent-decides box is grey and points to Part 2; paths fixed to `ai/providers/*.py`; Clean row notes it skips compaction/custom entries. README explains big-picture pages.
 
 ## 2026-10-15
@@ -144,8 +144,8 @@ Changes to this book, newest first. Each entry names the project commit the text
 - v3: wrote [14 Plugins](14-plugins.md) (checked at `2fc2776`; `test_sockets.py::test_plugin_context_chain_and_error_isolated`): plugin as any object with optional hook methods, the hook list, PluginAPI, prompt sections, plugin events.
 - v3 ch 04 Providers written (registry, lazy import, transform_messages and thinking replay, three providers, is_retryable / is_context_overflow); glossary: Agent loop, Provider registry, Context overflow.
 - v3 ch 03 The stream parser written (parse in openai_completions.py: text, tool-call assembly, stop reasons, usage); glossary: Delta, Usage.
-- v3: wrote [02 A fake provider](02-fake-provider.md) (checked at `2fc2776`; ran `test_no_tool_call_one_turn` and `test_tool_call_then_second_turn`, 2 passed, and the standalone example): stream function contract, `stream_fn` injection, naive fake, FakeProvider script/records/callable replies/start+done|error, use in tests. Glossary: provider, stream function, scripted reply.
-- v3: wrote [01 Messages](01-messages.md) (checked at `2fc2776`; ran `test_from_dict_old_and_new` and `test_entry_roundtrip_and_old_format`, 2 passed): message and block types, CompactionEntry/CustomEntry, Tool/Context/Model, to_dict/from_dict. Test file corrected from skeleton (`test_core.py` has no round-trip test). Glossary: message, context, compaction entry, custom entry.
+- v3: wrote [02 A fake provider](04-label-test.md) (checked at `2fc2776`; ran `test_no_tool_call_one_turn` and `test_tool_call_then_second_turn`, 2 passed, and the standalone example): stream function contract, `stream_fn` injection, naive fake, FakeProvider script/records/callable replies/start+done|error, use in tests. Glossary: provider, stream function, scripted reply.
+- v3: wrote [01 Messages](01-pick-clean.md) (checked at `2fc2776`; ran `test_from_dict_old_and_new` and `test_entry_roundtrip_and_old_format`, 2 passed): message and block types, CompactionEntry/CustomEntry, Tool/Context/Model, to_dict/from_dict. Test file corrected from skeleton (`test_core.py` has no round-trip test). Glossary: message, context, compaction entry, custom entry.
 - v3: wrote [00 Overview](00-overview.md) (checked at `2fc2776`; `test_layers.py` run, 1 passed): what simp-agent is, layer map, layer test, apps, build path, capability table, fizzbuzz running example. Glossary: coding agent, layer, tool call.
 - v3: rewritten as a build book. Old chapters 00–38 removed; new README outline and 28 chapter skeletons; glossary reset. Pinned at `2fc2776`.
 - Re-read fixes B: footers ("Built on by") for 12, 21, 24 (24 now has the standard footer); removed the internal ROADMAP note from README; split long paragraphs in 11, 22, 23, 25, 26 into bullets (same meaning).
@@ -234,3 +234,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - 2026-10-26: ch09 naive breaks — each break now says what NaiveEnv does, why it is the env's job, and the harm in the README/NOTES.md/pytest story; new lead sentence "whatever the env gets wrong, every tool gets wrong".
 - 2026-10-26: ch09-12 — removed Test / Why this way / Exercises / Recap; ch09 Step 6 names the 4-line conformance class; ch12 new "Testing without a model" (FakeProvider test, small-on-purpose); ch24 link to 09 Step 6.
 - 2026-10-26: ch13-18 — removed Test / Why this way / Exercises / Recap; cost facts moved into main text (14 hook-name typo, 15 unknown error text, 16 summary call cost, 17 unknown wording + new session, 18 redact limit).
+- ch19–27 and README template: removed the end sections Test, Why this way, Exercises, Recap (26/27 topic content kept). Moved missing reasons into the main text: 19 pure functions + pty test; 22 another store for many machines; 23 kill switch is a file; 24 Docker cost; 25 fetch cost; 26 fake only the model, smallest deploy.

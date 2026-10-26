@@ -238,43 +238,6 @@ From the command line, it is `simp-server backup --to DIR --keep N`. To restore,
 
 At 03:00 every day it makes a backup and keeps the newest 14. `__REPO__` and `__HOME__` are placeholders. The repo `README.md` shows a small loop that replaces them with `sed`, copies both files to `~/Library/LaunchAgents/`, and runs `launchctl load` on each.
 
-## Test
-
-**The e2e suite.** Run `make e2e`. Here is one real test from `apps/web/e2e/app.spec.ts`:
-
-```ts
-test("tool call: Allow shows the result, Deny is reported", async ({ page }) => {
-  await login(page);
-  await say(page, "tool please");
-  await page.click(".approval-card button:text('Allow')");
-  await expect(last(page)).toContainText("Tool said: hi-from-tool");
-  await expect(page.locator(".tool.done")).toHaveCount(1);
-  await say(page, "tool again");
-  await page.click(".approval-card button:text('Deny')");
-  await expect(badge(page)).toHaveText("idle");
-  await expect(page.locator(".tool").last()).toContainText("Decision: deny");
-});
-```
-
-Follow it through the whole system. "tool please" starts with "tool", so FakeLLM asks for `bash` with `echo hi-from-tool`. The server pauses for approval and the browser shows a card. The test clicks Allow, the real tool runs, the result goes back to FakeLLM, and FakeLLM answers "Tool said: hi-from-tool". One test touches the web client, transport, approval, the tool runner and the session. Then it checks the Deny path. Other tests in the same files cover Stop, steering, files, budget, sign up and sign in, and token rotate and revoke.
-
-**The ops tests.** `apps/server/tests/test_ops.py` has three. `test_json_log_line` logs with `extra={"run_id": "r1", "session": "s1"}` and checks that the JSON line has both fields. `test_backup_and_restore` is the first try turned into a test: it opens a WAL database, inserts `42`, and keeps the connection open ("backup must work while the server holds the db"); it also writes `.env`. It checks that `.env` is not in the tar, that `settings.toml` and `workspaces/s1/a.txt` are, and that the restored database still returns `(42,)`. `test_backup_keeps_newest` makes 5 old backups and one `other.txt`, runs `backup(..., keep=3)`, and checks that only the 3 newest `simp-*` files and `other.txt` are left.
-
-Run them with `uv run pytest apps/server/tests/test_ops.py`.
-
-> **Why this way**
->
-> We fake only the model, not the system. FakeLLM plugs into the same `stream_fn` slot as a real provider, so the e2e tests run the real server, store and tools. They are fast, free and the same every time, and they still catch bugs between the real parts.
->
-> For deploy we chose the smallest thing that works on one machine: SQLite's own backup, a tar file, an allow list, and launchd. No container platform, no cloud. [27](27-limits-choices-extend.md) talks about where this stops.
-
-## Exercises
-
-1. Run `ops.backup` on a folder with a `.env` file and a `settings.toml`. Print `tarfile.open(f).getnames()`. Which file is missing, and why?
-2. Add a rule to `fakellm.py`: a message that starts with "upper" gets the text back in capital letters. Where in the list of rules must it go so that tool results still work?
-
-## Recap
-
-FakeLLM is a deterministic `stream_fn`, and `simp-server run --fake-llm` runs the real server with it. `make e2e` starts a fresh server with `serve.sh` and the web client, then Playwright clicks through the same flows Ana uses. The reload test proves that a reload in the middle of an answer shows exactly `w0 … w39` and brings back a pending approval. For running on one Mac, `ops.setup_logging` writes one JSON object per log line, `ops.backup` makes a safe database copy and an allow-listed tar, and two launchd files keep the server alive and back it up every night at 03:00. The whole system now works and is tested; [27](27-limits-choices-extend.md) looks back at the choices and at how to grow it.
+We fake only the model, not the system: FakeLLM plugs into the same `stream_fn` slot as a real provider, so the e2e tests run the real server, store and tools. For deploy we chose the smallest thing that works on one machine (SQLite backup, a tar file, an allow list, launchd); [27](27-limits-choices-extend.md) says where this stops.
 
 **Builds on:** [25 Web client](25-web-client.md) · **Next:** [27 Choices, limits and extending](27-limits-choices-extend.md)

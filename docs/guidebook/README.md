@@ -60,9 +60,7 @@ Every chapter has these parts, in this order:
 4. **Problem** — what is missing without this part.
 5. **Naive version** — 15–30 runnable lines; show where it breaks.
 6. **Real design** — short excerpts with file path; why each part exists.
-7. **Test** — use FakeProvider where possible.
-8. **Why this way** — a short box with the main design choice.
-9. **Recap** + **Builds on / Next** links.
+7. **Builds on / Next** links.
 
 Format for parts 2 and 3 (from [13](13-session.md)):
 

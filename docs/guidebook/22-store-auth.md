@@ -291,60 +291,6 @@ seq 9  notice             warning "interrupted: ..."      <- added by recover
 
 Why `run_state` is set directly: the normal path `set_state` checks the state table ([20 · Run state machine](20-server-run.md#run-state-machine)), and that table has no `waiting_approval -> error`. A crash is the one case where it is right. When Ana opens her tab, she sees a settled session with a red error, and she can press Continue.
 
-## Test
-
-`apps/server/tests/test_store.py::test_revoke_rotate_delete`:
-
-```python
-async def test_revoke_rotate_delete(tmp_path):
-    s = await opened(tmp_path)
-    try:
-        old = await s.add_user("a")
-        new = await s.rotate_token("a")
-        assert new and new != old
-        assert await s.user_by_token(old) is None and (await s.user_by_token(new))["name"] == "a"
-        assert await s.rotate_token("nobody") is None
-        assert await s.revoke("a") and await s.user_by_token(new) is None
-        assert not await s.revoke("a")
-        assert await s.count_users() == 0  # revoked: still listed (rows kept) but not counted as a user who can log in
-        assert [u["name"] for u in await s.list_users()] == ["a"]
-
-        await s.add_user("b")
-        uid = next(u["id"] for u in await s.list_users() if u["name"] == "b")
-        row = await s.add_session(uid, "p")
-        await s.add_entry(uid, row["id"], 1, "notice", {"x": 1})
-        await s.add_usage(uid, row["id"], "m", 1, 1, cost=0.1)
-        assert not await s.delete_session("someone-else", row["id"])
-        assert await s.delete_session(uid, row["id"])
-        assert await s.get_session(uid, row["id"]) is None and await s.entries(uid, row["id"]) == []
-        assert await s.spent(uid, -1) == 0.1  # money already spent stays counted for the day
-    finally:
-        await s.close()
-```
-
-It walks one user through the token life: after `rotate_token` the old token fails and the new one works; after `revoke` the token fails, a second `revoke` returns `False`, and the user is still listed but not counted. Then it checks the `user_id` scope for writes: `delete_session("someone-else", ...)` fails. Deleting a session removes its entries, but the money stays: `spent(uid, -1)` means "spent since time -1", so all of it, and it is still 0.1.
-
-Run them:
-
-```sh
-uv run pytest apps/server/tests/test_store.py apps/server/tests/test_accounts.py -q
-```
-
-## Why this way
-
-> **One SQLite file, hashes only, every session row scoped by user.** SQLite fits a one-machine server: no extra process, crash safe with WAL, backup is a file copy. Storing only hashes means a leaked database does not leak logins. Putting `user_id` in every session query makes "see only your own data" the default, not a check you might forget. Messages and events share one `seq` in one table, so replay ([21](21-transport.md)) and resume ([13](13-session.md)) read the same rows.
->
-> The cost: one writer at a time, and the whole event log in memory for each open session. For many machines, you would put another class in the `store` slot.
-
-## Exercises
-
-1. Add a line to `test_revoke_rotate_delete`: after `revoke("a")`, check that `rotate_token("a")` gives a working token again. Run the test.
-2. Use `sqlite3` on a test `simp.db`: run `SELECT token_sha256 FROM users;`. Can you use the value as a Bearer token? Why not?
-
-## Recap
-
-The server now keeps everything in one SQLite file, `<data_dir>/simp.db`, so a restart loses nothing. Tokens and passwords are stored only as hashes: SHA-256 for random tokens, salted scrypt for passwords, so a copied file gives no logins. Every session query carries `user_id`, so Bob cannot see Ana's work. Messages and events go into one `entries` table with one `seq`; on load, `Run.__init__` splits them back into history and log, and `Run.recover` closes a run that died while busy.
-
-The server is now safe to restart and to share. But nothing stops one user from spending all the money on the model, or from leaving many sessions open. [23 Limits](23-limits.md) adds those limits.
+For many machines, you would put another class in the `store` slot.
 
 **Builds on:** [21 Transport](21-transport.md) · **Next:** [23 Limits](23-limits.md)
