@@ -32,7 +32,7 @@ Current date: 2026-10-13
 Current working directory: /work/app
 ```
 
-The **role** sentence says the assistant reads, runs, edits and writes, so the model acts instead of only chatting. The **tool list** is built from the `name` and `description` of the real tools, the same list `make_tools` made in [10](10-coding-tools.md#how-the-list-is-built-make_tools), so it can never name a tool that does not exist. The schemas already tell the model what arguments a tool takes; this line tells it *when* to use the tool.
+The **role** sentence says the assistant reads, runs, edits and writes, so the model acts instead of only chatting. The **tool list** repeats what the model already gets: the tools' names and descriptions are sent with every call in the `tools` parameter ([02](02-translate-send.md#the-tool-list)), and this line copies the same descriptions. simp-agent keeps it, as pi does, so the model sees its tools next to its role and rules. It is optional and costs a few tokens.
 
 Each of the three **rules** has a reason. "Be concise" keeps answers short, which saves [context](glossary.md#context). "Use read before edit" matters because `edit` needs an exact text match ([10](10-coding-tools.md#changing-a-file-write-and-edit)), and the model's memory of a file may be old. "Paths are relative to the working directory" matches how the tools join paths to `ctx.cwd`. Last come the **date**, which helps with "latest version" questions, and the **folder**, so `README.md` means `/work/app/README.md`.
 
@@ -54,7 +54,7 @@ Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/
 
 ## Why is the prompt a function, not a fixed string?
 
-Tools can change during a session: a plugin may add one ([14](14-plugins.md)). A string built once at start would never list the new tool. So the loop from [05](05-agent-loop.md) also accepts the prompt as a function, and `_llm_turn` calls it before every model call. A tool added now is listed in the next turn. The loop does not care how the text is made; it only needs "a string, or something that gives a string". The provider then puts the final string where its API wants it ([02](02-translate-send.md)), for example `system=` for Anthropic.
+Some parts of the prompt change while a session runs: the date and the folder, and in [13](13-session.md) the prompt sections that the session and plugins add. A string built once at the start would go stale. So instead of a string, the loop from [05](05-agent-loop.md) also takes a **function** that builds the prompt, and `_llm_turn` calls it before every model call. Each call then sends a fresh prompt.
 
 Real code: [agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `_llm_turn`
 
