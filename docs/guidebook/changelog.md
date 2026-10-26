@@ -2,6 +2,10 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-10-26
+
+- ch08: approval fields as three short sentences; approval table now one case per row (allow / always / other answer → denied / Stop → aborted), code letters match; "Two small notes" cut; after-hook gets a why (hide secrets, cut huge output, link to RedactSecrets in 18); mermaid "path of one call" removed (5-step list kept); empty-string deny said only in Why and Exercise 1; `_tools`, `_maybe_await` and `Agent` hooks cut to one sentence each.
+
 ## 2026-10-23
 
 - 07: cut "The path of one steer" (the timeline picture shows it); "Where `get_steering` gets its messages" is now one short paragraph; new two-loop diagram (inner and outer loop) next to `agent_loop`, with the three steering reads labelled (1), (2), (3).
