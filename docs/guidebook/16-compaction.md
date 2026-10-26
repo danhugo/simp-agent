@@ -145,7 +145,7 @@ FUNCTION compact(messages, model, stream_fn, settings, redact):
     RETURN CompactionEntry(summary + format_files(read, mod), cut, read, mod)
 ```
 
-It does not add the entry to `messages`; the session does that. The `redact` argument is the session's plugin `context` chain ([14](14-plugins.md#where-plugins-plug-into-one-run)): a plugin that hides a secret from the model must also hide it from the summary model. `file_lists` runs **before** `redact` on purpose, so the file paths come from the real tool calls, not from text a plugin changed.
+It does not add the entry to `messages`; the session does that. The `redact` argument is the session's plugin `context` chain ([14](14-plugins.md#where-in-a-run-does-the-session-call-plugins)): a plugin that hides a secret from the model must also hide it from the summary model. `file_lists` runs **before** `redact` on purpose, so the file paths come from the real tool calls, not from text a plugin changed.
 
 ### Where: find_cut
 

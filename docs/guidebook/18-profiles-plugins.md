@@ -125,7 +125,7 @@ self.session = AgentSession(
     plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}})
 ```
 
-`build_model` gives `Model(id="qwen", api="openai-completions", provider="openai", base_url="http://localhost:8000/v1", api_key_env="LOCAL_KEY", context_window=32000, compat={"include_usage": True})`; `max_tokens` keeps `Model`'s default. `api_key_for` returns a function that gives `mgr.keys["LOCAL_KEY"]`. The plugin list is `["redact_secrets", "plan_mode"]`: both built-ins come first, and `plan_mode` from the profile is not added twice. `plugin_config` hands all the keys the server holds to `RedactSecrets.setup` as known secret values ([14](14-plugins.md#start-setup-and-the-pluginapi)).
+`build_model` gives `Model(id="qwen", api="openai-completions", provider="openai", base_url="http://localhost:8000/v1", api_key_env="LOCAL_KEY", context_window=32000, compat={"include_usage": True})`; `max_tokens` keeps `Model`'s default. `api_key_for` returns a function that gives `mgr.keys["LOCAL_KEY"]`. The plugin list is `["redact_secrets", "plan_mode"]`: both built-ins come first, and `plan_mode` from the profile is not added twice. `plugin_config` hands all the keys the server holds to `RedactSecrets.setup` as known secret values ([14](14-plugins.md#how-does-a-plugin-change-the-session)).
 
 Now the user types "write fizzbuzz.py". The loop calls the local server at `base_url` with the `LOCAL_KEY` key, asks for token usage, and every tool result goes through `RedactSecrets`. If the user turned plan mode on, a `write` call is blocked. Each of these steps is explained below.
 
@@ -230,9 +230,9 @@ CLASS PlanMode (name "plan_mode"):
         RETURN nothing
 ```
 
-There are two layers. The prompt section ([13](13-session.md#prompt-sections)) *asks* the model to plan only; order 1000 puts it after every other section. This saves wasted turns, but a model can ignore a prompt. So the `tool_call` hook *enforces* it: a `write`, `edit` or `bash` call is blocked, and the model gets the usual denial result from [14](14-plugins.md#_hook-one-place-for-every-call), so it knows why.
+There are two layers. The prompt section ([13](13-session.md#prompt-sections)) *asks* the model to plan only; order 1000 puts it after every other section. This saves wasted turns, but a model can ignore a prompt. So the `tool_call` hook *enforces* it: a `write`, `edit` or `bash` call is blocked, and the model gets the usual denial result from [14](14-plugins.md#what-if-a-plugin-lacks-a-method-or-crashes), so it knows why.
 
-The on/off state is saved as a `CustomEntry` through `api.append_entry` ([14](14-plugins.md#start-setup-and-the-pluginapi)): it is in history, but never sent to the model. When a session is loaded again, `setup` finds the **last** such entry and restores the state, so plan mode survives a restart with no extra file. `config["enabled"]` is only the start value for a brand-new session.
+The on/off state is saved as a `CustomEntry` through `api.append_entry` ([14](14-plugins.md#how-does-a-plugin-change-the-session)): it is in history, but never sent to the model. When a session is loaded again, `setup` finds the **last** such entry and restores the state, so plan mode survives a restart with no extra file. `config["enabled"]` is only the start value for a brand-new session.
 
 The app is what calls `set_enabled`. In the server, the web page sends a `SetPlanMode` command, and the server finds the `PlanMode` in `session.plugins` and calls it ([21](21-transport.md)).
 
