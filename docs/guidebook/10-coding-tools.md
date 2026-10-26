@@ -143,19 +143,15 @@ Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/too
 
 ### Running a command: `bash`
 
-Steps 3 and 5 run `pytest`. The `bash` tool is built by a **factory**: `make_bash(max_timeout_s)` returns the `bash` function, which remembers `max_timeout_s`. The cap is set once by the [host](glossary.md#host) (the program that runs the agent; at this commit only the CLI sets one, from the `bash_max_timeout_s` setting, [19](19-cli.md)). The model only sends `args`, so it cannot change a value that lives inside the function.
+In the `shape.py` job, steps 3 and 5 run `pytest`. The model calls `bash` with `{"command": "pytest"}` and maybe a `timeout`. `bash` itself is thin: the hard work (streaming the output, Stop, the timeout, killing the process group) is `ctx.env.exec` from [09](09-exec-env.md). `bash` adds three things:
 
-The model calls `bash` with `{"command": "pytest"}` and maybe a `timeout`. `bash`:
+1. **A time limit the model cannot raise.** The host (the program that runs the agent; today only the CLI, [19](19-cli.md)) may set a cap, for example 600 seconds. Then no timeout becomes 600, `timeout=30` stays 30, and `timeout=1000` becomes 600. The cap is stored inside the `bash` function when the host builds it (with `make_bash`), and the model only sends args, so it cannot get around it. With no cap and no timeout there is no limit, and the user can still press Stop ([06](06-events-abort.md)).
+2. **A line that says how the command ended**, so the model can react: `[exit code: 1]` (it finished; here the tests failed), `[Command interrupted by the user after 1m05s]` (the user pressed Stop), or `[Command timed out after 600 seconds]`.
+3. **It keeps the end of long output** with `truncate_tail` ([truncation above](#when-readmemd-is-too-big-truncation)), because `pytest` prints its summary and the last error at the end.
 
-1. Checks the `timeout`, if given: it must be a finite number above 0, else `timeout must be a positive number of seconds, got …`.
-2. Applies the host cap, if there is one: with a cap of 600 seconds, no timeout becomes 600, `timeout=30` stays 30, and `timeout=1000` becomes 600. With no cap and no `timeout`, there is no time limit: a long build is fine, and the user can press Stop ([06](06-events-abort.md)).
-3. Runs the command with `ctx.env.exec`, passing `ctx.cwd`, the timeout, `ctx.cancel` and `ctx.on_update`. The hard work (streaming, cancel, timeout, killing the process group) is in `exec` from [09](09-exec-env.md#step-4-exec-runs-pytest-without-freezing-and-keeps-the-output); `on_update` lets the user see output live.
-4. Adds a line that says how the command ended. A code means it finished: `[exit code: 1]` tells the model the test failed. No code means it was killed: if `ctx.cancel` is set, the user pressed Stop (`[Command interrupted by the user after 1m05s]`, timed with a [monotonic clock](glossary.md#monotonic-clock)); else the timeout did (`[Command timed out after 600 seconds]`).
-5. Passes the text through `tail`, which uses `truncate_tail` ([truncation](#when-readmemd-is-too-big-truncation)) and puts `[Output truncated: showing last K of N lines]` at the start.
+So in every case the model gets the output so far, plus how the command ended.
 
-In every case the model gets the output so far, plus how it ended.
-
-Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `make_bash`; [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `tail`
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `make_bash`
 
 ### How the list is built: `make_tools`
 
