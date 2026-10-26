@@ -39,7 +39,7 @@ When you ask a server for `stream=True`, you get a list of **chunks** over time.
 
 Only Chat Completions has `choices`. OpenAI Responses and Anthropic send named events instead ([The other two vendors](#the-other-two-vendors)).
 
-Here is a real answer: the model says "Hi" and then calls `read` with `{"path": "a"}`. Each line is one chunk. We show the chunks because their exact shape is the problem this chapter solves. To keep the lines short, they show only `choices[0]`:
+Here is a real answer: the model says "Hi" and then calls `read` with `{"path": "a"}`. Each line is one chunk. To keep the lines short, they show only `choices[0]`:
 
 ```text
 chunk 1: delta = {role: "assistant", content: "Hi"}
@@ -88,7 +88,14 @@ For the six chunks above, `parse` must yield:
 {type: done, message: msg}
 ```
 
-and at the end `msg` holds `content = [TextContent("Hi"), ToolCall("call_1", "read", {"path": "a"})]`, `stop_reason = "tool_use"` and `usage = {input: 7, output: 3, reasoning: 0}`.
+and `msg` at the end is:
+
+```text
+AssistantMessage(
+    content     = [TextContent("Hi"), ToolCall("call_1", "read", {"path": "a"})],
+    stop_reason = "tool_use",
+    usage       = {input: 7, output: 3, reasoning: 0})
+```
 
 The rest of this chapter builds the code that does this, one problem at a time.
 
@@ -98,10 +105,16 @@ We start with OpenAI Chat Completions because most servers copy it (vLLM, llama.
 
 The frame: make an empty message, hand it out at once, then read chunks. It also takes `compat`, a dict of small switches per server; it comes from the `Model` (all keys: [ref-objects](ref-objects.md#request-objects-tool-context-model)). `parse` uses it only for the stop reason. For each chunk the real code reads usage, then thinking, then text, then tool calls. We teach them in a different order, easiest first.
 
-1. Make an empty `AssistantMessage`, `msg`. Make an empty list `calls` for the tool calls still being built (each one holds `index`, `id`, `name` and `args`), and set `finish` (the last `finish_reason` seen) to none.
-2. Send `start` with `partial = msg`.
-3. For each chunk, read usage, thinking, text and tool-call pieces (steps 1–4 and [Usage](#usage) below).
-4. At the end, parse the tool arguments and set the stop reason (steps 5 and 6).
+```text
+FUNCTION parse(chunks, compat):
+    msg = new empty AssistantMessage
+    calls = empty list          // tool calls still being built: {index, id, name, args}
+    finish = none               // last finish_reason seen
+    SEND event {start, partial = msg}
+    FOR EACH chunk (wait for each one):
+        ... read usage, thinking, text, tool-call pieces ...
+    ... at the end: parse tool arguments, set the stop reason ...
+```
 
 ### What one chunk holds
 
@@ -117,7 +130,17 @@ The message we build, `msg`, holds a list of **[content blocks](glossary.md#assi
 
 **Problem.** Some models send reasoning text before the answer, and each server names the field differently: `reasoning_content`, `reasoning` or `reasoning_text`.
 
-**What we do.** Take the first of the three that has text; call it `r`. If the last block is already a `ThinkingContent`, add `r` to it; else start a new one. A new thinking block sends `thinking_start` first, so the UI can open its "thinking…" box. Then each piece is sent as `thinking_delta`.
+**What we do.** Take the first of the three that has text; call it `r`. If the last block is already a `ThinkingContent`, add `r` to it; else start a new one. A new thinking block sends `thinking_start` first, so the UI can open its "thinking…" box:
+
+```text
+r = the first non-empty of d.reasoning_content, d.reasoning, d.reasoning_text
+IF r:
+    IF the last block of msg is not a ThinkingContent:
+        ADD a new empty ThinkingContent to msg
+        SEND event {thinking_start}
+    ADD r to the last block
+    SEND event {thinking_delta, r}
+```
 
 Chunks `reasoning_content="Let me"`, `reasoning_content=" look"` give `thinking_start`, `thinking_delta "Let me"`, `thinking_delta " look"` and `content = [ThinkingContent("Let me look")]`. (`ThinkingContent` fields: [ref-objects](ref-objects.md#content-blocks).)
 
@@ -133,6 +156,17 @@ Chunks `reasoning_content="Let me"`, `reasoning_content=" look"` give `thinking_
 | `content = "Hel"` | `[ThinkingContent(...), TextContent("Hel")]` | `thinking_end`, `text_delta "Hel"` |
 | `content = "lo"` | `[ThinkingContent(...), TextContent("Hello")]` | `text_delta "lo"` (same block) |
 
+The code, as a recap:
+
+```text
+IF d.content:                                          // d has a text piece
+    IF the last block of msg is not a TextContent:      // first text piece
+        IF msg has blocks: SEND event {thinking_end}    // it was thinking; thinking is over
+        ADD a new empty TextContent to msg
+    ADD d.content to the last block
+    SEND event {text_delta, d.content}
+```
+
 Chat Completions has no "thinking stopped" signal. We only know thinking is over when text starts, so `thinking_end` comes from the text branch. If the model thinks and then only calls a tool, no `thinking_end` is sent, so a UI must not wait for it.
 
 With no thinking: `"Hel"`, `"lo"` → events `text_delta "Hel"`, `text_delta "lo"` → `content = [TextContent("Hello")]`.
@@ -141,13 +175,26 @@ With no thinking: `"Hel"`, `"lo"` → events `text_delta "Hel"`, `text_delta "lo
 
 **Problem.** The arguments are a JSON string cut anywhere. Only the first piece has `id` and `name`; later pieces have just `index` and a bit of `arguments`.
 
-**What we do.** `d.tool_calls` is a list; we call each piece in it `tc`. Keep one entry per [tool call](glossary.md#tool-call) in `calls` (the list made in the frame); `cur` is the entry this piece belongs to. A new call sends `toolcall_start`; each argument piece is *added up* (never parsed yet) and sent as `toolcall_delta`. The name is the first one seen. If the server gave no `id`, we make one: `"call_"` plus 12 hex characters.
+**What we do.** `d.tool_calls` is a list; we call each piece in it `tc`. Keep one entry per [tool call](glossary.md#tool-call) in `calls` (the list made in the frame); `cur` is the entry this piece belongs to. A new call sends `toolcall_start`; each argument piece is *added up* (never parsed yet) and sent as `toolcall_delta`.
 
-This is chunks 2–4 of the example: `toolcall_start "read"`, then two `toolcall_delta`s, and `cur.args` grows to `{"path": "a"}`. We make an `id` when there is none because the tool result must point back to it later (`ToolResultMessage.tool_call_id`, see [ref-objects](ref-objects.md#messages)).
+```text
+FOR EACH tool-call piece tc in d.tool_calls:
+    cur = the entry in calls for this piece
+    IF none:                                     // a new call
+        cur = {index, id (or make "call_" + 12 hex), name = "", args = ""}
+        ADD cur to calls
+        SEND event {toolcall_start, name}
+    keep the first name seen
+    IF tc has arguments:
+        ADD them to cur.args
+        SEND event {toolcall_delta, the arguments}
+```
+
+This is chunks 2–4 of the example: `toolcall_start "read"`, then two `toolcall_delta`s, and `cur.args` grows to `{"path": "a"}`. If the server gave no `id`, we make one, because the tool result must point back to it later (`ToolResultMessage.tool_call_id`, see [ref-objects](ref-objects.md#messages)).
 
 ### Step 4 — two tool calls at once
 
-**Problem.** Models often call two tools in one answer, and the pieces come mixed. The exact chunks show how:
+**Problem.** Models often call two tools in one answer, and the pieces come mixed:
 
 ```text
 chunk a: tool_calls: [{index: 0, id: "c1", function: {name: "read", arguments: "{\"path\":"}}]
@@ -170,7 +217,16 @@ So chunk c goes to call 0 and chunk d to call 1: `c1.args = {"path": "a"}`, `c2.
 
 **Problem.** We can only parse when the stream ends. And the model may write broken JSON; `json.loads` would raise, and a stream function [must never raise](01-pick-clean.md#out-the-shape-of-a-model-call).
 
-**What we do.** After the last chunk, parse each call once. Try to read `c.args` as a JSON object (empty text counts as `{}`). If that fails, or the result is not an object, use `{"_raw": c.args}` instead. Add `ToolCall(c.id, c.name, args)` to `msg` and send `toolcall_end`.
+**What we do.** After the last chunk, parse each call once:
+
+```text
+FOR EACH c in calls:                       // after the last chunk
+    TRY: args = JSON object from c.args (empty text -> {})
+    IF that fails, or it is not an object:
+        args = {"_raw": c.args}
+    ADD ToolCall(c.id, c.name, args) to msg
+    SEND event {toolcall_end}
+```
 
 Example: `c.args = '{"path": '` (cut off) → `ToolCall("c1", "read", {"_raw": '{"path": '})`.
 
@@ -180,13 +236,22 @@ We do **not** throw the call away. When the loop runs the tool, `{"_raw": ...}` 
 
 **Problem.** The server says why it stopped in `finish_reason`, in its own words. We need one of our five (`stop | tool_use | length | error | aborted`, from `AssistantMessage`). And sometimes the server sends nothing.
 
-**What we do.** In the loop, remember the last `finish_reason` seen (`finish = choice.finish_reason or finish`, where `choice` is `chunk.choices[0]`). At the end, map it with `_STOP`, a small dict in the code from the server's word to ours: `stop` and `end` give `stop`, `length` gives `length`, and `tool_calls` and `function_call` give `tool_use`. Then:
+**What we do.** In the loop, remember the last `finish_reason` seen (`finish = choice.finish_reason or finish`, where `choice` is `chunk.choices[0]`). At the end, map it with `_STOP`, a small dict in the code from the server's word to ours:
 
-1. If there was no `finish_reason`: when `compat.supports_finish_reason` is true (the default), the stop reason is `error` with "Stream ended without finish_reason"; else it is `tool_use` if there are calls, or `stop`.
-2. If the word is in `_STOP`, use `_STOP[finish]`.
-3. Otherwise the stop reason is `error`, with "Provider finish_reason: " plus the word.
-4. If the result is `stop` but there are calls, it becomes `tool_use`.
-5. Send `error` if the stop reason is `error`, else `done`, with `msg`.
+```text
+_STOP: stop, end -> stop · length -> length · tool_calls, function_call -> tool_use
+
+IF finish is none:
+    IF compat.supports_finish_reason (default yes):
+        stop_reason = error, error = "Stream ended without finish_reason"
+    ELSE:
+        stop_reason = tool_use IF there are calls ELSE stop
+ELSE IF finish is in _STOP:  stop_reason = _STOP[finish]
+ELSE:                        stop_reason = error, error = "Provider finish_reason: " + finish
+IF stop_reason is stop AND there are calls:      // vLLM/Ollama send "stop" with tool calls
+    stop_reason = tool_use
+SEND event {error IF stop_reason is error ELSE done, msg}
+```
 
 An unknown word such as `content_filter` gives `error`, because we do not guess what it means. No word at all also gives `error`: the connection was probably cut, and the answer may be half. Some servers never send a finish reason; for them `supports_finish_reason` is `False`, and we trust what we got, so `"Hi"` alone gives `stop`. Last, vLLM and Ollama send `stop` even with tool calls, and we turn it into `tool_use`. This keeps `stop_reason` true for UIs and saved history (the loop itself runs tools from `tool_calls()`, not from `stop_reason`).
 
@@ -198,12 +263,22 @@ The last event is `error` when the stop reason is `error`, else `done`. That is 
 
 **What we do.** This runs first for every chunk:
 
-1. If the chunk has no choices, it is the last, usage-only chunk: set `msg.usage` from `chunk.usage` (if any) and go to the next chunk.
-2. Else take the first choice. Use `chunk.usage`, or `choice.usage` if the chunk has none, and set `msg.usage` from it.
-3. Keep `choice.finish_reason` as `finish` if it is set.
-4. Take `d = choice.delta`; if there is none, go to the next chunk.
+```text
+usage = chunk.usage
+IF the chunk has no choices:
+    IF usage: msg.usage = _usage(usage)
+    go to next chunk                     // the last, usage-only chunk
+choice = the first choice
+IF no usage yet: usage = choice.usage
+IF usage: msg.usage = _usage(usage)
+finish = choice.finish_reason, or keep the old one
+d = choice.delta; IF d is none: go to next chunk
 
-`_usage(u)` turns the server's counts into ours: `input` from `prompt_tokens`, `output` from `completion_tokens`, and `reasoning` from `completion_tokens_details.reasoning_tokens` (each one 0 if missing).
+FUNCTION _usage(u):
+    RETURN {input = u.prompt_tokens or 0,
+            output = u.completion_tokens or 0,
+            reasoning = u.completion_tokens_details.reasoning_tokens or 0}
+```
 
 Chunk 6 of the example (`choices = []`, `prompt_tokens: 7, completion_tokens: 3`) → `msg.usage = {input: 7, output: 3, reasoning: 0}`. `reasoning` is for information only: it is already inside `output`, so do not add it twice. The server sends the usage chunk only when asked; `stream` (ch [02](02-translate-send.md)) asks with `stream_options={"include_usage": True}` unless `compat["include_usage"]` is `False`.
 
