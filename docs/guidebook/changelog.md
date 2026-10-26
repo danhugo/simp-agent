@@ -233,3 +233,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - 2026-10-23: ch07 — added the steer/follow-up timeline picture (img/07-steer-timeline.png, source .html) under the first diagram; diagram now shows turns 4 and 5 (write NOTES.md, model call 5, "Done.") like the picture.
 - 2026-10-26: ch09 naive breaks — each break now says what NaiveEnv does, why it is the env's job, and the harm in the README/NOTES.md/pytest story; new lead sentence "whatever the env gets wrong, every tool gets wrong".
 - 2026-10-26: ch09-12 — removed Test / Why this way / Exercises / Recap; ch09 Step 6 names the 4-line conformance class; ch12 new "Testing without a model" (FakeProvider test, small-on-purpose); ch24 link to 09 Step 6.
+- 2026-10-26: ch13-18 — removed Test / Why this way / Exercises / Recap; cost facts moved into main text (14 hook-name typo, 15 unknown error text, 16 summary call cost, 17 unknown wording + new session, 18 redact limit).

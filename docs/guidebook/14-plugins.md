@@ -49,7 +49,7 @@ It works for `NoBash`: the model asks for `bash`, gets the result `User denied: 
 
 ## Step by step: from naive to real
 
-**Look the method up first.** Use `getattr(p, "tool_call", None)` and skip the plugin if the method is missing. Now the key hider needs only the methods it wants.
+**Look the method up first.** Use `getattr(p, "tool_call", None)` and skip the plugin if the method is missing. Now the key hider needs only the methods it wants. The cost: a typo in a hook name, like `tool_calls`, is just a missing method, so it is never called and nothing warns you.
 
 **Allow plain and `async` methods.** A web plugin may need to `await`. We pass the result through `_maybe_await` from [08](08-hooks-approval.md), which awaits only when it must.
 
@@ -227,55 +227,5 @@ FUNCTION _emit(e):
 ```
 
 The order matters for the key hider. While `cat .env` runs, its output streams as `tool_execution_update` events ([06](06-events-abort.md)). `tool_update` changes the text **before** the subscribers see it, so the key never reaches the screen or a log. `tool_result` then hides it in the final result that is saved and sent to the model. `on_event` comes last, so a plugin that logs events sees the cleaned text too.
-
-## Test
-
-`apps/cli/tests/test_sockets.py` has one test per group of hooks. Here is the one for the `context` chain and isolation:
-
-```python
-class Rec:
-    def __init__(self, name, **hooks):
-        self.name, self.log = name, []
-        for k, v in hooks.items():
-            setattr(self, k, v)
-...
-async def test_plugin_context_chain_and_error_isolated():
-    seen, events = [], []
-
-    def boom(msgs):
-        raise RuntimeError("bad")
-
-    p1 = Rec("p1", context=lambda m: m + [UserMessage("A")])
-    p2 = Rec("p2", context=boom)
-    p3 = Rec("p3", context=lambda m: m + [UserMessage(m[-1].content + "B")])
-    s = session(DONE, seen=seen, plugins=[p1, p2, p3])
-    s.subscribe(events.append)
-    await s.prompt("hi")
-    assert [m.content for m in seen[0].messages] == ["hi", "A", "AB"]
-    assert [(e["plugin"], e["hook"]) for e in events if e["type"] == "plugin_error"] == [("p2", "context")]
-```
-
-`Rec` builds a plugin from keyword arguments, which shows that no base class is needed. `session(...)` is a helper in the same file that makes an `AgentSession` with a `FakeProvider` ([04](04-label-test.md)) that answers `DONE`, and `seen` keeps each request the model got. `p1` adds `"A"`. `p2` raises, so the chain keeps `p1`'s view and one `plugin_error` names `p2` and `context`. `p3` sees `"A"` and adds `"AB"`. So the model got `["hi", "A", "AB"]`, and the run went on.
-
-The next test, `test_plugin_tool_call_first_block_exception_and_result_merge`, checks the tool hooks. `p1` changes the arguments of tool `t` to `{"v": 2}`; `p2` blocks tool `u` with `"no"`; `p3` raises on tool `w`. The test checks that only `t` ran, with `{"v": 2}`, that `u` was blocked by `p2` (first block wins, `p3`'s later block is never asked), and that `w` was blocked with `ValueError` in the reason (fail closed). It also checks that `t`'s result went through both `tool_result` hooks in order: `"r-p1-p2"`.
-
-Run all plugin tests:
-
-```sh
-uv run pytest apps/cli/tests/test_sockets.py -k plugin -q
-```
-
-## Why this way
-
-> **Optional hooks, isolated errors, except where safety needs "no".** A plugin is any object with some of the hook methods. An error in most hooks becomes a `plugin_error` event, so one bad plugin cannot break a run. But `tool_call` fails closed, because it often guards something. Plugins get a small `PluginAPI`, not the whole session, so the core can change inside without breaking them. The cost: hook names are plain strings, so a typo like `tool_calls` is never called, and nothing tells you.
-
-## Exercises
-
-1. Write a plugin `class Upper: name = "upper"` with one hook `input(self, text)` that returns `{"text": text.upper()}`. Run a session with a `FakeProvider` and check that the first user message is in upper case. Hint: copy `session(...)` and `DONE` from `apps/cli/tests/test_sockets.py`.
-2. Write a plugin whose `tool_call` raises for the tool `bash`. Check that the tool result says `User denied: blocked by plugin ...` and the tool never ran. Then change the hook name to `tool_calls` (a typo). What happens now, and why? Hint: look at `getattr(p, hook, None)` in `_hook`.
-
-## Recap
-
-A plugin is any object, and the session calls a method on it only if the method exists. Every call goes through `_hook`, which handles plain and `async` methods and turns an error into a `plugin_error` event, so the run goes on. `tool_call` is the one exception: there an error blocks the tool (fail closed), and the first block wins. The hooks sit at fixed moments of a run: `setup` at start, `input` when the user types, `context` before each model call (a chain that changes only the view), `tool_call` and `tool_result` inside the tool hooks of [08](08-hooks-approval.md), and `tool_update` and `on_event` in `_emit`. Through its `PluginAPI` a plugin can add tools, prompt sections and saved entries. [18](18-profiles-plugins.md) uses all of this to build the real key hider (`RedactSecrets`) and plan mode (`PlanMode`).
 
 **Builds on:** [13 Sessions](13-session.md) · **Next:** [15 Retry](15-retry.md)

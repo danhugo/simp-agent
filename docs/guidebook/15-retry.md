@@ -146,56 +146,6 @@ Why a separate event? During backoff the agent is **not** running. There is no m
 
 A few edge cases follow from this loop. An abort during a model call gives `stop_reason="aborted"`, not `"error"`, so it ends the loop with no retry. `error_kind` wins over the text: `AssistantMessage(stop_reason="error", error="429", error_kind="budget")` is not retried, and the server's budget check (`apps/server/src/simp_server/budget.py`) relies on exactly this. `max_retries=0` turns retry off, because `attempt < 0` is never true. The counter is per run: `attempt` starts at 0 in each `_run`, so the next prompt gets 3 full tries again. Overflow and retry share one loop, so after the history is made smaller the next call can still fail with `429` and get retried. Events are sent only if something was retried (`if attempt:`), so a fatal error alone sends neither. If all 3 tries fail, `auto_retry_end` has `success=False` and the last message is the last error.
 
-Two limits are known. The regex is wide: any text with `connection`, `network` or a number from 500 to 599 matches, so "connection refused" is retried too. That is fine because a retry is cheap and there are only 3 of them. And the wait has no random part (no [jitter](glossary.md#jitter)): if many clients hit a rate limit at the same moment, they all retry at the same moment again, 2, 4 and 8 seconds later.
-
-## Test
-
-Real code: [test_session.py](../../packages/simp_agent/tests/test_session.py) — `test_retry_429_twice_then_ok`
-
-`err429()` is a small helper in the test file. It returns `AssistantMessage(stop_reason="error", error="Error code: 429 rate_limit_error")`.
-
-```text
-stream = FakeProvider(err429(), err429(), DONE)   // fails twice, then ok
-s = session(stream, retry_base_delay=0.001)
-COLLECT every "auto_retry_*" event
-AWAIT s.prompt("hi")
-CHECK model called 3 times AND last message is DONE
-CHECK events = start, start, end
-CHECK second delay is 0.002 AND end.success
-CHECK the 3rd call saw no error messages
-```
-
-`FakeProvider` ([04](04-label-test.md)) plays a script of replies, so we can test retry with no network. The tiny base delay keeps the test fast; the second delay `0.002` (base × 2) proves the wait doubles. The last check proves `transform_messages` hid the two failed replies. With the real base of 2 seconds, the same run looks like this:
-
-```text
-t=0s   call 1 → 429 error     → auto_retry_start(attempt 1, delay 2s)
-t=2s   call 2 → 429 error     → auto_retry_start(attempt 2, delay 4s)
-t=6s   call 3 → "ok"          → auto_retry_end(success=True)
-```
-
-The next test, `test_abort_during_backoff_stops`, sets `retry_base_delay=60` and calls `s.abort()` on `auto_retry_start`. The prompt returns at once, the model was called only once, and the last message is still the error.
-
-Run both:
-
-```sh
-uv run pytest packages/simp_agent/tests/test_session.py -k "retry_429 or abort_during_backoff" -q
-```
-
-## Why this way
-
-> **Retry in the session, decided by text plus kind.** The loop ([05](05-agent-loop.md)) stays simple: an error ends the turn. The session, which lives across turns, decides whether to try again. A regex on the error text works for every provider; `error_kind` lets our own code say "never retry this". Backoff waits on the abort event, so Ctrl-C works even while nothing is running. The cost: a new provider error text that the regex does not know is not retried until someone adds it.
-
-## Exercises
-
-1. Write a test where `FakeProvider` returns `err429()` four times, with `retry_base_delay=0.001`. Check that the model was called 4 times (1 + 3 retries) and that `auto_retry_end` has `success=False`. Hint: copy `test_retry_429_twice_then_ok` and change the asserts.
-2. Make the first reply `AssistantMessage(stop_reason="error", error="429", error_kind="fatal")`. Predict: how many model calls, and how many `auto_retry` events? Hint: look at the first line of `is_retryable` and at `if attempt:`.
-
-## Recap
-
-- A failed model call ends as an `AssistantMessage` with `stop_reason="error"`.
-- `is_retryable(error, kind)`: a regex on the text, but never for `fatal`, `budget`, `policy` or an overflow.
-- `_run` retries with `continue_()` up to `max_retries` times, waiting `base × 2^(n-1)`.
-- The wait is `wait_for(self._abort.wait(), delay)`, so abort stops it right away.
-- `auto_retry_start` / `auto_retry_end` events let the UI show what is going on.
+Two limits are known. The regex is wide: any text with `connection`, `network` or a number from 500 to 599 matches, so "connection refused" is retried too. That is fine because a retry is cheap and there are only 3 of them. And the wait has no random part (no [jitter](glossary.md#jitter)): if many clients hit a rate limit at the same moment, they all retry at the same moment again, 2, 4 and 8 seconds later. The other side: a new provider error text that the regex does not know is not retried until someone adds it.
 
 **Builds on:** [14 Plugins](14-plugins.md) · **Next:** [16 Compaction](16-compaction.md)
