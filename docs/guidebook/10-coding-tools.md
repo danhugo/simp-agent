@@ -79,6 +79,189 @@ Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/too
 
 ### When `README.md` is too big: truncation
 
+Now say `README.md` has 9000 long lines. Sending all of it would fill the model's [context](glossary.md#context), so `read` passes its text through `truncate_head`. The cutting rule lives in `coding/truncate.py`, and all tools share it. [Truncation](glossary.md#truncation) works like this:
+
+1. It splits the text into lines and looks at the first 2000 only.
+2. It adds up their size in bytes. As soon as the next line would go over 50 KB, it stops, so it never keeps half a line and the model never sees a broken line.
+3. It returns the kept lines and an `info` dict: `truncated`, `total_lines`, `total_bytes` and `kept_lines`.
+
+There are two limits because one is not enough: 2000 short lines are fine, but 10 lines of minified JavaScript can be 1 MB. The price of keeping whole lines: if the first line alone is over 50 KB, zero lines are kept. `truncate_tail` does the same from the end, for `bash` below.
+
+Back in `read`, the line end is the smallest of three stops: the `limit`, the end of the file, and the line where the byte limit cut. Say the byte limit cuts after 1200 lines. Then the end is `min(2000, 9000, 1200) = 1200`, lines are left, and `read` adds `[7800 more lines; use offset=1201 to continue]`. `read` USES `truncate_head`: `read` picks which lines to show, `truncate_head` makes sure they fit.
+
+Real code: [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `_cut`, `truncate_head`, `truncate_tail`
+
+### Looking around: `ls`, `grep`, `find`
+
+In the `shape.py` job the model first looks around (step 1). These tools never change anything. They join the path to `ctx.cwd` and go through the env, as `read` does.
+
+The model calls `ls` with `{"path": "."}`. `ls`:
+
+1. Asks for the names in the folder. An env may have its own `list_dir`; `LocalEnv` does not, so `ls` runs `ls -1Ap <path>` through `ctx.env.exec`: one name per line, dotfiles too, a `/` after folders. Going through `exec` means the same code works in a Docker env ([24](24-docker-sandbox.md)), and `shlex.quote` wraps the path so a name with spaces or `;` cannot break the command. If `ls` fails, it raises an `OSError` with the output.
+2. Sorts the names, ignoring case.
+3. Keeps the first `limit` names (default 500). If there are more, it adds `[500 of N entries shown; raise limit for more]`. An empty folder gives `(empty directory)`, so the model does not wonder if the tool failed.
+4. Passes the text through `head`, which cuts it like `truncate_head` and adds a note at the end: `[Output truncated: showing first K of N lines]`. If even the first line is too big, it returns only `[First line exceeds 50KB limit; use bash with head -c to read part of it]`.
+
+The note is the important part: a model that sees "showing first 2000 of 9000 lines" knows the answer is not complete and can ask in a narrower way; after a silent cut it thinks it saw everything.
+
+The model calls `grep` with a `pattern` (text inside files) or `find` with a `pattern` (a glob for file names, like `*.py`). Both work the same way:
+
+1. They check the path (default `.`). A path may not start with `-`, else the error says `path must not start with '-': … (use ./…)`. Quoting stops the **shell** from reading the path as code, but the **program** can still read it as an option: `rg --pre=CMD` runs CMD on every file, and `find … -delete` deletes files.
+2. They build two **argv** lists (the program name plus its arguments): one for a fast program and one for the classic one. `grep` builds `rg … -e <pattern> -- <path>` and `grep -rn … -e <pattern> -- <path>`; it maps `ignore_case` to `-i`, `literal` to `-F` (else `grep` gets `-E`), `context` to `-C`, and `glob` to `--glob` for `rg` or `--include` for `grep`. `find` builds `fd --glob … <pattern> <path>` and `find <path> -name <pattern>`.
+3. They run the fast one. If the exit code is 127 ("command not found"), they run the classic one. The fast tools respect `.gitignore`, so they skip `node_modules`; the classic ones work everywhere but do not skip it.
+4. Any exit code other than 0 or 1 raises a `RuntimeError` with the output. Code 1 is allowed because for `rg` and `grep` it means "no matches". (For `fd` and `find`, 1 is a real error, but its message just comes back as the result; the model still sees it.)
+5. They keep the first `limit` lines (100 for `grep`, 1000 for `find`) and add `[100 results limit reached; refine the pattern or raise limit]` if there are more. No results gives `No matches found` / `No files found`. Then `head` cuts the text, as for `ls`.
+
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `list_dir`, `ls`, `grep`, `find`, `_run`, `_limited`, `_search_path`; [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `head`
+
+### Changing a file: `write` and `edit`
+
+Step 4 changes `shape.py`. `write` makes a whole file; `edit` changes part of one.
+
+The model calls `write` with a `path` and the full `content`. `write` asks the env to write it (the env makes parent folders) and returns `Wrote N chars to shape.py`. The result is short on purpose: the model already knows what it sent.
+
+The model calls `edit` with a `path` and either one `old_text`/`new_text` pair or a list `edits` of such pairs (or both; the single pair goes first). `edit` is the most careful tool, because a wrong edit silently breaks code. It:
+
+1. Stops with `Give old_text/new_text or edits` if there is nothing to do.
+2. Reads the file once through the env.
+3. For each edit, counts how often `old_text` is in the **original** text. It must be exactly once, else: `edits[i].old_text must match exactly once in shape.py, found n matches`. Zero means the model's memory of the file is wrong; two or more means the tool cannot know which one is meant. The count tells the model to add more text around the match or `read` again. Finding all places in the original text lets the model plan many edits from one `read`.
+4. Sorts the places. If two overlap, it stops with `Edits overlap; merge them into one edit`.
+5. Replaces them from the last to the first, so a change near the end does not move the places before it.
+6. Writes the file once, after all checks, so a bad edit leaves the file untouched, and returns `Successfully replaced K block(s) in shape.py.`
+
+Here is `shape.py`, with a second thing to change:
+
+```python
+def area(w, h):
+    return w * w
+
+def name():
+    return "box"
+```
+
+The model calls `edit` with `old_text="return"`. `return` is in the file twice, so the model gets an error result and the file is not touched:
+
+```text
+ValueError: edits[0].old_text must match exactly once in shape.py, found 2 matches
+```
+
+It tries again with two edits, each long enough to be unique, and gets `Successfully replaced 2 block(s) in shape.py.`:
+
+```json
+{"path": "shape.py", "edits": [
+  {"old_text": "return w * w", "new_text": "return w * h"},
+  {"old_text": "\"box\"",      "new_text": "\"square\""}]}
+```
+
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `write`, `edit`
+
+### Running a command: `bash`
+
+Steps 3 and 5 run `pytest`. The `bash` tool is built by a **factory**: `make_bash(max_timeout_s)` returns the `bash` function, which remembers `max_timeout_s`. The cap is set once by the [host](glossary.md#host) (the program that runs the agent; at this commit only the CLI sets one, from the `bash_max_timeout_s` setting, [19](19-cli.md)). The model only sends `args`, so it cannot change a value that lives inside the function.
+
+The model calls `bash` with `{"command": "pytest"}` and maybe a `timeout`. `bash`:
+
+1. Checks the `timeout`, if given: it must be a finite number above 0, else `timeout must be a positive number of seconds, got …`.
+2. Applies the host cap, if there is one: with a cap of 600 seconds, no timeout becomes 600, `timeout=30` stays 30, and `timeout=1000` becomes 600. With no cap and no `timeout`, there is no time limit: a long build is fine, and the user can press Stop ([06](06-events-abort.md)).
+3. Runs the command with `ctx.env.exec`, passing `ctx.cwd`, the timeout, `ctx.cancel` and `ctx.on_update`. The hard work (streaming, cancel, timeout, killing the process group) is in `exec` from [09](09-exec-env.md#step-4-exec-runs-pytest-without-freezing-and-keeps-the-output); `on_update` lets the user see output live.
+4. Adds a line that says how the command ended. A code means it finished: `[exit code: 1]` tells the model the test failed. No code means it was killed: if `ctx.cancel` is set, the user pressed Stop (`[Command interrupted by the user after 1m05s]`, timed with a [monotonic clock](glossary.md#monotonic-clock)); else the timeout did (`[Command timed out after 600 seconds]`).
+5. Passes the text through `tail`, which keeps the **end**, where the failures and the summary are, and puts `[Output truncated: showing last K of N lines]` at the start, where the cut happened.
+
+In every case the model gets the output so far, plus how it ended.
+
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `make_bash`; [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `tail`
+
+### How the list is built: `make_tools`
+
+We followed calls to seven functions. But how does the model know a tool called `read` exists? It knows only what the loop sends it: a list of [agent tools](glossary.md#agent-tool). The host calls `make_tools(bash_max_timeout_s)`, which:
+
+1. Wraps each function in an `AgentTool` with a name, a description and a [JSON Schema](glossary.md#json-schema) of its arguments. The schema is built by `_obj`, which sets `additionalProperties: False` to tell the model not to invent extra fields.
+2. Uses `make_bash(bash_max_timeout_s)` for `bash`, so the cap goes in here.
+3. Returns the list in the order `read, write, edit, bash, grep, find, ls`.
+
+The model never sees the code, only these strings, so they are part of the tool's behaviour: "must match exactly once", "Dirs end with '/'". `make_tools` USES the tool functions: the function is HOW a call runs, the `AgentTool` is WHAT the model sees.
+
+The host passes the list as `LoopConfig(model, tools=make_tools(), ...)` ([05](05-agent-loop.md#agent_loop-the-loop)). `_llm_turn` sends it to the model each turn, and `run_tool` finds a tool in it by name, which is where our `read` call started. `TOOLS = make_tools()` is the default list with no bash cap. The same names and descriptions also go into the system prompt ([11](11-system-prompt.md)).
+
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `make_tools`, `_obj`, `TOOLS`
+
+**Builds on:** [05 Agent loop](05-agent-loop.md#tools-agenttool) (tool type, `run_tool`), [09 Execution environment](09-exec-env.md) (`ctx.env`) · **Previous:** [09](09-exec-env.md) · **Next:** [11 The system prompt](11-system-prompt.md)
+
+## Where we are
+
+```mermaid
+flowchart LR
+    ai --> agent --> coding["coding ★ tools.py / truncate.py (this chapter)"] --> session --> plugins --> testing
+```
+
+**Builds:** blocks 1, 4, 7 of the [Part 3 map](09-0-part-3-coding.md#the-blocks) · **IN:** the model's tool arguments and a [tool context](glossary.md#tool-context) · **OUT:** one string for the model
+
+Take the running example again. The user asks "What is in README.md?". In [09](09-exec-env.md) we built `LocalEnv`, which can open `README.md`. But the model cannot call `LocalEnv`. It can only call [agent tools](glossary.md#agent-tool) ([05](05-agent-loop.md#tools-agenttool)): a name, a description, an argument schema, and a function. So we still need a `read` tool that takes `{"path": "README.md"}`, asks the env for the text, and gives back a string.
+
+A coding agent needs more than `read`. Take a bigger job: "the test for `area()` fails, fix it". The model would work like this:
+
+1. `ls` — what files are here? It sees `shape.py` and `test_shape.py`.
+2. `read shape.py` — it sees `return w * w`.
+3. `bash pytest` — the end of the output shows the failure and `[exit code: 1]`.
+4. `edit shape.py` — change `w * w` to `w * h`.
+5. `bash pytest` — `[exit code: 0]`. Done.
+
+This chapter builds the seven tools behind those steps. Each tool is a short `async` function `(args, ctx) -> str`, and it touches files and commands only through `ctx.env`.
+
+Code in this chapter (commit `2fc2776`):
+
+- `packages/simp_agent/src/simp_agent/coding/tools.py` — the seven tools and `make_tools`
+- `packages/simp_agent/src/simp_agent/coding/truncate.py` — `truncate_head`, `truncate_tail`, `head`, `tail`
+- `packages/simp_agent/tests/test_tools.py`, `test_bash.py`, `test_core.py` — the tests
+
+## Problem
+
+The tools must let a model look around (list folders, find files, search text), read a file, change a file, and run commands. That part is easy. The hard part is that the reader of every result is a **model**, not a person. A model has a limited [context](glossary.md#context). One `cat` of a log file, or one search over `node_modules`, can return megabytes. If we send all of it back, the next model call fails or costs a lot. So every tool must cut its output, and must **tell the model** that it cut and how to get the rest. A model also cannot look at the screen to check its work: if a tool says "ok" when nothing happened, the model believes it.
+
+## Naive version
+
+```text
+// naive: no env, no limits, no checks
+FUNCTION read(args, ctx):          // the execute(args, ctx) shape from 05
+    RETURN the whole file at args.path            // opened directly, no ctx.env
+
+FUNCTION write(args, ctx):
+    WRITE args.content to args.path
+    RETURN "ok"
+
+FUNCTION edit(args, ctx):
+    text = the whole file at args.path
+    REPLACE every old_text in text with new_text  // 0 or many matches still "ok"
+    WRITE text back
+    RETURN "ok"
+
+FUNCTION bash(args, ctx):
+    RUN args.command in a shell, wait for it
+    RETURN stdout + stderr                        // no exit code, no cut
+```
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `read`, `write`, `edit`, `make_bash` (the fixed versions)
+
+The naive version breaks in four ways. It opens files with `open` and `subprocess`, so it skips `ctx.env` and loses everything [09](09-exec-env.md#problem) fixed, and its paths are relative to the Python process, not to the session folder `ctx.cwd`. `read` returns the whole file, so a 5 MB file fills the context. `edit` replaces every match: if `old_text` is in the file three times, all three change, and if it is there zero times, the tool still says "ok". And `bash` returns all the output with no cut and hides the exit code, so a long test run fills the context and the model cannot tell pass from fail.
+
+## Real design
+
+We follow one call from start to end: the model calls `read` on `README.md`. Then we follow the other steps of the `shape.py` job (look around, change a file, run a command) and see what each one adds. Last, we see how the list of tools is built.
+
+### One call: `read` on `README.md`
+
+The model calls `read` with `{"path": "README.md"}`, and `run_tool` ([05](05-agent-loop.md)) calls the `read` tool with these args and the tool context `ctx`. `read` does four things:
+
+1. It joins `README.md` to the working folder `ctx.cwd`. It does not check whether the path is allowed: that is the env's job ([09](09-exec-env.md)).
+2. It asks the env for the text with `ctx.env.read_file(...)`, the same `LocalEnv` call as in 09.
+3. It puts a line number and a tab before each line, so the model can say "line 42" and later read from there. By default it returns up to 2000 lines; the model can ask for another part with `offset` (the first line, counted from 1) and `limit`.
+4. If the text is too long, it cuts the rest and adds a note with the exact next call, for example "[350 more lines; use offset=2001 to continue]".
+
+The result goes back to `run_tool`, which wraps it in a tool result. If the env fails (no such file, path not allowed), `read` does not catch it: `run_tool` turns the error into an error result, as for every tool.
+
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `read`, `_path`
+
+### When `README.md` is too big: truncation
+
 Now say `README.md` has 9000 long lines. Sending all of it would fill the model's [context](glossary.md#context). This is where `read` needs `truncate_head`. The cutting rule lives in `coding/truncate.py`, and all tools share it:
 
 Real code: [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `_cut`, `truncate_head`, `truncate_tail`
