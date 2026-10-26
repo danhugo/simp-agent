@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-26
 
+- ch00–04: removed the end sections Test, Why this way, Exercises, Recap. Reasons not yet in the main text moved in as one sentence each (00 layer cost; 01 one-dict-entry + clean in one place; 02 pick by API format + no env reads; 04 no mock library). No links pointed to the removed anchors.
 - ch09: naive part replaced with the story version (README/NOTES/pytest; four named breaks); Step openers use the same break names; Step 2 says "the event loop keeps running". Glossary: new "Event loop" entry (not the agent loop). Book-wide: asyncio mentions in 09, 19, 22 now say/link "event loop", so a bare "loop" means `agent_loop`.
 - ch09: opening cut to the README story + one definition (no "Builds", no `agent`-box aside); Problem names the four breaks, each Step says which break it fixes; exec race linked to `_stream` in 06, paragraph cut to the new points; "swap one object" said once; ExecutionEnv/LocalEnv in one sentence; `self.run` note moved before the test.
 - ch08: approval fields as three short sentences; approval table now one case per row (allow / always / other answer → denied / Stop → aborted), code letters match; "Two small notes" cut; after-hook gets a why (hide secrets, cut huge output, link to RedactSecrets in 18); mermaid "path of one call" removed (5-step list kept); empty-string deny said only in Why and Exercise 1; `_tools`, `_maybe_await` and `Agent` hooks cut to one sentence each.
