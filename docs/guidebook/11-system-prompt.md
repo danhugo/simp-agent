@@ -13,7 +13,11 @@ flowchart LR
 
 Take the running example again. The user asks "What is in README.md?". After [10](10-coding-tools.md) the model has a `read` tool, so it *can* answer. But nobody has told it that it is a coding assistant, that `read` exists for exactly this, or that `README.md` means the file in `/work/app`. And if the team wrote "always answer in one short paragraph" in an `AGENTS.md` file, the model has never seen that either.
 
-All of this goes in the [system prompt](glossary.md#system-prompt): the first, fixed text the model reads before the messages. Here is the one we will build, for two tools in `/work/app`:
+All of this goes in the [system prompt](glossary.md#system-prompt): the first, fixed text the model reads before the messages. Big picture of Part 3: [part-3-coding](09-0-part-3-coding.md). Building it means answering three questions.
+
+## What does the model need to know?
+
+Here is the prompt we will build, for two tools in `/work/app`:
 
 ```text
 You are an expert coding assistant. You help the user by reading files, running commands, editing code, and writing new files.
@@ -28,127 +32,31 @@ Current date: 2026-10-13
 Current working directory: /work/app
 ```
 
-Big picture of Part 3: [part-3-coding](09-0-part-3-coding.md).
+The **role** sentence says the assistant reads, runs, edits and writes, so the model acts instead of only chatting. The **tool list** is built from the `name` and `description` of the real tools, the same list `make_tools` made in [10](10-coding-tools.md#how-the-list-is-built-make_tools), so it can never name a tool that does not exist. The schemas already tell the model what arguments a tool takes; this line tells it *when* to use the tool.
 
-Code in this chapter (commit `2fc2776`):
+Each of the three **rules** has a reason. "Be concise" keeps answers short, which saves [context](glossary.md#context). "Use read before edit" matters because `edit` needs an exact text match ([10](10-coding-tools.md#changing-a-file-write-and-edit)), and the model's memory of a file may be old. "Paths are relative to the working directory" matches how the tools join paths to `ctx.cwd`. Last come the **date**, which helps with "latest version" questions, and the **folder**, so `README.md` means `/work/app/README.md`.
 
-- `packages/simp_agent/src/simp_agent/coding/__init__.py` — `system_prompt`, `CONTEXT_FILES`, `load_context_file`
-- `packages/simp_agent/src/simp_agent/agent/__init__.py` — `_llm_turn`, which now accepts a prompt function
-- `packages/simp_agent/tests/test_session.py` — `test_context_file_in_system_prompt`
+Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `system_prompt(tools, cwd)`
 
-## Problem
+## Where do the project rules come from?
 
-Every model call takes a [context](glossary.md#context): a system prompt, the messages, and the tools ([01](01-pick-clean.md)). Until now our tests passed a fixed string like `"s"`. A real coding agent needs four things in that text. It needs a **role**, so it acts instead of only chatting. It needs a short **tool list** in plain words; the schemas are already sent, but a schema says what arguments a tool takes, not when to use it, and one line per tool helps the model pick. It needs its **place and time**: tool paths are relative to the working folder ([10](10-coding-tools.md)), so the model must know that folder, and today's date helps with "latest version" questions. And it needs the **project rules**. Many teams already write these in a file like `AGENTS.md` or `CLAUDE.md`, and the agent should read that file so the user does not repeat the rules in every chat.
-
-There is one more need. Tools and plugins can change during a session ([14](14-plugins.md)), so the prompt must be able to change too. It cannot be one string fixed at start.
-
-## Naive version
-
-```text
-// naive sketch (not in the repo): one fixed string, built once
-SYSTEM = "You are a helpful assistant."
-
-FUNCTION main():
-    rules = open("AGENTS.md").read()     // crash if missing
-    prompt = SYSTEM + rules
-    agent_loop(prompt, [], [UserMessage("What is in README.md?")], LoopConfig(model, tools=TOOLS))   // the call from 05
-```
-
-This breaks in five ways. The model gets no tool list, no folder and no date, so it guesses. `open` reads the host disk, but in the Docker env ([24](24-docker-sandbox.md)) the project lives inside a container, so it reads the wrong place; this is exactly the mistake [09](09-exec-env.md) taught us to avoid. Most folders have no `AGENTS.md`, so the program crashes. Some teams name the file `CLAUDE.md`, which it never finds. And the prompt is built once, so a tool added later is never listed.
-
-The real code fixes these one by one. A function builds the text from the real tools and folder. A list of file names is tried in order. Each name is read through the env, and a missing file just means "try the next name". Finally, the loop takes the prompt as a function and calls it before every model call.
-
-## Real design
-
-There are three small pieces. Two plain helpers in `coding/__init__.py` make text and keep no state: `system_prompt` builds the base text, and `load_context_file` finds the context file. The third piece is a small change in the loop: `_llm_turn` accepts a function in place of the string, so the text is rebuilt every turn.
-
-```mermaid
-flowchart LR
-    T["tools + cwd"] --> SP["system_prompt(tools, cwd)"]
-    E["env + cwd"] --> LCF["load_context_file(env, cwd)"]
-    SP --> F["prompt function<br/>(joins the texts)"]
-    LCF -->|"(path, text) as '# Project Context'"| F
-    F -->|"called before every model call"| LT["_llm_turn"]
-    LT --> CTX["Context(system_prompt, messages, tools)"]
-```
-
-The prompt function is any small function with no arguments that returns the joined text, for example one that calls `system_prompt(tools, cwd)` and adds the context file text after it. The loop only calls it; [13](13-session.md) builds on this.
-
-### `system_prompt`: the base text
-
-Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `system_prompt`
-
-```text
-FUNCTION system_prompt(tools, cwd, context = None):
-    tool_list = one line "- name: description" FOR EACH tool
-    out = role sentence ("You are an expert coding assistant ...")
-    ADD "Available tools:" + tool_list
-    ADD "Be concise. Use read before edit. Paths are relative to the working directory."
-    IF context is given:                 // (path, text) of the context file
-        ADD "# Project Context", then "## <path>", then the text
-    ADD "Current date: <today>" and "Current working directory: <cwd>"
-    RETURN out
-```
-
-The role sentence says the assistant reads, runs, edits and writes, which pushes the model to act. The tool list is made from the `name` and `description` of the tools we pass in, the same ones `make_tools` built in [10](10-coding-tools.md#how-the-list-is-built-make_tools). Because it is built and not written by hand, it can never name a tool that does not exist.
-
-Each of the three rules has a reason. "Be concise" keeps answers short, which saves [context](glossary.md#context). "Use read before edit" matters because `edit` needs an exact text match ([10](10-coding-tools.md#changing-a-file-write-and-edit)), and the model's memory of a file may be old. "Paths are relative to the working directory" matches how the tools join paths to `ctx.cwd`.
-
-The date and the folder come last, after the optional project section. It is a plain function: the same input gives the same text (only the date changes), so it is easy to test and easy to replace.
-
-The `context` argument is for code that calls `system_prompt` once and is done. A prompt function can instead read the file once at start (reading through the env is async) and add the same `# Project Context` text itself, while the base text is rebuilt cheaply every turn from the live tools and folder.
-
-### `CONTEXT_FILES` and `load_context_file`: the context file
-
-A [context file](glossary.md#context-file) is a Markdown file in the project that holds the team's rules for agents.
-
-Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `CONTEXT_FILES`, `load_context_file`
+Many teams write their rules for agents in a [context file](glossary.md#context-file), such as `AGENTS.md` or `CLAUDE.md`. If the agent reads it, the user does not have to repeat the rules in every chat. `load_context_file(env, cwd)` tries these names in order:
 
 ```text
 CONTEXT_FILES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]
-
-FUNCTION load_context_file(env, cwd):
-    FOR EACH name in CONTEXT_FILES (in order):
-        path = cwd joined with name
-        TRY:
-            RETURN path, WAIT for env.read_file(path)   // first file found wins
-        IF OSError:
-            go on to the next name
-    RETURN None
 ```
 
-The names are tried in priority order and only the first one found is loaded; files are not merged, so the model never gets two rule sets that disagree. `AGENTS.override.md` comes first, so one person can override the shared `AGENTS.md` without editing it. The upper-case `.MD` names are for case-sensitive disks such as Linux, where `AGENTS.md` and `AGENTS.MD` are two different files. (On a default macOS disk they are the same file.) The order follows pi, the project simp-agent learns from.
+The first file found wins. Files are not merged, so the model never gets two rule sets that disagree. `AGENTS.override.md` comes first, so one person can change the shared `AGENTS.md` without editing it.
 
-The file is read with `env.read_file`, not `open`, following the rule from [09](09-exec-env.md). So the same code reads the local disk or the inside of a container. The code catches `OSError`, not only `FileNotFoundError`, because each env may raise a different kind of error for a missing file. If no name works, the result is `None` and the prompt simply has no project section.
+The file is read through the env ([09](09-exec-env.md)), not with `open`, so the same code works on the local disk and inside a Docker container ([24](24-docker-sandbox.md)). If no file exists, the prompt simply has no "# Project Context" part. When one is found, its path becomes a heading under "# Project Context", so the model, and a person reading the log, can see where the rules came from. One limit: only `cwd` is searched, not parent folders or the home folder ([27](27-limits-choices-extend.md)).
 
-The result is the path *and* the text. The path becomes a heading in the prompt, so the model, and a person reading the log, can see where the rules came from.
+Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/__init__.py) — `CONTEXT_FILES`, `load_context_file`
 
-There is one known limit: only `cwd` is searched. It does not walk up to parent folders and has no global file in the home folder ([27](27-limits-choices-extend.md)).
+## Why is the prompt a function, not a fixed string?
 
-### The loop calls the prompt function every turn
-
-In [05](05-agent-loop.md), `agent_loop` took `system_prompt` as a string, its first argument: `agent_loop(system_prompt(tools, cwd), messages, prompts, config)`. The prompt is not a `LoopConfig` field, unlike `tools` and `env`. Inside it, `_llm_turn` is the step that makes one model call. At this commit it also accepts a function:
+Tools can change during a session: a plugin may add one ([14](14-plugins.md)). A string built once at start would never list the new tool. So the loop from [05](05-agent-loop.md) also accepts the prompt as a function, and `_llm_turn` calls it before every model call. A tool added now is listed in the next turn. The loop does not care how the text is made; it only needs "a string, or something that gives a string". The provider then puts the final string where its API wants it ([02](02-translate-send.md)), for example `system=` for Anthropic.
 
 Real code: [agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `_llm_turn`
-
-```text
-INSIDE _llm_turn:
-    IF system_prompt is a function:
-        system_prompt = WAIT for system_prompt()    // the function may be sync or async
-    ...
-    FOR EACH event from _stream(..., Context(system_prompt, llm_msgs, tools), ...):
-        ...
-```
-
-The loop does not know how the text is made; it only sees "a string, or something that gives a string". Calling a small function costs almost nothing. Each provider puts the final string where its API wants it ([02](02-translate-send.md)): `system=` for Anthropic, a `system` (or `developer`) message for OpenAI.
-
-### One turn, end to end
-
-Now follow "What is in README.md?" through one run in `/work/app`, with an `AGENTS.md` that says "always answer in one short paragraph". At start, `load_context_file(env, "/work/app")` tries `AGENTS.override.md`, gets `OSError`, then finds `AGENTS.md` and returns its path and text. The user's message goes into the loop with a prompt function, not a string.
-
-In the first turn `_llm_turn` sees that the prompt is a function and calls it. The function calls `system_prompt(tools, "/work/app")`, which gives the text shown at the top of this chapter, and adds `# Project Context`, `## /work/app/AGENTS.md` and the rule. `_llm_turn` puts this string into `Context(system_prompt, llm_msgs, tools)` and streams it to the provider, which sends it as `system=` for Anthropic. The model reads the role, sees `read` in the tool list, and replies with a tool call `read(path="README.md")`. The tool joins the path to `/work/app` and returns the file.
-
-In the second turn `_llm_turn` calls the function again. The tools and folder have not changed, so the text is the same, but if a tool had been added it would now be listed. The model sees the file content and the project rule, and answers in one short paragraph. The loop ends because there is no tool call.
 
 [13](13-session.md) builds the real prompt function out of [prompt sections](glossary.md#prompt-section).
 
