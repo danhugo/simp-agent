@@ -78,7 +78,7 @@ Our fizzbuzz command has a task, so `main` calls `run`.
 
 ### A session opens
 
-`run(task, model, args)` first needs a session to put the question in: a new one, or yesterday's. Both modes keep sessions with `JsonlStore` from [13](13-session.md#jsonlstore-the-real-store-in-the-cli), and each working folder has its own sessions:
+`run(task, model, args)` first needs a session to put the question in: a new one, or yesterday's. Both modes keep sessions with `JsonlStore` from [13](13-session.md#where-do-we-save), and each working folder has its own sessions:
 
 ```text
 FUNCTION session_dir(cwd):
@@ -108,7 +108,7 @@ WHEN Ctrl-C comes: call session.abort()
 
 Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__init__.py), function `run`.
 
-The store is loaded and passed as `messages=`, which is the resume pattern from [13](13-session.md#jsonlstore-the-real-store-in-the-cli). The tools come from `make_tools`, the coding tools of [10](10-coding-tools.md). Ctrl-C (`SIGINT`, the signal the terminal sends) calls `session.abort()` ([06](06-events-abort.md#abort-one-asyncioevent)), so the run stops cleanly and the program does not die. This fixes "Ctrl-C kills the program". Then `run` awaits `session.prompt(task)`.
+The store is loaded and passed as `messages=`, which is the resume pattern from [13](13-session.md#where-do-we-save). The tools come from `make_tools`, the coding tools of [10](10-coding-tools.md). Ctrl-C (`SIGINT`, the signal the terminal sends) calls `session.abort()` ([06](06-events-abort.md#abort-one-asyncioevent)), so the run stops cleanly and the program does not die. This fixes "Ctrl-C kills the program". Then `run` awaits `session.prompt(task)`.
 
 **Where does the API key come from?** The session calls `get_api_key` when it needs a key. Providers never read the environment themselves ([01](01-pick-clean.md#1-pick-_providers-register_provider)); the app does, and `env_api_key(model)` is the CLI's version. One rule matters here: **an API key is never read from the settings file**, because a settings file is easy to share or commit by mistake. So `resolve_config` removes `"api_key"` from the profile; the file can only name an environment variable, `api_key_env`. For example, if the settings say `{"api_key_env": "MY_KEY"}` and `$MY_KEY` is set, the key is the value of `$MY_KEY`. If not, the CLI falls back to `OPENAI_API_KEY` for OpenAI-style APIs (or `"dummy"`, for local servers with no key), and to `ANTHROPIC_API_KEY` otherwise.
 
