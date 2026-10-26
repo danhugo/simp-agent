@@ -121,35 +121,32 @@ Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp
 
 Every method starts with `_path(path)`. What does it do with `"README.md"` before the disk is touched?
 
-### Step 3: `_path` checks the path
+### Step 3: `_path` [keeps every path inside the project](glossary.md#path-safety)
 
-`LocalEnv` takes one optional argument, `root`: the folder the tools may use. With no root (the `LoopConfig` default), `_path` returns the path as it is, so a relative path depends on the folder Python runs in; that is why the tools in [10](10-coding-tools.md) join it to `ctx.cwd` first.
-
-This step fixes "env → disk: a path can leave the project". [Path safety](glossary.md#path-safety) means: when `LocalEnv` has a `root`, a file path can never point outside it.
-
-A string check like `".." in path` is not enough: it misses symlinks and absolute paths. So `_path` first turns the path into its real, full form with `resolve()` (this removes `..` **and** follows symlinks), and only then asks "is this still inside the root?":
-
-| Asked path | After `resolve()` | Result |
-|---|---|---|
-| `a/b.txt` | `<root>/a/b.txt` | ok |
-| `../secret` | `<parent>/secret` | `PermissionError` |
-| `link` (symlink to `<parent>/secret`) | `<parent>/secret` | `PermissionError` |
-| `/etc/passwd` (absolute) | `/etc/passwd` (`root / "/etc/passwd"` drops the root) | `PermissionError` |
+Every file method starts with `_path(path)`. This fixes "a path can leave the project". `NaiveEnv` just joined `root + "/" + path`. `_path` checks the result first: it turns the path into its real, full form with `resolve()` (this removes `..` and follows symlinks), and refuses it if it is no longer inside `root`:
 
 ```text
 FUNCTION _path(path):
-    IF there is no root: RETURN path as it is
-    root = resolve(root)
+    IF there is no root: RETURN path            // nothing to protect, see below
     p = resolve(root + path)
-    IF p is not inside root: RAISE PermissionError "path escapes root: <path>"
+    IF p is not inside resolve(root): RAISE PermissionError "path escapes root: <path>"
     RETURN p
 ```
 
 Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`LocalEnv._path`)
 
-**Path safety is for files only.** `exec` does not check paths, so `cat ../secret` through bash still works on `LocalEnv`. Real isolation for commands is the Docker sandbox in [24](24-docker-sandbox.md). And with no root, every path is trusted. That is fine for a CLI on your own machine.
+Why `resolve()`, and not a check like `".." in path`? Because a symlink or an absolute path escapes without any `..`:
 
-Now the result goes back. If `_path` is happy, the text of `README.md` returns to the tool, the tool returns it to `run_tool`, and the model reads it in the next turn. What happens to an error? The tool does not catch it. `run_tool` ([05](05-agent-loop.md)) turns any exception into an error tool result. So the model sees `PermissionError: path escapes root: ../secret` and can try another path. The loop does not crash.
+| Asked path | After `resolve()` | Result |
+|---|---|---|
+| `README.md` | `<root>/README.md` | ok |
+| `../.ssh/id_rsa` | `<home>/.ssh/id_rsa` | `PermissionError` |
+| `link` (a symlink to `<home>/.ssh/id_rsa`) | `<home>/.ssh/id_rsa` | `PermissionError` |
+| `/etc/passwd` (absolute) | `/etc/passwd` | `PermissionError` |
+
+The error does not crash anything. `run_tool` ([05](05-agent-loop.md)) turns it into an error tool result, so the model reads `PermissionError: path escapes root: ../.ssh/id_rsa` and tries another path.
+
+Two limits. `root` is optional: with no root, every path is used as it is. That is fine for a CLI on your own machine (the tools in [10](10-coding-tools.md) then join relative paths to `ctx.cwd`). And the check is for files only: `bash` can still run `cat ../.ssh/id_rsa`. Real isolation for commands is the Docker sandbox ([24](24-docker-sandbox.md)).
 
 ### Step 4: a second request, `bash`
 
