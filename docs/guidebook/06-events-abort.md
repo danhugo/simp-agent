@@ -118,47 +118,21 @@ Why dicts on one channel? A new kind of event (steering, compaction, retry in la
 
 ### How the loop sends them
 
-Inside `agent_loop`, two small helpers do all the sending:
+Inside `agent_loop`, two small helpers do all the sending. `send(e)` just calls `_emit_all([emit], e)`. `add(m)` puts the message `m` into `messages` and into `new`, then sends `message_start` and `message_end` for it.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
 
-```text
-INSIDE agent_loop:
-    FUNCTION send(e):
-        _emit_all([emit], e)
-
-    FUNCTION add(m):
-        ADD m to messages and to new
-        SEND event {message_start, m}
-        SEND event {message_end, m}
-```
-
 `add` is the **only** way a message enters the history. That is why `message_start` and `message_end` come one right after the other: the message is already complete when it is added, and the streaming part was the `message_update` events before it. So a UI that listens only to `message_end` still sees the whole conversation.
 
-`_emit_all` calls each subscriber (a function that wants the events). A subscriber can be a normal function, like `events.append`, or an `async def` function, like one that writes to a websocket. An `async` function gives back something that must be awaited, so `_emit_all` awaits it. Subscribers run one by one, in order, so events never come out of order; the cost is that a slow subscriber slows the whole loop:
+`_emit_all` calls each subscriber (a function that wants the events). A subscriber can be a normal function, like `events.append`, or an `async def` function, like one that writes to a websocket. An `async` function gives back something that must be awaited, so `_emit_all` awaits it. In short: for each subscriber `f`, call `f(e)`, and if the result can be awaited, wait for it.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_emit_all`)
 
-```text
-FUNCTION _emit_all(subs, e):
-    FOR EACH subscriber f IN subs:
-        r = f(e)
-        IF r can be awaited:
-            WAIT for r
-```
+Subscribers run one by one, in order, so events never come out of order, and a slow subscriber slows the loop. That is on purpose: a websocket that cannot keep up should hold the loop back, not lose events.
 
-Because the loop waits for each subscriber, events arrive in order, and a slow subscriber slows the loop. That is on purpose: a websocket that cannot keep up should hold the loop back, not lose events.
-
-The error and abort exits from 05 Step 4 go through `_end`, so they also finish with `turn_end` and then `agent_end`:
+The error and abort exits from 05 Step 4 go through `_end`, so they also finish with `turn_end` and then `agent_end`. `_end(send, msg, new)` sends `turn_end` with `msg`, sends `agent_end` with `new`, and returns `new`.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_end`)
-
-```text
-FUNCTION _end(send, msg, new):
-    SEND event {turn_end, msg}
-    SEND event {agent_end, new}
-    RETURN new
-```
 
 So every run ends with `agent_end`, and the UI can always clear its "busy" state there.
 
@@ -196,48 +170,19 @@ flowchart TD
     U["user presses Stop"] --> AB["agent.abort() → cancel.set()"] -. "stop finishes" .-> W
 ```
 
-A loop that only checks the flag between events would wait for the model, so a silent model would hide the Stop. With the race, the Stop wins even when the model sends nothing. `_stream` does this. It wraps the provider stream `it`, which is the async generator returned by `stream_fn`:
+A loop that only checks the flag between events would wait for the model, so a silent model would hide the Stop. With the race, the Stop wins even when the model sends nothing. `_stream(stream_fn, model, ctx, cancel, opts)` wraps the provider stream `it = stream_fn(model, ctx, **opts)`, an async generator. The race is `asyncio.wait(..., FIRST_COMPLETED)`. When `stop` wins, `_stream` cancels `next` and waits for it to finish before it returns. The provider "has ended" when `next` raises `StopAsyncIteration`. The `finally` closes the generator with `aclose()`.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_stream`)
 
-```text
-FUNCTION _stream(stream_fn, model, ctx, cancel, opts):
-    it = the provider generator stream_fn(model, ctx, **opts)
-    stop = a task that waits for cancel
-    TRY:
-        REPEAT:
-            next = a task that gets the next event from it
-            WAIT until next OR stop is done           // asyncio.wait(FIRST_COMPLETED)
-            IF next is not done:                      // stop won
-                CANCEL next
-                WAIT for next to finish
-                RETURN
-            IF the provider has ended (StopAsyncIteration):
-                RETURN
-            YIELD the event from next
-    FINALLY:
-        CANCEL stop
-        CLOSE it (aclose)
-```
-
 Why does cancelling `next` close the web request? `next` is paused **inside** the provider generator. Cancelling it raises `CancelledError` at that spot. The provider's `async with` block for the HTTP client ([02](02-translate-send.md)) then exits, and that closes the connection. The `finally` part cleans up the rest: it cancels `stop` and closes the generator.
 
-**What goes into the history.** The end of [`_llm_turn`](05-agent-loop.md#_llm_turn-one-model-call) keeps the latest `partial`, the message built so far ([03](03-parse.md)). A normal stream always ends with a `done` or `error` event that carries the final message. If the stream ended without one, the loop treats it as a Stop:
+**What goes into the history.** The end of [`_llm_turn`](05-agent-loop.md#_llm_turn-one-model-call) keeps the latest `partial`, the message built so far ([03](03-parse.md)). A normal stream always ends with a `done` or `error` event that carries the final message. If the stream ended without one, the loop treats it as a Stop. Step by step:
+
+1. For each event from `_stream`, send `message_update`, and keep `ev.partial` if the event has one.
+2. If the event is `done` or `error`, take its `message` as the result.
+3. If no result came, use the last `partial` (or `_aborted()` if there is none) and set its `stop_reason` and `error` to `"aborted"`.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_llm_turn`)
-
-```text
-msg = None, partial = None
-FOR EACH event ev IN _stream(...):
-    SEND event {message_update, ev}
-    partial = ev.partial if it has one, else keep the old partial
-    IF ev is "done" or "error":
-        msg = ev.message
-IF msg is None:                  // no done/error: the stream was stopped
-    msg = partial, or _aborted() if there is none
-    SET msg.stop_reason and msg.error to "aborted"
-RETURN msg
-```
 
 So the history gets `AssistantMessage("README.md says this proj", stop_reason="aborted")`, the same text the user saw. `agent_loop` adds it, sees `aborted` (05 Step 4), and ends through `_end`.
 
@@ -249,28 +194,15 @@ So the history gets `AssistantMessage("README.md says this proj", stop_reason="a
 
 The model call is over, so there is no stream to close. Now the **tool** must stop. `bash` ([10](10-coding-tools.md)) watches `ctx.cancel`; when the flag is set, it kills the `npm test` process. The tool ends with an error, and `run_tool` turns it into the result "Interrupted by the user" ([05 Step 3](05-agent-loop.md)). This is not special to `bash`: any tool that is running when Stop comes and stops because of the flag gets the same result (the tools that run commands, such as `ls`, `grep` and `find`, pass the flag on to `env.exec`). A tool that does not watch the flag just finishes, and keeps its normal result.
 
-Right after the tools, the loop checks the flag and ends the run. The model's message finished normally, so it is not marked `aborted`. The loop therefore adds one small `aborted` message itself, to record that the user stopped:
+Right after the tools, the loop checks the flag and ends the run. The model's message finished normally, so it is not marked `aborted`. The loop therefore makes one small message with `_aborted()`, puts it in with `add`, and returns `_end(send, msg, new)`, to record that the user stopped.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`agent_loop`)
-
-```text
-IF cancel is set:                // right after the tools
-    msg = _aborted()
-    add(msg)
-    RETURN _end(send, msg, new)
-```
 
 The history now holds the model's `bash` call, its result "Interrupted by the user", and the `aborted` message. When the user asks something next, the model sees the call and its result, a normal pair, but not the `aborted` message: `transform_messages` ([01](01-pick-clean.md)) drops aborted messages before sending.
 
 ### Moment 3: Stop between tools
 
-Now the model asked for three reads in one turn: `c1` README.md, `c2` package.json, `c3` setup.py. The user presses Stop while `c2` runs. Before each tool, the loop checks the flag:
-
-```text
-FOR EACH call IN calls:
-    IF cancel is set: STOP the tool loop (break)
-    ...run the tool...
-```
+Now the model asked for three reads in one turn: `c1` README.md, `c2` package.json, `c3` setup.py. The user presses Stop while `c2` runs. Before each tool, the loop checks the flag, and if it is set, it leaves the tool loop (`break`).
 
 **What stops.** `c2` finishes (or is interrupted, as in moment 2). `c3` never starts.
 
@@ -297,46 +229,25 @@ Every call has a result, so the vendor does not return a 400 error.
 
 ## The `Agent` class: state on top of the loop
 
-`agent_loop` is a plain function, so the caller must keep the history, the subscribers and the cancel flag between questions. A chat app asks many questions, so `Agent` keeps them for you:
+`agent_loop` is a plain function, so the caller must keep the history, the subscribers and the cancel flag between questions. A chat app asks many questions, so `Agent` keeps them for you. `Agent(system_prompt, model, tools, stream_fn=ai.stream, ...)` holds a copy of the given `messages`, an `is_streaming` flag (starts `False`), a list of subscribers `_subs`, and a cancel flag `_cancel` (an `asyncio.Event`). It has three main methods:
 
-Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`Agent`)
-
-```text
-CLASS Agent(system_prompt, model, tools, stream_fn = ai.stream, ...):
-    messages = copy of the given messages
-    is_streaming = False
-    _subs = empty list
-    _cancel = new asyncio.Event
-
-    FUNCTION subscribe(fn):  ADD fn to _subs; RETURN a function that removes it
-    FUNCTION abort():        SET _cancel       // a plain sync method, so a key handler can call it
-    FUNCTION prompt(text, extra = ()):
-        RETURN _run([UserMessage(text), *extra])   // extra: more messages (e.g. from a plugin)
-```
+- `subscribe(fn)` adds `fn` to `_subs` and returns a function that removes it.
+- `abort()` sets `_cancel`. It is a plain sync method, so a key handler can call it.
+- `prompt(text, extra=())` runs `_run([UserMessage(text), *extra])`; `extra` is more messages, for example from a plugin.
 
 (`...` hides other settings: API key, env, hooks, queues; see [07](07-steering.md) and [08](08-hooks-approval.md).)
 
-All runs go through `_run`:
+Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`Agent`)
+
+All runs go through `_run(prompts)`:
+
+1. If `is_streaming` is already `True`, raise `RuntimeError("Agent is already processing a prompt; wait for it or call abort() first")`.
+2. Make a new `_cancel` event, set `is_streaming = True`, and remember `start`, the length of `messages`.
+3. Build a `LoopConfig` (model, `get_tools` giving the current tools, `stream_fn`, ...) and an `emit` that calls `_emit_all(_subs, e)`, then run `agent_loop(system_prompt, messages, prompts, cfg, emit, _cancel)`.
+4. If an exception happens (for example a subscriber raised), add `AssistantMessage(stop_reason="error", error="<type>: <text>")` to `messages` and return the messages from `start`.
+5. In `finally`, set `is_streaming = False`.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`Agent._run`)
-
-```text
-FUNCTION Agent._run(prompts):
-    IF is_streaming:
-        RAISE RuntimeError("Agent is already processing a prompt; wait for it or call abort() first")
-    _cancel = new asyncio.Event
-    is_streaming = True
-    start = length of messages
-    TRY:
-        cfg = LoopConfig(model, get_tools = the current tools, stream_fn, ...)
-        emit = a function that calls _emit_all(_subs, e)   // the loop's send() passes each event here
-        RETURN agent_loop(system_prompt, messages, prompts, cfg, emit, _cancel)
-    IF an Exception happens:     // e.g. a subscriber raised
-        ADD AssistantMessage(stop_reason="error", error="<type>: <text>") to messages
-        RETURN messages from start
-    FINALLY:
-        is_streaming = False
-```
 
 Each line has a reason. Only one run can go at a time, because two loops on one history would mix their messages; a second `prompt()` raises `RuntimeError` (to add a message during a run, use `steer` or `follow_up`, [07](07-steering.md)). Each run gets a fresh cancel flag, so an old `abort()` cannot kill the next question. The loop still sees one `emit`, and that one `emit` passes each event to every subscriber. Last, the loop does not catch errors from subscribers. If one raises, `_run` appends an `error` message straight to `self.messages` (not through `add`, so no events are sent for it), and `finally` sets `is_streaming` back to `False`, so the agent can take the next question.
 

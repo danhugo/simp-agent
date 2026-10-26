@@ -4,6 +4,8 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-26
 
+- ch05–08 words-first sweep: long pseudocode (05 `agent_loop`, `_llm_turn`, `run_tool`, `ToolContext`; 06 `_stream`, `_emit_all`, `Agent._run`; 07 steering loop, `Agent`; 08 tool step, `_before_tool_call`) now numbered steps or sentences. Kept: approved ch05 steps, ch06 race diagram + "next" text, ch07 timeline + two-loop diagram, ch08 5-step list, contracts, history examples.
+- ch00–04 words-first sweep: pseudocode that only restated the text is now short numbered steps or a sentence (00 layer test; 01 Model/Context, naive if-chain, `_PROVIDERS`, `_builtin`, message kinds, `transform_messages`, `_thinking` (table kept); 02 history, content rule, item-id and msg-id rules, merge, errors; 03 frame, steps 1–6, usage; 04 `stream`, labels, error, fakes). Kept: exact vendor JSON, raw chunks/events, the `register_provider` contract, one test line, mermaid and tables. (checked at `2fc2776`)
 - ch05–08: removed the end sections Test, Why this way, Exercises, Recap. Kept facts moved into the main text: 05 sequential tools (same-file reason, a design reason not in the code); 06 subscribers awaited in order; 08 `""` also denies. 19 link to `08#test` fixed.
 
 - ch00–04: removed the end sections Test, Why this way, Exercises, Recap. Reasons not yet in the main text moved in as one sentence each (00 layer cost; 01 one-dict-entry + clean in one place; 02 pick by API format + no env reads; 04 no mock library). No links pointed to the removed anchors.
