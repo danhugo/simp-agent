@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-26
 
+- ch09: opening cut to the README story + one definition (no "Builds", no `agent`-box aside); Problem names the four breaks, each Step says which break it fixes; exec race linked to `_stream` in 06, paragraph cut to the new points; "swap one object" said once; ExecutionEnv/LocalEnv in one sentence; `self.run` note moved before the test.
 - ch08: approval fields as three short sentences; approval table now one case per row (allow / always / other answer → denied / Stop → aborted), code letters match; "Two small notes" cut; after-hook gets a why (hide secrets, cut huge output, link to RedactSecrets in 18); mermaid "path of one call" removed (5-step list kept); empty-string deny said only in Why and Exercise 1; `_tools`, `_maybe_await` and `Agent` hooks cut to one sentence each.
 
 ## 2026-10-23
