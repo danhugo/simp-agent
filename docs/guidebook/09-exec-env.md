@@ -29,27 +29,25 @@ If each tool touches the disk with `open()` and runs commands with `subprocess` 
 
 ## Naive version
 
+To answer the user, the tools must read `README.md`, write `NOTES.md`, and run `pytest`. The simplest env does these three things directly, with Python's `open()` and `subprocess`:
+
 ```text
-CLASS NaiveEnv(root):
-    FUNCTION read_file(path):
-        RETURN open root + "/" + path and read it      // blocks the loop
-    FUNCTION write_file(path, text):
-        open root + "/" + path and write text          // fails if the folder is missing
+CLASS NaiveEnv(root):                       // root = the project folder the tools may use
+    FUNCTION read_file(path):   RETURN open root + "/" + path and read it
+    FUNCTION write_file(path, text):   open root + "/" + path and write text
     FUNCTION exec(command, cwd, timeout):
         p = START command in a shell
-        WAIT for p to end, at most timeout              // blocks the loop
-        IF timeout passed:
-            KILL p                                      // kills the shell only
-            RETURN (None, "")                           // output so far is lost
+        WAIT for p to end, at most timeout
+        IF timeout passed: KILL p; RETURN (None, "")
         RETURN (exit code, output)
 ```
 
-It has four breaks:
+It works for the happy case, but it breaks in four ways:
 
-1. **A bad path escapes the root.** `read_file("../secret")`, or a symlink inside the root that points out, reads outside the root.
-2. **A blocking call freezes the loop, so Stop is not heard.** The loop is `async` ([05](05-agent-loop.md)); while a one-minute command runs, no events go out and the **Stop** button ([abort](glossary.md#abort)) from [06](06-events-abort.md) is not heard. Only the timeout can end it.
-3. **Killing only the shell leaves children alive and loses the output.** A background child like `npm run dev &` keeps running, and we return `""`, so the model never learns how far the command got.
-4. **A missing parent folder makes write fail.** `write_file("src/new/a.py", ...)` fails if `src/new` does not exist.
+- **A path can leave the project.** The model asks `read_file("../.ssh/id_rsa")`, and `..` walks up out of `root`. A *symlink* (a file that points to another place) inside the project can do the same.
+- **The whole agent freezes.** `pytest` takes a minute. The agent is `async`: one thread, and Python's **[event loop](glossary.md#event-loop)** switches between waiting jobs (the [agent loop](05-agent-loop.md), the task that watches for Stop in [06](06-events-abort.md), sending events to the UI). A job gives the turn away only when it `await`s. But `open()` and a plain `WAIT` hold the thread until they finish, so the event loop is stuck: for that minute no events reach the UI, and pressing Stop does nothing.
+- **Killing the shell is not enough.** `pytest` may start a test server in the background. `KILL p` kills only the shell, so the server keeps running. And we return `""`, so the model never sees which tests ran before the timeout.
+- **A missing folder makes write fail.** `write_file("notes/NOTES.md", …)` fails if the folder `notes/` does not exist yet.
 
 ## Real design
 
@@ -92,11 +90,11 @@ Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp
 
 ### Step 2: `LocalEnv` reads the file
 
-The tool called `ctx.env.read_file("README.md")`. With the default host setup, `ctx.env` is a `LocalEnv`. What does it do with the call? This step also fixes two breaks: the blocking call, and the missing parent folder.
+The tool called `ctx.env.read_file("README.md")`. With the default host setup, `ctx.env` is a `LocalEnv`. What does it do with the call? This step also fixes two breaks: "the whole agent freezes" (for files), and "a missing folder makes write fail".
 
 `LocalEnv` is the only env in the core library. It works on the machine where Python runs. It takes one optional argument, `root`: the folder the tools may use. With no root (the `LoopConfig` default), paths are used as they are, so a relative path depends on the folder the Python process runs in. That is why the tools in [10](10-coding-tools.md) first join the path to `ctx.cwd` themselves.
 
-`read_file` is thin, and so are the other file methods. The loop is `async`, so to read without freezing it, we need a thread: each method sends the slow disk work to a thread with `asyncio.to_thread`, so the event loop keeps running and Stop is still heard:
+`read_file` is thin, and so are the other file methods. The agent is `async`, so to read without freezing the [event loop](glossary.md#event-loop), we need a thread: each method sends the slow disk work to a thread with `asyncio.to_thread`, so the event loop keeps running and Stop is still heard:
 
 ```text
 FUNCTION read_file(path):
@@ -126,7 +124,7 @@ Every method starts with `_path(path)`. What does `_path` do with `"README.md"` 
 
 ### Step 3: `_path` checks the path
 
-This step fixes the bad path that escapes the root. [Path safety](glossary.md#path-safety) means: when `LocalEnv` has a `root`, a file path can never point outside it.
+This step fixes "a path can leave the project". [Path safety](glossary.md#path-safety) means: when `LocalEnv` has a `root`, a file path can never point outside it.
 
 A string check like `".." in path` is not enough: it misses symlinks and absolute paths. So `_path` first turns the path into its real, full form with `resolve()` (this removes `..` **and** follows symlinks), and only then asks "is this still inside the root?":
 
@@ -154,7 +152,7 @@ Now the result goes back. If `_path` is happy, the text of `README.md` returns t
 
 ### Step 4: a second request, `bash`
 
-Reading a file is short. Now the model calls `bash(command="pytest")`. The `bash` tool calls `ctx.env.exec(...)`. This call can be long, print a lot, and the user may press Stop. What does `exec` do with it? This step fixes the blocking call for commands, and the lost output.
+Reading a file is short. Now the model calls `bash(command="pytest")`. The `bash` tool calls `ctx.env.exec(...)`. This call can be long, print a lot, and the user may press Stop. What does `exec` do with it? This step fixes "the whole agent freezes" for commands, and the lost output from "killing the shell is not enough".
 
 `exec(command, cwd, timeout, cancel, on_output)` runs a shell command. While it runs, output streams out. Three things can end it:
 
@@ -217,7 +215,7 @@ sequenceDiagram
 
 ### Step 5: Stop kills the whole group
 
-This step fixes the children that stay alive after the shell is killed. `exec` called `run_kill(proc.pid)` when Stop or the timeout won. Why a group, and not just the process? Bash starts `npm test`, which starts `node`. If we kill only bash, `node` lives on and still holds port 3000.
+This step fixes the rest of "killing the shell is not enough": the children that stay alive after the shell is killed. `exec` called `run_kill(proc.pid)` when Stop or the timeout won. Why a group, and not just the process? Bash starts `npm test`, which starts `node`. If we kill only bash, `node` lives on and still holds port 3000.
 
 So we start the shell with `start_new_session=True`. Now the shell and every child it starts share one **process group**, whose id is the shell's PID. A [process-group kill](glossary.md#process-group-kill) sends `SIGKILL` (a kill signal that cannot be caught) to the whole group at once. `run_kill(pgid)` does this; `pgid` is the process group id, which is why `exec` passes `proc.pid`.
 
@@ -254,7 +252,7 @@ TEST test_exec_timeout_kills_tree(env):
         "echo start; (sleep 6; sleep 1; echo late > late.txt) & sleep 30"
     CHECK code is None AND "start" is in text
     CHECK less than 10 s passed
-    UNTIL 8 s after t:                          // slack for a loaded event loop
+    UNTIL 8 s after t:                          // slack for a busy event loop
         CHECK late.txt does not exist           // background child was killed too
         WAIT 0.1 s
 ```

@@ -48,7 +48,7 @@ LOOP forever:
 - **Ctrl-C kills the program.** It raises `KeyboardInterrupt` and the program dies. It does not call `session.abort()` ([06](06-events-abort.md)).
 - **Nothing saved.** No store is passed, so no resume.
 - **No approval.** No `approve` is passed, so the agent runs `bash` with no question.
-- **A new event loop per line.** `asyncio.run` is called again and again on one session. Anything async the session made in the last run (its abort event, a task still running) belonged to the old loop, so it is lost or breaks.
+- **A new [event loop](glossary.md#event-loop) per line.** `asyncio.run` is called again and again on one session. Anything async the session made in the last run (its abort event, a task still running) belonged to the old loop, so it is lost or breaks.
 
 None of these needs a new agent. The session already has every knob; the CLI only has to wire keys, screen and disk to it.
 
