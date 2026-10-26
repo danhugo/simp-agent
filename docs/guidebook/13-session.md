@@ -75,13 +75,40 @@ Now the user types "now add tests" and the app calls `session.prompt(text)`: a n
 
 ## Why does the session own the agent?
 
-Without a session, the CLI and the server would each have to build the `Agent`, plug in the store, wire the hooks and subscribe to events, the same code twice. `AgentSession` does this once. It builds one `Agent` with good defaults (the coding tools of [10](10-coding-tools.md), `LocalEnv` of [09](09-exec-env.md), the coding prompt of [11](11-system-prompt.md)), fills the agent's hooks from [08](08-hooks-approval.md) with its own methods (`_before_tool_call`, `_after_tool_call`, and `_prepare` for `prepare_next_turn`), and is the one place where apps `subscribe`. It does not copy the loop. Later chapters (plugins, retry, compaction) add their features inside these methods, and the loop never changes.
+The CLI and the server both need the same setup around the agent: tools, a place to save, approval, project rules. So that setup is written once, in the session. The session creates the agent itself, and apps only talk to the session.
 
-`session.messages` is the agent's own list, so there is one history, not two copies that could drift apart.
+If you give it nothing, it uses the coding tools ([10](10-coding-tools.md)), the local machine ([09](09-exec-env.md)) and the coding prompt ([11](11-system-prompt.md)). It also plugs its own checks into the agent's hooks ([08](08-hooks-approval.md)): before a tool, after a tool, and before each model call (`_before_tool_call`, `_after_tool_call`, `_prepare`). That is where every later feature goes: plugins ([14](14-plugins.md)), retry ([15](15-retry.md)), compaction ([16](16-compaction.md)). The loop itself never changes.
 
-Some setup needs `await`, and `__init__` cannot await. So it lives in `start()`, which `prompt` and `continue_` call first and which runs only once. The main job here: read the [context file](glossary.md#context-file) `AGENTS.md` ([11](11-system-prompt.md)) and add it to the prompt. So `AGENTS.md` is read **once per session**; if you edit it, the change shows up in a new session.
+There is only one history: the session uses the agent's list of messages, not a copy.
 
-Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.__init__`, `start`, `prompt`, `continue_`
+### What the app can call
+
+An app talks to the session in three ways.
+
+**Send a new message** (`prompt(text)`). Use this when the user types something new. The session:
+
+1. Does its one-time setup, if this is the first run (see below).
+2. Adds the text to the history as a new user message.
+3. Runs the agent until it is done: the model answers, tools run, the model answers again, until it stops.
+4. Saves each finished message as it goes, and passes every event on to the app.
+5. Gives back the messages added in this run.
+
+**Go on without a new message** (`continue_()`). Use this when there is nothing new to say, but the work is not finished: the last run stopped on an error, or the history ends with a tool result the model has not answered yet. The session does the same steps, but skips step 2: the model just looks at the same history again. Later, retry ([15](15-retry.md)) and overflow recovery ([17](17-overflow.md)) use this same "go on" when they run the model again.
+
+**One-time setup** (`start()`). Some work must happen once, before the model answers for the first time:
+
+- **Read the project rules.** The model must follow `AGENTS.md` from its first answer. So the session reads that file and adds it to the system prompt.
+- **Let plugins get ready** ([14](14-plugins.md)). Each plugin gets a chance to set itself up, for example to turn plan mode back on.
+
+This can't happen when the session is created (`__init__`). Reading a file means waiting, and Python does not let object creation wait. So both ways in (send a message, go on) call the setup first. The setup remembers that it has run, so from the second time on it does nothing.
+
+As a result, `AGENTS.md` is read **once per session**. If you edit it, start a new session to see the change.
+
+Later chapters add to these steps but do not change them: plugins can read or change the user's text before the run ([14](14-plugins.md)), and retry and overflow recovery look at the result after the run ([15](15-retry.md), [17](17-overflow.md)).
+
+> **Not the same `start`:** the CLI ([19](19-cli.md)) and the server ([20](20-server-run.md)) each have their own `start`. It runs the session in the background, so the terminal or the web request does not wait. It is not this one-time setup.
+
+Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.__init__`, `prompt`, `continue_`, `start`
 
 ## Prompt sections
 

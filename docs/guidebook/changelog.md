@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-26
 
+- ch13 "Why does the session own the agent?" rewritten reason first: why one setup for both apps, then what the app can call (send a message, go on, one-time setup) in plain words, with function names only as hints; note that the CLI and server `start` is a different function. Checked against `session/__init__.py` at `ae1457b`.
 - ch12 rewritten around 5 questions (task, one run, reading results, adding a task, host-shell warning); per-function pseudocode removed. Checked against `evals/run.py`.
 
 - ch11: rewrote around three questions (what the model needs, where project rules come from, why the prompt is a function); removed Problem/Naive/pseudocode/end-to-end repeats; glossary anchors updated.
