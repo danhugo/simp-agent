@@ -54,7 +54,7 @@ Real code: [coding/__init__.py](../../packages/simp_agent/src/simp_agent/coding/
 
 ## Why is the prompt a function, not a fixed string?
 
-Some parts of the prompt change while a session runs: the date and the folder, and in [13](13-session.md) the prompt sections that the session and plugins add. A string built once at the start would go stale. So instead of a string, the loop from [05](05-agent-loop.md) also takes a **function** that builds the prompt, and `_llm_turn` calls it before every model call. Each call then sends a fresh prompt.
+Some parts of the prompt change while a session runs: the date and the folder, and in [13](13-session.md) the prompt sections that the session and plugins add. A string built once at the start would go stale. So instead of a string, the loop from [05](05-agent-loop.md) also takes a **function** that builds the prompt, and `_llm_turn` calls it before every model call. Each call then sends a fresh prompt. For example, when the user turns on plan mode ([18](18-profiles-plugins.md)), a plugin adds the line "PLAN MODE is on: plan only…" to the prompt, and the very next call sees it.
 
 Real code: [agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `_llm_turn`
 
