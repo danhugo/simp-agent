@@ -68,27 +68,7 @@ result = ToolResultMessage(call.id, call.name, "User denied: {reason}", is_error
 
 ### Where the hooks plug into `agent_loop`
 
-The four steps all land in the tool step of `agent_loop`. Here it is with the new lines marked. The rest of the loop is in [05](05-agent-loop.md) and [07](07-steering.md); the truncation branch is from [05](05-agent-loop.md) and is not changed. (`_tools(config)` just gives `run_tool` the current tool list.)
-
-```text
-FOR EACH call IN calls:
-    IF cancel is set: STOP this FOR loop
-    IF msg.stop_reason == "length":
-        result = error result "Tool call was truncated (max tokens); not executed"
-    ELSE:
-        SEND event {tool_execution_start, call}
-        ctx = ToolContext(cancel, config.env, config.cwd, on_update)
-        deny = None                                                          // NEW
-        IF config.before_tool_call: deny = WAIT for before_tool_call(call, ctx)   // NEW
-        IF deny is not None:                                                 // NEW
-            result = ToolResultMessage(call.id, call.name, "User denied: {deny}", is_error=True)   // NEW
-        ELSE:                                                                // NEW
-            result = WAIT for run_tool(_tools(config), call, ctx)
-        IF config.after_tool_call:                                           // NEW
-            result = WAIT for after_tool_call(call, result, ctx), OR keep result if None
-        SEND event {tool_execution_end, call, result}
-    ADD result to history
-```
+The four steps all land in the tool step of `agent_loop`. The rest of the loop is in [05](05-agent-loop.md) and [07](07-steering.md), and the truncation branch from [05](05-agent-loop.md) is not changed. For each call, after `tool_execution_start`, the loop builds `ctx = ToolContext(cancel, config.env, config.cwd, on_update)`. Then it calls `before_tool_call` (if set), runs the tool only when there is no deny, calls `after_tool_call` (if set) on the result, sends `tool_execution_end`, and adds the result to the history. The path below shows this for one call.
 
 Real code: [agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) — `agent_loop`
 
@@ -142,27 +122,13 @@ Now the `write NOTES.md` call reaches the hook. There are five cases:
 
 Case (e) is why the hook gets `ctx`. A browser question may never be answered. If the hook only waited for the answer, Stop could not end the [run](glossary.md#run-agent). So it waits for **whichever comes first**: the answer, or `ctx.cancel`. Case (d) fails closed: a typo or an empty answer is a "no", never a "yes". After case (c), the next `write` in this session goes straight to case (a) and does not ask again.
 
-Here is the code, with the same letters:
+The approval part of the hook works like this, with the same letters:
 
-```text
-FUNCTION _before_tool_call(call, ctx):          // (approval part)
-    IF approve is None OR call.name NOT IN needs_approval OR call.name IN always_allowed:
-        RETURN None                              // (a)
-    ask  = START approve(call)
-    stop = START waiting for ctx.cancel
-    WAIT for the first one of (ask, stop) to finish
-    CANCEL stop
-    IF ask is not done:                          // (e) Stop came first
-        CANCEL ask
-        WAIT for ask to finish its cleanup
-        RETURN "aborted"
-    answer = result of ask
-    IF answer == "always":                       // (c)
-        ADD call.name to always_allowed
-    ELSE IF answer != "allow" OR ctx.cancel is set:
-        RETURN "aborted" if ctx.cancel is set, else "denied"   // (e) or (d)
-    RETURN None                                  // (b) or (c)
-```
+1. If there is no need to ask, return `None` (a).
+2. Start two tasks: `approve(call)` and a wait on `ctx.cancel`. Wait for the first one to finish, then cancel the wait on `ctx.cancel`.
+3. If Stop came first, cancel the question, wait for it to clean up, and return `"aborted"` (e).
+4. If the answer is `"always"`, add the tool to `always_allowed` and return `None` (c).
+5. If the answer is not `"allow"`, or `ctx.cancel` is set by now, return `"aborted"` when cancel is set, else `"denied"` (e or d). Otherwise return `None` (b).
 
 Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._before_tool_call`
 
