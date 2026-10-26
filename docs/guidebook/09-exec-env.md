@@ -37,17 +37,26 @@ CLASS NaiveEnv(root):                       // root = the project folder the too
     FUNCTION write_file(path, text):   open root + "/" + path and write text
     FUNCTION exec(command, cwd, timeout):
         p = START command in a shell
-        WAIT for p to end, at most timeout
-        IF timeout passed: KILL p; RETURN (None, "")
+        p.wait(timeout)                     // blocks until p ends or timeout passes
+        IF timeout passed: p.kill(); RETURN (None, "")
         RETURN (exit code, output)
 ```
 
-It works for the happy case, but it breaks in four ways. Because every tool goes through the env, whatever the env gets wrong, every tool gets wrong.
+It works for the happy case. To see where it breaks, look at where an env call runs. Python's [event loop](glossary.md#event-loop) runs on one thread. The [agent loop](05-agent-loop.md) runs inside it, together with the task that watches for Stop ([06](06-events-abort.md)) and the sending of events to the UI. The agent loop calls a tool, and the tool calls the env:
 
-- **A path can leave the project.** Every tool reaches files only through the env, so the env is the one place that can check a path. `NaiveEnv` does not: it just joins `root + "/" + path` and opens it. If the model asks `read_file("../.ssh/id_rsa")` (by mistake, or because a file told it to), `..` walks up out of the project, and the tool reads the user's secret SSH key, which then goes into the history and to the model provider. `write_file("../.bashrc", …)` could even change files outside the project. A *symlink* (a file that points to another place) can do the same.
-- **The whole agent freezes.** When `NaiveEnv` runs `pytest`, the agent freezes for the whole minute: no events reach the UI, and Stop does nothing. The agent runs on one thread, and Python's [event loop](glossary.md#event-loop) can switch to other jobs only while a call is `await`ed. `NaiveEnv`'s `open()` and `WAIT` are not.
-- **Killing the shell is not enough.** Stopping a command is the env's job too, since `bash` starts it through the env. On timeout `NaiveEnv` does `KILL p`, which kills only the shell. If `pytest` started a test server in the background, the server keeps running after the agent says it stopped (and may block the next test run). And we return `""`, so the model never sees which tests ran before the timeout and cannot tell the user what failed.
-- **A missing folder makes write fail.** Writing files is the env's job, and `NaiveEnv` writes only to folders that already exist. So when the model wants to save its notes with `write_file("notes/NOTES.md", …)` and `notes/` does not exist yet, the write fails, and the model must notice, make the folder, and try again: a wasted turn.
+```text
+event loop (one thread)
+└─ agent_loop → tool → env
+                        ├─ read_file / write_file → open() → disk
+                        └─ exec("pytest") → new process: sh (p) → pytest → test server (port 8000)
+```
+
+Every tool goes through the env, so whatever the env gets wrong, every tool gets wrong. `NaiveEnv` gets four things wrong, at four places on this path:
+
+- **env → disk: a path can leave the project.** The env is the one place that can check a path, but `NaiveEnv` just joins `root + "/" + path` and opens it. If the model asks `read_file("../.ssh/id_rsa")` (by mistake, or because a file told it to), `..` walks up out of the project, and the tool reads the user's secret SSH key, which then goes into the history and to the model provider. `write_file("../.bashrc", …)` could even change files outside the project. A *symlink* (a file that points to another place) can do the same.
+- **env waits: the whole agent freezes.** `pytest` runs in its own process, but `NaiveEnv` waits for it with `p.wait()`. That wait holds the event loop's one thread for the whole minute, so nothing else can run: no events reach the UI, and Stop does nothing. (A plain `open()` holds the thread too, only for a shorter time.) A wait that is `await`ed would let the event loop run the other jobs in the meantime.
+- **env → process: a timeout leaves processes running and loses the output.** On timeout, `NaiveEnv` kills only `p`, the shell. Killing a parent does not kill its children, so `pytest` and the test server keep running, and the next `pytest` run fails because port 8000 is still taken. Also, `NaiveEnv` reads the output only when the command ends, so on timeout it returns `""`: the model never sees the lines `pytest` already printed, such as which tests failed.
+- **env → disk: a missing folder makes write fail.** `NaiveEnv` writes only to folders that already exist. So when the model saves its notes with `write_file("notes/NOTES.md", …)` and `notes/` does not exist yet, the write fails, and the model must make the folder and try again: a wasted turn.
 
 ## Real design
 
@@ -90,7 +99,7 @@ Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp
 
 ### Step 2: `LocalEnv` reads the file
 
-The tool called `ctx.env.read_file("README.md")`. With the default host setup, `ctx.env` is a `LocalEnv`. What does it do with the call? This step also fixes two breaks: "the whole agent freezes" (for files), and "a missing folder makes write fail".
+The tool called `ctx.env.read_file("README.md")`. With the default host setup, `ctx.env` is a `LocalEnv`. What does it do with the call? This step fixes two breaks: "env waits: the whole agent freezes" (for files), and "env → disk: a missing folder makes write fail".
 
 `LocalEnv` is the only env in the core library. It works on the machine where Python runs. It takes one optional argument, `root`: the folder the tools may use. With no root (the `LoopConfig` default), paths are used as they are, so a relative path depends on the folder the Python process runs in. That is why the tools in [10](10-coding-tools.md) first join the path to `ctx.cwd` themselves.
 
@@ -124,7 +133,7 @@ Every method starts with `_path(path)`. What does `_path` do with `"README.md"` 
 
 ### Step 3: `_path` checks the path
 
-This step fixes "a path can leave the project". [Path safety](glossary.md#path-safety) means: when `LocalEnv` has a `root`, a file path can never point outside it.
+This step fixes "env → disk: a path can leave the project". [Path safety](glossary.md#path-safety) means: when `LocalEnv` has a `root`, a file path can never point outside it.
 
 A string check like `".." in path` is not enough: it misses symlinks and absolute paths. So `_path` first turns the path into its real, full form with `resolve()` (this removes `..` **and** follows symlinks), and only then asks "is this still inside the root?":
 
@@ -152,7 +161,7 @@ Now the result goes back. If `_path` is happy, the text of `README.md` returns t
 
 ### Step 4: a second request, `bash`
 
-Reading a file is short. Now the model calls `bash(command="pytest")`. The `bash` tool calls `ctx.env.exec(...)`. This call can be long, print a lot, and the user may press Stop. What does `exec` do with it? This step fixes "the whole agent freezes" for commands, and the lost output from "killing the shell is not enough".
+Reading a file is short. Now the model calls `bash(command="pytest")`. The `bash` tool calls `ctx.env.exec(...)`. This call can be long, print a lot, and the user may press Stop. What does `exec` do with it? This step fixes "env waits: the whole agent freezes" for commands, and the lost output from "env → process: a timeout leaves processes running and loses the output".
 
 `exec(command, cwd, timeout, cancel, on_output)` runs a shell command. While it runs, output streams out. Three things can end it:
 
@@ -215,7 +224,7 @@ sequenceDiagram
 
 ### Step 5: Stop kills the whole group
 
-This step fixes the rest of "killing the shell is not enough": the children that stay alive after the shell is killed. `exec` called `run_kill(proc.pid)` when Stop or the timeout won. Why a group, and not just the process? Bash starts `npm test`, which starts `node`. If we kill only bash, `node` lives on and still holds port 3000.
+This step fixes the rest of "env → process: a timeout leaves processes running": the children that stay alive after the shell is killed. `exec` called `run_kill(proc.pid)` when Stop or the timeout won. Why a group, and not just the process? Look at the tree from the naive version: `sh` (p) starts `pytest`, which starts the test server. If we kill only `sh`, `pytest` and the test server live on, and the server still holds port 8000.
 
 So we start the shell with `start_new_session=True`. Now the shell and every child it starts share one **process group**, whose id is the shell's PID. A [process-group kill](glossary.md#process-group-kill) sends `SIGKILL` (a kill signal that cannot be caught) to the whole group at once. `run_kill(pgid)` does this; `pgid` is the process group id, which is why `exec` passes `proc.pid`.
 
