@@ -148,74 +148,34 @@ The error does not crash anything. `run_tool` ([05](05-agent-loop.md)) turns it 
 
 Two limits. `root` is optional: with no root, every path is used as it is. That is fine for a CLI on your own machine (the tools in [10](10-coding-tools.md) then join relative paths to `ctx.cwd`). And the check is for files only: `bash` can still run `cat ../.ssh/id_rsa`. Real isolation for commands is the Docker sandbox ([24](24-docker-sandbox.md)).
 
-### Step 4: a second request, `bash`
+### Step 4: `exec` runs `pytest` without freezing, and keeps the output
 
-Reading a file is short. Now the model calls `bash(command="pytest")`. The `bash` tool calls `ctx.env.exec(...)`. This call can be long, print a lot, and the user may press Stop. What does `exec` do with it? This step fixes "env waits: the whole agent freezes" for commands, and the lost output from "env → process: a timeout leaves processes running and loses the output".
+Now the model calls `bash(command="pytest")`, and the tool calls `ctx.env.exec(...)`. `exec` starts the shell in a new process (Step 5 explains the "new group"), then fixes two breaks.
 
-`exec(command, cwd, timeout, cancel, on_output)` runs a shell command. While it runs, output streams out. Three things can end it:
+**The freeze.** `NaiveEnv` waited with `p.wait()`, which held the event loop's thread. `exec` instead runs two small tasks and `await`s whichever ends first, at most `timeout`: `run` reads the output until `pytest` exits, and `stop` waits for the Stop flag. This is the same race as `_stream` in [06](06-events-abort.md), plus a timeout. While they wait, the event loop is free.
 
-1. **It finishes.** We return `(exit code, all output)`.
-2. **The user presses Stop.** The `cancel` event (from the tool context) is set.
-3. **The timeout passes.**
-
-In cases 2 and 3 we kill the command and return `(None, output so far)`. `None` means "we killed it"; a real exit code would be a lie, because the command never finished. Example: `echo start; sleep 30` with timeout 2 gives `(None, "start\n")`, so the model still learns how far it got.
+**The lost output.** `NaiveEnv` read the output only at the end. `run` reads it piece by piece as it comes, keeps every piece in `chunks`, and passes each one to `on_output`, which is `ctx.on_update`, so the UI shows it live. So if Stop or the timeout wins, `exec` kills the command and still returns what came so far: `(None, output so far)`. `None` means "killed", not a real exit code.
 
 ```text
-FUNCTION exec(command, cwd, timeout, cancel, on_output = none):
-    proc = START command in a shell, in cwd,
-           stderr merged into stdout,             // one stream, in the order it came
-           in a NEW process group                 // so one kill reaches all children
-    chunks = empty list
-
-    FUNCTION pump():
-        WHILE data = read next 4096 bytes of output:
-            text = decode data                    // bad bytes become "�", no error
-            ADD text to chunks
-            IF on_output is given: WAIT for on_output(text)   // live output for the UI
-        WAIT for proc to exit
-
-    run  = START pump() as a task
-    stop = START a task that WAITS for cancel to be set
+FUNCTION exec(command, cwd, timeout, cancel, on_output):
+    proc = START command in a shell, in a new process group
+    run  = START task: read output piece by piece into chunks (and on_output) until proc exits
+    stop = START task: wait for cancel
     WAIT for the first of (run, stop), at most timeout
-    STOP the stop task
-    IF run is not done:                           // Stop or timeout
-        WAIT for run_kill(proc.pid)
-        WAIT for run                              // read the last bytes
-        RETURN (None, all chunks joined)
-    RETURN (proc exit code, all chunks joined)
+    IF run is not done:                    // Stop or timeout won
+        run_kill(proc.pid)                 // Step 5
+        WAIT for run                       // reads the last bytes
+        RETURN (None, chunks joined)
+    RETURN (proc exit code, chunks joined)
 ```
 
 Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`LocalEnv.exec`)
 
-How to read it. stderr is merged into stdout so the model sees errors next to the line that caused them. Bad bytes are replaced, not raised, because one odd byte from a program must not crash the tool. `on_output` is what the `bash` tool passes as `ctx.on_update` ([05](05-agent-loop.md#toolcontext-what-a-tool-gets)), so each chunk becomes a `tool_execution_update` event for the UI.
-
-The end is the same race as `_stream` in [06](06-events-abort.md), plus a timeout. Two things are new. After the kill we still wait for `run`: the output pipe closes only when every process in the group is dead, so this wait reads the last bytes. And every chunk is kept in `chunks`, so even after a kill the partial output returns.
-
-```mermaid
-sequenceDiagram
-    participant T as Tool (bash)
-    participant E as LocalEnv.exec
-    participant P as Shell + children
-    T->>E: exec(cmd, cwd, timeout, cancel, on_output)
-    E->>P: start (new process group)
-    loop while output comes
-        P-->>E: 4 KB chunk
-        E-->>T: on_output(text)
-    end
-    alt command ends
-        E-->>T: (exit_code, output)
-    else timeout or cancel
-        E->>P: kill the whole group
-        P-->>E: last bytes, then pipe closes
-        E-->>T: (None, output so far)
-    end
-```
+(Two small choices: stderr goes into the same stream as stdout, so an error sits next to the line that caused it; and a bad byte becomes `�` instead of crashing the tool.)
 
 ### Step 5: Stop kills the whole group
 
-This step fixes the rest of "env → process: a timeout leaves processes running": the children that stay alive after the shell is killed. `exec` called `run_kill(proc.pid)` when Stop or the timeout won. Why a group, and not just the process? Look at the tree from the naive version: `sh` (p) starts `pytest`, which starts the test server. If we kill only `sh`, `pytest` and the test server live on, and the server still holds port 8000.
-
-So we start the shell with `start_new_session=True`. Now the shell and every child it starts share one **process group**, whose id is the shell's PID. A [process-group kill](glossary.md#process-group-kill) sends `SIGKILL` (a kill signal that cannot be caught) to the whole group at once. `run_kill(pgid)` does this; `pgid` is the process group id, which is why `exec` passes `proc.pid`.
+`NaiveEnv` killed only `sh`, so `pytest` and the test server lived on and kept port 8000. `exec` starts `sh` with `start_new_session=True`, so `sh` and every child it starts share one **process group**, whose id is the shell's PID. A [process-group kill](glossary.md#process-group-kill) sends `SIGKILL` (a kill signal that cannot be caught) to the whole group at once: `run_kill(proc.pid)` does this, so all three die and the port is free.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`run_kill`)
 
