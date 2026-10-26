@@ -310,7 +310,7 @@ No terminal, no model, no event loop. That is why `route` is a pure function and
 Other tests in the same files use the same idea:
 
 - `test_approval_answer_default_no` and `test_interrupt_action` test the other pure functions.
-- `test_deny_skips_tool` and `test_always_asks_once_and_read_never_asks` are the approval tests already shown in [08](08-hooks-approval.md#test).
+- `test_deny_skips_tool` and `test_always_asks_once_and_read_never_asks` are the approval tests already shown in [08](08-hooks-approval.md).
 - `test_print_mode_full_lines_no_ansi` (in `test_tui.py`) feeds deltas to `LinePrinter` and checks it prints only full lines, with no ANSI.
 - `test_pty_streaming_screen` starts a real REPL in a pseudo terminal and reads the screen with `pyte`. It checks that the answer shows while it still streams.
 

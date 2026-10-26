@@ -58,7 +58,7 @@ We fix it one problem at a time.
 result = ToolResultMessage(call.id, call.name, "User denied: {reason}", is_error=True)
 ```
 
-**Step 2: move the policy out.** The loop only calls a function that the caller puts in `LoopConfig`. The function returns `None` for "go on", or a string: the reason to deny.
+**Step 2: move the policy out.** The loop only calls a function that the caller puts in `LoopConfig`. The function returns `None` for "go on", or a string: the reason to deny. Any string denies, even `""`.
 
 **Step 3: a place to change results.** A second function runs after the tool. It returns a new result, or `None` to keep the old one. Why change a result after the tool ran? The output may hold a secret, such as an API key printed by `cat .env`, and it must be hidden before the model, the saved history or the screen sees it. That is what [RedactSecrets](18-profiles-plugins.md#redactsecrets) does.
 
@@ -167,65 +167,5 @@ FUNCTION _before_tool_call(call, ctx):          // (approval part)
 Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._before_tool_call`
 
 After `"aborted"`, the loop ends the run as in [06](06-events-abort.md).
-
-## Test
-
-The loop-level test passes a plain function that always says no (`apps/cli/tests/test_cli.py`):
-
-```python
-async def test_before_tool_call_hook_in_loop():
-    ran, seen = [], []
-
-    def hook(call, ctx):
-        seen.append(call.name)
-        return "nope"
-
-    msgs = []
-    cfg = LoopConfig(Model(), tools(ran), stream_fn=FakeProvider(bash_call(), DONE), before_tool_call=hook)
-    await agent_loop("s", msgs, [UserMessage("hi")], cfg)
-    res = msgs[2]
-    assert seen == ["bash"] and ran == [] and res.is_error and res.content == "User denied: nope"
-    assert msgs[-1] is DONE  # the loop continued
-```
-
-The test uses `bash` instead of our `write`; any tool name works the same. The [FakeProvider](04-label-test.md) first asks for `bash`, then replies `"ok"`. The test checks that the hook saw the call, the tool did **not** run, the result is an error with the reason, and the loop went on to the second reply.
-
-The after-hook test, `test_after_tool_call_and_prepare_arguments` (`apps/cli/tests/test_sockets.py`), changes a result through `Agent`:
-
-```python
-    after = lambda c, r, ctx: ai.ToolResultMessage(r.tool_call_id, r.tool_name, r.content + "!")  # noqa: E731
-    a = Agent("s", Model(), [t], FakeProvider(call("t", num=1), DONE), after_tool_call=after)
-    new = await a.prompt("x")
-    assert got == [{"n": 1}] and new[2].content == "raw!"
-```
-
-The tool returns `"raw"`; the history keeps `"raw!"`.
-
-Approval has its own tests in `test_cli.py`. `test_deny_skips_tool` checks case (e) with a "no". `test_always_asks_once_and_read_never_asks` checks that two `bash` calls ask only once after `"always"`, and that `read` never asks. `test_no_approve_allows_all` checks case (a) with no `approve`. `test_abort_while_asking_denies` checks case (d): Stop is pressed, then a late `"allow"` comes, and the tool does not run. Cases (b) and (c)-after-Stop have no test at this commit.
-
-```bash
-uv run pytest apps/cli/tests/test_cli.py apps/cli/tests/test_sockets.py
-```
-
-## Why this way
-
-> **The loop asks; the caller decides.** Like steering in [07](07-steering.md), the loop has no policy. A CLI, a server, a test or a plugin system can each plug in their own hook. The cost: the loop cannot protect you alone. With no hook, every tool runs.
->
-> **A "no" is a tool result, not a skip.** The history stays valid, and the model learns why. The cost: a deny uses one more model turn.
->
-> **A string is the whole deny API.** `None` = run, any string = deny with that reason. No enum, no exception. The cost: even `""` means deny, which can surprise you.
->
-> **Approval is built on the hook, not in the loop.** The hard parts of asking a human (remembering "always", racing against Stop) live in one hook in the session. The cost: "always" is kept per tool name, only for this session.
-
-## Exercises
-
-1. Pass `before_tool_call=lambda c, ctx: ""`. Does the tool run? What is the result text?
-2. Write an `async def` `after_tool_call` that only appends `(r.is_error, r.content)` to a list and returns nothing. Use it with a `before_tool_call` that returns `"no"`. Does the after-hook run? Is the result in history changed?
-
-## Recap
-
-`LoopConfig` and `Agent` take two [tool hooks](glossary.md#tool-hook). `before_tool_call(call, ctx)` runs after `tool_execution_start`; it returns `None` to run the tool, or a reason string to deny it. A deny becomes the error result `User denied: <reason>`, and the loop goes on. `after_tool_call(call, result, ctx)` runs on both paths and may return a new result. Truncated calls skip both. Hooks may be plain or async.
-
-[Tool approval](glossary.md#tool-approval) is one `before_tool_call` in `AgentSession`. In our story, the two `read` calls run freely, and the `write NOTES.md` call asks first. "allow" runs it once, "always" runs it and stops asking for `write`, anything else denies, and Stop ends the question.
 
 **Builds on:** [07 Steering](07-steering.md) · **Next:** [09 Execution environment](09-exec-env.md) — the one place where tools touch files and run commands.
