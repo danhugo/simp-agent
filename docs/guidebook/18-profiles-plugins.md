@@ -42,7 +42,7 @@ context_window = 32000
 plugins = ["plan_mode"]
 ```
 
-A profile is a plain dict: one model setup, plus a few app settings. The CLI reads `~/.simp-agent/settings.json`, and the server and the evals ([12](12-evals.md#main-reuse-the-servers-settings)) read `settings.toml`. The shape of a profile is the same in both.
+A profile is a plain dict: one model setup, plus a few app settings. The CLI reads `~/.simp-agent/settings.json`, and the server and the evals ([12](12-evals.md#how-do-you-run-it-and-read-the-result)) read `settings.toml`. The shape of a profile is the same in both.
 
 So this chapter turns plain text into real objects. `model = "qwen"` and its friends must become a `Model` ([01](01-pick-clean.md#in-model-and-context)), and both apps must read a profile the same way. `plugins = ["plan_mode"]` must become plugin objects. [14](14-plugins.md) built the hooks a plugin can use; here we write the first two real plugins: one keeps secrets away from the model, and one makes the agent read-only.
 

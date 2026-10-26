@@ -4,6 +4,8 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-26
 
+- ch12 rewritten around 5 questions (task, one run, reading results, adding a task, host-shell warning); per-function pseudocode removed. Checked against `evals/run.py`.
+
 - ch11: rewrote around three questions (what the model needs, where project rules come from, why the prompt is a function); removed Problem/Naive/pseudocode/end-to-end repeats; glossary anchors updated.
 
 - ch05–08 words-first sweep: long pseudocode (05 `agent_loop`, `_llm_turn`, `run_tool`, `ToolContext`; 06 `_stream`, `_emit_all`, `Agent._run`; 07 steering loop, `Agent`; 08 tool step, `_before_tool_call`) now numbered steps or sentences. Kept: approved ch05 steps, ch06 race diagram + "next" text, ch07 timeline + two-loop diagram, ch08 5-step list, contracts, history examples.
