@@ -66,7 +66,7 @@ Read the arrow as "is used by". `ai` is used by `agent`, `agent` by `coding`, an
 
 A layer may import the layers to its left, never the ones to its right. And the library never imports the apps. So `ai` knows nothing about tools, and `agent` knows nothing about files on disk or about sessions.
 
-**Why?** Each layer can be understood and tested alone. When you read chapter 05 (the loop), you do not need to know about sessions. When something breaks in `ai`, you know nothing above it caused the bug. And you can replace a top part (for example, the CLI) without touching the core.
+**Why?** Each layer can be understood and tested alone. When you read chapter 05 (the loop), you do not need to know about sessions. When something breaks in `ai`, you know nothing above it caused the bug. And you can replace a top part (for example, the CLI) without touching the core. The cost: some features (like approval or saving) are split across layers, so you must know which layer owns what; the table above is that guide.
 
 This rule is not just a promise. A test checks it on every run.
 
@@ -196,16 +196,5 @@ We follow this task as the system grows:
 - In Part 3 the eval ([12](12-evals.md)) runs it and checks `fizzbuzz.py`.
 - In Part 4 the conversation is saved and can be resumed.
 - In Part 5 you type the task in a terminal or a browser.
-
-## Why this way
-
-> **A small core, layered, with fakes.** simp-agent keeps the core small and strict (layers that only import downward) and puts extra behaviour in plugins and apps. A fake model makes every layer testable from day one. The cost: some features (like approval or saving) are split across layers, so you must know which layer owns what. This chapter's layer map is that guide.
-
-## Recap
-
-- simp-agent is a loop: model → tool calls → tool results → model, until done.
-- The library has six layers, `ai` ← `agent` ← `coding` ← `session` ← `plugins` ← `testing`; the apps sit on top.
-- `test_layers.py` enforces "import only downward".
-- We build bottom up, one capability per chapter, with small running examples (README, `a.txt`, `shape.py`), then the fizzbuzz task from Part 4 on.
 
 **Builds on:** — · **Next:** [01 Pick + Clean](01-pick-clean.md)

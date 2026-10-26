@@ -36,7 +36,7 @@ assistant: [Thinking("User wants the file; call read", signature=...),
 tool:      ToolResultMessage(tool_call_id="call_1", content="# simp-agent ...")
 ```
 
-At the end of [01](01-pick-clean.md), Pick gave us a [stream function](glossary.md#stream-function) for `model.api`, and Clean fixed this history. Now we go inside the stream function. Its first two jobs are the topic here: **Translate** the messages into the [vendor](glossary.md#vendor)'s JSON, and **Send** them. Its third job, Parse, is [03](03-parse.md). We have one [provider](glossary.md#provider) (the code for one API format) per format, and each one does all three jobs.
+At the end of [01](01-pick-clean.md), Pick gave us a [stream function](glossary.md#stream-function) for `model.api`, and Clean fixed this history. Now we go inside the stream function. Its first two jobs are the topic here: **Translate** the messages into the [vendor](glossary.md#vendor)'s JSON, and **Send** them. Its third job, Parse, is [03](03-parse.md). We have one [provider](glossary.md#provider) (the code for one API format) per format, and each one does all three jobs. We pick by API format, not by vendor: many vendors and local servers speak the OpenAI format, so three providers cover almost all of them.
 
 Why can't we send one JSON for all? Because the three APIs want this same chat in three different shapes. Here it is as each one wants it (only the chat part; `model`, `tools` and other fields are cut):
 
@@ -69,7 +69,7 @@ Why can't we send one JSON for all? Because the three APIs want this same chat i
 
 The system prompt is a message in two of them and a separate field in the third. Thinking goes back in two of them and not at all in the first. Tool arguments are a string in two and an object in the third. This is the job of block 3, Translate.
 
-Sending has a problem of its own: the network can fail, the key can be bad, the vendor can be busy. The stream function never raises, so each of these must become an `error` event. That is block 4, Send.
+Sending has a problem of its own: the network can fail, the key can be bad, the vendor can be busy. The stream function never raises, so each of these must become an `error` event. A provider also never reads the environment; the app passes `api_key`, so the app stays in control of keys. That is block 4, Send.
 
 ## 3 Translate: our messages → vendor format
 
@@ -190,30 +190,5 @@ IF any exception:
 ```
 
 Anthropic puts the error on the message it was already building, so text received so far is kept. The OpenAI providers send a new, empty message. The SDK `import` sits just before the `try`, so you only need the SDK you use; a missing SDK raises `ImportError`, the one case that breaks "never raise".
-
-## Test
-
-No real model or key is needed; the tests replace the SDK with a fake. `test_message_conversion` checks the shape `to_openai` gives, and `test_compat_params` checks that `compat` changes the request keys. `test_http_error_is_event` makes `AsyncOpenAI` raise a connection error and checks that the stream yields an `error` event, not an exception. `test_responses_replay_order_and_ids` checks that Responses sends reasoning items and ids back the same.
-
-```bash
-cd packages/simp_agent
-uv run pytest -q tests/test_openai.py::test_message_conversion tests/test_openai.py::test_compat_params \
-  tests/test_openai.py::test_http_error_is_event tests/test_reasoning.py::test_responses_replay_order_and_ids
-```
-
-> **Why this way**
->
-> We pick the provider by **API format** (`model.api`), not by vendor. Many vendors and local servers speak the OpenAI format, so three providers cover almost all of them, and `compat` handles the small differences.
->
-> A provider only translates, sends and parses. It never raises and never reads the environment, so the loop has one rule (read the last event) and the app stays in control of keys.
-
-## Exercises
-
-1. Call `to_openai` on a history with an assistant turn that has only a tool call, then its tool result. What is the assistant's `content`, and what role does the result get?
-2. Make a `Model(api="openai-completions", compat={"max_tokens_field": "max_completion_tokens", "include_usage": False})`. Which request keys change?
-
-## Recap
-
-Each provider translates our messages into its API's shape: Chat Completions drops thinking, Responses sends old items back with their old ids, and Anthropic merges same-role turns. `compat` holds small switches per server, so an odd server needs a setting, not new code. Send adds the settings, opens a stream, and turns every exception into an `error` event.
 
 **Builds on:** [01 Pick + Clean](01-pick-clean.md) · **Next:** [03 Parse](03-parse.md) — the raw chunks from the vendor are the IN of block 5 Parse, which glues them into one message.

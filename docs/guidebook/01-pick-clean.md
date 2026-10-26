@@ -63,7 +63,7 @@ Pick does not look inside the `Context`. Clean is the first block that opens `me
 
 **Job:** from `model.api`, find the code that talks to this model. **IN:** `Model`. **OUT:** a stream function.
 
-That code is a [provider](glossary.md#provider). In this book, "vendor" is the company and "provider" is our code for its API.
+That code is a [provider](glossary.md#provider). In this book, "vendor" is the company and "provider" is our code for its API. The rest of the code speaks only our own message types, so a new vendor is one new provider and one dict entry.
 
 ### Naive version
 
@@ -140,7 +140,7 @@ A stream function does blocks 3–5 (Translate, Send, Parse) for one vendor. Ch 
 
 ## 2 Clean: `transform_messages`
 
-**Job:** fix the history so the chosen model accepts it. **IN:** `context.messages` and the `Model`. **OUT:** clean `messages`.
+**Job:** fix the history so the chosen model accepts it. **IN:** `context.messages` and the `Model`. **OUT:** clean `messages`. Cleaning runs here, in one place, so no provider has to repeat it.
 
 ### What is inside `messages`
 
@@ -270,47 +270,6 @@ If the user had stayed on Claude, `same` would be true, and the signed thinking 
 | thinking, no signature, with words | kept | text with its words |
 | thinking, no words, no signature | dropped | dropped |
 | text with a signature | kept | text, signature dropped |
-
-## Test
-
-No real model is needed. `test_dispatch_by_api` checks Pick and Clean together. It puts a fake in place of the real OpenAI provider:
-
-Real code: [packages/simp_agent/tests/test_openai.py](../../packages/simp_agent/tests/test_openai.py) (`test_dispatch_by_api`)
-
-```text
-TEST dispatch_by_api:
-    seen = empty list
-    fake provider WHEN called with (model, ctx):
-        ADD (model.api, ctx.messages) to seen
-        SEND event {done}
-    PUT fake in place of openai_completions.stream
-    history = [user "u", assistant with tool call "a" and no result]
-    RUN ai.stream with api "openai-completions" and key "k"
-    CHECK seen[0] api is "openai-completions"
-    CHECK last message seen is "No result provided"   // transform_messages ran first
-```
-
-The history ends with an orphan tool call, and the fake sees a "No result provided" result for it. `test_transform_thinking_same_vs_other_model` (`test_reasoning.py`) checks the thinking rows of the table.
-
-```bash
-cd packages/simp_agent
-uv run pytest -q tests/test_openai.py::test_dispatch_by_api \
-  tests/test_reasoning.py::test_transform_thinking_same_vs_other_model
-# 2 passed
-```
-
-> **Why this way?**
-> The rest of the code speaks only our own message types; each provider translates at the edge (ch [02](02-translate-send.md)), so a new vendor is one new provider and one dict entry. Cleaning runs in one place, so no provider has to repeat it.
-
-## Exercises
-
-1. Call `transform_messages` on `[UserMessage("u"), AssistantMessage([ToolCall("1", "read", {})])]`. What is the last message of the result, and why?
-2. Register your own stream function for a new `api` name with `register_provider`, and call `ai.stream` with a `Model` that uses it. What happens with an `api` name nobody registered?
-3. Make an assistant message with a signed `ThinkingContent`, labelled with model A. Run `transform_messages` with model A, then model B. What changes?
-
-## Recap
-
-Pick reads `Model.api` and takes a stream function from the `_PROVIDERS` dict; `register_provider` adds your own. The built-in providers are imported only when first called, and they send a fatal `error` event when there is no API key. A stream function yields events, ends with `done` or `error`, and never raises. Clean (`transform_messages`) drops markers and failed turns, and adds "No result provided" for orphan tool calls. The same model gets its thinking back as it is; another model gets only the words, as text.
 
 **Builds on:** [00 Overview](00-overview.md) · **Next:** [02 Translate + Send](02-translate-send.md) — the provider turns the clean messages into one vendor's JSON and sends them.
 

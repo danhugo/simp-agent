@@ -89,7 +89,7 @@ Now the whole pipeline works. How do we test the code that will use it? A real m
 
 ### Why a fake
 
-The loop does not call `ai.stream` by name. It takes the [stream function](glossary.md#stream-function) as a setting, `LoopConfig.stream_fn`, and the default is `ai.stream` ([agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py)). Any function with the same shape (take `(model, context, api_key)`, yield events, end with `done` or `error`, from [01](01-pick-clean.md#out-the-shape-of-a-model-call)) can stand in. So a test passes a fake there, and the fake plays the model.
+The loop does not call `ai.stream` by name. It takes the [stream function](glossary.md#stream-function) as a setting, `LoopConfig.stream_fn`, and the default is `ai.stream` ([agent/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py)). Any function with the same shape (take `(model, context, api_key)`, yield events, end with `done` or `error`, from [01](01-pick-clean.md#out-the-shape-of-a-model-call)) can stand in. So a test passes a fake there, and the fake plays the model. No patched imports, no mock library.
 
 The fake lives in the `testing` [layer](glossary.md#layer), at the far right of the [layer map](00-overview.md#the-layer-map). It may import from every layer, and no library code imports it.
 
@@ -182,46 +182,6 @@ It does not run Pick, Clean or Label, because it is passed *instead of* `ai.stre
 #### Its neighbour: `FakeEnv`
 
 The same file also has `FakeEnv`, a fake for running shell commands. It needs the execution environment from ch [09](09-exec-env.md), so we meet it there.
-
-## Test
-
-The fake alone, with only the types from [01](01-pick-clean.md):
-
-```text
-fp  = FakeProvider(reply "hello", then error reply "boom")
-ctx = Context("sys", [user "hi"])
-REPEAT 2 times:
-    FOR each event from fp(model, ctx): PRINT event type
-PRINT fp.calls, first text fp saw
-
-// output:
-// start
-// done
-// start
-// error
-// 2 hi
-```
-
-The first reply ends with `done`, the second with `error`, and `fp.messages` kept what was sent. The real tests in `tests/test_core.py` pass the fake to the loop of ch [05](05-agent-loop.md), so read them after ch 05:
-
-```bash
-cd packages/simp_agent
-uv run pytest -q tests/test_core.py::test_no_tool_call_one_turn \
-  tests/test_core.py::test_tool_call_then_second_turn
-# 2 passed
-```
-
-> **Why this way?** The loop takes `stream_fn` as a plain setting, so a test passes a fake: no patched imports, no mock library. The whole "conversation" is one line of replies, easy to read. The fake ends with the same events as a real provider, so code tested on it works on the real thing, and it records every call so a test can check what was sent. **Cost:** it cannot test streaming of small pieces, and an extra call fails with a `RuntimeError` ([above](#a-script-of-replies)), not a clean error.
-
-## Exercises
-
-1. Register your own provider with `register_provider("echo", fn)` where `fn` yields one `done` event with the last user text. Call `ai.stream` with `Model(api="echo")`. Which labels did `ai.stream` set on the message?
-2. Script a fake with three replies: text, error, text. Call it three times and print the end event type of each. Then call it a fourth time: what error do you get, and why?
-3. Use a reply function to answer with the number of messages in the context (`len(ctx.messages)`).
-
-## Recap
-
-`ai.stream` runs Pick and Clean, calls the provider, then labels every message with `api`, `provider` and `model`, which Clean reads on the next turn. It never raises: failures become an `error` event whose message holds a plain `error` string. The loop takes the stream function as the setting `stream_fn`, so tests swap in `FakeProvider`, which plays scripted replies in order, records every call, and ends each call with `done` or `error`.
 
 **Builds on:** [03 Parse](03-parse.md) · **Next:** [05 The agent loop](05-agent-loop.md) — the loop that calls `ai.stream` and runs the tools the model asks for.
 
