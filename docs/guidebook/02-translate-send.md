@@ -142,6 +142,20 @@ IF this turn has the same role as the last one: add its blocks to the last one, 
 
 The three results become one user turn with three `tool_result` blocks.
 
+### The tool list
+
+The model must also know which tools exist. Our `read` tool is `name`, `description` and `parameters` (a JSON schema). All three vendors take the list in a parameter called `tools`, but each wraps one tool in a different shape:
+
+| Vendor | One tool in `tools` |
+|---|---|
+| Chat Completions | `{"type": "function", "function": {"name", "description", "parameters"}}`: one extra `function` layer |
+| Responses | `{"type": "function", "name", "description", "parameters"}`: flat |
+| Anthropic | `{"name", "description", "input_schema"}`: no `type`, and `parameters` is renamed `input_schema` |
+
+The JSON schema itself (`{"type": "object", "properties": {"path": …}}`) is the same for all three; only the wrapper changes.
+
+Real code: [openai_completions.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_completions.py), [openai_responses.py](../../packages/simp_agent/src/simp_agent/ai/providers/openai_responses.py), [anthropic.py](../../packages/simp_agent/src/simp_agent/ai/providers/anthropic.py) — where `tools` is built.
+
 ## 4 Send: call the API
 
 Translate gave us the messages. What else goes in the request, and what if the call fails? Send does three things, in the same order in all three providers: it adds the other settings, opens a streaming call, and turns every error into an event.
