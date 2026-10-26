@@ -79,7 +79,7 @@ Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/too
 
 ### When `README.md` is too big: truncation
 
-Now say `README.md` has 9000 long lines. Sending all of it would fill the model's context, so `read` cuts it with `truncate_head`, a small helper in `coding/truncate.py` that all tools share. It keeps lines from the top until one of two limits is hit: **2000 lines, or 50 KB**. Both are needed: 2000 short lines are small, but 10 lines of minified JavaScript can be 1 MB. It always stops before a line that would not fit, so the model never sees half a line. (If line 1 alone is over 50 KB, nothing is kept.)
+Now say `README.md` has 9000 long lines. Sending all of it would fill the model's [context](glossary.md#context), so `read` [cuts](glossary.md#truncation) it with `truncate_head`, a small helper in `coding/truncate.py` that all tools share. It keeps lines from the top until one of two limits is hit: **2000 lines, or 50 KB**. Both are needed: 2000 short lines are small, but 10 lines of minified JavaScript can be 1 MB. It always stops before a line that would not fit, so the model never sees half a line. (If line 1 alone is over 50 KB, nothing is kept.)
 
 Besides the cut text, `truncate_head` returns a small **info dict** that says how the cut went: `truncated` (was anything cut?), `kept_lines` (how many lines it kept), and `total_lines` / `total_bytes` (the size of the original). `read` needs `kept_lines` to know the last line it really sent, so it can tell the model where to continue.
 
