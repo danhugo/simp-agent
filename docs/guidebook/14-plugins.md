@@ -27,7 +27,7 @@ We want a **[plugin](glossary.md#plugin)** instead: a plain object that the sess
 
 ## Naive version
 
-In [13](13-session.md#one-class-that-owns-the-agent), `AgentSession` gave the agent its own `_before_tool_call`, `_after_tool_call` and `_prepare` hooks. Plugins go inside those methods, so the loop does not change. A first try for "no bash": the session's `_before_tool_call` asks every plugin.
+In [13](13-session.md#why-does-the-session-own-the-agent), `AgentSession` gave the agent its own `_before_tool_call`, `_after_tool_call` and `_prepare` hooks. Plugins go inside those methods, so the loop does not change. A first try for "no bash": the session's `_before_tool_call` asks every plugin.
 
 Naive sketch (not in the repo):
 
@@ -117,7 +117,7 @@ The same name shows up in block messages and is the key into `plugin_config`. No
 
 ### Start: setup and the PluginAPI
 
-The first `prompt()` calls `start()` ([13](13-session.md#prompt-continue_-and-start)). After it adds the context file, it runs:
+The first `prompt()` calls `start()` ([13](13-session.md#why-does-the-session-own-the-agent)). After it adds the context file, it runs:
 
 ```text
 FOR EACH plugin p:
@@ -146,7 +146,7 @@ CLASS PluginAPI:
     ...                                  // send_message, set_model, abort, emit, ...
 ```
 
-`add_prompt_section` uses the [prompt sections](glossary.md#prompt-section) of [13](13-session.md#prompt-sections-how-the-system-prompt-is-built). The default order 100 puts a plugin's section after `coding` (0) and `context_file` (10). `append_entry` saves a [custom entry](glossary.md#custom-entry): plugin data that is saved and replayed on resume, but never sent to the model. `emit` sends an event with the plugin's name in it. The full list is in [Reference · objects](ref-objects.md#pluginapi-methods). Plugins depend only on these names, so the session can change inside without breaking them.
+`add_prompt_section` uses the [prompt sections](glossary.md#prompt-section) of [13](13-session.md#prompt-sections). The default order 100 puts a plugin's section after `coding` (0) and `context_file` (10). `append_entry` saves a [custom entry](glossary.md#custom-entry): plugin data that is saved and replayed on resume, but never sent to the model. `emit` sends an event with the plugin's name in it. The full list is in [Reference · objects](ref-objects.md#pluginapi-methods). Plugins depend only on these names, so the session can change inside without breaking them.
 
 ### The user types: input and before_agent_start
 
