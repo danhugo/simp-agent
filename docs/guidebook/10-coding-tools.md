@@ -66,28 +66,16 @@ We follow one call from start to end: the model calls `read` on `README.md`. The
 
 ### One call: `read` on `README.md`
 
-The model sends a [tool call](glossary.md#tool-call) named `read` with `{"path": "README.md"}`. `run_tool` ([05](05-agent-loop.md#run_tool-one-call-never-raises)) finds the tool with that name and calls its function with two things: `args`, the JSON object the model sent, and `ctx`, the [tool context](glossary.md#tool-context) from [05](05-agent-loop.md#toolcontext-what-a-tool-gets). What does `read` do with them?
+The model calls `read` with `{"path": "README.md"}`, and `run_tool` ([05](05-agent-loop.md)) calls the `read` tool with these args and the tool context `ctx`. `read` does four things:
+
+1. It joins `README.md` to the working folder `ctx.cwd`. It does not check whether the path is allowed: that is the env's job ([09](09-exec-env.md)).
+2. It asks the env for the text with `ctx.env.read_file(...)`, the same `LocalEnv` call as in 09.
+3. It puts a line number and a tab before each line, so the model can say "line 42" and later read from there. By default it returns up to 2000 lines; the model can ask for another part with `offset` (the first line, counted from 1) and `limit`.
+4. If the text is too long, it cuts the rest and adds a note with the exact next call, for example "[350 more lines; use offset=2001 to continue]".
+
+The result goes back to `run_tool`, which wraps it in a tool result. If the env fails (no such file, path not allowed), `read` does not catch it: `run_tool` turns the error into an error result, as for every tool.
 
 Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `read`, `_path`
-
-```text
-FUNCTION _path(ctx, path):
-    RETURN ctx.cwd joined with path     // an absolute path stays as is
-
-FUNCTION read(args, ctx):
-    lines = WAIT for ctx.env.read_file(_path(ctx, args.path)), split into lines
-    start = max(offset, 1) - 1          // offset is 1-based, default 1
-    end = start + limit                  // limit default 2000
-    out, info = truncate_head(lines[start:end], each as "number<TAB>line")
-    end = smallest of: end, number of lines, start + kept lines
-    IF end < number of lines:
-        ADD "[N more lines; use offset=M to continue]"   // the exact next call
-    RETURN out
-```
-
-First `_path` joins `README.md` to `ctx.cwd`. It does **not** check if the path is allowed: that is the env's job ([09](09-exec-env.md#step-3-_path-keeps-every-path-inside-the-project)). A tool only joins; the env decides. Then `ctx.env.read_file` gets the text, the same `LocalEnv` call as in [09](09-exec-env.md#step-2-localenv-reads-and-writes-files-without-freezing). `read` splits it into lines and puts the line number and a tab before each one, so the model can say "line 42" and come back later with `offset=42`. `offset` is 1-based because the model sees 1-based numbers; values below 1 become 1.
-
-If `README.md` is short, that is the whole story: the numbered text goes back, and `run_tool` wraps it in a tool result. If the env raises (no such file, path not allowed), the tool just lets the `OSError` or `ValueError` fly, and `run_tool` turns it into an error result. No tool builds error objects by hand.
 
 ### When `README.md` is too big: truncation
 
