@@ -36,26 +36,11 @@ This chapter builds those two blocks. Neither one talks to a model yet. They onl
 
 Both blocks take two small objects. We show only the fields they use; every field is in [ref-objects](ref-objects.md#request-objects-tool-context-model).
 
-A **`Model`** says which model to call:
-
-```text
-Model:
-    id       = "gpt-5"
-    api      = "openai-responses"   // anthropic-messages | openai-completions | openai-responses
-    provider = "openai"             // just a name, for messages and keys (not our provider code)
-    ...                             // max_tokens, context_window, base_url, api_key_env, compat
-```
+A **`Model`** says which model to call. In our example its `id` is `"gpt-5"` and its `api` is `"openai-responses"` (the other choices are `"anthropic-messages"` and `"openai-completions"`). Its `provider` field, here `"openai"`, is just a name for messages and keys; it is not our provider code. Other fields hold `max_tokens`, `context_window`, `base_url`, `api_key_env` and `compat`.
 
 `api` names the **API format** to speak. It is the field Pick reads. So a local vLLM server is `provider="vllm", api="openai-completions", base_url="http://..."`. Profiles (ch [18](18-profiles-plugins.md)) fill these fields from config.
 
-A **[Context](glossary.md#context)** holds everything sent in one request:
-
-```text
-Context:
-    system_prompt   // text
-    messages        // the chat so far
-    tools           // what the model may call: name, description, JSON schema
-```
+A **[Context](glossary.md#context)** holds everything sent in one request: the `system_prompt` text, the `messages` (the chat so far), and the `tools` the model may call (each with a name, a description and a JSON schema).
 
 Pick does not look inside the `Context`. Clean is the first block that opens `messages`.
 
@@ -67,19 +52,7 @@ That code is a [provider](glossary.md#provider). In this book, "vendor" is the c
 
 ### Naive version
 
-The simple way is an `if` chain inside the loop:
-
-```text
-FUNCTION ask(model, context, api_key):
-    IF model.api is "anthropic-messages":
-        IMPORT the anthropic SDK
-        make a client, build anthropic messages, stream, parse
-    ELSE IF model.api is "openai-responses":
-        IMPORT the openai SDK
-        make a client, build openai messages, stream, parse
-    ELSE:
-        RAISE an error   // crashes the loop
-```
+The simple way is an `if` chain inside the loop. If `model.api` is `"anthropic-messages"`, import the anthropic SDK, make a client, build Anthropic messages, stream and parse. Else if it is `"openai-responses"`, do the same with the openai SDK. Else raise an error.
 
 This has three problems. We name them and fix each one.
 
@@ -95,16 +68,7 @@ The table is the [provider registry](glossary.md#provider-registry), a plain dic
 
 Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`register_provider`)
 
-```text
-_PROVIDERS = {
-    "anthropic-messages" -> _builtin("anthropic"),
-    "openai-completions" -> _builtin("openai_completions"),
-    "openai-responses"   -> _builtin("openai_responses"),
-}
-
-FUNCTION register_provider(api, stream_fn):
-    _PROVIDERS[api] = stream_fn
-```
+It starts with three entries: `"anthropic-messages"`, `"openai-completions"` and `"openai-responses"`. Each value is `_builtin(...)` with the module name (`"anthropic"`, `"openai_completions"`, `"openai_responses"`). `register_provider(api, stream_fn)` just sets `_PROVIDERS[api] = stream_fn`.
 
 In our example, `model.api` is `"openai-responses"`, so Pick gets the third entry. The lookup runs in `stream()`, shown in [ch 04](04-label-test.md#the-entry-point-stream-runs-1-2-6). If the `api` is not in the dict, `stream()` sends an `error` event "Unknown api: ..." instead of raising. That fixes part of the crash.
 
@@ -112,22 +76,17 @@ The built-in entries come from `_builtin`. It fixes the heavy import and the mis
 
 Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`_builtin`)
 
-```text
-FUNCTION _builtin(module):
-    RETURN a stream function that, WHEN called with (model, context, opts):
-        IF no api_key in opts:   // providers never read env; the app passes the key
-            SEND event {error, message with error "no API key for provider ...", error_kind "fatal"}
-            STOP
-        IMPORT providers/<module> now
-        FOR EACH event from that module's stream(model, context, opts):
-            SEND the event
-```
+`_builtin(module)` returns a stream function. When it is called with `(model, context, opts)`, it does this:
+
+1. If `opts` has no `api_key`, it sends one `error` event ("no API key for provider ...", `error_kind="fatal"`) and stops. Providers never read the environment; the app passes the key.
+2. Only now it imports `providers/<module>`.
+3. It sends on every event from that module's `stream(model, context, opts)`.
 
 The late import has a second reason: the provider modules import `Model`, `AssistantMessage` and others from `ai`, so importing them at the top of `ai` would be a circular import. The value `error_kind="fatal"` tells retry (ch [15](15-retry.md)) that trying again will not help.
 
 ### OUT: the shape of a model call
 
-Pick returns a function. Every provider has the same shape, and we call it a **[stream function](glossary.md#stream-function)** (`stream_fn` in the code). The rule is written on `register_provider`:
+Pick returns a function. Every provider has the same shape, and we call it a **[stream function](glossary.md#stream-function)** (`stream_fn` in the code). The rule is written on `register_provider`. We show it because these two lines are the whole contract every provider must follow:
 
 ```python
 def register_provider(api: str, stream_fn) -> None:
@@ -144,23 +103,9 @@ A stream function does blocks 3–5 (Translate, Send, Parse) for one vendor. Ch 
 
 ### What is inside `messages`
 
-A **[message](glossary.md#message)** is one of three kinds. (Every field, and how history is saved to JSON: [ref-objects](ref-objects.md).)
+A **[message](glossary.md#message)** is one of three kinds. (Every field, and how history is saved to JSON: [ref-objects](ref-objects.md).) A `UserMessage` holds what the person typed (`content`). An `AssistantMessage` holds what the model said: `content` is a list of blocks, plus `stop_reason`, `api`, `provider`, `model` and more. A `ToolResultMessage` is the answer to one tool call: `tool_call_id`, `tool_name`, `content` and `is_error`.
 
-```text
-UserMessage(content)                            // what the person typed
-AssistantMessage(content = list of blocks,      // what the model said
-                 stop_reason, api, provider, model, ...)
-ToolResultMessage(tool_call_id, tool_name,      // the answer to one tool call
-                  content, is_error)
-```
-
-An assistant message's `content` is a list of **blocks**, in the order the model gave them:
-
-```text
-TextContent(text, signature)                    // normal text
-ThinkingContent(thinking, signature, redacted)  // the model's reasoning
-ToolCall(id, name, arguments)                   // a request to run a tool
-```
+An assistant message's `content` is a list of **blocks**, in the order the model gave them. There are three kinds: `TextContent(text, signature)` is normal text, `ThinkingContent(thinking, signature, redacted)` is the model's reasoning, and `ToolCall(id, name, arguments)` is a request to run a tool.
 
 A **signature** is proof that only the vendor can check. For Anthropic it is the thinking signature. For OpenAI Responses it is the whole reasoning item as JSON, and on a text block it is the message id. A thinking block can also be **redacted**: Anthropic encrypted it, so it has no readable words at all.
 
@@ -197,25 +142,15 @@ The naive way sends the history as it is and gets the 400. The real fix is to cl
 
 Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`transform_messages`)
 
-```text
-out = empty list; pending = empty dict
-FOR EACH message m in messages:
-    IF m is a compaction or custom entry:   // markers, never sent
-        SKIP it
-    IF m is a tool result:
-        REMOVE its call from pending
-        ADD m to out
-        NEXT
-    flush()                                 // the calls before m got no result
-    IF m is an assistant message:
-        IF m.stop_reason is error or aborted:
-            SKIP it
-        pending = the tool calls in m
-        IF a model is given:
-            m = a COPY of m with content = _thinking(m, model)
-    ADD m to out
-flush()
-```
+For each message `m`, in order:
+
+1. A compaction or custom entry is skipped. These are markers, never sent.
+2. A tool result removes its call from `pending` and goes to `out`.
+3. Any other message first calls `flush()`: the calls before `m` got no result.
+4. An assistant message with `stop_reason` `"error"` or `"aborted"` is skipped. Otherwise its tool calls become the new `pending`, and if a model is given, `m` becomes a copy whose content is `_thinking(m, model)`.
+5. `m` goes to `out`.
+
+At the end, `flush()` runs one last time.
 
 Follow our example. Message 1 is a user message: `pending` is empty, so `flush()` adds nothing, and message 1 goes to `out`. Message 2 is an assistant message that did not fail. `pending` becomes `{"t1": "read"}`, its blocks are fixed by `_thinking` (next section), and the copy goes to `out`. Message 3 is not a tool result, so `flush()` runs first. It adds `ToolResultMessage("t1", "read", "No result provided", is_error=True)` before message 3. Now every call has a result, and the vendor accepts the history.
 
@@ -223,11 +158,7 @@ The copy is made with `dataclasses.replace`, so the saved history never changes.
 
 ### Thinking: who can read it back
 
-`_thinking(m, model)` decides what to do with each block of an old assistant message. First it asks one question: did the exact model we call now write `m`? It compares `m`'s labels with the model:
-
-```text
-same = (m.provider, m.api, m.model) equal (model.provider, model.api, model.id)
-```
+`_thinking(m, model)` decides what to do with each block of an old assistant message. First it asks one question: did the exact model we call now write `m`? It compares `m`'s labels with the model: `same` is true only if `m.provider`, `m.api` and `m.model` equal `model.provider`, `model.api` and `model.id`.
 
 Block 6 Label writes those labels on every answer (ch [04](04-label-test.md)). In our example, message 2 has `"claude-sonnet-5-5"` and we call `"gpt-5"`, so `same` is false.
 
@@ -235,22 +166,7 @@ The rule is short. The same model gets its blocks back as they are, with their p
 
 Real code: [packages/simp_agent/src/simp_agent/ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`_thinking`)
 
-```text
-out = empty list
-FOR EACH block c in m.content:
-    IF c is a thinking block:
-        IF c is redacted OR (same AND c has a signature):
-            IF same: ADD c to out          // else drop: the other model cannot open it
-        ELSE IF c has words:
-            IF same: ADD c to out
-            ELSE: ADD TextContent(c's words) to out
-        // else: no words, drop it
-    ELSE IF c is a text block with a signature AND NOT same:
-        ADD TextContent(c's text) to out   // same words, no id
-    ELSE:
-        ADD c to out
-RETURN out
-```
+The table at the end of this section gives the rule for every kind of block. Tool calls and plain text blocks are always kept as they are.
 
 In our example, the thinking block is not redacted and `same` is false, so the first check fails. It has words, so GPT gets `TextContent("User wants README...")`, without the signature. The tool call is added as it is. The clean history GPT gets is:
 
