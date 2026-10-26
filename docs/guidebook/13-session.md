@@ -40,7 +40,7 @@ Here is the OUT first. The user says `hi`. The model calls a tool `nope` that do
 {"content": [{"text": "ok", "signature": null, "type": "text"}], "stop_reason": "stop", "usage": {"input": 0, "output": 0}, "error": null, "error_kind": null, "api": "", "provider": "", "model": "", "role": "assistant"}
 ```
 
-This is a **[JSONL](glossary.md#jsonl)** file: one JSON object per line. (Real output of the [test](#test) at the end of this chapter, with the fake model, so `usage` and `model` are empty.) Each line is written the moment its message ends. To resume, we read the lines back into messages.
+This is a **[JSONL](glossary.md#jsonl)** file: one JSON object per line. (Real output of `test_store_gets_every_message_in_order` in [test_session.py](../../packages/simp_agent/tests/test_session.py), with the fake model, so `usage` and `model` are empty.) Each line is written the moment its message ends. To resume, we read the lines back into messages.
 
 ## Starting point: the Part 3 Agent, kept only in memory
 
@@ -254,40 +254,5 @@ The app can also replace the default. If it passes its own `system_prompt` strin
 Because `self._build_prompt` is the prompt function the `Agent` gets, the loop calls it before **every** model call ([11](11-system-prompt.md)): the system prompt is rebuilt every turn, so any section change shows up on the next turn.
 
 `test_session.py::test_context_file_in_system_prompt` checks this: it writes `AGENTS.md` with `use tabs` and checks that the first system prompt contains it.
-
-## Test
-
-`packages/simp_agent/tests/test_session.py::test_store_gets_every_message_in_order`:
-
-```python
-async def test_store_gets_every_message_in_order():
-    stream = FakeProvider(AssistantMessage([ToolCall("c1", "nope", {})], stop_reason="tool_use"), DONE)
-    store = ListStore()
-    s = session(stream, store=store)
-    await s.prompt("hi")
-    assert store.items == s.messages and [m.role for m in store.items] == ["user", "assistant", "tool_result", "assistant"]
-    assert AgentSession(Model(), [], store=store, messages=store.load()).messages == store.items  # app restores
-```
-
-The helper `session(...)` builds an `AgentSession` with `tools=[]` and `system_prompt="s"`, so `nope` is unknown because the session has no tools at all. `FakeProvider` ([04](04-label-test.md)) answers with that tool call, then `ok`. The unknown tool still makes a tool result (an error), so the run has four messages: the 4 lines of [the goal](#the-goal-what-is-saved). The first assert checks that the store got **every** message, **in order**, and equals the session history. The last line is a resume: a new session built from `store.load()` has the same history.
-
-Run it:
-
-```sh
-uv run pytest packages/simp_agent/tests/test_session.py::test_store_gets_every_message_in_order -q
-```
-
-## Why this way
-
-> **Own the agent, save on every message.** `AgentSession` wraps `Agent` instead of growing it. The loop stays small and testable ([05](05-agent-loop.md)); the session adds the "long-lived" features on top through the agent's hooks. Saving on each `message_end` with a two-method `SessionStore` makes history crash safe and lets each app pick its own storage. The cost: the app must call `store.load()` and pass `messages=` itself.
-
-## Exercises
-
-1. Write a `PrintStore` whose `append` prints `entry.role` and keeps the entry in a list. Run a session with `FakeProvider` (copy `session(...)` from `test_session.py`) and check the printed order is `user, assistant, tool_result, assistant`. Hint: reuse the `FakeProvider(...)` call from the test above.
-2. Make an async store: `async def append(self, entry)`. Does the session still save every message? Hint: look at `_maybe_await` in `agent/__init__.py`.
-
-## Recap
-
-`AgentSession` owns one `Agent` and connects to its hooks and events. On each `message_end` it appends the finished message to a `SessionStore`, which has only `append` and `load`; in the CLI that store is `JsonlStore`, one JSON line per entry. To resume, the app passes `messages=store.load()`. Before the first run, `start()` runs once and adds the context file as a prompt section, and `_build_prompt` joins the sections before every model call.
 
 **Builds on:** [12 Evals](12-evals.md) · **Next:** [14 Plugins](14-plugins.md) — plugins use the session's hooks and prompt sections.

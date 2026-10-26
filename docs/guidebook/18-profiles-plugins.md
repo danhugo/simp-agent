@@ -163,7 +163,7 @@ FUNCTION mask(text):
     REPLACE each PATTERNS match with MASK
 ```
 
-Values shorter than 8 characters are skipped: if an env var holds `"1"`, masking every `1` would ruin the output. Longest first matters when one secret contains another. With `abcdefgh` and `abcdefgh123`, masking the short one first would leave `[REDACTED]123`, and part of the long secret would leak.
+Values shorter than 8 characters are skipped: if an env var holds `"1"`, masking every `1` would ruin the output. Longest first matters when one secret contains another. With `abcdefgh` and `abcdefgh123`, masking the short one first would leave `[REDACTED]123`, and part of the long secret would leak. The limit: only known shapes and known values are masked, so a secret with a new shape still gets through.
 
 Then three hooks use `mask`:
 
@@ -235,52 +235,5 @@ There are two layers. The prompt section ([13](13-session.md#prompt-sections-how
 The on/off state is saved as a `CustomEntry` through `api.append_entry` ([14](14-plugins.md#start-setup-and-the-pluginapi)): it is in history, but never sent to the model. When a session is loaded again, `setup` finds the **last** such entry and restores the state, so plan mode survives a restart with no extra file. `config["enabled"]` is only the start value for a brand-new session.
 
 The app is what calls `set_enabled`. In the server, the web page sends a `SetPlanMode` command, and the server finds the `PlanMode` in `session.plugins` and calls it ([21](21-transport.md)).
-
-## Test
-
-`packages/simp_agent/tests/test_profile.py`:
-
-```python
-def test_build_model_openai_defaults():
-    m = build_model({"api": "openai-completions", "model": "x", "base_url": "http://h/v1", "context_window": 1000,
-                     "api_key_env": "K"})
-    assert (m.id, m.api, m.provider, m.base_url, m.api_key_env) == ("x", "openai-completions", "openai", "http://h/v1", "K")
-    assert m.compat["include_usage"] is True and m.context_window == 1000
-
-
-def test_build_model_keeps_explicit_compat():
-    m = build_model({"api": "openai-responses", "model": "x", "compat": {"include_usage": False}})
-    assert m.compat["include_usage"] is False
-
-
-def test_build_plugins():
-    assert [type(p).__name__ for p in build_plugins(["plan_mode", "redact_secrets"])] == ["PlanMode", "RedactSecrets"]
-    with pytest.raises(ValueError, match="unknown plugin"):
-        build_plugins(["nope"])
-```
-
-The first two tests check the fixes to the naive version: `model` becomes `id`, `provider` follows `api`, `include_usage` is on by default, and an explicit `False` is kept. The third checks that names keep their order and a typo raises.
-
-The two plugins are tested inside a full session in `apps/cli/tests/test_sockets.py`. In `test_redact_plugin_masks_key_in_tool_output`, a tool prints a key; the saved result is `"token=[REDACTED] and [REDACTED]"`, the model's view has no key, and history still has the user's own text. In `test_plan_mode_blocks_write_and_survives_resume`, plan mode blocks a `write`, the system prompt has `PLAN MODE`, and a new session loaded from the same `JsonlStore` comes back with plan mode on.
-
-Run them:
-
-```sh
-uv run pytest packages/simp_agent/tests/test_profile.py -q
-uv run pytest apps/cli/tests/test_sockets.py -k "redact or plan_mode" -q
-```
-
-## Why this way
-
-> **One profile function, plugins by name, state in history.** `build_model` is shared, so the CLI and the server read a profile the same way. Plugins are picked by name, so a settings file can turn them on, and a typo fails early. The two built-in plugins use only the public hooks from [14](14-plugins.md); they are proof that the hooks are enough. Plan mode keeps its state as a `CustomEntry`, so resume needs no extra file. The cost: `RedactSecrets` only finds known shapes and known values. A secret with a new shape still gets through.
-
-## Exercises
-
-1. Call `build_model({"api": "openai-completions", "model": "qwen", "plugins": ["plan_mode"]})`. Check `provider`, `max_tokens` and `compat`. Hint: `plugins` is ignored, `max_tokens` keeps `Model`'s default `8192`, and `compat` is `{"include_usage": True}`.
-2. Make a `RedactSecrets()`, call `setup(None, {"secrets": ["my-long-password"], "env": False})`, then `mask("pw=my-long-password key=sk-" + "a" * 20)`. Both parts should become `[REDACTED]`. Then try a secret of 5 characters. Hint: values shorter than 8 are skipped on purpose.
-
-## Recap
-
-A profile is plain text in a settings file. `build_model` turns it into a `Model` the same way for every app, and `build_plugins` turns plugin names into fresh objects. `RedactSecrets` keeps secrets out of tool results, the screen and the model's view; `PlanMode` makes the agent read-only and keeps its state in history. Part 4 is now done. In Part 5 we build the apps on top of the session, starting with the CLI in [19](19-cli.md).
 
 **Builds on:** [17 Context overflow](17-overflow.md) · **Next:** [19 The CLI](19-cli.md)

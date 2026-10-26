@@ -275,7 +275,7 @@ class CompactionEntry:
     role: Literal["compaction"] = "compaction"
 ```
 
-Our history gets index 10: `CompactionEntry(summary="## User Requests ...", first_kept_index=6, read_files=[], modified_files=["fizzbuzz.py", "test_fizzbuzz.py"])`. Messages 0..9 stay in history and on disk; the session saves the entry to the store like any other message and sends `message_end` so the UI sees it. History stays append-only, the Part 4 rule ([13-0](13-0-part-4-session.md#the-core-idea)). A **[CompactionEntry](glossary.md#compaction-entry)** only says: "from now on, the model sees this summary, then the messages from `first_kept_index` on".
+Our history gets index 10: `CompactionEntry(summary="## User Requests ...", first_kept_index=6, read_files=[], modified_files=["fizzbuzz.py", "test_fizzbuzz.py"])`. Messages 0..9 stay in history and on disk; the session saves the entry to the store like any other message and sends `message_end` so the UI sees it. History stays append-only, the Part 4 rule ([13-0](13-0-part-4-session.md#the-core-idea)). A **[CompactionEntry](glossary.md#compaction-entry)** only says: "from now on, the model sees this summary, then the messages from `first_kept_index` on". The cost: each compaction is one more model call (time and money), and a summary can still miss details; the fixed format, incremental updates and code-made file lists keep that loss small.
 
 `_prepare` now goes on to its last line, `build_view`:
 
@@ -317,78 +317,5 @@ uv run apps/cli/scripts/replay_compaction.py ~/.simp-agent/sessions/<cwd-slug>/<
 ```
 
 It calls `summarize`, `file_lists` and `format_files` directly, always as a first summary (no previous summary), so it cannot replay an incremental update. Use it to tune the prompts on real sessions instead of guessing.
-
-## Test
-
-Two tests. First, the pure request, `packages/simp_agent/tests/test_compaction_serialize.py::test_request_is_one_serialized_user_message`:
-
-```python
-async def test_request_is_one_serialized_user_message():
-    stream, seen = capture()
-    msgs = turn("a.html") + turn("b.html", "read") + [UserMessage("last" + "x" * 1000)]
-    entry = await compact(msgs, Model(max_tokens=100000), stream, SETTINGS)
-    model, ctx = seen[0]
-    assert "Do NOT continue the conversation" in ctx.system_prompt
-    assert len(ctx.messages) == 1 and ctx.messages[0].content.startswith("<conversation>\n[User]: make a.html")
-    text = ctx.messages[0].content
-    assert "C" * 501 not in text and "R" * 2001 not in text and "more characters truncated]" in text
-    assert "## User Requests (chronological)" in text
-    assert model.max_tokens == int(0.8 * SETTINGS.reserve_tokens)
-    assert entry.modified_files == ["a.html"] and entry.read_files == ["b.html"]
-    assert entry.summary.endswith("<read-files>\nb.html\n</read-files>\n\n<modified-files>\na.html\n</modified-files>")
-```
-
-It checks: one serialized user message, args cut at 500 and results at 2000, the summary format, the `max_tokens` cap, and the file lists.
-
-Second, the session flow, `packages/simp_agent/tests/test_queues_compaction.py::test_compaction_appends_marker_and_view`:
-
-```python
-async def test_compaction_appends_marker_and_view():
-    stream = FakeProvider(AssistantMessage([TextContent("SUM")]), DONE)
-    seen = stream.messages
-    a = compact_agent(stream)
-    a.agent.messages = history()
-    events = []
-    a.subscribe(lambda e: events.append(e["type"]))
-    await a.prompt("next")
-    assert "compaction_start" in events and "compaction_end" in events
-    summary_call = seen[0]
-    assert len(summary_call) == 1 and summary_call[0].content.startswith("<conversation>\n[User]: old")
-    assert "[Tool result]: yyy" in summary_call[0].content
-    assert a.messages[0].content.startswith("old")  # full history still has the old messages
-    entry = next(m for m in a.messages if isinstance(m, CompactionEntry))
-    assert entry.summary == "SUM" and a.messages[entry.first_kept_index].content.startswith("new")
-    assert seen[1][0].content == SUM_HEAD + "SUM\n</summary>" and seen[1][1].content.startswith("new")
-```
-
-`compact_agent` makes a session with a 10 000-token window and a small reserve, and `history()` is about 20 000 tokens. So the first `FakeProvider` reply is the summary `"SUM"`, the second is the real answer. It checks that history still starts with `"old"`, the entry points at `"new"`, and the model's view is the summary plus `"new"`.
-
-Run them:
-
-```sh
-uv run pytest packages/simp_agent/tests/test_compaction_serialize.py packages/simp_agent/tests/test_queues_compaction.py -q
-```
-
-## Why this way
-
-> **Summarize, append a marker, change only the view.** Compaction keeps the model inside its window without losing the user's requests or the list of changed files. The logic in `agent/compaction.py` is easy to test; the session only decides *when*. History stays append-only, so the store is never rewritten. The cost: the summary is one more model call (time and money), and a summary can still miss details. The fixed format, incremental updates and code-made file lists keep that loss small.
-
-## Exercises
-
-1. **Try `find_cut` by hand.** Build a list: `UserMessage("a"*4000)`, an `AssistantMessage` with a `ToolCall`, a `ToolResultMessage` with `"b"*4000`, then `UserMessage("c"*4000)`. Call `find_cut(msgs, 0, keep)` for many `keep` values. Check the result is never the tool result index. *Hint:* copy the loop in `test_cut_never_on_tool_result` in `test_queues_compaction.py`.
-
-2. **Compaction starts only above the limit.** Write `run(n_chars)`:
-   - Make an `AgentSession` with `Model(context_window=10000)` and set `s.compaction.reserve_tokens = 1000`. The limit is now 9000 tokens.
-   - Set `s.agent.messages = [UserMessage("x" * n_chars), AssistantMessage([TextContent("y")])]`.
-   - Use `FakeProvider(AssistantMessage([TextContent("SUM")]), DONE)`, subscribe to events, call `prompt("hi")`.
-   - Return: was `compaction_start` sent, is a `CompactionEntry` in `messages`, how many model calls were made.
-
-   `run(400)` (about 100 tokens) should give `(False, False, 1)`. `run(40000)` (about 10000 tokens) should give `(True, True, 2)`. Question: why would `Model(context_window=10000)` with the default settings always compact? *Hint:* the default `reserve_tokens` is 16384. See `compact_agent` and `test_below_threshold_no_compaction` in the same file.
-
-## Recap
-
-Before every model call, the session estimates the size of the next call, using the provider's real `usage` where it can. Above `context_window - reserve_tokens` it compacts: `find_cut` keeps about `keep_recent_tokens` of recent messages and never cuts on a tool result; the old part becomes one text and the model summarizes it, incrementally on top of the last summary; code adds the exact file lists. The result is a `CompactionEntry` appended to history, and `build_view` turns it into the model's view. History is never rewritten, and a failed compaction leaves it as it was.
-
-The size check is only a guess. When it is wrong, the provider answers "prompt is too long"; [17 Context overflow](17-overflow.md) recovers from that.
 
 **Builds on:** [13 Session](13-session.md) · [14 Plugins](14-plugins.md) · [15 Retry](15-retry.md) · **Next:** [17 Context overflow](17-overflow.md)
