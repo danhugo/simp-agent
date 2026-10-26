@@ -152,7 +152,15 @@ Two limits. `root` is optional: with no root, every path is used as it is. That 
 
 Now the model calls `bash(command="pytest")`, and the tool calls `ctx.env.exec(...)`. `exec` starts the shell in a new process (Step 5 explains the "new group"), then fixes two breaks.
 
-**The freeze.** `NaiveEnv` waited with `p.wait()`, which held the event loop's thread. `exec` instead runs two small tasks and `await`s whichever ends first, at most `timeout`: `run` reads the output until `pytest` exits, and `stop` waits for the Stop flag. This is the same race as `_stream` in [06](06-events-abort.md), plus a timeout. While they wait, the event loop is free.
+**The freeze.** The process is made the same way; only the *waiting* changes. `NaiveEnv` used `subprocess` and waited with `p.wait()`, which holds the event loop's thread until `pytest` ends. `exec` uses the asyncio version, and every wait is an `await`:
+
+```python
+proc = await asyncio.create_subprocess_shell("pytest", ...)   # same sh → pytest
+data = await proc.stdout.read(4096)                            # wait for output
+await proc.wait()                                              # wait for the end
+```
+
+`await` means "the event loop may do other work, and come back when there is news". So while `pytest` runs, the event loop still sends output to the UI and still watches for Stop. To be able to stop it, `exec` waits on two tasks at once, at most `timeout`: `run` reads the output until `pytest` exits, and `stop` waits for the Stop flag (the same race as `_stream` in [06](06-events-abort.md)).
 
 **The lost output.** `NaiveEnv` read the output only at the end. `run` reads it piece by piece as it comes, keeps every piece in `chunks`, and passes each one to `on_output`, which is `ctx.on_update`, so the UI shows it live. So if Stop or the timeout wins, `exec` kills the command and still returns what came so far: `(None, output so far)`. `None` means "killed", not a real exit code.
 
