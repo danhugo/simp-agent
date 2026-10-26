@@ -152,41 +152,5 @@ In the second turn `_llm_turn` calls the function again. The tools and folder ha
 
 [13](13-session.md) builds the real prompt function out of [prompt sections](glossary.md#prompt-section).
 
-## Test
-
-```python
-# packages/simp_agent/tests/test_session.py
-async def test_context_file_in_system_prompt(tmp_path):
-    (tmp_path / "AGENTS.md").write_text("use tabs")
-    prompts = []
-
-    async def stream(model, ctx, api_key=None):
-        prompts.append(ctx.system_prompt)
-        yield {"type": "done", "message": DONE}
-
-    await AgentSession(Model(), [], cwd=str(tmp_path), stream_fn=stream).prompt("hi")
-    assert "use tabs" in prompts[0] and "AGENTS.md" in prompts[0]
-```
-
-The test puts a real `AGENTS.md` in a temp folder and starts a session there with **no** `system_prompt` argument, so the default coding prompt is used. The fake stream function plays the [provider](glossary.md#provider) ([04](04-label-test.md)); it answers nothing useful and only records the system prompt it got. The check is that both the file's text (`use tabs`) and its path (`AGENTS.md`) reached the model. So it tests the whole path at once: the file is found through the env, added to the prompt, and the loop's prompt function puts it into the `Context`.
-
-Run it:
-
-```bash
-uv run pytest packages/simp_agent/tests/test_session.py -k context_file
-```
-
-## Why this way
-
-The `coding` helpers only make text; the session decides when and in what order. So each part stays small and is tested alone. We read the files teams already have, `AGENTS.md` and `CLAUDE.md`, instead of inventing a new format. And the prompt stays short: a few lines of role and rules, while each tool's own description carries the details.
-
-## Exercises
-
-1. In `test_context_file_in_system_prompt`, rename `AGENTS.md` to `CLAUDE.md`. Does the test still pass?
-2. Now create both files with different text. Which one is in the prompt, and why?
-
-## Recap
-
-The [system prompt](glossary.md#system-prompt) is a role, a tool list built from the real tools, three rules, an optional project section, and the date and folder, made by `coding.system_prompt(tools, cwd)`. The [context file](glossary.md#context-file) is the first name in `CONTEXT_FILES` found in `cwd`, read through `env.read_file`; a missing file is fine. `_llm_turn` accepts a prompt function and calls it before every model call, so the prompt is never out of date.
 
 **Builds on:** [10 Coding tools](10-coding-tools.md) · **Next:** [12 Evals](12-evals.md): now that the agent has tools and a prompt, we measure how well it does real tasks.

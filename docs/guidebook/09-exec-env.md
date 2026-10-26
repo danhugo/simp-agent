@@ -195,71 +195,9 @@ Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp
 
 ### Step 6: the rules every env must pass
 
-We followed one `read` and one `bash` call through `LocalEnv`. How do we know a second env, like `DockerEnv`, does the same? The types say *which* methods exist, not *how* they must behave. For that there is `EnvConformance` in the `testing` [layer](glossary.md#layer): one shared test class that checks path safety, exec output, cancel, and the group kill. Any env passes it by giving one fixture, `make_env(root)`. `DockerEnv` uses it in [24](24-docker-sandbox.md).
+We followed one `read` and one `bash` call through `LocalEnv`. How do we know a second env, like `DockerEnv`, does the same? The types say *which* methods exist, not *how* they must behave. For that there is `EnvConformance` in the `testing` [layer](glossary.md#layer): one shared test class that checks path safety, exec output, cancel, and the group kill. Any env passes it by giving one fixture, `make_env(root)`. `LocalEnv` and `DockerEnv` both plug into it with a 4-line test class that only gives that fixture (`TestLocalEnvConformance` in `tests/test_env.py`; `DockerEnv` in [24](24-docker-sandbox.md)).
 
 Real code: [packages/simp_agent/src/simp_agent/testing/env_conformance.py](../../packages/simp_agent/src/simp_agent/testing/env_conformance.py) (`EnvConformance`)
 
-## Test
-
-`packages/simp_agent/tests/test_env.py` has two direct tests and a 4-line class that pulls in the whole suite:
-
-```text
-CLASS TestLocalEnvConformance(EnvConformance):
-    FIXTURE make_env:
-        RETURN a function: root -> LocalEnv(root)
-```
-
-Real code: [packages/simp_agent/tests/test_env.py](../../packages/simp_agent/tests/test_env.py) (`TestLocalEnvConformance`)
-
-That is all `LocalEnv` needs to run the whole suite. The server does the same for Docker in `apps/server/tests/test_docker_sandbox.py` (`TestDockerEnvConformance`).
-
-The most interesting check is the process-group kill. `self.run` is a small helper in the suite: it calls `env.exec` with the root as `cwd` and a fresh cancel event.
-
-```text
-TEST test_exec_timeout_kills_tree(env):
-    t = now
-    (code, text) = run in env, timeout 2 s:
-        "echo start; (sleep 6; sleep 1; echo late > late.txt) & sleep 30"
-    CHECK code is None AND "start" is in text
-    CHECK less than 10 s passed
-    UNTIL 8 s after t:                          // slack for a busy event loop
-        CHECK late.txt does not exist           // background child was killed too
-        WAIT 0.1 s
-```
-
-Real code: [packages/simp_agent/src/simp_agent/testing/env_conformance.py](../../packages/simp_agent/src/simp_agent/testing/env_conformance.py) (`test_exec_timeout_kills_tree`)
-
-The command starts a background child that would write `late.txt` after 7 seconds, then sleeps 30. The timeout is 2 seconds. The test checks: we got `None` and the early output `start`, we returned quickly, and for 8 seconds `late.txt` never appears. With the naive `p.kill()`, the background child would live and write the file.
-
-No [FakeProvider](04-label-test.md) here: the env has nothing to do with models. It is tested on its own.
-
-```bash
-uv run pytest packages/simp_agent/tests/test_env.py
-```
-
-## Why this way
-
-> **One object between tools and the world.** Tools call `ctx.env`, never `open()` or `subprocess`.
->
-> **A Protocol, plus a test suite as the real rules.** Types say *which* methods exist. `EnvConformance` says *how* they must behave (path safety, kill tree, partial output). A new env proves itself by passing it.
->
-> **Kill the group, not the process.** A coding agent runs builds, tests and servers that start children. Only a process-group kill, repeated until empty, really stops them.
->
-> **Path safety has a clear limit.** `LocalEnv`'s root stops bad file paths, not shell commands. Isolation for commands is a separate job ([24](24-docker-sandbox.md)).
-
-## Exercises
-
-1. `test_containment` already checks the symlink `dirlink/secret`. Remove `resolve()` from `_path` in your copy and run it. Which bad paths still fail, and which now pass through? Why?
-2. In `exec`, change the call to `run_kill` into a plain `os.kill` of the one process. Run `test_exec_timeout_kills_tree`. It fails. Explain why.
-3. Write a `ReadOnlyEnv` that wraps another env and refuses `write_file`. Which `EnvConformance` tests can it still pass?
-
-## Recap
-
-- The [execution environment](glossary.md#execution-environment) (`ExecutionEnv`) is a Protocol of six async methods: `read_file`, `write_file`, `read_bytes`, `write_bytes`, `list`, `exec`. Tools reach it as `ctx.env`; the host picks it via `LoopConfig.env` (default `LocalEnv()`).
-- `LocalEnv` runs file IO in a thread (`asyncio.to_thread`), makes parent folders on write, and sorts `list`.
-- [Path safety](glossary.md#path-safety): with a `root`, `_path` resolves `..` and symlinks, then raises `PermissionError` if the path leaves the root. Files only; `exec` is not checked.
-- `exec` streams output through `on_output`, races finish / cancel / timeout, and returns `(None, output so far)` when killed.
-- [Process-group kill](glossary.md#process-group-kill): `start_new_session=True` + `run_kill` sends `SIGKILL` to the group until it is empty, so background children die too.
-- `EnvConformance` is one shared test suite; `LocalEnv` and `DockerEnv` both pass it.
 
 **Builds on:** [05 Agent loop](05-agent-loop.md#toolcontext-what-a-tool-gets) (tool context), [06 Events and abort](06-events-abort.md) (Stop) · **Previous:** [08 Hooks and approval](08-hooks-approval.md) · **Next:** [10 Coding tools](10-coding-tools.md) — `read`, `write`, `edit`, `ls`, `grep`, `find` and `bash`, all built on `ctx.env`.
