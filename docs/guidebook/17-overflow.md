@@ -57,7 +57,7 @@ This fixes our one overflow with one provider. It breaks in three ways.
 
 The check looks only for "too long". That is Anthropic's wording ("prompt is too long"). OpenAI says "maximum context length" or "context_length_exceeded", so the check misses them. Even when the check works, the loop has no end. Sometimes one compaction cannot make the request small enough, for example when one huge recent turn must stay (`find_cut` in [16](16-compaction.md#where-find_cut) keeps it). Then the loop compacts, fails, and compacts again, and each time it pays for a summary call. And if `compact()` itself fails, the loop still calls the model again and gets the same error.
 
-Where does the fix go? In the same place as retry: `AgentSession._run` ([15](15-retry.md#the-retry-loop-in-_run)). It runs after the agent loop ends with an error message. The retry loop from [15](15-retry.md) also needs a change. It must not see an overflow as a short failure. If it did, it would wait and then send the same too-big request again.
+Where does the fix go? In the same place as retry: `AgentSession._run` ([15](15-retry.md#why-does-a-429-stop-the-run-and-where-should-retry-live)). It runs after the agent loop ends with an error message. The retry loop from [15](15-retry.md) also needs a change. It must not see an overflow as a short failure. If it did, it would wait and then send the same too-big request again.
 
 | Problem | Fix | Section |
 |---|---|---|
@@ -86,13 +86,13 @@ FUNCTION is_retryable(error, kind):
     RETURN NOT is_context_overflow(error) AND _RETRYABLE is found in (error or "")
 ```
 
-One regex holds the wording of every provider, so the session never needs to know which provider it talks to. It lives in `ai`, next to the retry regex of [15](15-retry.md#which-errors-are-retryable), because both read provider error text. A wording the regex does not know is not seen as an overflow. The `error or ""` part makes both functions safe when there is no error text: they just return false.
+One regex holds the wording of every provider, so the session never needs to know which provider it talks to. It lives in `ai`, next to the retry regex of [15](15-retry.md#which-errors-are-worth-trying-again), because both read provider error text. A wording the regex does not know is not seen as an overflow. The `error or ""` part makes both functions safe when there is no error text: they just return false.
 
 Look at the last line of `is_retryable`. It says "not an overflow" before it checks the retry words. This matters because some overflow messages also match retry words; "too many tokens" looks a lot like the "too many requests" of a rate limit. With this rule an error is an overflow or retryable, never both, so each error goes to exactly one fix. The limit of this design: when a provider uses a new wording, we must add a new pattern.
 
 ### Compact and continue, once
 
-The loop in `AgentSession._run` was built in [15](15-retry.md#the-retry-loop-in-_run). That chapter skipped its first branch; here it is.
+The loop in `AgentSession._run` was built in [15](15-retry.md#why-does-a-429-stop-the-run-and-where-should-retry-live). That chapter showed only the retry branch; here is the overflow branch.
 
 Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._run`
 
@@ -117,7 +117,7 @@ Clients see the same `compaction_start` and `compaction_end` events as in [16](1
 
 ### Edge cases
 
-The full order of checks for both branches is in [15](15-retry.md#order-of-checks-and-edge-cases). Four cases matter for overflow.
+The retry side of the loop is in [15](15-retry.md). Four cases matter for overflow.
 
 A **second overflow** in the same run skips the overflow branch, because `overflowed` is already true. An overflow is never retryable, so the loop stops, and the run ends with the error as the last message. With **`auto_compact=False`** the same thing happens at the first overflow: no compaction and no wasted retry. If the **recent part is too big** on its own, `compact()` does not cut harder; it keeps `keep_recent_tokens` as usual, so the second call overflows and the run stops. A clear error is better than a loop. The user sees the error and can start a new session. Last, an **overflow followed by a rate limit** works in one run, because the two counters are separate: `overflowed` is a flag and `attempt` counts retries. Overflow → compact → `429` → wait → success.
 
