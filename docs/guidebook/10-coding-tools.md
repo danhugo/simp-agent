@@ -85,7 +85,7 @@ FUNCTION read(args, ctx):
     RETURN out
 ```
 
-First `_path` joins `README.md` to `ctx.cwd`. It does **not** check if the path is allowed: that is the env's job ([09](09-exec-env.md#step-3-_path-checks-the-path)). A tool only joins; the env decides. Then `ctx.env.read_file` gets the text, the same `LocalEnv` call as in [09](09-exec-env.md#step-2-localenv-reads-the-file). `read` splits it into lines and puts the line number and a tab before each one, so the model can say "line 42" and come back later with `offset=42`. `offset` is 1-based because the model sees 1-based numbers; values below 1 become 1.
+First `_path` joins `README.md` to `ctx.cwd`. It does **not** check if the path is allowed: that is the env's job ([09](09-exec-env.md#step-3-_path-keeps-every-path-inside-the-project)). A tool only joins; the env decides. Then `ctx.env.read_file` gets the text, the same `LocalEnv` call as in [09](09-exec-env.md#step-2-localenv-reads-and-writes-files-without-freezing). `read` splits it into lines and puts the line number and a tab before each one, so the model can say "line 42" and come back later with `offset=42`. `offset` is 1-based because the model sees 1-based numbers; values below 1 become 1.
 
 If `README.md` is short, that is the whole story: the numbered text goes back, and `run_tool` wraps it in a tool result. If the env raises (no such file, path not allowed), the tool just lets the `OSError` or `ValueError` fly, and `run_tool` turns it into an error result. No tool builds error objects by hand.
 
@@ -270,7 +270,7 @@ FUNCTION tail(text):
 
 By default there is no timeout: a long build is fine, and the user can press Stop ([06](06-events-abort.md)). The model may pass a `timeout`. With a host cap of 600 seconds, no timeout becomes 600, `timeout=30` stays 30, and `timeout=1000` becomes 600. The CLI reads the cap from the `bash_max_timeout_s` setting ([19](19-cli.md)).
 
-The hard work (streaming, cancel, timeout, killing the process group) is in `exec` from [09](09-exec-env.md#step-4-a-second-request-bash). `bash` passes `ctx.cancel` and `ctx.on_update` through, so the user sees output live. Then it always says how the command ended. A code means it finished, so `[exit code: 1]` tells the model the test failed. `None` means it was killed; if `ctx.cancel` is set the user pressed Stop, else the timeout did. The elapsed time comes from a [monotonic clock](glossary.md#monotonic-clock). In every case the output so far is kept, and `tail` keeps its **end**, where the failures and the summary are, with the note at the start, where the cut happened.
+The hard work (streaming, cancel, timeout, killing the process group) is in `exec` from [09](09-exec-env.md#step-4-exec-runs-pytest-without-freezing-and-keeps-the-output). `bash` passes `ctx.cancel` and `ctx.on_update` through, so the user sees output live. Then it always says how the command ended. A code means it finished, so `[exit code: 1]` tells the model the test failed. `None` means it was killed; if `ctx.cancel` is set the user pressed Stop, else the timeout did. The elapsed time comes from a [monotonic clock](glossary.md#monotonic-clock). In every case the output so far is kept, and `tail` keeps its **end**, where the failures and the summary are, with the note at the start, where the cut happened.
 
 ### How the list is built: `make_tools`
 

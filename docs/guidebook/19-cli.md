@@ -290,52 +290,6 @@ Scrollback gets the lines of `I will write it.` (now Markdown, as it is done), a
 
 Live events call it on `message_end`. Resume calls it too, through `replay(messages)`. One path for both means a resumed fizzbuzz session looks the same as when it ran live. `test_replay_equals_live` in `apps/cli/tests/test_tui.py` checks exactly this.
 
-## Test
-
-`apps/cli/tests/test_cli.py::test_route`:
-
-```python
-def test_route():
-    assert cli.route("hi", False) == ("prompt", "hi")
-    assert cli.route("hi", True) == ("steer", "hi")
-    assert cli.route(">> later", True) == ("follow_up", "later")
-    assert cli.route("/new", True) == ("command", "/new")
-    assert cli.route("  ", True) == ("empty", "")
-```
-
-It checks that the same text `hi` is a new `prompt` when idle but a `steer` while running, that `>>` while running is a `follow_up` with the `>>` removed, that a `/` line is always a command, even while running, and that spaces only is `empty`.
-
-No terminal, no model, no event loop. That is why `route` is a pure function and the REPL "only wires it to the terminal" (the comment above it in `__init__.py`).
-
-Other tests in the same files use the same idea:
-
-- `test_approval_answer_default_no` and `test_interrupt_action` test the other pure functions.
-- `test_deny_skips_tool` and `test_always_asks_once_and_read_never_asks` are the approval tests already shown in [08](08-hooks-approval.md).
-- `test_print_mode_full_lines_no_ansi` (in `test_tui.py`) feeds deltas to `LinePrinter` and checks it prints only full lines, with no ANSI.
-- `test_pty_streaming_screen` starts a real REPL in a pseudo terminal and reads the screen with `pyte`. It checks that the answer shows while it still streams.
-
-Run them:
-
-```sh
-uv run pytest apps/cli/tests/test_cli.py apps/cli/tests/test_tui.py -q
-```
-
-## Why this way
-
-> **A thin app over the session, with pure logic pulled out.** The CLI adds no agent behaviour. Saving, approval policy, steering and abort all live in `AgentSession`; the CLI only connects keys and screen to them. Rules that are easy to get wrong (`route`, `approval_answer`, `interrupt_action`, `LinePrinter`, component `render`) are pure and unit tested. The REPL is not full screen, so finished output stays in normal scrollback. The cost: two modes with two `ask` functions, and the REPL itself is mostly tested by one slow pty test.
-
-## Exercises
-
-1. Run `route(">> later", False)` in your head. What does it return? (Answer: `("prompt", ">> later")`. `>>` only counts while running.)
-2. In `approval_answer`, what does the text `"Y "` return? Why? (Answer: `"allow"`. It uses `strip().lower()`.)
-
-## Recap
-
-- `main()` picks **print mode** (a task is given) or the **REPL** (no task).
-- Sessions are JSONL files per working folder; `-c` continues the latest, `--resume ID` opens one.
-- Print mode prints full lines only, aborts on Ctrl-C, and returns exit code 1 on error or abort.
-- Components render to lines; `Chat.on_message` is shared by live events and resume replay.
-- The REPL runs the agent as a task, so you can steer, follow up and abort while it works.
-- `route` decides what a line means; `approval_answer` turns `y` / `a` / anything into allow / always / deny.
+The rules that are easy to get wrong (`route`, `approval_answer`, `interrupt_action`, `LinePrinter`) are pure functions with fast unit tests; the REPL itself is mostly checked by one slow pty test, `test_pty_streaming_screen`.
 
 **Builds on:** [18 Profiles and built-in plugins](18-profiles-plugins.md) · **Next:** [20 The server run](20-server-run.md)

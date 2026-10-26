@@ -302,48 +302,5 @@ The `call_id` must match the pending call. A second tab that clicks late gets `4
 
 If the user aborts while waiting, the task is cancelled. The `except` branch saves `approval_resolved` with `"aborted"`, so every tab sees the question closed. A tab that connects during the wait gets the question from `pending_approval` in the snapshot.
 
-## Test
-
-`apps/server/tests/test_server.py::test_reconnect_with_last_event_id_no_gaps_or_dups`:
-
-```python
-async def test_reconnect_with_last_event_id_no_gaps_or_dups(env):
-    _, _, _, _, run = await env(FakeProvider(reply("a"), reply("b")))
-    first, q = run.subscribe(0)
-    await run.command(p.Prompt(text="hi"))
-    await wait_for(lambda: run.state == "idle")
-    seen = [e for e in first + drain(q) if "seq" in e][:3]
-    run.subs.discard(q)  # the tab closes after seeing part of the log
-    await run.command(p.Prompt(text="again"))
-    await wait_for(lambda: run.state == "idle" and run.task.done())
-    again, _ = run.subscribe(seen[-1]["seq"])
-    seqs = [e["seq"] for e in seen + again if "seq" in e]
-    assert seqs == [e["seq"] for e in run.log]  # every durable event exactly once, in order
-    assert again[-1]["type"] == "snapshot" and again[-1]["last_seq"] == run.seq
-```
-
-`env`, `drain` and `wait_for` are small helpers at the top of the test file: `env` builds a `Run` with a fresh store, `drain` empties a queue into a list, and `wait_for` waits until a condition is true. `FakeProvider` ([04](04-label-test.md)) gives two simple replies, so no real model is needed. A tab subscribes, sees only the first 3 durable events of the first run, then closes. A second run happens while it is away. The tab reconnects with the last `seq` it saw, and the old part plus the replay must equal the full `run.log`: each `seq` once, in order. The replay must end with a snapshot whose `last_seq` is the current counter.
-
-This is the reconnect break from the starting point. Other tests in the file: `test_mid_delta_reconnect_snapshot`, `test_approve_then_abort`, `test_slow_client_dropped_never_blocks`, `test_closed_tabs_run_finishes_and_is_persisted`.
-
-Run it:
-
-```sh
-uv run pytest apps/server/tests/test_server.py::test_reconnect_with_last_event_id_no_gaps_or_dups -q
-```
-
-## Why this way
-
-> **One numbered log, many cheap readers.** Every saved event gets the next `seq`, and the run only puts events into small, bounded queues. A client is just "a reader at position N". Reconnect = "give me everything after N, then the state now". This makes reconnects exact, keeps slow tabs from hurting the run, and lets the run go on with no tabs at all. Live deltas are not saved; the snapshot covers them instead. SSE + POST keeps it plain HTTP. The cost: the whole log is kept in memory per run, and a dropped tab must reconnect.
-
-## Exercises
-
-1. Remove the replay from `subscribe` (return `[]` instead of the missed events). Which assert in the reconnect test fails?
-2. In `subscribe`, change `e["seq"] > after` to `>=`. Which event comes twice? Run the reconnect test to see it fail.
-
-## Recap
-
-Events go out on one long SSE response and commands come in on plain `POST`s. Each durable event takes the next `seq` from one counter shared with the agent's `"msg"` rows, so the log has holes but one order. A tab that (re)connects says "after N" and gets the missed events, a snapshot (with the text still streaming and any open approval), then a live queue, all with no `await` in between. Queues are bounded, and a full one drops the tab, which reconnects and catches up. On the way in, a busy run queues text as steer or follow-up, and an approval is a future that the matching `Approve` command sets. [22](22-store-auth.md) next shows where these rows are saved and who may read them.
-
 **Builds on:** [20 The server run](20-server-run.md) · **Next:** [22 Store and auth](22-store-auth.md)
 

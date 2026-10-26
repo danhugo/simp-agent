@@ -296,51 +296,6 @@ Idle time alone is not enough: ten users could open sessions within one minute. 
 
 When Bob comes back, `get` loads his run from the store the same way as after a restart ([22](22-store-auth.md)). He sees the same history and files.
 
-## Test
-
-`apps/server/tests/test_budget.py::test_run_budget_stops_tool_loop`:
-
-```python
-PROFILE = '[profiles.test]\napi = "fake"\nmodel = "m"\nprice_in = 1000000\nprice_out = 0\n'  # $1 per input token
-...
-async def test_run_budget_stops_tool_loop(tmp_path):
-    # price_in = $1 per input token and each reply reports 1 input token -> every LLM call costs $1
-    fp = FakeProvider(*[usage_reply("", [ToolCall(f"c{i}", "bash", {"command": "true"})]) for i in range(5)])
-    app, mgr, user, _, run = await make(tmp_path, fp, "[budget]\nrun_usd = 1.5\nuser_day_usd = 100\n")
-    await run.command(p.Prompt(text="go"))
-    while run.busy:  # allow every bash call
-        if run.pending and not run.answer.done():
-            run.answer.set_result("allow")
-        await asyncio.sleep(0.01)
-    assert fp.calls == 2  # $1 + $1 > $1.5 -> third call refused before reaching the provider
-    assert run.state == "error"
-    assert any(e["type"] == "notice" and "budget" in e["text"] for e in run.log) or \
-        any(e["type"] == "assistant_message" and e.get("error") and "budget" in e["error"] for e in run.log)
-    assert await mgr.store.spent(user["id"], 0) == 2
-    await mgr.store.close()
-```
-
-The `FakeProvider` ([04](04-label-test.md)) has five replies, each asking for a `bash` call: a runaway loop like Ana's. Each call costs $1 and the run limit is $1.5. After call 1 the spend is $1, under the limit, so call 2 runs. After call 2 it is $2, so call 3 is refused **before** it reaches the provider, and `fp.calls == 2`. The store holds $2: one call over, as the `>=` check allows. The test accepts the refusal text either in a `notice` event or in the error of an `assistant_message`, so it does not depend on which event the client gets.
-
-Run it:
-
-```sh
-uv run pytest apps/server/tests/test_budget.py::test_run_budget_stops_tool_loop -q
-```
-
-Other tests in the file cover the day limit (`test_day_budget_and_pause`), the kill switch (`test_pause_refuses_llm_calls`) and follow-ups (`test_run_budget_spans_follow_ups`). For idle release, see `apps/server/tests/test_lifecycle.py::test_idle_run_evicted_and_reloaded`. `test_busy_run_not_evicted` checks that a running loop is never evicted.
-
-## Why this way
-
-> **Guard `stream_fn`, count in the store.** Every model call goes through `stream_fn`, so one wrapper (`budget.guard`) covers the loop, retries and the title call. The library knows nothing about money; the server adds it from outside. Cost is written to the store after each call, so a crash cannot hide spending. The cost of this choice: the last call can go a little over the limit. The kill switch is a file because it must work when everything else is broken.
-
-## Exercises
-
-1. Call `budget.cost({"price_in": 3, "price_out": 15}, {"input": 200_000, "output": 5_000})`. What do you get? (Expected: $0.675.)
-2. Write a `check` that always returns `"stop"`. Wrap a `FakeProvider` with `budget.guard`, call it once, and print the event. How many calls did the fake record?
-
-## Recap
-
-Ana's runaway loop is now stopped. `budget.guard` wraps `stream_fn`. After each call, `budget.cost` turns the token usage into dollars from the profile prices, and `store.add_usage` saves it as a row. Before every model call, `Run.over_budget` checks four things: kill switch, revoked user, day limit, run limit. A refusal is a normal model error with `error_kind="budget"`, never retried. Follow-ups share the run budget. The kill switch is a `PAUSED` file that `simp-server pause` and `resume` create and delete. Bob's forgotten runs are freed by `evict_idle` and the `max_open_sessions` cap, and they load back from the store. Next, [24](24-docker-sandbox.md) makes the sandbox a real container, which is why freeing it matters.
+The kill switch is a file because it must work even when everything else is broken.
 
 **Builds on:** [22 Store and auth](22-store-auth.md) · **Next:** [24 Docker sandbox](24-docker-sandbox.md)

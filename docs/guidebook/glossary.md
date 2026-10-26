@@ -87,10 +87,10 @@ The one object (`ExecutionEnv`, default `LocalEnv`) through which tools read fil
 The part of Python `asyncio` that runs on one thread and switches between waiting jobs. A job gives the turn away only at `await`; a blocking call (plain `open()`, a plain wait on a process) stops all of them. It is NOT the [agent loop](#agent-loop): in this book a bare "loop" means `agent_loop`. Explained in [09](09-exec-env.md#naive-version); also in [19](19-cli.md).
 
 ## Path safety
-The rule that, when `LocalEnv` has a `root`, a file path may not leave it. `_path` resolves `..` and symlinks first, then raises `PermissionError` if the path is outside the root. Files only: `exec` is not checked. Home: [09](09-exec-env.md#step-3-_path-checks-the-path).
+The rule that, when `LocalEnv` has a `root`, a file path may not leave it. `_path` resolves `..` and symlinks first, then raises `PermissionError` if the path is outside the root. Files only: `exec` is not checked. Home: [09](09-exec-env.md#step-3-_path-keeps-every-path-inside-the-project).
 
 ## Process-group kill
-How `exec` stops a command: the shell starts in a new process group (`start_new_session=True`), and `run_kill` sends `SIGKILL` to the whole group until it is empty, so background children die too. Home: [09](09-exec-env.md#step-5-stop-kills-the-whole-group).
+How `exec` stops a command: the shell starts in a new process group (`start_new_session=True`), and `run_kill` sends `SIGKILL` to the whole group until it is empty, so background children die too. Home: [09](09-exec-env.md#step-5-stop-kills-the-whole-process-group).
 
 ## Provider registry
 The dict `_PROVIDERS` in `ai` that maps a `Model.api` string (`anthropic-messages`, `openai-completions`, `openai-responses`) to a stream function. `register_provider` adds or replaces one; `ai.stream` looks it up. Home: [01](01-pick-clean.md#1-pick-_providers-register_provider).
@@ -327,13 +327,13 @@ A slow, salted password hash from Python's `hashlib`. It is slow on purpose, so 
 `Run.recover`: closes a run that was busy when the server died, and leaves a valid history. Home: [22](22-store-auth.md#recover).
 
 ## Budget guard
-`budget.guard`: a wrapper around `stream_fn` that runs a check before each model call. If a limit is reached, it refuses the call with an `error_kind="budget"` error. Home: [23](23-limits.md#the-budget-guard-wrap-the-stream).
+`budget.guard`: a wrapper around `stream_fn` that runs a check before each model call. If a limit is reached, it refuses the call with an `error_kind="budget"` error. Home: [23](23-limits.md#the-budget-guard-wrap-stream_fn).
 
 ## Run budget
-The most money one run (a prompt plus its queued follow-ups) may spend; `run_usd` in settings. Home: [23](23-limits.md#the-check-itself).
+The most money one run (a prompt plus its queued follow-ups) may spend; `run_usd` in settings. Home: [23](23-limits.md#the-check-is-the-spend-over-the-limit).
 
 ## Daily budget
-The most money one user may spend since local midnight; `user_day_usd` in settings. Home: [23](23-limits.md#the-check-itself).
+The most money one user may spend since local midnight; `user_day_usd` in settings. Home: [23](23-limits.md#the-check-is-the-spend-over-the-limit).
 
 ## Kill switch
 The `PAUSED` file in the data dir. While it exists, every model call on the server is refused. Home: [23](23-limits.md#kill-switch-one-file).
