@@ -97,41 +97,33 @@ Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp
 
 `ExecutionEnv` says what an env can do; `LocalEnv` and `DockerEnv` are how one kind of machine does it.
 
-### Step 2: `LocalEnv` reads the file
+### Step 2: `LocalEnv` reads and writes files without freezing
 
-The tool called `ctx.env.read_file("README.md")`. With the default host setup, `ctx.env` is a `LocalEnv`. What does it do with the call? This step fixes two breaks: "env waits: the whole agent freezes" (for files), and "env → disk: a missing folder makes write fail".
+The tool calls `ctx.env.read_file("README.md")`. By default, `ctx.env` is a `LocalEnv`, the env for the machine Python runs on. It fixes two breaks from the list.
 
-`LocalEnv` is the only env in the core library. It works on the machine where Python runs. It takes one optional argument, `root`: the folder the tools may use. With no root (the `LoopConfig` default), paths are used as they are, so a relative path depends on the folder the Python process runs in. That is why the tools in [10](10-coding-tools.md) first join the path to `ctx.cwd` themselves.
-
-`read_file` is thin, and so are the other file methods. The agent is `async`, so to read without freezing the [event loop](glossary.md#event-loop), we need a thread: each method sends the slow disk work to a thread with `asyncio.to_thread`, so the event loop keeps running and Stop is still heard:
+**The freeze.** `NaiveEnv` called `open()` on the event loop's one thread, so that thread was busy until the disk answered. `LocalEnv` hands the disk work to a helper thread with `asyncio.to_thread`, and `await`s it. While it waits, the event loop's thread is free, so events still reach the UI and Stop is still heard:
 
 ```text
 FUNCTION read_file(path):
-    RETURN WAIT for (read text of _path(path)) in a thread
-
-FUNCTION write_file(path, text):
-    WAIT for write_bytes(path, text as bytes)     // one write path
-
-FUNCTION write_bytes(path, data):
-    p = _path(path)
-    IN a thread:
-        MAKE all missing parent folders of p      // "src/new/a.py" makes "src/new" first
-        WRITE data to p
-
-FUNCTION list(path):
-    IN a thread:
-        FOR EACH entry in folder _path(path), sorted by name:
-            ADD {name, is_dir, size} to out       // size is 0 for a folder
-        RETURN out
+    RETURN await (read text of _path(path)) in a helper thread
 ```
 
-Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`LocalEnv.read_file`, `write_file`, `write_bytes`, `list`)
+**The missing folder.** Before writing, `LocalEnv` makes every missing parent folder, so `write_file("notes/NOTES.md", …)` makes `notes/` first and does not fail:
 
-`write_file` calls `write_bytes`, so there is only one write path to check. Making the parent folders means the model needs no "make folder" tool. `list` sorts by name, so the output is the same every time, which helps tests and the model. Bytes exist next to text because images and the server's file download ([20](20-server-run.md)) are not text.
+```text
+FUNCTION write_bytes(path, data):
+    in a helper thread: make the missing parent folders, then write data
+```
 
-Every method starts with `_path(path)`. What does `_path` do with `"README.md"` before the disk is touched?
+`write_file` only turns the text into bytes and calls `write_bytes`. `list`, `read_bytes` and `write_bytes` work the same way (see the real code).
+
+Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`LocalEnv.read_file`, `write_bytes`)
+
+Every method starts with `_path(path)`. What does it do with `"README.md"` before the disk is touched?
 
 ### Step 3: `_path` checks the path
+
+`LocalEnv` takes one optional argument, `root`: the folder the tools may use. With no root (the `LoopConfig` default), `_path` returns the path as it is, so a relative path depends on the folder Python runs in; that is why the tools in [10](10-coding-tools.md) join it to `ctx.cwd` first.
 
 This step fixes "env → disk: a path can leave the project". [Path safety](glossary.md#path-safety) means: when `LocalEnv` has a `root`, a file path can never point outside it.
 
