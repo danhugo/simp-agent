@@ -219,7 +219,7 @@ With more than one user and `LocalSandbox`, it returns an error message, and the
 
 ### Passing EnvConformance
 
-One question is left: how do we know `DockerEnv` acts exactly like `LocalEnv`? We reuse **`EnvConformance`** from [09](09-exec-env.md#test): one test class with checks for files, listing, root containment, exit codes, streaming, `cwd`, timeout and cancel. Any env that passes it can be given to the tools.
+One question is left: how do we know `DockerEnv` acts exactly like `LocalEnv`? We reuse **`EnvConformance`** from [09](09-exec-env.md#step-6-the-rules-every-env-must-pass): one test class with checks for files, listing, root containment, exit codes, streaming, `cwd`, timeout and cancel. Any env that passes it can be given to the tools.
 
 One line in it was written for Docker:
 

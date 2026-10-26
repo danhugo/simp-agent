@@ -63,7 +63,7 @@ FUNCTION main(model):
     PRINT "PASS" IF ok ELSE "FAIL"
 ```
 
-It works once. But the task lives inside the Python code, so each new task means more code ([fixed by TOML files](#a-task-is-a-toml-file)). There is no limit: if the model loops forever, the script never ends and keeps spending money ([fixed by listening to events](#counting-and-limits-through-events)). It prints PASS but not whether that took 3 turns or 30 ([same section](#counting-and-limits-through-events)). `python` in the shell may not be the project's Python, so the check may fail for the wrong reason ([fixed in the check](#the-check)). Nothing is saved ([fixed in run_all](#run_all-the-table-and-the-file)). And it cannot be tested without a real model and key ([fixed in the test](#test)).
+It works once. But the task lives inside the Python code, so each new task means more code ([fixed by TOML files](#a-task-is-a-toml-file)). There is no limit: if the model loops forever, the script never ends and keeps spending money ([fixed by listening to events](#counting-and-limits-through-events)). It prints PASS but not whether that took 3 turns or 30 ([same section](#counting-and-limits-through-events)). `python` in the shell may not be the project's Python, so the check may fail for the wrong reason ([fixed in the check](#the-check)). Nothing is saved ([fixed in run_all](#run_all-the-table-and-the-file)). And it cannot be tested without a real model and key ([fixed by the FakeProvider](#testing-without-a-model)).
 
 ## Real design
 
@@ -233,61 +233,15 @@ To add a task, add one file. No Python. A good task:
 
 The book ships only these four tasks: three code edits and one read-and-answer. When you add a capability in a later chapter, you can add a task that needs it, using these five rules.
 
+### Testing without a model
+
+`evals/test_run.py` passes a [FakeProvider](04-label-test.md#testing-the-pipeline-without-a-real-model) as `stream_fn` to `run_all`, so the whole path (task file, temp folder, real `read` tool, check, cost math, JSON file) runs with no key; `uv run pytest -q evals` runs it. The eval set is small on purpose (four tasks, run in order, no scoring model): a quick signal after a change, not a benchmark.
+
 ### Host-shell warning
 
 > ⚠️ **Evals run on your own machine, with no sandbox.** `LocalEnv` runs the agent's `bash` tool on your host, as you ([09](09-exec-env.md)). The temp folder is only the *starting* folder; a command like `rm -rf ~` or `curl ... | sh` is not blocked. The `check` also runs with `shell=True` on your host. Only run tasks you trust, with models you trust, ideally in a spare VM you can delete, or container. The [Docker sandbox](24-docker-sandbox.md) is not used here.
 
 One thing protects you a little: `take_keys` reads the keys from `<data_dir>/.env` and from the environment, and removes the known key variables (each profile's `api_key_env`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) from `os.environ` before the agent runs. Commands the agent starts do not see those keys. Other secrets in your environment are still visible.
 
-## Test
-
-Tests must not call a real model. `evals/test_run.py` loads `run.py` as a module and passes a FakeProvider as `stream_fn`:
-
-```python
-# evals/test_run.py
-async def test_read_answer_passes_with_fake_provider(tmp_path):
-    fake = FakeProvider(
-        AssistantMessage([ToolCall("c1", "read", {"path": "config.ini"})], stop_reason="tool_use",
-                         usage={"input": 100, "output": 10}),
-        AssistantMessage([TextContent("The port is 8473.")], usage={"input": 200, "output": 20}))
-    profile = {"model": "fake", "price_in": 1.0, "price_out": 2.0}
-    rows = await run.run_all("p", profile, {}, ["read_answer"], stream_fn=fake, out_dir=tmp_path)
-    assert rows[0]["name"] == "read_answer" and rows[0]["passed"]
-    assert rows[0]["turns"] == 2 and rows[0]["input"] == 300 and rows[0]["output"] == 30
-    # ... (shortened) then it checks the cost and reads back the JSON file
-```
-
-This runs the **whole path**: real task file, real temp folder, real `read` tool, real check (`grep` on `_answer.txt`), cost math and the JSON file. Only the model is fake. A second test, `test_tasks_load`, checks that all four task files parse.
-
-```bash
-uv run pytest -q evals            # 2 passed
-uv run python evals/run.py --help # shows --profile, --home, --tasks
-```
-
-`evals` is in `testpaths` in `pyproject.toml`, so a plain `uv run pytest` runs these too.
-
-## Why this way
-
-> **Tasks are data, checks are shell.** A new case is one TOML file. Shell checks can use pytest, grep, or anything else.
->
-> **Listen, don't change.** Counting and limits use events and `abort()`. The agent under test is the real one.
->
-> **Cost is a result.** Turns, tokens, dollars and seconds sit next to PASS/FAIL, because a cheaper agent is a better agent.
->
-> **Small on purpose.** Four tasks, run in order, no scoring model. It is a quick signal after a change, not a benchmark.
-
-## Exercises
-
-1. Add `evals/tasks/count_lines.toml`. In `[setup]` put a file with 7 lines. Ask the agent how many lines it has, and check with `grep -q 7 _answer.txt`. Run `uv run pytest -q evals`: which test must you update, and why?
-2. Run `--tasks fix_bug,nope` (one real task, one wrong name). What happens, and how much money was spent?
-
-## Recap
-
-- An [eval](glossary.md#eval) runs the real agent with a real model on fixed tasks and checks the result with a program.
-- An [eval task](glossary.md#eval-task) is a TOML file: `prompt`, `check`, optional `[setup]` files.
-- `run_task` makes a temp folder, runs `AgentSession` with `LocalEnv`, counts turns and usage from `message_end` events, stops at 25 turns or 300 s, then runs the check with `$PYTHON` set.
-- `run_all` prints a table and saves JSON in `evals/results/`.
-- It runs on your host with no sandbox: only trusted tasks and models.
-- Tests use the FakeProvider, so no key is needed.
 
 **Builds on:** [05 Agent loop](05-agent-loop.md) · [06 Events and abort](06-events-abort.md) · [10 Coding tools](10-coding-tools.md) · [11 The system prompt](11-system-prompt.md) · **Next:** [13 Sessions](13-session.md) — we have been using `AgentSession`; now we build it. Later, [15 Retry](15-retry.md) and [16 Compaction](16-compaction.md) change how the agent behaves; run these evals after each change.
