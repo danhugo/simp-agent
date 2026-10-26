@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-26
 
+- ch14 "Why plugins?" shows the problem first: the flag-and-`if` version of `AgentSession` and why it fails (grows per extra, cannot add your own rule to a pip-installed library), then a 4-line `NoBash` plugin as the fix. Checked against `session/__init__.py` (`tool_call` returns `{"block": ...}`) at `dab93e4`.
 - ch13 "Why does the session own the agent?" rewritten reason first: why one setup for both apps, then what the app can call (send a message, go on, one-time setup) in plain words, with function names only as hints; note that the CLI and server `start` is a different function. Checked against `session/__init__.py` at `ae1457b`.
 - ch12 rewritten around 5 questions (task, one run, reading results, adding a task, host-shell warning); per-function pseudocode removed. Checked against `evals/run.py`.
 

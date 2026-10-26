@@ -17,11 +17,45 @@ All code here is in [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp
 
 ## Why plugins?
 
-In [13](13-session.md) the user came back the next day and typed "now add tests". Now two teams want small extras on top of that same session. One team wants a "no bash" mode: the agent may read and edit files, but never run a shell command. Another team wants to hide API keys: if the agent runs `cat .env`, the key must not reach the screen, the log or the model.
+In [13](13-session.md) the user came back the next day and typed "now add tests". Now people want small extras on that same session:
 
-We could put an `if` for each extra inside `AgentSession`. But the list of extras never ends (plan mode, an extra tool, a line in the system prompt, ...), so the session would grow without end, and every app would carry every extra.
+- You want **no bash** in one project: the agent may read and edit files, but never run a shell command.
+- The server wants to **hide API keys**: if the agent runs `cat .env`, the key must not reach the screen, the log or the model.
 
-So we use a **[plugin](glossary.md#plugin)**: a plain object that the session calls at set moments. There is no base class. You pass a list to `AgentSession(plugins=[...])`, and the core does not change. A method that the session calls on a plugin is a **[plugin hook](glossary.md#plugin-hook)**. It is not the same as the two [tool hooks](glossary.md#tool-hook) of [08](08-hooks-approval.md) (`before_tool_call`, `after_tool_call`): those belong to the loop, the session fills them with its own methods ([13](13-session.md)), and those methods call the plugins.
+The first idea is to add a flag and an `if` for each:
+
+```python
+class AgentSession:
+    def __init__(self, ..., no_bash=False, hide_keys=False):
+        ...
+
+    async def _before_tool_call(self, call, ctx):
+        if self.no_bash and call.name == "bash":
+            return "bash is off"
+        ...
+
+    async def _after_tool_call(self, call, result, ctx):
+        if self.hide_keys:
+            result = mask_keys(result)
+        ...
+```
+
+That works for two extras. Then come plan mode, a company rule like "never touch `prod/`", an extra tool, a line in the prompt... Every extra adds a flag and an `if` to the same class. Worse, you installed `simp_agent` with `pip`. You cannot add your company's rule to it without forking the library.
+
+Look at where the `if`s went: always into the same few moments, before a tool runs and after a tool returns. So the session can call outside code at those moments instead:
+
+```python
+class NoBash:
+    def tool_call(self, call):
+        if call.name == "bash":
+            return {"block": "bash is off"}
+
+session = AgentSession(model, plugins=[NoBash()])
+```
+
+That is a **[plugin](glossary.md#plugin)**: a plain object whose methods are named after the moments it cares about. The session's code stays the same. Each app passes only the plugins it wants, and anyone can write one without touching the library.
+
+A method that the session calls on a plugin, like `tool_call` above, is a **[plugin hook](glossary.md#plugin-hook)**. Do not mix it up with the two [tool hooks](glossary.md#tool-hook) of [08](08-hooks-approval.md): those belong to the loop. The session fills them with its own methods ([13](13-session.md#why-does-the-session-own-the-agent)), and those methods call the plugin hooks.
 
 ## Where in a run does the session call plugins?
 
