@@ -31,13 +31,21 @@ The `role` field says which kind of message the line is, so we can turn the line
 
 ## When do we save?
 
-The simple idea is to save the whole list when the run ends. But a run can die in the middle, and by then the model may already have written `fizzbuzz.py`. On resume the history would not show that, and the model would not know the file exists.
+The simple idea is to save the whole list when the run ends. But a run can die in the middle, after the model has already written `fizzbuzz.py`; then nothing is saved, and on resume the model does not know the file exists.
 
-So the session saves each message the moment it is final. The agent already sends a `message_end` event for every finished message ([06](06-events-abort.md)). The session subscribes to the agent and, on each `message_end`, gives the message to the store; then `_emit` passes the event on to the apps that called `session.subscribe`. Half-written replies (stream deltas) are never saved.
+So the session saves each message the moment it is finished: on every `message_end` event ([06](06-events-abort.md)). In one run that happens many times:
+
+| Moment | Finished message | Saved? |
+|---|---|---|
+| The user sends the question | [1] user: "write fizzbuzz.py" | yes, at once |
+| The model is still streaming its reply | (not finished) | no |
+| The model's reply ends: it asks for `write` | [2] assistant: tool call `write fizzbuzz.py` | yes, at once |
+| The `write` tool is done; the file exists | [3] tool result: "Wrote 120 chars to fizzbuzz.py" | yes, at once |
+| The model's last reply ends | [4] assistant: "Done." | yes, at once |
+
+Each save adds one line at the end and never rewrites old lines. So if the program dies after [3], the history already shows that `fizzbuzz.py` was written; a crash loses at most the one message that was still being written.
 
 Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `_on_agent_event`
-
-A finished message never changes, so the history is **[append-only](glossary.md#append-only-history)**: we add one line at the end and never rewrite old lines. This is what makes it safe: a crash loses at most the one message that was still being written.
 
 ## Where do we save?
 
