@@ -91,26 +91,14 @@ Real code: [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/
 
 ### Looking around: `ls`, `grep`, `find`
 
-In the `shape.py` job the model first looks around (step 1). These tools never change anything. They join the path to `ctx.cwd` and go through the env, as `read` does.
+Before it changes anything, the model often looks around: `ls` lists a folder, `grep` finds text inside files, `find` finds files by name (like `*.py`). They never change anything, and, like `read`, they join the path to `ctx.cwd`. They share four ideas:
 
-The model calls `ls` with `{"path": "."}`. `ls`:
+1. **They run a command through the env.** `ls` runs `ls`, `grep` runs `rg` (or `grep`), and `find` runs `fd` (or `find`), all with `ctx.env.exec`. So the same tools work in a Docker env ([24](24-docker-sandbox.md)).
+2. **Fast tool first, classic tool as backup.** `rg` and `fd` are fast and skip files in `.gitignore`, such as `node_modules`. If the machine does not have them, the tool runs `grep` or `find` instead.
+3. **A cut always says so.** Each tool keeps a limited number of results (`ls` 500, `grep` 100, `find` 1000) and then cuts the text like `read`. When it cuts, it adds a note such as "[100 results limit reached; refine the pattern or raise limit]". With the note, the model knows the answer is incomplete and can search more narrowly. After a silent cut, it would think it saw everything. An empty result also says so ("No matches found"), so the model does not think the tool failed.
+4. **A path may not start with `-`.** Otherwise the program would read it as an option: `rg --pre=CMD` runs any command on every file, and `find … -delete` deletes files. So `grep` and `find` refuse such a path and suggest `./…`.
 
-1. Asks for the names in the folder. An env may have its own `list_dir`; `LocalEnv` does not, so `ls` runs `ls -1Ap <path>` through `ctx.env.exec`: one name per line, dotfiles too, a `/` after folders. Going through `exec` means the same code works in a Docker env ([24](24-docker-sandbox.md)), and `shlex.quote` wraps the path so a name with spaces or `;` cannot break the command. If `ls` fails, it raises an `OSError` with the output.
-2. Sorts the names, ignoring case.
-3. Keeps the first `limit` names (default 500). If there are more, it adds `[500 of N entries shown; raise limit for more]`. An empty folder gives `(empty directory)`, so the model does not wonder if the tool failed.
-4. Passes the text through `head`, which cuts it like `truncate_head` and adds a note at the end: `[Output truncated: showing first K of N lines]`. If even the first line is too big, it returns only `[First line exceeds 50KB limit; use bash with head -c to read part of it]`.
-
-The note is the important part: a model that sees "showing first 2000 of 9000 lines" knows the answer is not complete and can ask in a narrower way; after a silent cut it thinks it saw everything.
-
-The model calls `grep` with a `pattern` (text inside files) or `find` with a `pattern` (a glob for file names, like `*.py`). Both work the same way:
-
-1. They check the path (default `.`). A path may not start with `-`, else the error says `path must not start with '-': … (use ./…)`. Quoting stops the **shell** from reading the path as code, but the **program** can still read it as an option: `rg --pre=CMD` runs CMD on every file, and `find … -delete` deletes files.
-2. They build two **argv** lists (the program name plus its arguments): one for a fast program and one for the classic one. `grep` builds `rg … -e <pattern> -- <path>` and `grep -rn … -e <pattern> -- <path>`; it maps `ignore_case` to `-i`, `literal` to `-F` (else `grep` gets `-E`), `context` to `-C`, and `glob` to `--glob` for `rg` or `--include` for `grep`. `find` builds `fd --glob … <pattern> <path>` and `find <path> -name <pattern>`.
-3. They run the fast one. If the exit code is 127 ("command not found"), they run the classic one. The fast tools respect `.gitignore`, so they skip `node_modules`; the classic ones work everywhere but do not skip it.
-4. Any exit code other than 0 or 1 raises a `RuntimeError` with the output. Code 1 is allowed because for `rg` and `grep` it means "no matches". (For `fd` and `find`, 1 is a real error, but its message just comes back as the result; the model still sees it.)
-5. They keep the first `limit` lines (100 for `grep`, 1000 for `find`) and add `[100 results limit reached; refine the pattern or raise limit]` if there are more. No results gives `No matches found` / `No files found`. Then `head` cuts the text, as for `ls`.
-
-Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `list_dir`, `ls`, `grep`, `find`, `_run`, `_limited`, `_search_path`; [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `head`
+Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/tools.py) — `ls`, `grep`, `find`
 
 ### Changing a file: `write` and `edit`
 
