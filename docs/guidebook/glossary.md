@@ -83,6 +83,9 @@ The object a tool gets when it runs (`ToolContext`): `cancel`, `env`, `cwd`, `on
 ## Execution environment
 The one object (`ExecutionEnv`, default `LocalEnv`) through which tools read files and run commands. Given to tools in the tool context. Defined in [05](05-agent-loop.md#toolcontext-what-a-tool-gets); built in [09](09-exec-env.md).
 
+## Event loop
+The part of Python `asyncio` that runs on one thread and switches between waiting jobs. A job gives the turn away only at `await`; a blocking call (plain `open()`, a plain wait on a process) stops all of them. It is NOT the [agent loop](#agent-loop): in this book a bare "loop" means `agent_loop`. Explained in [09](09-exec-env.md#naive-version); also in [19](19-cli.md).
+
 ## Path safety
 The rule that, when `LocalEnv` has a `root`, a file path may not leave it. `_path` resolves `..` and symlinks first, then raises `PermissionError` if the path is outside the root. Files only: `exec` is not checked. Home: [09](09-exec-env.md#step-3-_path-checks-the-path).
 

@@ -80,7 +80,7 @@ check_password(password, stored):
 
 Two choices here are about time. If the user does not exist, we still run scrypt once, so an attacker cannot learn which names exist by timing the answer. And `hmac.compare_digest` compares in constant time, so the time does not show how many bytes matched.
 
-scrypt is slow on purpose, and slow code would block the event loop. So the store calls it with `asyncio.to_thread(...)`. `login` checks Ana's password and, if it matches, gives her a new token:
+scrypt is slow on purpose, and slow code would block the [event loop](glossary.md#event-loop). So the store calls it with `asyncio.to_thread(...)`. `login` checks Ana's password and, if it matches, gives her a new token:
 
 Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.login`
 
