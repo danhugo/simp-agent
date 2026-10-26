@@ -79,17 +79,15 @@ Real code: [coding/tools.py](../../packages/simp_agent/src/simp_agent/coding/too
 
 ### When `README.md` is too big: truncation
 
-Now say `README.md` has 9000 long lines. Sending all of it would fill the model's [context](glossary.md#context), so `read` passes its text through `truncate_head`. The cutting rule lives in `coding/truncate.py`, and all tools share it. [Truncation](glossary.md#truncation) works like this:
+Now say `README.md` has 9000 long lines. Sending all of it would fill the model's context, so `read` cuts it with `truncate_head`, a small helper in `coding/truncate.py` that all tools share. It keeps lines from the top until one of two limits is hit: **2000 lines, or 50 KB**. Both are needed: 2000 short lines are small, but 10 lines of minified JavaScript can be 1 MB. It always stops before a line that would not fit, so the model never sees half a line. (If line 1 alone is over 50 KB, nothing is kept.)
 
-1. It splits the text into lines and looks at the first 2000 only.
-2. It adds up their size in bytes. As soon as the next line would go over 50 KB, it stops, so it never keeps half a line and the model never sees a broken line.
-3. It returns the kept lines and an `info` dict: `truncated`, `total_lines`, `total_bytes` and `kept_lines`.
+Besides the cut text, `truncate_head` returns a small **info dict** that says how the cut went: `truncated` (was anything cut?), `kept_lines` (how many lines it kept), and `total_lines` / `total_bytes` (the size of the original). `read` needs `kept_lines` to know the last line it really sent, so it can tell the model where to continue.
 
-There are two limits because one is not enough: 2000 short lines are fine, but 10 lines of minified JavaScript can be 1 MB. The price of keeping whole lines: if the first line alone is over 50 KB, zero lines are kept. `truncate_tail` does the same from the end, for `bash` below.
+That last line is the smallest of three stops: `read`'s own window (from `offset`, at most 2000 lines), the end of the file (9000), and the line where the 50 KB cut happened (1200). So it is `min(2000, 9000, 1200) = 1200`, and `read` adds "[7800 more lines; use offset=1201 to continue]". If this number were wrong, the model would skip lines or read some twice. (Both 2000s are the same constant, `MAX_LINES`.)
 
-Back in `read`, the line end is the smallest of three stops: the `limit`, the end of the file, and the line where the byte limit cut. Say the byte limit cuts after 1200 lines. Then the end is `min(2000, 9000, 1200) = 1200`, lines are left, and `read` adds `[7800 more lines; use offset=1201 to continue]`. `read` USES `truncate_head`: `read` picks which lines to show, `truncate_head` makes sure they fit.
+The same rule has a twin, `truncate_tail`, which keeps the **last** lines instead. `read`, `ls`, `grep` and `find` keep the top, because the start of a file or the first matches matter most. `bash` keeps the end (see below), because a command's result is at the end: `pytest` prints "3 failed, 10 passed" and the last error on its final lines.
 
-Real code: [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `_cut`, `truncate_head`, `truncate_tail`
+Real code: [coding/truncate.py](../../packages/simp_agent/src/simp_agent/coding/truncate.py) — `truncate_head`, `truncate_tail`
 
 ### Looking around: `ls`, `grep`, `find`
 
@@ -165,7 +163,7 @@ The model calls `bash` with `{"command": "pytest"}` and maybe a `timeout`. `bash
 2. Applies the host cap, if there is one: with a cap of 600 seconds, no timeout becomes 600, `timeout=30` stays 30, and `timeout=1000` becomes 600. With no cap and no `timeout`, there is no time limit: a long build is fine, and the user can press Stop ([06](06-events-abort.md)).
 3. Runs the command with `ctx.env.exec`, passing `ctx.cwd`, the timeout, `ctx.cancel` and `ctx.on_update`. The hard work (streaming, cancel, timeout, killing the process group) is in `exec` from [09](09-exec-env.md#step-4-exec-runs-pytest-without-freezing-and-keeps-the-output); `on_update` lets the user see output live.
 4. Adds a line that says how the command ended. A code means it finished: `[exit code: 1]` tells the model the test failed. No code means it was killed: if `ctx.cancel` is set, the user pressed Stop (`[Command interrupted by the user after 1m05s]`, timed with a [monotonic clock](glossary.md#monotonic-clock)); else the timeout did (`[Command timed out after 600 seconds]`).
-5. Passes the text through `tail`, which keeps the **end**, where the failures and the summary are, and puts `[Output truncated: showing last K of N lines]` at the start, where the cut happened.
+5. Passes the text through `tail`, which uses `truncate_tail` ([truncation](#when-readmemd-is-too-big-truncation)) and puts `[Output truncated: showing last K of N lines]` at the start.
 
 In every case the model gets the output so far, plus how it ended.
 

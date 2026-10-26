@@ -21,22 +21,40 @@ Code in this chapter (commit `2fc2776`): `ai/__init__.py` (`stream`), `testing/_
 
 ## Example: the answer leaves Parse
 
-We follow the same example as the [Part 1 big picture](01-0-part-1-ai.md#example-the-user-asks-about-a-file). The user asks **"What is in README.md?"**, and Claude answers. At the end of [03](03-parse.md), Parse has built this message and sent it in a `done` event: an `AssistantMessage` whose content is one `ToolCall` to `read` with `{"path": "README.md"}`, and whose `stop_reason` is `"tool_use"`.
+We follow the same example as the [Part 1 big picture](01-0-part-1-ai.md#example-the-user-asks-about-a-file). The user asks **"What is in README.md?"**, and Claude answers. At the end of [03](03-parse.md), Parse has built this message and sent it in a `done` event:
+
+```text
+AssistantMessage(content=[ToolCall read {"path": "README.md"}], stop_reason="tool_use")
+```
 
 Nothing in this message says that Claude wrote it. That is a problem later. In [01](01-pick-clean.md#2-clean-transform_messages) the user switches to GPT and types "Just tell me the title." Then Clean must know which turns came from Claude, because only Claude can read Claude's thinking back. So before the message goes to the app, someone must write on it who wrote it. That is block 6, **Label**: it sets three [labels](glossary.md#label) on the message, `api`, `provider` and `model`.
 
 ## The entry point `stream` (runs 1, 2, 6)
 
-Where does Label run? Not in each provider. It runs in `ai.stream`, the one function the app calls for every model call. The same function also runs Pick and Clean before the provider starts, so it wraps the whole pipeline. `stream(model, context, opts)` never raises. It does this:
+Where does Label run? Not in each provider. It runs in `ai.stream`, the one function the app calls for every model call. The same function also runs Pick and Clean before the provider starts, so it wraps the whole pipeline:
 
-1. **Pick:** look up `model.api` in `_PROVIDERS`. If it is not there, send one `error` event ("Unknown api: ...") and stop.
-2. **Clean:** make a copy of the context whose messages are `transform_messages(context.messages, model)`.
-3. Call the provider with the clean context (blocks 3–5).
-4. **Label:** for each event that has a `message` or `partial`, set its `api`, `provider` and `model` to `model.api`, `model.provider` and `model.id`. Then send the event on.
+```text
+FUNCTION stream(model, context, opts):   // never raises
+    fn = LOOK UP model.api in _PROVIDERS               // 1 Pick
+    IF not found:
+        SEND event {error, message with error "Unknown api: ..."}
+        STOP
+    ctx = same context, but messages = transform_messages(context.messages, model)   // 2 Clean
+    FOR EACH event from fn(model, ctx, opts):          // 3-5 in the provider
+        IF the event has a message or partial:
+            SET message.api, .provider, .model = model.api, model.provider, model.id   // 6 Label
+        SEND the event
+```
 
 Real code: [ai/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) (`stream`)
 
-In our example, the `done` event comes out of the Anthropic provider, and `stream` labels its message before it passes the event on. The message keeps its content and `stop_reason`, and now also has `api="anthropic-messages"`, `provider="anthropic"` and `model="claude-x"`.
+In our example, the `done` event comes out of the Anthropic provider, and `stream` labels its message before it passes the event on:
+
+```text
+from the provider:  AssistantMessage(content=[ToolCall read ...], stop_reason="tool_use")
+after ai.stream:    AssistantMessage(content=[ToolCall read ...], stop_reason="tool_use",
+                                     api="anthropic-messages", provider="anthropic", model="claude-x")
+```
 
 The `start` event carries the same object as `partial` ([03](03-parse.md)), so it is labelled too. On the next turn, Clean reads these three labels and sees that this turn came from Claude.
 
@@ -57,7 +75,11 @@ flowchart LR
 
 ## Errors are plain text
 
-What if the call fails instead? The message still comes out, labelled the same way, but with `stop_reason="error"` and the reason in `error`, a plain string. When our own code knows the cause, it also sets `error_kind`: `fatal` when trying again cannot help (no API key), `budget` when the user's spend limit is used up (ch [23](23-limits.md)), and `policy` when the request is not allowed. For example, with no key the message has `stop_reason="error"`, `error="no API key for provider openai"` and `error_kind="fatal"`.
+What if the call fails instead? The message still comes out, labelled the same way, but with `stop_reason="error"` and the reason in `error`, a plain string. When our own code knows the cause, it also sets `error_kind`: `fatal` when trying again cannot help (no API key), `budget` when the user's spend limit is used up (ch [23](23-limits.md)), and `policy` when the request is not allowed. For example:
+
+```text
+AssistantMessage(stop_reason="error", error="no API key for provider openai", error_kind="fatal")
+```
 
 `ai.is_retryable` never retries these three kinds. For other errors, the session reads the string to choose: wait and retry (ch [15](15-retry.md)), shrink the history and try again ([context overflow](glossary.md#context-overflow), ch [17](17-overflow.md)), or give up. Nothing in this chapter needs that yet.
 
@@ -73,17 +95,39 @@ The fake lives in the `testing` [layer](glossary.md#layer), at the far right of 
 
 ### Start: the smallest fake
 
-The smallest function with that shape always says "ok": it makes an `AssistantMessage` with the text "ok", sends `start` with it, then `done` with it.
+The smallest function with that shape always says "ok":
+
+```text
+FUNCTION fake(model, ctx, api_key):
+    msg = AssistantMessage with the text "ok"
+    SEND event {start, msg}
+    SEND event {done, msg}
+```
 
 Try it on our example. The loop's first call must get the `read` tool call, and the second call must get the text answer. This fake gives "ok" both times, so the loop never runs `read`. It also cannot tell the test what the loop sent, and it can never fail.
 
 ### Step by step: grow it into `FakeProvider`
 
-To give a different answer on each call, the fake keeps a list of replies and takes the next one on each call. To keep its place between calls it must be an object, not a plain function. It writes down every call, so the test can check what the loop sent. To act like a failing model, it ends with `error` instead of `done` when the reply has `stop_reason="error"`. And so that a reply can depend on what the loop sent, a reply may also be a function of the context. Put together, each call to a `FakeProvider` (the object itself is the stream function) does this:
+To give a different answer on each call, the fake keeps a list of replies and takes the next one on each call. To keep its place between calls it must be an object, not a plain function. It writes down every call, so the test can check what the loop sent. To act like a failing model, it ends with `error` instead of `done` when the reply has `stop_reason="error"`. And so that a reply can depend on what the loop sent, a reply may also be a function of the context. Put together:
 
-1. Add 1 to `calls`, and add the `ctx`, a copy of `ctx.messages`, the `api_key` and the `model` to the lists `ctxs`, `messages`, `api_keys` and `models`. The copy freezes what was sent now.
-2. Take the next reply. If none is left, the test fails. If the reply is a function, call it with `ctx`.
-3. Send `start`, then `error` if the reply's `stop_reason` is `"error"`, else `done`.
+```text
+CLASS FakeProvider(replies...):
+    replies = the replies, ready to take one by one
+    ctxs, messages, api_keys, models = empty lists
+    calls = 0
+
+    WHEN called with (model, ctx, api_key):          // the object IS a stream function
+        calls = calls + 1
+        ADD ctx to ctxs
+        ADD a COPY of ctx.messages to messages        // freeze what was sent now
+        ADD api_key to api_keys
+        ADD model to models
+        msg = TAKE the next reply                     // none left -> test fails
+        IF msg is a function: msg = msg(ctx)
+        SEND event {start, msg}
+        IF msg.stop_reason is "error": SEND event {error, msg}
+        ELSE:                          SEND event {done, msg}
+```
 
 Real code: [testing/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/testing/__init__.py) (`FakeProvider`)
 
@@ -115,7 +159,7 @@ If the loop calls more times than there are replies, `next` has nothing left and
 
 Before it answers, the fake writes down what it got: `calls` (how many calls), `ctxs` (each `Context`), `messages` (a copy of `ctx.messages`), `api_keys` and `models`. Why a copy of the messages? The loop keeps adding to its list. Without the copy, every entry would point at the final list, and the test could not see what the model got *at that moment*.
 
-A server test, for example, checks that the third call never reached the model. We show the real line because it is that short:
+A server test, for example, checks that the third call never reached the model:
 
 ```python
 assert fp.calls == 2  # $1 + $1 > $1.5 -> third call refused before reaching the provider
