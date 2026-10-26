@@ -29,7 +29,7 @@ If each tool touches the disk with `open()` and runs commands with `subprocess` 
 
 ## Naive version
 
-To answer the user, the tools must read `README.md`, write `NOTES.md`, and run `pytest`. The simplest env does these three things directly, with Python's `open()` and `subprocess`:
+So every tool will ask one object, the env, instead of touching the disk itself. What must the env be able to do? Look at our story: the agent must read `README.md`, write `NOTES.md` and run `pytest`. Every coding tool in [10](10-coding-tools.md) comes down to one of these three: **read a file, write a file, run a command**. So the env needs three methods. The simplest way to write them is to call Python's own tools directly: `open()` to read and write a file, `subprocess` to run a command, with no checks and nothing else:
 
 ```text
 CLASS NaiveEnv(root):                       // root = the project folder the tools may use
