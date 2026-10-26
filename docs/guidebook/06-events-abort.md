@@ -135,7 +135,7 @@ INSIDE agent_loop:
 
 `add` is the **only** way a message enters the history. That is why `message_start` and `message_end` come one right after the other: the message is already complete when it is added, and the streaming part was the `message_update` events before it. So a UI that listens only to `message_end` still sees the whole conversation.
 
-`_emit_all` calls each subscriber (a function that wants the events). A subscriber can be a normal function, like `events.append`, or an `async def` function, like one that writes to a websocket. An `async` function gives back something that must be awaited, so `_emit_all` awaits it:
+`_emit_all` calls each subscriber (a function that wants the events). A subscriber can be a normal function, like `events.append`, or an `async def` function, like one that writes to a websocket. An `async` function gives back something that must be awaited, so `_emit_all` awaits it. Subscribers run one by one, in order, so events never come out of order; the cost is that a slow subscriber slows the whole loop:
 
 Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages/simp_agent/src/simp_agent/agent/__init__.py) (`_emit_all`)
 
@@ -341,83 +341,5 @@ FUNCTION Agent._run(prompts):
 Each line has a reason. Only one run can go at a time, because two loops on one history would mix their messages; a second `prompt()` raises `RuntimeError` (to add a message during a run, use `steer` or `follow_up`, [07](07-steering.md)). Each run gets a fresh cancel flag, so an old `abort()` cannot kill the next question. The loop still sees one `emit`, and that one `emit` passes each event to every subscriber. Last, the loop does not catch errors from subscribers. If one raises, `_run` appends an `error` message straight to `self.messages` (not through `add`, so no events are sent for it), and `finally` sets `is_streaming` back to `False`, so the agent can take the next question.
 
 `Agent` has one more way to start a run, `continue_()`. It runs from the current history with no new message, so a host can try again after an error ([15](15-retry.md)).
-
-## Test
-
-The tests live in `test_harden.py`. The first one stops during the model call:
-
-```python
-async def test_abort_during_stream_closes():
-    closed, cancel = [], asyncio.Event()
-
-    async def stream(model, ctx):
-        msg = AssistantMessage([TextContent("par")])
-        try:
-            yield {"type": "start", "partial": msg}
-            cancel.set()
-            await asyncio.sleep(10)
-            yield {"type": "done", "message": msg}
-        finally:
-            closed.append(1)
-
-    new = await asyncio.wait_for(agent_loop("s", [], [UserMessage("a")], LoopConfig(Model(), stream_fn=stream), cancel=cancel), 2)
-    assert new[-1].stop_reason == "aborted" and new[-1].text() == "par"
-    assert closed
-```
-
-The fake stream sends the partial text `"par"`, sets `cancel`, then goes silent for 10 seconds, while the test allows only 2. So the test checks moment 1: the Stop is fast, the partial text is kept with `stop_reason="aborted"`, and the provider's `finally` ran, which means the stream was closed.
-
-The second test stops between tools:
-
-```python
-async def test_abort_mid_batch_repairs_history():
-    cancel = asyncio.Event()
-
-    async def slow(args, c):
-        if args["n"] == 2:
-            cancel.set()
-        return "r"
-
-    tool = AgentTool("t", "", {"type": "object"}, slow)
-    batch = AssistantMessage([ToolCall(f"c{i}", "t", {"n": i}) for i in (1, 2, 3)], stop_reason="tool_use")
-    stream = FakeProvider(batch, DONE)
-    seen = stream.messages
-    msgs = []
-    cfg = LoopConfig(Model(), [tool], stream_fn=stream)
-    await agent_loop("s", msgs, [UserMessage("a")], cfg, cancel=cancel)
-    assert msgs[-1].stop_reason == "aborted"
-    await agent_loop("s", msgs, [UserMessage("b")], cfg)
-    sent = seen[-1]
-    check_pairs(sent)
-    assert not any(isinstance(m, AssistantMessage) and m.stop_reason == "aborted" for m in sent)
-    assert next(m for m in sent if getattr(m, "tool_call_id", "") == "c3").content == "No result provided"
-```
-
-This is moment 3. `FakeProvider` ([04](04-label-test.md)) first returns the three calls, then `DONE`, a plain "ok" answer. Call `c2` sets `cancel`, so `c3` never runs and the run ends `aborted`. A **second** run on the same history then looks at what the model was sent (`FakeProvider.messages`). `check_pairs` is a helper in the test file that fails if any tool call has no result. The aborted message is gone, and `c3` got `"No result provided"`.
-
-Three more tests check `Agent`. In `test_raising_subscriber_ends_with_error`, a subscriber raises "sub broke" on `message_end`, the last message has `stop_reason="error"` with that text, and `is_streaming` is `False` again. In `test_async_subscriber_awaited`, an `async` subscriber sees `agent_start` first and `agent_end` last. In `test_prompt_while_streaming`, a second `prompt()` during a run raises `RuntimeError`.
-
-```bash
-uv run pytest packages/simp_agent/tests/test_harden.py
-```
-
-## Why this way
-
-> **Events are dicts on one channel.** New event types need no new signature, and dicts go straight to JSON.
->
-> **Stop is one `asyncio.Event`, and its result is data.** One `set()` reaches the model call, the loop and every tool. The history keeps the partial truth; `transform_messages` cleans only what the model sees.
->
-> **Subscribers are awaited in order.** Events never come out of order and are never lost. The cost: a slow subscriber slows the whole loop, and a subscriber that raises ends the run with an `error` message.
->
-> **`Agent` is thin.** All logic stays in `agent_loop`; `Agent` only holds state (history, subscribers, cancel flag, queues). The session ([13](13-session.md)) wraps `Agent` the same way.
-
-## Exercises
-
-1. Build an `Agent` with the `echo` tool and a `FakeProvider` that calls `echo` once, then says `"ok"`. `subscribe` a function that collects `e["type"]`. Print the list without `message_update`. How many `turn_start` events are there, and where does `tool_execution_start` come?
-2. Call `agent.abort()` **before** `agent.prompt("hi")`. Does the run end `aborted`? Find the line in `_run` that explains why.
-
-## Recap
-
-The loop now talks while it works: every step sends one [event](glossary.md#event) dict through `send`, which passes it to the caller's `emit`, and every message enters the history through `add`, so a UI can draw the whole README run from `agent_start` to `agent_end`. The cancel flag from 05 is one `asyncio.Event`. It is checked in a race during the model call, before each tool, inside tools and after the batch, so a Stop is fast and closes the web request. Whatever was on screen stays in the history, marked `aborted`, and `transform_messages` repairs only the model's view. `Agent` holds the history, the subscribers and the flag between questions.
 
 **Builds on:** [05 The agent loop](05-agent-loop.md) · **Next:** [07 Steering](07-steering.md): the `get_steering` / `get_follow_up` hooks and the `Agent` queues, so the user can type while the agent works.

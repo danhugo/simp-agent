@@ -269,7 +269,7 @@ flowchart TD
 
 One pass of the inner `while` is one [turn](glossary.md#turn): one model call plus the tools it asked for. Normally the run ends when the model asks for no tools (`has_calls` is false), so the model itself decides when it is done. Every way a run ends, and why cut-off calls never execute, is in [Step 4](#step-by-step-from-naive-to-real). Retrying after a provider error is a separate job ([15](15-retry.md)).
 
-Every tool call gets a result: unknown tool, bad arguments, a crash or a cut-off call all still add a `ToolResultMessage`. Why does this matter? Providers reject a history where a tool call has no result ([01](01-pick-clean.md#2-clean-transform_messages)), so without it the next model call would fail. The one exception is Stop: the skipped calls get no result, and `transform_messages` repairs that before the next send ([06](06-events-abort.md)). The tools execute one after another, in the order the model gave, so the results stay in the same order as the calls.
+Every tool call gets a result: unknown tool, bad arguments, a crash or a cut-off call all still add a `ToolResultMessage`. Why does this matter? Providers reject a history where a tool call has no result ([01](01-pick-clean.md#2-clean-transform_messages)), so without it the next model call would fail. The one exception is Stop: the skipped calls get no result, and `transform_messages` repairs that before the next send ([06](06-events-abort.md)). The tools execute one after another, in the order the model gave, so the results stay in the same order as the calls, and two tools never touch the same file at once (a design reason; the code does not say it). The cost: many slow tools in one turn take longer than they would in parallel.
 
 ### `_llm_turn`: one model call
 
@@ -417,86 +417,5 @@ CLASS LoopConfig:
 `stream_fn` defaults to `ai.stream`, and a test passes `FakeProvider(...)` instead; thanks to the [stream function](glossary.md#stream-function) shape from [01](01-pick-clean.md#out-the-shape-of-a-model-call), the loop cannot tell the difference. `get_tools`, if set, is called every turn, so the tool list can change during a run (the `Agent` class uses it so that changing `agent.tools` takes effect at the next turn). `get_api_key(provider)` is called before every model call, so a key that can expire, like a login token, can refresh in the middle of a long run; if it is not set, no key is passed and the provider returns a "no API key" error ([01](01-pick-clean.md#1-pick-_providers-register_provider)). `env` and `cwd` go into every `ToolContext`.
 
 All the other fields have "do nothing" defaults, and later chapters fill them in: steering and follow-ups in [07](07-steering.md), tool hooks in [08](08-hooks-approval.md), and the history view in [16](16-compaction.md). That is why the loop in this chapter can stay small.
-
-## Test
-
-`test_core.py` drives the loop with `FakeProvider` and two tiny tools:
-
-```python
-def call(name, **args):
-    return AssistantMessage([ToolCall("c1", name, args)], stop_reason="tool_use")
-
-
-async def echo(args, ctx):
-    return f"echo {args['x']}"
-
-
-ECHO = AgentTool("echo", "", {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}, echo)
-BOOM = AgentTool("boom", "", {"type": "object"}, boom)
-DONE = AssistantMessage([TextContent("ok")])
-
-
-async def run(*replies, tools=(ECHO, BOOM)):
-    events = []
-    cfg = LoopConfig(Model(), list(tools), stream_fn=FakeProvider(*replies))
-    new = await agent_loop("sys", [], [UserMessage("hi")], cfg, events.append)
-    return new, [e["type"] for e in events]
-```
-
-(`boom` always raises `RuntimeError("kaboom")`.)
-
-Each [scripted reply](glossary.md#scripted-reply) is one model answer. The test for the main path:
-
-```python
-async def test_tool_call_then_second_turn():
-    new, ev = await run(call("echo", x="a"), DONE)
-    assert [m.role for m in new] == ["user", "assistant", "tool_result", "assistant"]
-    assert new[2].content == "echo a" and not new[2].is_error
-    assert ev.count("turn_end") == 2 and "tool_execution_end" in ev
-```
-
-Reply 1 asks for `echo(x="a")`. The loop executes `echo` and calls the model again. Reply 2 has no tool calls, so the loop stops. Two turns, four new messages.
-
-The error paths:
-
-```python
-async def test_unknown_tool_and_invalid_args():
-    new, _ = await run(call("nope"), call("echo", y=1), DONE)
-    assert new[2].is_error and new[2].content == "Tool nope not found"
-    assert new[4].is_error and "'x' is a required property" in new[4].content
-    assert new[-1].text() == "ok"
-```
-
-Neither error stops the run. The model gets the error text and the third reply ends normally.
-
-The same file has three more loop tests (its edit and real-tool tests belong to [10](10-coding-tools.md)). `test_no_tool_call_one_turn` checks that a reply with no calls gives one turn, `test_tool_exception` checks that when `boom` raises, the result is an error containing `kaboom`, and `test_provider_error` checks that a reply with `stop_reason="error"` ends the run with `agent_end`.
-
-```bash
-uv run pytest packages/simp_agent/tests/test_core.py
-```
-
-## Why this way
-
-> **A plain function, not a class.** `agent_loop` takes a history, new prompts and a `LoopConfig`, and returns the new messages. It is easy to test with a fake `stream_fn`. The cost: the caller must keep the state; the `Agent` class ([06](06-events-abort.md)) and the session ([13](13-session.md)) do that.
->
-> **Errors are data.** Every tool failure becomes a `ToolResultMessage` with `is_error=True`, and a provider error is an `AssistantMessage` with `stop_reason="error"`. The model can read and fix its mistake. The cost: a broken tool does not crash loudly, so you must read the results to see it.
->
-> **One schema, two jobs.** `parameters` tells the model what to send and also checks what it sent. No second check to keep in sync. The cost: a JSON schema cannot check everything (for example, "this file must exist"); the tool still checks that itself.
->
-> **Tools execute one after another.** Results keep the same order as the calls, and two tools never touch the same file at once (a design reason; the code does not say it). The cost: many slow tools in one turn take longer than they would in parallel.
-
-## Exercises
-
-1. Give the `echo` tool a `prepare_arguments` that renames an old argument `text` to `x`. Let the model call `echo` with `{"text": "a"}`. Is the result an error? What arguments does the assistant message in history hold now?
-2. Script a reply that calls `echo(x="a")` with `stop_reason="length"`, then `DONE`. Did `echo` execute? What text is in the tool result, and does the run still reach the second reply?
-
-## Recap
-
-- `AgentTool` = `ai.Tool` + `execute(args, ctx) -> str` (+ optional `prepare_arguments`).
-- `ToolContext` gives a tool `cancel`, `env`, `cwd` and `on_update`, so tools need no globals.
-- `run_tool` finds the tool, checks the arguments with the tool's JSON schema, executes it, and turns every failure into an error `ToolResultMessage`.
-- `agent_loop` repeats: call the model, add the answer, execute each tool call, add each result, until the run ends ([Step 4](#step-by-step-from-naive-to-real)).
-- Cut-off (`length`) tool calls are never executed, but still get a result.
-- `LoopConfig.stream_fn` lets tests use `FakeProvider`; the other hooks have empty defaults and are filled in by later chapters.
 
 **Builds on:** [04 Label + test the pipeline](04-label-test.md) · **Next:** [06 Events and abort](06-events-abort.md) — what the `send(...)` events are, and how `cancel` stops a model call or a tool in the middle.
