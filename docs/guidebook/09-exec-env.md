@@ -51,6 +51,8 @@ event loop (one thread)
                         └─ exec("pytest") → new process: sh (p) → pytest → test server (port 8000)
 ```
 
+`sh` is the shell, the program that reads a command line (like the one in your Terminal). `exec` hands it the text `"pytest"`, and `sh` starts `pytest` as its child.
+
 Every tool goes through the env, so whatever the env gets wrong, every tool gets wrong. `NaiveEnv` gets four things wrong, at four places on this path:
 
 - **env → disk: a path can leave the project.** The env is the one place that can check a path, but `NaiveEnv` just joins `root + "/" + path` and opens it. If the model asks `read_file("../.ssh/id_rsa")` (by mistake, or because a file told it to), `..` walks up out of the project, and the tool reads the user's secret SSH key, which then goes into the history and to the model provider. `write_file("../.bashrc", …)` could even change files outside the project. A *symlink* (a file that points to another place) can do the same.
@@ -162,7 +164,7 @@ await proc.wait()                                              # wait for the en
 
 `await` means "the event loop may do other work, and come back when there is news". So while `pytest` runs, the event loop still sends output to the UI and still watches for Stop. To be able to stop it, `exec` waits on two tasks at once, at most `timeout`: `run` reads the output until `pytest` exits, and `stop` waits for the Stop flag (the same race as `_stream` in [06](06-events-abort.md)).
 
-**The lost output.** `NaiveEnv` read the output only at the end. `run` reads it piece by piece as it comes, keeps every piece in `chunks`, and passes each one to `on_output`, which is `ctx.on_update`, so the UI shows it live. So if Stop or the timeout wins, `exec` kills the command and still returns what came so far: `(None, output so far)`. `None` means "killed", not a real exit code.
+**The lost output.** `NaiveEnv` read the output only at the end. `exec` starts the process with its output going into a *pipe*, a channel from `pytest` back to the agent. Whatever `pytest` prints flows into the pipe at once, and `await proc.stdout.read(4096)` returns as soon as some bytes are there, without waiting for the end. `run` reads it piece by piece as it comes, keeps every piece in `chunks`, and passes each one to `on_output`, which is `ctx.on_update`, so the UI shows it live. So if Stop or the timeout wins, `exec` kills the command and still returns what came so far: `(None, output so far)`. `None` means "killed", not a real exit code.
 
 ```text
 FUNCTION exec(command, cwd, timeout, cancel, on_output):
@@ -181,13 +183,15 @@ Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp
 
 (Two small choices: stderr goes into the same stream as stdout, so an error sits next to the line that caused it; and a bad byte becomes `�` instead of crashing the tool.)
 
-### Step 5: Stop kills the whole group
+### Step 5: Stop kills the whole process group
 
-`NaiveEnv` killed only `sh`, so `pytest` and the test server lived on and kept port 8000. `exec` starts `sh` with `start_new_session=True`, so `sh` and every child it starts share one **process group**, whose id is the shell's PID. A [process-group kill](glossary.md#process-group-kill) sends `SIGKILL` (a kill signal that cannot be caught) to the whole group at once: `run_kill(proc.pid)` does this, so all three die and the port is free.
+`NaiveEnv` killed only the parent process, `sh`. `pytest`, which `sh` started, is a child process, and a child does not die with its parent: `pytest` and its test server keep running and keep port 8000. The fix is to put them all in one **[process group](glossary.md#process-group-kill)** and kill the group.
+
+How: when `exec` starts `sh`, `exec` asks the operating system for a new process group (`start_new_session=True`). From then on, every process `sh` starts (`pytest`, the test server) belongs to that group. On Stop or timeout, `exec` kills the whole group with one call, `run_kill(proc.pid)`, which runs `os.killpg(group id, SIGKILL)`. All three die, and port 8000 is free.
 
 Real code: [packages/simp_agent/src/simp_agent/agent/env.py](../../packages/simp_agent/src/simp_agent/agent/env.py) (`run_kill`)
 
-> **Detail (OS):** `run_kill` calls `os.killpg(pgid, 9)` up to 100 times, 20 ms apart (about 2 s max). Why repeat? A child may be forked at the moment the first signal goes out, and miss it. It stops when `killpg` raises `ProcessLookupError` (group empty) or, on macOS, `PermissionError` (only zombies left: dead processes whose exit code nobody has read yet).
+(`run_kill` sends the kill a few times, because a new child may be started at the very moment of the first one.)
 
 ### Step 6: the rules every env must pass
 
