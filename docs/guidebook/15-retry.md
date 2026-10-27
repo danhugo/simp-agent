@@ -18,13 +18,22 @@ Retry does not go inside the model call: the loop has already turned the failure
 
 Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._run`
 
+Here is one retry from start to end, in our story:
+
+1. The model API answers `429`. The reply becomes an error message, and the loop ends the run.
+2. The session sees a short failure. It tells the app "retry 1 of 3, waiting 2 seconds" (`auto_retry_start`).
+3. It waits 2 seconds, then asks the model again with the same history.
+4. This time the model answers. The session tells the app "retry done, it worked" (`auto_retry_end`), and the agent goes on adding tests.
+
+The rest of this chapter explains each step.
+
 ## Which errors are worth trying again?
 
 Only errors that can go away by themselves: a rate limit, an overloaded server, a dropped connection. A missing API key fails every time, so trying again only wastes time.
 
 The function `is_retryable(error, kind)` in `ai` decides with two inputs. The first is the error text. Providers do not share error types, but their text almost always has words like `429`, a `5xx` code, "overloaded" or "timed out". One regex over the text works for every provider.
 
-The second is the [`error_kind`](glossary.md#error_kind). The text cannot tell "the provider rate-limits you" from "our own budget stops you", so our own code marks its own errors with a kind. `stream()` sets `"fatal"` when there is no API key, and the server sets `"budget"` when a user is over their limit ([23](23-limits.md)). If the kind is in `NON_RETRYABLE`, the error is never retried, even when the text looks retryable.
+The second is the [`error_kind`](glossary.md#error_kind). The text cannot tell "the provider rate-limits you" from "our own budget stops you", so our own code marks its own errors with a kind. `stream()` sets `"fatal"` when there is no API key, and the server sets `"budget"` when a user is over their limit ([23](23-limits.md)). If the kind is in `NON_RETRYABLE` (`fatal`, `budget`, `policy`), the error is never retried, even when the text looks retryable. For example, when a user is over budget, the server's error says "budget: daily limit $5 reached". Trying again cannot help until tomorrow, and the kind `budget` makes that certain, instead of hoping the text never contains a word that looks retryable.
 
 A context overflow ("prompt is too long") is not retried either, because the same too-big request would fail again. It has its own fix in [17](17-overflow.md).
 
@@ -38,21 +47,17 @@ The failed reply stays in the history, because history is append-only ([13](13-s
 
 ## How long do we wait?
 
-The wait doubles each time: `retry_base_delay * 2 ** (attempt - 1)`. This is exponential [backoff](glossary.md#backoff). A busy server gets more room after each failure, instead of being hit again at the same speed.
+Each wait is twice as long as the one before: 2 seconds, then 4, then 8. This is exponential [backoff](glossary.md#backoff) (in code, `retry_base_delay * 2 ** (attempt - 1)`). A busy server gets more room after each failure, instead of being hit again at the same speed.
 
 Two plain settings of the session control it: `retry_base_delay` (default 2 seconds) and `max_retries` (default 3). With the defaults, the waits are 2, 4 and 8 seconds, and then the session gives up. `max_retries=0` turns retry off. The counter starts at 0 in each run, so the next prompt gets 3 full tries again.
 
 ## What if the user presses Stop during the wait?
 
-During the wait, no model call is running. So the agent's abort from [06](06-events-abort.md) has nothing to stop, and the retry would run anyway.
+The agent's Stop from [06](06-events-abort.md) stops *what is running*: a model call or a tool. During the wait, nothing is running, so that Stop has nothing to stop, and when the wait ends the retry would start anyway. The user pressed Stop and the agent goes on: that is the bug to avoid.
 
-The session therefore has its own abort event, an `asyncio.Event`. The wait is not a plain sleep; it waits for this event, but at most `delay` seconds:
+So the session has its own Stop flag, and its wait means "sleep up to N seconds, but wake up at once if Stop is pressed". When the user presses Stop, the session's `abort()` sets this flag (and also stops the agent, in case a model call is running). The wait wakes up early, and the session ends without retrying. If nobody presses Stop, the time runs out and the retry goes ahead. Each run starts with a fresh flag, so an old Stop does not cancel the next prompt.
 
-```python
-await asyncio.wait_for(self._abort.wait(), delay)
-```
-
-The path is short. The user presses Stop, the app calls the session's `abort()`, and `abort()` sets the event and also tells the agent to abort (for the case where a model call is running). The set event ends the wait at once, and `_run` leaves the loop with no retry. If no one aborts, the time runs out, `wait_for` raises `TimeoutError`, `_run` catches it, and the retry goes ahead. `_run` makes a fresh event at the start of each run, so an old abort does not stop the next prompt.
+In code, the wait is one line: `await asyncio.wait_for(self._abort.wait(), delay)`. It waits for the flag, but at most `delay` seconds; when the time runs out it raises `TimeoutError`, which `_run` catches as "no Stop, go on".
 
 Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.abort`
 
