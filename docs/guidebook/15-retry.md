@@ -53,11 +53,11 @@ Two plain settings of the session control it: `retry_base_delay` (default 2 seco
 
 ## What if the user presses Stop during the wait?
 
-The agent's Stop from [06](06-events-abort.md) stops *what is running*: a model call or a tool. During the wait, nothing is running, so that Stop has nothing to stop, and when the wait ends the retry would start anyway. The user pressed Stop and the agent goes on: that is the bug to avoid.
+The agent's Stop from [06](06-events-abort.md) stops *what is running*: a model call or a tool. During the wait before a retry, nothing is running, so that Stop has nothing to stop. It cannot help later either: the agent makes a fresh Stop flag at the start of every run, so the new run that the retry starts begins with a flag that is not set. The user pressed Stop and the agent goes on: that is the bug to avoid.
 
-So the session has its own Stop flag, and its wait means "sleep up to N seconds, but wake up at once if Stop is pressed". When the user presses Stop, the session's `abort()` sets this flag (and also stops the agent, in case a model call is running). The wait wakes up early, and the session ends without retrying. If nobody presses Stop, the time runs out and the retry goes ahead. Each run starts with a fresh flag, so an old Stop does not cancel the next prompt.
+So the session has its own Stop flag, which lasts for the whole time the session is retrying. When the user presses Stop, the session's `abort()` sets both flags: its own, and the agent's (in case a model call is running right now). The wait before a retry (the 2, 4 or 8 seconds above) is a race, like the ones in [06](06-events-abort.md) and [09](09-exec-env.md): a timer against the session's Stop flag. If the timer ends first, the session retries. If the user presses Stop first, the wait ends at once and the session stops without retrying. The session makes a fresh flag at the start of each `prompt()`, so an old Stop does not cancel the next question.
 
-In code, the wait is one line: `await asyncio.wait_for(self._abort.wait(), delay)`. It waits for the flag, but at most `delay` seconds; when the time runs out it raises `TimeoutError`, which `_run` catches as "no Stop, go on".
+In code, the race is one line: `await asyncio.wait_for(self._abort.wait(), delay)`. It waits for the flag, but at most `delay` seconds; when the time runs out it raises `TimeoutError`, which `_run` reads as "no Stop, go on".
 
 Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.abort`
 
