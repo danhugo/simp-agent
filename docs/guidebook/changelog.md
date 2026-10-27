@@ -2,6 +2,10 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-10-27
+
+- ch16 Compaction: rewritten in words around 7 questions (why, before/after, when, where to cut, what goes into the summary, next view, failure). Pseudocode and the dataclass block removed; inbound links from 17, 18, 19 updated.
+
 ## 2026-10-26
 
 - ch14 "Why plugins?" shows the problem first: the flag-and-`if` version of `AgentSession` and why it fails (grows per extra, cannot add your own rule to a pip-installed library), then a 4-line `NoBash` plugin as the fix. Checked against `session/__init__.py` (`tool_call` returns `{"block": ...}`) at `dab93e4`.
