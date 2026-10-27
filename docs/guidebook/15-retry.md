@@ -41,7 +41,7 @@ A context overflow ("prompt is too long") is not retried either, because the sam
 
 Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `is_retryable`, `NON_RETRYABLE`
 
-## How do we try again?
+## What does the new run send to the model?
 
 We call the agent's `continue_()`. It asks the model again with the same history; we do not send the user's text a second time.
 
