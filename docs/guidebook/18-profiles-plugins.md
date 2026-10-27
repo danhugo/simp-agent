@@ -57,7 +57,7 @@ def model_for(profile):
     return Model(id=profile.get("model"), **{k: v for k, v in profile.items() if k != "model"})
 ```
 
-Try it with the `local` profile above. It crashes at once: `plugins` goes to `Model`, which has no such field, so Python raises `TypeError`. Say we remove `plugins` by hand. Now it runs, but the `Model` is wrong. The profile has no `provider` key, so `provider` keeps `Model`'s default, `"anthropic"`, and the key lookup by provider name ([01](01-pick-clean.md#1-pick-_providers-register_provider)) picks the wrong key for an OpenAI-style server. There is a quieter bug too: if a profile has no `model` key, `profile.get("model")` is `None`, and `Model(id=None)` throws away `Model`'s own default `id`. And even with all keys right, the local server sends no token counts. OpenAI-style servers send usage in a stream only when asked (`stream_options`, which our `compat` flag `include_usage` turns on). Without real usage, `estimate_tokens` ([16](16-compaction.md#when-estimate_tokens-and-should_compact)) can only guess the size of the history. Last, nothing turns the name `"plan_mode"` into an object at all.
+Try it with the `local` profile above. It crashes at once: `plugins` goes to `Model`, which has no such field, so Python raises `TypeError`. Say we remove `plugins` by hand. Now it runs, but the `Model` is wrong. The profile has no `provider` key, so `provider` keeps `Model`'s default, `"anthropic"`, and the key lookup by provider name ([01](01-pick-clean.md#1-pick-_providers-register_provider)) picks the wrong key for an OpenAI-style server. There is a quieter bug too: if a profile has no `model` key, `profile.get("model")` is `None`, and `Model(id=None)` throws away `Model`'s own default `id`. And even with all keys right, the local server sends no token counts. OpenAI-style servers send usage in a stream only when asked (`stream_options`, which our `compat` flag `include_usage` turns on). Without real usage, `estimate_tokens` ([16](16-compaction.md#when-do-we-compact)) can only guess the size of the history. Last, nothing turns the name `"plan_mode"` into an object at all.
 
 ## Real design
 
@@ -194,7 +194,7 @@ Example: env var `API_KEY` holds `sk-abc...`.
 | tool result of `bash: cat .env` | `API_KEY=[REDACTED]` | `API_KEY=[REDACTED]` |
 | user message `my key is sk-abc...` | unchanged | `my key is [REDACTED]` |
 
-Why mask in `context` too, and not only in `tool_result`? Because of the second row. The user's message is theirs, so history keeps it as written, but the model never sees the key. The summary model of compaction does not see it either, because the session hands the same `context` chain to `compact()` ([16](16-compaction.md#compact-putting-it-together)).
+Why mask in `context` too, and not only in `tool_result`? Because of the second row. The user's message is theirs, so history keeps it as written, but the model never sees the key. The summary model of compaction does not see it either, because the session hands the same `context` chain to `compact()` ([16](16-compaction.md#what-goes-into-the-summary)).
 
 ### PlanMode
 

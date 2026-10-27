@@ -183,7 +183,7 @@ RETURN an Application with:
 
 Real code: [apps/cli/src/simp_cli/repl.py](../../apps/cli/src/simp_cli/repl.py), method `Repl.build_app`.
 
-The `live` row shows what is still changing (the streaming answer, tools waiting for a result), plus the approval question if one is waiting. The `prompt` row is one input line; its prefix is `> `, `… ` while running, or `Allow? [y/N/a] ` while asking. The `bar` row is a toolbar with the model id, the session id, about how many tokens are used (`estimate_tokens` from [16](16-compaction.md#when-estimate_tokens-and-should_compact)), and the state (`idle`, `running`, `compacting`, `retrying`).
+The `live` row shows what is still changing (the streaming answer, tools waiting for a result), plus the approval question if one is waiting. The `prompt` row is one input line; its prefix is `> `, `… ` while running, or `Allow? [y/N/a] ` while asking. The `bar` row is a toolbar with the model id, the session id, about how many tokens are used (`estimate_tokens` from [16](16-compaction.md#when-do-we-compact)), and the state (`idle`, `running`, `compacting`, `retrying`).
 
 Finished components go above the app with `run_in_terminal`. Why not full screen? Because then the text stays in the normal terminal: you can scroll back and copy it like any other output.
 
