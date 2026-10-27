@@ -25,10 +25,12 @@ h1{font-size:21px;margin:0 0 4px}.sub{color:#475569;font-size:13.5px;margin-bott
 <div class="sub">A <b style="color:#15803d">hook</b> (green) is a fixed moment in the run where the session calls out, using a fixed method name. A <b style="color:#1d4ed8">plugin</b> (blue card) is any object you pass in <code>AgentSession(plugins=[…])</code>; it has a method only for the hooks it cares about. At each hook, the session calls that method on every plugin in the list, in order, and skips a plugin that does not have it.</div>
 <div class="grid"><div>
 <div class="colh"><span style="color:#94a3b8">THE RUN · already built (ch 05, 08, 13)</span> + <span style="background:#15803d;color:#fff;border-radius:4px;padding:1px 6px">NEW: HOOKS</span></div>
-<div class="old">first <b>prompt()</b>: <b>start()</b> loads AGENTS.md</div>
-<div class="ar"></div><div class="hook"><span class="k">HOOK</span><span class="hn">setup</span>, then <span class="hn">session_start</span>: a plugin gets its settings and a handle to the session, and plugs itself in (adds a tool, a prompt section, reloads its saved state)</div>
-<div class="ar"></div><div class="old"><b>The user types</b> a message</div>
-<div class="ar"></div><div class="hook"><span class="k">HOOK</span><span class="hn">input</span>, then <span class="hn">before_agent_start</span>: see or change the text before the model does, answer it yourself, or add messages to the run <span class="eg">— e.g. a slash command</span></div>
+<div class="old"><b>The user types</b> a message → the app calls <b>prompt(text)</b> <span style="font-size:12px">(text is still a plain string)</span></div>
+<div class="ar"></div>
+<div class="box"><div class="h"><b>first time only:</b> start() loads AGENTS.md, then</div>
+ <div class="hook"><span class="k">HOOK</span><span class="hn">setup</span>, then <span class="hn">session_start</span>: a plugin gets its settings and a handle to the session, and gets ready (adds a tool, a prompt section, reloads its saved state)</div></div>
+<div class="ar"></div><div class="hook"><span class="k">HOOK</span><span class="hn">input</span>, then <span class="hn">before_agent_start</span>: see or change the raw text before the model does, answer it yourself, or add messages to the run <span class="eg">— e.g. a slash command</span></div>
+<div class="ar"></div><div class="old"><b>agent.prompt()</b>: only now the text becomes a UserMessage in the history, and the loop starts (ch 05)</div>
 <div class="ar"></div><div class="old"><b>Build what the model sees</b> (the view)</div>
 <div class="ar"></div><div class="hook"><span class="k">HOOK</span><span class="hn">context</span>: change this turn's view only; the saved history stays <span class="eg">— e.g. hide secrets from the model</span></div>
 <div class="ar"></div><div class="old"><b>Model call</b>: it asks for a tool</div>
