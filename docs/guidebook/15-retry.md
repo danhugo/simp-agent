@@ -31,15 +31,13 @@ The next sections explain the parts: which errors are worth a retry, how the new
 
 ## Which errors are worth trying again?
 
-Only errors that can go away by themselves: a rate limit, an overloaded server, a dropped connection. A missing API key fails every time, so trying again only wastes time.
+The question is simple: **will waiting help?** It helps for errors that go away by themselves: a rate limit, an overloaded server, a dropped connection. It never helps for a missing API key, a user who has spent their budget, or a request that is too big for the model; trying again only wastes time. The session decides with three checks, in this order:
 
-The function `is_retryable(error, kind)` in `ai` decides with two inputs. The first is the error text. Providers do not share error types, but their text almost always has words like `429`, a `5xx` code, "overloaded" or "timed out". One regex over the text works for every provider.
+1. **Did our own code mark the error as final?** When our own code stops a call on purpose, it adds a label to the error, called its [kind](glossary.md#error_kind): `fatal` (for example, no API key), `budget` (the user has spent their limit, see [23](23-limits.md)) or `policy`. An error with one of these labels is never retried. For example, "budget: daily limit $5 reached" cannot change until tomorrow. Our code already knows that, so it says so with the label instead of leaving the session to guess from words.
+2. **Is the request too big for the model?** The error says something like "prompt is too long" (a context overflow). The same request would fail again, so there is no retry here; [17](17-overflow.md) fixes it by making the history smaller.
+3. **Does the error text look short-lived?** Each provider writes its errors differently, but almost all of them contain words like `429`, a `5xx` code, "rate limit", "overloaded" or "timed out". One pattern search over the text finds these words for every provider. If it finds one, the error is worth a retry.
 
-The second is the [`error_kind`](glossary.md#error_kind). The text cannot tell "the provider rate-limits you" from "our own budget stops you", so our own code marks its own errors with a kind. `stream()` sets `"fatal"` when there is no API key, and the server sets `"budget"` when a user is over their limit ([23](23-limits.md)). If the kind is in `NON_RETRYABLE` (`fatal`, `budget`, `policy`), the error is never retried, even when the text looks retryable. For example, when a user is over budget, the server's error says "budget: daily limit $5 reached". Trying again cannot help until tomorrow, and the kind `budget` makes that certain, instead of hoping the text never contains a word that looks retryable.
-
-A context overflow ("prompt is too long") is not retried either, because the same too-big request would fail again. It has its own fix in [17](17-overflow.md).
-
-Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `is_retryable`, `NON_RETRYABLE`
+Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `is_retryable` (the three checks), `NON_RETRYABLE` (the final labels)
 
 ## What does the new run send to the model?
 
