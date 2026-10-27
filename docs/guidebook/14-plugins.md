@@ -111,6 +111,19 @@ Anyone can write a plugin, so one incomplete or buggy plugin must not break the 
 
 **One exception: `tool_call`.** This hook is usually a safety check, such as "never run bash in this project". If that check crashes and the session goes on as if nothing happened, the dangerous call runs, which is exactly what the plugin was there to stop. So for `tool_call` a crash counts as "no": the call is blocked, and the model is told why, for example `User denied: blocked by plugin NoBash (KeyError: 'name')`. This rule is called **[fail closed](glossary.md#fail-closed)**: when in doubt, block. If several plugins have `tool_call`, the first one that blocks wins, and the later ones are not asked.
 
+The three rules fit in a few lines. At every hook, the session does this for each plugin, in list order:
+
+```text
+FOR EACH plugin:
+    IF plugin has no method with the hook's name: skip it
+    TRY: call the method
+    IF it crashes:
+        IF the hook is tool_call: BLOCK the tool call   // fail closed
+        ELSE: tell the app "plugin_error", then go on    // hook isolation
+```
+
+For example, a logging plugin whose `on_event` always crashes (say, its log folder is missing) only produces `plugin_error` events; the agent still reads `README.md` and answers.
+
 Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._hook`, `AgentSession._before_tool_call` · [plugins/](../../packages/simp_agent/src/simp_agent/plugins/) — `plan_mode.py`, `redact_secrets.py`
 
 ## How does a plugin change the session?
