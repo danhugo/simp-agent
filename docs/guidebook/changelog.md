@@ -244,3 +244,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - 2026-10-26: ch13-18 — removed Test / Why this way / Exercises / Recap; cost facts moved into main text (14 hook-name typo, 15 unknown error text, 16 summary call cost, 17 unknown wording + new session, 18 redact limit).
 - ch19–27 and README template: removed the end sections Test, Why this way, Exercises, Recap (26/27 topic content kept). Moved missing reasons into the main text: 19 pure functions + pty test; 22 another store for many machines; 23 kill switch is a file; 24 Docker cost; 25 fetch cost; 26 fake only the model, smallest deploy.
 - 2026-10-27: ch14 — plugin hooks picture (img/14-plugin-hooks) + hooks told as a story along it; key-hider section merged into it.
+- 2026-10-27: ch14 — plugin/hook picture v6 (general, colored), plugin vs hook stated, walk rewritten general-first; ch08 defines 'hook' at first use.
