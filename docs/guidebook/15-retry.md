@@ -22,8 +22,8 @@ Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/sessio
 
 Here is one retry from start to end, in our story:
 
-1. The model API answers `429`. The reply becomes an error message, and the loop ends the run.
-2. The session sees a short failure. It tells the app "retry 1 of 3, waiting 2 seconds" (`auto_retry_start`).
+1. The model API answers `429`. The reply becomes an error message whose text is what the API sent, such as "429 Too Many Requests: rate limit exceeded", and the loop ends the run.
+2. The session reads the last message in the history: an error whose text contains `429`. There is no separate error code; the session only checks the words in that text. The check in the next section says this kind of error is worth a retry, so the session tells the app "retry 1 of 3, waiting 2 seconds" (`auto_retry_start`).
 3. It waits 2 seconds, then asks the model again with the same history.
 4. This time the model answers. The session tells the app "retry done, it worked" (`auto_retry_end`), and the agent goes on adding tests.
 
