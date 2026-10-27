@@ -103,23 +103,24 @@ When both hooks are done, the text finally becomes a message: `agent.prompt()` w
 
 ## What if a plugin lacks a method or crashes?
 
-The key hider has no `tool_call`, and `NoBash` has no `tool_result`. So the session looks each method up by name and skips the plugin if it is missing. One helper, `AgentSession._hook`, does this for every moment. It also accepts plain and `async` methods, and catches errors. On an error it sends a `plugin_error` event to the app and acts as if the plugin did nothing, so the run goes on. This rule is **[hook isolation](glossary.md#hook-isolation)**. The cost: a typo in a method name, like `tool_calls`, just looks like a missing method, so nothing warns you.
+Anyone can write a plugin, so one incomplete or buggy plugin must not break the user's run. The session treats every hook the same way.
 
-Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._hook`, `prompt`, `_context`, `_emit`, `_before_tool_call`, `_after_tool_call` · [plugins/](../../packages/simp_agent/src/simp_agent/plugins/) — `plan_mode.py`, `redact_secrets.py`
+**The plugin does not have the method.** That is normal: a plugin writes only the hooks it needs. So at each hook the session looks for the method by name on each plugin, and simply skips the plugins that do not have it. The cost: a typo in a name, like `tool_calls`, looks exactly like a missing method, so nothing warns you.
 
-There is one exception: `tool_call`. It is often a safety check. Say `NoBash` has a bug and its `tool_call` raises `KeyError('name')`. If we skip it, `bash` runs, which is exactly what `NoBash` was meant to stop. So for `tool_call` an error means "no", and the tool is blocked. This rule is **[fail closed](glossary.md#fail-closed)**. The model gets the result `User denied: blocked by plugin NoBash (KeyError: 'name')`. With a working `NoBash`, it gets `User denied: blocked by plugin NoBash: no bash`, and picks another way.
+**The method crashes.** The session catches the error, tells the app about it (a `plugin_error` event, so the app can show or log it), and goes on as if that plugin had done nothing. A broken logging plugin, for example, must not stop the user's work. This rule is called **[hook isolation](glossary.md#hook-isolation)**.
 
-Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._before_tool_call`
+**One exception: `tool_call`.** This hook is usually a safety check, such as "never run bash in this project". If that check crashes and the session goes on as if nothing happened, the dangerous call runs, which is exactly what the plugin was there to stop. So for `tool_call` a crash counts as "no": the call is blocked, and the model is told why, for example `User denied: blocked by plugin NoBash (KeyError: 'name')`. This rule is called **[fail closed](glossary.md#fail-closed)**: when in doubt, block. If several plugins have `tool_call`, the first one that blocks wins, and the later ones are not asked.
 
-The first block wins: later plugins are not asked.
+Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._hook`, `AgentSession._before_tool_call` · [plugins/](../../packages/simp_agent/src/simp_agent/plugins/) — `plan_mode.py`, `redact_secrets.py`
 
 ## How does a plugin change the session?
 
-Some plugins must act, not only react: add a tool, add a line to the system prompt, or save their own data. At start, each plugin's `setup(api, config)` gets a **[PluginAPI](glossary.md#pluginapi)**: a small handle with named actions, not the whole session. A plugin that needs it later keeps it (`self.api = api`), so its other hooks can use it too, as `before_agent_start` does above. `config` is the plugin's own part of `plugin_config`, a dict keyed by plugin name (its `name` field, or its class name).
+Hooks let a plugin *react* to the run. Some plugins also need to *add* something to the session: a new tool, a line in the system prompt, or their own data to remember. For that, `setup` gives each plugin a **[PluginAPI](glossary.md#pluginapi)**: a small handle with a few named actions, instead of the whole session. Keeping it small has a reason: plugins depend only on these few actions, so the session can change inside without breaking them. A plugin that needs the handle later keeps it (`self.api = api`), so its other hooks can use it too.
 
-The main actions are `register_tool` (a tool with the same name replaces the old one), `add_prompt_section` (a [prompt section](glossary.md#prompt-section) of [13](13-session.md#prompt-sections)), and `append_entry` (save plugin data in the history, which comes back on resume but is never sent to the model). The full list is in [Reference · objects](ref-objects.md#pluginapi-methods). Plugins depend only on these names, so the session can change inside without breaking them.
+The main actions, in plain words: **add a tool** (`register_tool`; a tool with the same name replaces the old one), **add a section to the system prompt** (`add_prompt_section`, see [13](13-session.md#prompt-sections)), and **save its own data in the history** (`append_entry`). Saved data comes back when the session is reopened but is never sent to the model; this is how plan mode remembers whether it was on. The full list is in [Reference · objects](ref-objects.md#pluginapi-methods).
+
+Each plugin also gets its own settings in `setup`. The session keeps one settings table for all plugins (`plugin_config`), and each plugin receives only the part under its own name (its `name` field, or its class name).
 
 Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `PluginAPI`, `AgentSession.start`
-
 
 **Builds on:** [13 Sessions](13-session.md) · **Next:** [15 Retry](15-retry.md)
