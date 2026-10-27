@@ -59,56 +59,33 @@ A method that the session calls on a plugin, like `tool_call` above, is a **[plu
 
 ## Where in a run does the session call plugins?
 
-Plugins add no new path. They hook into the steps of the [13](13-session.md) run you already know. Here is the "now add tests" run, with the plugin moments marked NEW:
+Plugins add no new path. They hook into the steps of the [13](13-session.md) run you already know. In the picture, the grey steps are that run, unchanged; the green boxes are the plugin hooks, placed exactly where they run. At each green box the session calls that method on every plugin, in list order, and skips a plugin that does not have it.
 
-```mermaid
-flowchart TD
-    A["user types 'now add tests'"] --> B["prompt()"]
-    B --> S["start(), first prompt only<br/>NEW: setup, then session_start"]
-    S --> I["NEW: input(text)<br/>NEW: before_agent_start(info)"]
-    I --> L["agent_loop (ch 05)"]
-    L --> C["build the view<br/>NEW: context(view)"]
-    C --> M["model call"]
-    M -->|asks for bash| T["before_tool_call (ch 08)<br/>NEW: tool_call(call)"]
-    T --> R["run_tool"]
-    R --> U["after_tool_call (ch 08)<br/>NEW: tool_result(call, result)"]
-    U --> C
-    L -.every event.-> E["_emit<br/>NEW: tool_update, on_event"]
-```
+![Where plugins plug into the run you already know](img/14-plugin-hooks.png)
 
-Each NEW moment calls one method on each plugin, in list order. What each one is for:
+**Once, at the start.** The first `prompt()` calls `start()`, which loads `AGENTS.md`. Right after that, the session calls `setup` and then `session_start` on each plugin. This is the moment to get ready: read the plugin's settings, and pick up any state it saved last time. Plan mode needs exactly this. When the user turned it on yesterday, it wrote that into the history as a saved entry; in `setup` it looks for its last entry, so after a resume plan mode is still on. The key hider (`RedactSecrets`, [18](18-profiles-plugins.md)) uses `setup` to collect the key values it must mask.
 
-- `setup` and `session_start`: get ready, once, at the start (see the last section).
-- `input`: see what the user typed. Return `{"text": ...}` to change it, or `{"handled": True}` to answer it yourself (a slash command like `/plan`); then the model is never called.
-- `before_agent_start`: add messages to this run.
-- `context`: change what the model sees this turn (the **[view](glossary.md#view-llm-view)**), not the saved history.
-- `tool_call`: check a tool call before it runs. Return `{"block": reason}` to stop it, or `{"args": ...}` to change its arguments.
-- `tool_result`: change a tool's result after it runs.
-- `tool_update`: change tool output while it streams, before anyone sees it.
-- `on_event`: watch every event, for example to write a log.
-- `session_shutdown`: clean up, once, in `shutdown()`.
+**The user's text arrives.** Before the model sees anything, `input` gets the text the user typed. This is the first and only place to act on the raw text: a plugin can rewrite it, or answer it by itself, for example a slash command, and then the model is not called at all (`{"handled": True}`). Next, `before_agent_start` can add messages to this run, such as a reminder that the model should read. No shipped plugin uses these two yet; they are there for your own.
+
+**Before each model call.** The session has just built the [view](glossary.md#view-llm-view): the messages this turn will send. `context` may change this view, and only this view; the saved history keeps the original. That is why the key hider masks keys here: whatever the model is about to read, including old messages, goes out with `[REDACTED]` instead of the key. This catches keys that are already in the history, for example one the user pasted. The key never reaches the model provider, and nothing on disk is rewritten.
+
+**Around one tool call.** The model asks for `bash`, and three hooks follow the call in order. First `tool_call`, inside the one gate the app gives the loop ([08](08-hooks-approval.md)'s `before_tool_call`). That gate belongs to the app, and there is only one; `tool_call` is a method that every plugin may have, and the session calls them one by one inside the gate, before it asks the human. The order matters: if a plugin will block the call anyway, there is no point asking the user. Plan mode blocks `write`, `edit` and `bash` here, with a reason the model reads ("plan mode is on (read-only)"), so the model knows why and plans instead. A plugin can also change the arguments instead of blocking (`{"block": reason}` or `{"args": …}`). Then, while the tool runs and its output streams, `tool_update` sees each piece before the screen and the log do; the key hider masks it, so `cat .env` never shows the key, and `on_event` (which runs after it) logs only the masked text. Last, when the tool is done, `tool_result` may change the result before it is saved and sent; the key hider masks it again, so the saved history does not hold the key either. A plugin returns only the fields it wants to change, such as `{"content": …}`; the others stay.
+
+**All the time.** `on_event` sees every event of the run, only to watch, for example to write a log.
+
+**Once, at the end.** `shutdown()` calls `session_shutdown`, so a plugin can clean up.
 
 ## What if a plugin lacks a method or crashes?
 
 The key hider has no `tool_call`, and `NoBash` has no `tool_result`. So the session looks each method up by name and skips the plugin if it is missing. One helper, `AgentSession._hook`, does this for every moment. It also accepts plain and `async` methods, and catches errors. On an error it sends a `plugin_error` event to the app and acts as if the plugin did nothing, so the run goes on. This rule is **[hook isolation](glossary.md#hook-isolation)**. The cost: a typo in a method name, like `tool_calls`, just looks like a missing method, so nothing warns you.
 
-Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._hook`
+Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._hook`, `prompt`, `_context`, `_emit`, `_before_tool_call`, `_after_tool_call` · [plugins/](../../packages/simp_agent/src/simp_agent/plugins/) — `plan_mode.py`, `redact_secrets.py`
 
 There is one exception: `tool_call`. It is often a safety check. Say `NoBash` has a bug and its `tool_call` raises `KeyError('name')`. If we skip it, `bash` runs, which is exactly what `NoBash` was meant to stop. So for `tool_call` an error means "no", and the tool is blocked. This rule is **[fail closed](glossary.md#fail-closed)**. The model gets the result `User denied: blocked by plugin NoBash (KeyError: 'name')`. With a working `NoBash`, it gets `User denied: blocked by plugin NoBash: no bash`, and picks another way.
 
 Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._before_tool_call`
 
-The first block wins: later plugins are not asked. Plugins also run before the approval question of [08](08-hooks-approval.md), so a blocked call never asks the human.
-
-## How does the key hider keep a key off the screen, the log and the model?
-
-Follow `cat .env` from start to end. The key can leak in three places, and the key hider ([18](18-profiles-plugins.md)) uses one hook for each.
-
-1. **While the command runs**, its output streams as `tool_execution_update` events ([06](06-events-abort.md)). The session's `_emit` passes the text through each plugin's `tool_update` **before** it sends the event to the app. So the key never reaches the screen, and `on_event` (which runs last) logs only the hidden text.
-2. **When the tool is done**, `after_tool_call` passes the result through each plugin's `tool_result`. A plugin returns only the fields it wants to change, such as `{"content": "<hidden>"}`; the other fields stay. This hidden result is what gets saved and sent to the model.
-3. **Before each model call**, `context` gets a copy of the view. A key may already be in the history from before, for example if the user pasted it. The key hider hides it in the copy, so the model never sees it, but the saved history is not changed.
-
-Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._emit`, `AgentSession._after_tool_call`, `AgentSession._context` · [plugins/redact_secrets.py](../../packages/simp_agent/src/simp_agent/plugins/redact_secrets.py) — `RedactSecrets`
+The first block wins: later plugins are not asked.
 
 ## How does a plugin change the session?
 

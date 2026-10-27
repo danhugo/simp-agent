@@ -1,0 +1,50 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#fff;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;color:#0f172a}
+.wrap{width:900px;padding:24px 30px}
+h1{font-size:21px;margin:0 0 4px}.sub{color:#475569;font-size:13.5px;margin-bottom:14px}
+.col{display:flex;flex-direction:column;align-items:stretch}
+.old{border:2px solid #cbd5e1;background:#f1f5f9;border-radius:9px;padding:8px 12px;font-size:14px;color:#64748b}
+.old b{color:#475569}
+.new{border:2.5px solid #16a34a;background:#f0fdf4;border-radius:9px;padding:7px 12px;font-size:13.5px;margin-left:40px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.new code{font-weight:800;font-family:ui-monospace,Menlo,monospace}
+.new:before{content:"NEW";background:#16a34a;color:#fff;font-size:10.5px;font-weight:800;border-radius:4px;padding:1px 5px;margin-right:7px}
+.ar{height:14px;border-left:2px solid #94a3b8;margin-left:22px}
+.box{border:2px solid #cbd5e1;background:#f8fafc;border-radius:10px;padding:8px 10px 10px}
+.box .h{font-size:14px;color:#64748b;margin-bottom:6px}.box .h b{color:#475569}
+.box .new{margin-left:20px}.box .old{margin-left:20px;background:#fff}
+.tag{font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;margin-left:6px;white-space:nowrap}
+.t-plan{background:#ea580c;color:#fff}.t-red{background:#7c3aed;color:#fff}
+.note{font-size:12px;color:#475569;margin:3px 0 0 40px}
+.legend{display:flex;gap:16px;margin-top:14px;font-size:12.5px;color:#334155;align-items:center}
+.sw{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;margin-right:5px}
+</style></head><body><div class="wrap">
+<h1>Where plugins plug into the run you already know</h1>
+<div class="sub">The grey steps are the run from ch 05, 08 and 13, unchanged. The green boxes are the plugin methods the session now calls, placed exactly where they run. Each one is called on every plugin, in list order.</div>
+<div class="col">
+<div class="old">first <b>prompt()</b> only: <b>start()</b> loads AGENTS.md</div>
+<div class="ar"></div><div class="new"><code>setup</code>, then <code>session_start</code>: get ready once (read config, restore saved state)<span class="tag t-plan">plan mode</span><span class="tag t-red">key hider</span></div>
+<div class="ar"></div><div class="old"><b>The user types</b> "now add tests"</div>
+<div class="ar"></div><div class="new"><code>input</code>: change the text, or answer it yourself (then the model is not called)</div>
+<div class="ar"></div><div class="new"><code>before_agent_start</code>: add messages to this run</div>
+<div class="ar"></div><div class="old"><b>agent_loop</b> starts a turn (ch 05)</div>
+<div class="ar"></div><div class="old"><b>Build what the model sees</b> (the view)</div>
+<div class="ar"></div><div class="new"><code>context</code>: change this turn's view only; the saved history keeps the original<span class="tag t-red">key hider: mask keys</span></div>
+<div class="ar"></div><div class="old"><b>Model call</b>: it asks for <code>bash</code></div>
+<div class="ar"></div>
+<div class="box"><div class="h"><b>before_tool_call</b> (ch 08): the one gate the app gives the loop</div>
+ <div class="new"><code>tool_call</code>: block the call, or change its args<span class="tag t-plan">plan mode: block write / edit / bash</span></div>
+ <div class="ar" style="margin-left:42px"></div>
+ <div class="old">human approval (ch 08)</div></div>
+<div class="ar"></div>
+<div class="box"><div class="h"><b>run_tool</b>: the tool runs and its output streams</div>
+ <div class="new"><code>tool_update</code>: change each piece of live output before anyone sees it<span class="tag t-red">key hider: mask on screen</span></div></div>
+<div class="ar"></div>
+<div class="box"><div class="h"><b>after_tool_call</b> (ch 08): the tool is done</div>
+ <div class="new"><code>tool_result</code>: change the result before it is saved and sent<span class="tag t-red">key hider: mask in history</span></div></div>
+<div class="ar"></div><div class="old">next turn: back to <b>Build what the model sees</b> · when no tool is asked for, the run ends</div>
+<div class="ar"></div><div class="old"><b>shutdown()</b></div>
+<div class="ar"></div><div class="new"><code>session_shutdown</code>: clean up once</div>
+</div>
+<div class="new" style="margin:14px 0 0 0"><code>on_event</code>: called for <b>every</b> event of the whole run, only to watch (for example, to write a log)</div>
+<div class="legend"><span><span class="sw" style="background:#f1f5f9;border:2px solid #cbd5e1"></span>already built (ch 05, 08, 13)</span><span><span class="sw" style="background:#f0fdf4;border:2px solid #16a34a"></span>new in this chapter</span><span class="tag t-plan">plan mode</span><span class="tag t-red">key hider</span></div>
+</div></body></html>
