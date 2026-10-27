@@ -65,7 +65,7 @@ Plugins add no new path. They hook into the steps of the [13](13-session.md) run
 
 ![Hooks and plugins: where plugins plug into the run you already know](img/14-plugin-hooks.png)
 
-**Once, at the start: `setup`, then `session_start`.** The first `prompt()` calls `start()`, which loads `AGENTS.md`. Then each plugin gets one turn to get ready, before the agent does any work. This turn is `setup`: the plugin gets its own settings and a handle to the session (the PluginAPI, below), so it can also add a tool or a line to the system prompt. Two plugins show the two ways it is used.
+**Once, at the start: `setup`, then `session_start`.** The user types a message, and the app calls `prompt(text)`; `text` is still a plain string. The first time only, `prompt()` begins with `start()`, which loads `AGENTS.md`. Then each plugin gets one turn to get ready, before the agent does any work. This turn is `setup`: the plugin gets its own settings and a handle to the session (the PluginAPI, below), so it can also add a tool or a line to the system prompt. Two plugins show the two ways it is used.
 
 The first way is to **read its settings**. The user has keys in their environment and does not want any of them to reach the model or the log. So in `setup` the key hider (`RedactSecrets`, [18](18-profiles-plugins.md)) builds its list of secret values: the ones named in its settings, plus the values of environment variables whose names contain `KEY`, `TOKEN`, `SECRET` or `PASSWORD`. Nothing is hidden yet; this step only makes the list. Later, `tool_update`, `tool_result` and `context` use the list to replace each value with `[REDACTED]`.
 
@@ -73,7 +73,7 @@ The second way is to **remember where it was**. The user turns plan mode on, clo
 
 `session_start` is a second round. It runs only after every plugin has finished `setup`, so a plugin can count on the others being ready, for example to see a tool another plugin added. Neither example needs it.
 
-**The user's text arrives: `input`, then `before_agent_start`.** This is the only place to act on the raw text before the model sees it. A plugin can rewrite the text, or answer it by itself, and then the model is not called at all; a slash command is the usual case (`{"handled": True}`). `before_agent_start` can then add messages to this run, such as a reminder. No shipped plugin uses these two yet.
+**The user's text arrives: `input`, then `before_agent_start`.** Still inside `prompt()`, before the text becomes a message, `input` gets the raw text. This is the only place to act on it before the model sees it. A plugin can rewrite the text, or answer it by itself, and then the model is not called at all; a slash command is the usual case (`{"handled": True}`). `before_agent_start` can then add messages to this run, such as a reminder. No shipped plugin uses these two yet. Only after these hooks does `agent.prompt()` wrap the text into a `UserMessage`, add it to the history and start the loop ([05](05-agent-loop.md)).
 
 **Before each model call: `context`.** The session has just built the [view](glossary.md#view-llm-view): the messages this turn will send. A plugin can change this view, and only this view; the saved history keeps the original. This is the place to keep something away from the model without rewriting the history. For example, the key hider replaces keys with `[REDACTED]` here, including a key the user pasted earlier, so no key reaches the model provider.
 
