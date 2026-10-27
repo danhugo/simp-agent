@@ -57,7 +57,7 @@ This fixes our one overflow with one provider. It breaks in three ways.
 
 The check looks only for "too long". That is Anthropic's wording ("prompt is too long"). OpenAI says "maximum context length" or "context_length_exceeded", so the check misses them. Even when the check works, the loop has no end. Sometimes one compaction cannot make the request small enough, for example when one huge recent turn must stay (`find_cut` in [16](16-compaction.md#where-find_cut) keeps it). Then the loop compacts, fails, and compacts again, and each time it pays for a summary call. And if `compact()` itself fails, the loop still calls the model again and gets the same error.
 
-Where does the fix go? In the same place as retry: `AgentSession._run` ([15](15-retry.md#why-does-a-429-stop-the-run-and-where-should-retry-live)). It runs after the agent loop ends with an error message. The retry loop from [15](15-retry.md) also needs a change. It must not see an overflow as a short failure. If it did, it would wait and then send the same too-big request again.
+Where does the fix go? In the same place as retry: `AgentSession._run` ([15](15-retry.md#how-does-retry-work)). It runs after the agent loop ends with an error message. The retry loop from [15](15-retry.md) also needs a change. It must not see an overflow as a short failure. If it did, it would wait and then send the same too-big request again.
 
 | Problem | Fix | Section |
 |---|---|---|
@@ -92,7 +92,7 @@ Look at the last line of `is_retryable`. It says "not an overflow" before it che
 
 ### Compact and continue, once
 
-The loop in `AgentSession._run` was built in [15](15-retry.md#why-does-a-429-stop-the-run-and-where-should-retry-live). That chapter showed only the retry branch; here is the overflow branch.
+The loop in `AgentSession._run` was built in [15](15-retry.md#how-does-retry-work). That chapter showed only the retry branch; here is the overflow branch.
 
 Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._run`
 

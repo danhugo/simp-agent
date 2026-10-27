@@ -10,11 +10,13 @@ This chapter adds retry to the `session` layer. Big picture of Part 4: [part-4-s
 
 In [13](13-session.md) the user came back the next day and typed "now add tests". The agent is in the middle of the work when the model API answers `429 rate limit` ("too many requests, wait a moment").
 
-## Why does a 429 stop the run, and where should retry live?
+## Why do we need retry?
 
-As [04](04-label-test.md#errors-are-plain-text) showed, the stream does not raise for a failed call. The reply is an `AssistantMessage` with `stop_reason` `"error"` and the error text in `error`. The agent loop ([05](05-agent-loop.md)) sees that and ends the run. So one `429` stops the work, and the user must type "continue" by hand, even though the error would be gone a few seconds later.
+The agent loop ends a run as soon as a model call fails. A failed call does not raise: it comes back as a reply with `stop_reason` `"error"` ([04](04-label-test.md#errors-are-plain-text)), and the loop stops when it sees one ([05](05-agent-loop.md)). So one `429` stops the work, and the user must type "continue" by hand, even though the error would be gone a few seconds later. Retry does that "continue" for the user, automatically, when the error is only a short one.
 
-Retry does not go inside the model call: the loop has already turned the failure into a message and ended. It goes one level up, in the session. After the run ends, the session looks at the last message and, if it is a short failure, starts the loop again. Both `prompt()` and `continue_()` of the session go through one method, `AgentSession._run`, so both get retry.
+## How does retry work?
+
+Retry sits in the session, around the agent loop. Remember that a [run](glossary.md#run-agent) is one call of the loop: from the user's message until the loop stops ([05](05-agent-loop.md)). When a `429` ends a run early, the loop has already stopped. The session then looks at the last message. If it is a short failure, the session waits a little and starts a **new run** with the same history, exactly what the user's "continue" would do. It does this a few times at most. The loop itself does not change; it still just stops on the error. Both `prompt()` and `continue_()` of the session go through one method, `AgentSession._run`, so both get retry.
 
 Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._run`
 
@@ -25,7 +27,7 @@ Here is one retry from start to end, in our story:
 3. It waits 2 seconds, then asks the model again with the same history.
 4. This time the model answers. The session tells the app "retry done, it worked" (`auto_retry_end`), and the agent goes on adding tests.
 
-The rest of this chapter explains each step.
+The next sections explain the parts: which errors are worth a retry, how the new run starts, how long to wait, and what Stop does during the wait.
 
 ## Which errors are worth trying again?
 
@@ -39,7 +41,7 @@ A context overflow ("prompt is too long") is not retried either, because the sam
 
 Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `is_retryable`, `NON_RETRYABLE`
 
-## How do we try again?
+## What does the new run send to the model?
 
 We call the agent's `continue_()`. It asks the model again with the same history; we do not send the user's text a second time.
 
