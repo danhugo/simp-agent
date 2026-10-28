@@ -66,7 +66,7 @@ _context(view):
     RETURN view
 ```
 
-What does `compact()` do inside? First it estimates the size before, and sends a `compaction_start` event with it (`tokens_before`) so the UI can show "compacting…". Then the helper `compact` in `agent/compaction.py` does the real work: it finds the cut (`find_cut`, [where do we cut?](#where-do-we-cut)), takes the file lists from the old part (`file_lists`: files read and changed by real tool calls), runs the old part through the same `context` chain to hide secrets, turns it into one text, and asks the model for the summary (`summarize`, [what goes into the summary?](#what-goes-into-the-summary); an incremental one if there was a marker before). If any step fails, the session sends `compaction_end` with the error and leaves the history as it was. If it works, the session appends the CompactionEntry marker, saves it to the store, sends `message_end`, and then `compaction_end` with the new size (`tokens_after`). Because the marker is now in the history, the `build_view` call right after already uses it.
+What does `compact()` do inside? First it estimates the size before, and sends a `compaction_start` event with it (`tokens_before`) so the UI can show "compacting…". Then the helper `compact` in `agent/compaction.py` does the real work: it finds the cut (`find_cut`, [where do we cut?](#where-do-we-cut)), lists the files the agent read and changed (`file_lists`, from its read / write / edit calls), so the summary cannot forget them, runs the old part through the same `context` chain to hide secrets, turns it into one text, and asks the model for the summary (`summarize`, [what goes into the summary?](#what-goes-into-the-summary); an incremental one if there was a marker before). If any step fails, the session sends `compaction_end` with the error and leaves the history as it was. If it works, the session appends the CompactionEntry marker, saves it to the store, sends `message_end`, and then `compaction_end` with the new size (`tokens_after`). Because the marker is now in the history, the `build_view` call right after already uses it.
 
 ```text
 session.compact():
@@ -124,7 +124,7 @@ Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/
 
 The summary must keep the facts a later call needs, so it is built in a fixed order.
 
-First, code (not the model) collects the files. It reads the `path` of every `read`, `write` and `edit` tool call ([10](10-coding-tools.md)) in the old part, adds the lists from the previous marker, and keeps a changed file out of the read-only list. Code does this because it must be exact; here it gives changed = `fizzbuzz.py`, `test_fizzbuzz.py`.
+First, code (not the model) lists the files the agent read and changed. After compaction the old tool calls are no longer sent, so this list is the only way the model still knows which files it touched; a model-written summary could forget one, code cannot. It takes the `path` of every `read`, `write` and `edit` call ([10](10-coding-tools.md)) in the old part, adds the lists from the previous marker, and puts a file that was both read and changed only under changed. Here: changed = `fizzbuzz.py`, `test_fizzbuzz.py`.
 
 Next, secrets are hidden. The old part goes through the same plugin `context` chain as a normal call ([14](14-plugins.md#where-in-a-run-does-the-session-call-plugins)), so a plugin that hides a key from the model also hides it from the summary model. The file lists are taken before this, from the real tool calls.
 
