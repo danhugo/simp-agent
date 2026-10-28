@@ -66,7 +66,7 @@ _context(view):
     RETURN view
 ```
 
-What does `compact()` do inside? First it estimates the size before, and sends a `compaction_start` event with it (`tokens_before`) so the UI can show "compacting…". Then the helper `compact` in `agent/compaction.py` does the real work: it finds the cut (`find_cut`, [where do we cut?](#where-do-we-cut)), lists the files the agent read and changed (`file_lists`, from its read / write / edit calls), so the summary cannot forget them, runs the old part through the same `context` chain to hide secrets, turns it into one text, and asks the model for the summary (`summarize`, [what goes into the summary?](#what-goes-into-the-summary); an incremental one if there was a marker before). If any step fails, the session sends `compaction_end` with the error and leaves the history as it was. If it works, the session appends the CompactionEntry marker, saves it to the store, sends `message_end`, and then `compaction_end` with the new size (`tokens_after`). Because the marker is now in the history, the `build_view` call right after already uses it.
+What does `compact()` do inside? First it estimates the size before, and sends a `compaction_start` event with it (`tokens_before`) so the UI can show "compacting…". Then the helper `compact` in `agent/compaction.py` does the real work: it finds the cut (`find_cut`, [where do we cut?](#where-do-we-cut)), lists the files the agent read and changed (`file_lists`, from its read / write / edit calls), so the summary cannot forget them, runs the old messages through the same `context` chain to hide secrets, turns it into one text, and asks the model for the summary (`summarize`, [what goes into the summary?](#what-goes-into-the-summary); an incremental one if there was a marker before). If any step fails, the session sends `compaction_end` with the error and leaves the history as it was. If it works, the session appends the CompactionEntry marker, saves it to the store, sends `message_end`, and then `compaction_end` with the new size (`tokens_after`). Because the marker is now in the history, the `build_view` call right after already uses it.
 
 ```text
 session.compact():
@@ -141,15 +141,23 @@ test_fizzbuzz.py
 
 (The real format has more sections: Progress, Key Decisions, Next Steps and others.)
 
-Code makes the file lists so the summary cannot forget a file (see [the whole flow](#the-whole-flow-in-one-walk)). It takes the `path` of every `read`, `write` and `edit` call ([10](10-coding-tools.md)) in the old part, adds the lists from the previous marker, and puts a file that was both read and changed only under changed.
+### How the summary is made
 
-Before the model writes its part (the text with the user requests), the old part goes through the plugins' `context` hook ([14](14-plugins.md#where-in-a-run-does-the-session-call-plugins)), so hidden keys stay hidden. Then it becomes **one plain text**, one line per message (`[User]: …`, `[Assistant tool calls]: …`, `[Tool result]: …`): sent as a chat, the model would just continue it ("Sure, I will add tests now") instead of summarizing. Long tool results and arguments are cut to about 2 000 characters, and thinking is left out.
+We start from the **old messages**: the ones before the cut (0..5 in our table). Five steps turn them into the summary above.
 
-Later compactions send only the new messages plus the previous summary (an **[incremental summary](glossary.md#incremental-summary)**), so nothing is summarized twice.
+**1. List the files.** Code goes through the old messages and notes the `path` of every `read`, `write` and `edit` call ([10](10-coding-tools.md)). Changed files go in one list and files that were only read go in the other; a file that was both read and changed counts as changed. Code does this, not the model, because a model can forget a file, and the agent would then not know that `fizzbuzz.py` exists.
 
-The reply is capped so it fits in the reserve (80% of it, or less if the model's own limit is lower). A summary that was cut off, failed or was stopped is thrown away, never half-used, because half a summary would hide part of the history without the model knowing.
+**2. Hide secrets.** The old messages go through the plugins' `context` hook ([14](14-plugins.md#where-in-a-run-does-the-session-call-plugins)), the same one used before every model call. If a tool result had an API key, it is masked now, so the key does not reach the summary.
 
-Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `file_lists`, `serialize_conversation`, `summarize`, `compact`; [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.compact`
+**3. Turn the chat into plain text.** Each message becomes one line: `[User]: …`, `[Assistant tool calls]: …`, `[Tool result]: …`. Why not send the messages as a normal chat? The model would just carry on with it ("Sure, I will add tests now") instead of summarizing it. To keep the text short, long tool results and arguments are cut to about 2 000 characters, and thinking is left out.
+
+**4. Ask the model to write the text part.** We send that plain text with the fixed format above. The answer must fit in the room we kept free ([the reserve](#when-do-we-compact)), so it is capped at 80% of it. If the answer was cut off, failed or was stopped, we throw it away and keep the history as it is. Half a summary would quietly hide part of the history.
+
+**5. Put it together.** The model's text, then the file lists from step 1, become one summary. It is saved as the new marker.
+
+**The second time.** When the session grows again and needs a new summary, we do not summarize everything from the start. We send only the messages that came after the last cut, plus the previous summary, and ask the model to update it (an **[incremental summary](glossary.md#incremental-summary)**). The file lists are merged with the ones from the previous marker. So nothing is summarized twice, and nothing earlier is lost.
+
+Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `compact`, `file_lists`, `serialize_conversation`, `summarize`; [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.compact`
 
 ## What does the next call see?
 

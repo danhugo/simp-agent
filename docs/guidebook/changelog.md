@@ -2,6 +2,10 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-10-29
+
+- ch16 "What goes into the summary?": after the example, the summary is now built in 5 numbered steps in code order (list files, hide secrets, plain text, model writes the text part, put together), each with its reason; "old part" renamed "old messages"; the incremental summary has its own paragraph. Checked against `agent/compaction.py` (`compact`, `summarize`) at `98f190a`.
+
 ## 2026-10-28
 
 - ch16 "The whole flow, in one walk": added a short pseudo block for `compact()` under the words (session side + helper in `agent/compaction.py`), and named `find_cut` / `file_lists` / `summarize` in the paragraph. Checked against `session/__init__.py` and `agent/compaction.py` at `a5bec6b`.
