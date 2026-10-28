@@ -53,7 +53,7 @@ The helpers live in `agent/compaction.py`. That file knows nothing about session
 
 Before the details, let us follow one turn from start to end. In our table, the user has just typed "go ahead" (index 9), and say the next call would now be too big. The session starts the run ([13](13-session.md)), and the agent loop begins. Before **each** model call, the loop asks the `prepare_next_turn` hook for the messages to send ([05](05-agent-loop.md#_llm_turn-one-model-call)). The session fills that hook with its own function, `_prepare` ([13](13-session.md#why-does-the-session-own-the-agent)).
 
-`_prepare` first asks one question: is the next call too big ([next section](#when-do-we-compact))? If yes, and the app has not turned auto compaction off (the `auto_compact` switch), it compacts first. After that, it builds the view with `build_view`: one summary message, then the messages from `first_kept_index` on. With no marker yet, the view is the whole history, minus the session's private notes. Last, it runs the plugins' `context` hook on that view, one plugin after another, each getting the previous one's output (this chain is `_context`). If a plugin returns nothing, the view stays as it was. A plugin can change the copy that is sent, for example hide an API key, but never the history. The loop sends the result to the model.
+`_prepare` first asks one question: is the next call too big ([next section](#when-do-we-compact))? If yes, and the app has not turned auto compaction off (the `auto_compact` switch), it compacts first. After that, it builds the view with `build_view`: one summary message, then the messages from `first_kept_index` on. With no marker yet, the view is the whole history, minus the [custom entries](glossary.md#custom-entry) (plugin data saved in the history but never sent, [14](14-plugins.md)). Last, it runs the plugins' `context` hook on that view, one plugin after another, each getting the previous one's output (this chain is `_context`). If a plugin returns nothing, the view stays as it was. A plugin can change the copy that is sent, for example hide an API key, but never the history. The loop sends the result to the model.
 
 ```text
 _prepare(messages):
@@ -76,7 +76,7 @@ session.compact():
         // helper compact() in agent/compaction.py
         start, previous = first_kept_index and summary of the last marker (or 0, none)
         cut = find_cut(messages, start)          // IF none: fail "nothing to compact"
-        old = messages[start:cut], without markers and private notes
+        old = messages[start:cut], without markers and custom entries
         files = file_lists(old)                  // read / modified, from real tool calls
         old = WAIT FOR _context(old)             // same plugin chain: hide secrets
         summary = WAIT FOR summarize(old, previous)   // one model call; incremental if previous
@@ -157,7 +157,7 @@ Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/
 
 ## What does the next call see?
 
-The marker becomes index 10 (saved and announced with `message_end`, [06](06-events-abort.md), as in the walk). The view now starts with the summary as one user message. Other markers and the session's private notes ([13](13-session.md)) are left out. Only the last marker counts, because each summary already contains the one before.
+The marker becomes index 10 (saved and announced with `message_end`, [06](06-events-abort.md), as in the walk). The view now starts with the summary as one user message. Other markers and custom entries are left out. Only the last marker counts, because each summary already contains the one before.
 
 ```text
 [0] User: "The conversation history before this point was compacted into the following summary:
