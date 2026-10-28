@@ -49,11 +49,32 @@ The history itself is **not** changed. Messages 0..9 stay in memory and on disk,
 
 The helpers live in `agent/compaction.py`. That file knows nothing about sessions, so it can be tested alone (the layer rule, [00](00-overview.md)); it calls the model, but it never changes the list it gets. Only the session adds the marker.
 
+## The whole flow, in one walk
+
+Before the details, let us follow one turn from start to end. In our table, the user has just typed "go ahead" (index 9), and say the next call would now be too big. The session starts the run ([13](13-session.md)), and the agent loop begins. Before **each** model call, the loop asks the `prepare_next_turn` hook for the messages to send ([05](05-agent-loop.md#_llm_turn-one-model-call)). The session fills that hook with its own function, `_prepare` ([13](13-session.md#why-does-the-session-own-the-agent)).
+
+`_prepare` first asks one question: is the next call too big ([next section](#when-do-we-compact))? If yes, and the app has not turned auto compaction off (the `auto_compact` switch), it compacts first. After that, it builds the view with `build_view`: one summary message, then the messages from `first_kept_index` on. With no marker yet, the view is the whole history, minus the session's private notes. Last, it runs the plugins' `context` hook on that view, one plugin after another, each getting the previous one's output (this chain is `_context`). If a plugin returns nothing, the view stays as it was. A plugin can change the copy that is sent, for example hide an API key, but never the history. The loop sends the result to the model.
+
+```text
+_prepare(messages):
+    IF auto_compact AND the next call is too big:
+        compact()                      # may add a marker to messages
+    RETURN WAIT FOR _context(build_view(messages))
+
+_context(view):
+    FOR each plugin: view = plugin.context(view) OR view
+    RETURN view
+```
+
+What does `compact()` do inside? First it estimates the size before, and sends a `compaction_start` event with it (`tokens_before`) so the UI can show "compacting…". Then the helper `compact` in `agent/compaction.py` does the real work: it finds the cut, takes the file lists from the old part, runs the old part through the same `context` chain, turns it into one text, and asks the model for the summary (an incremental one if there was a marker before). If any step fails, the session sends `compaction_end` with the error and leaves the history as it was. If it works, the session appends the CompactionEntry marker, saves it to the store, sends `message_end`, and then `compaction_end` with the new size (`tokens_after`). Because the marker is now in the history, the `build_view` call right after already uses it.
+
+The next sections explain each step: when the call is too big, where the cut goes, what goes into the summary, what the next call sees, and what happens on failure.
+
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._prepare`, `_context`, `compact`
+
 ## When do we compact?
 
-Before every model call, the loop asks the `prepare_next_turn` hook for the view ([05](05-agent-loop.md#_llm_turn-one-model-call)), and the session fills that hook with `_prepare` ([13](13-session.md#why-does-the-session-own-the-agent)). `_prepare` asks one question: is the next call too big? If yes, and the app has not turned auto compaction off (`auto_compact`), it compacts first; then it builds the view as always.
-
-To know the size, it starts from the last real reply. The provider tells us its exact token counts (the `usage` the parser fills in, [03](03-parse.md)): what that call read, plus the reply it wrote. Both will be sent again next time. Messages that came after that reply have no count yet, so for them we guess 4 characters per token. For example, the last good reply read 180 000 tokens and wrote 500, and after it came a tool result of 8 000 characters: 180 000 + 500 + 2 000 = 182 500.
+"Too big" needs a number. To know the size, it starts from the last real reply. The provider tells us its exact token counts (the `usage` the parser fills in, [03](03-parse.md)): what that call read, plus the reply it wrote. Both will be sent again next time. Messages that came after that reply have no count yet, so for them we guess 4 characters per token. For example, the last good reply read 180 000 tokens and wrote 500, and after it came a tool result of 8 000 characters: 180 000 + 500 + 2 000 = 182 500.
 
 Two kinds of reply are skipped. Error and stopped replies often have zero or partial counts, so they would make the session look small. And the search stops at the last marker, because counts from before it were measured on the old, bigger view. If no good reply is found, every message of the view is guessed.
 
@@ -114,7 +135,7 @@ Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/
 
 ## What does the next call see?
 
-The session appends the marker as index 10, saves it to the store like any message, and sends the usual "message finished" event (`message_end`, [06](06-events-abort.md)) so the UI sees it. Then `_prepare` builds the view from the last marker: one user message holding the summary, then the messages from `first_kept_index` on. Other markers and the session's private notes ([13](13-session.md)) are left out. Only the last marker counts, because each summary already contains the one before.
+The marker becomes index 10 (saved and announced with `message_end`, [06](06-events-abort.md), as in the walk). The view now starts with the summary as one user message. Other markers and the session's private notes ([13](13-session.md)) are left out. Only the last marker counts, because each summary already contains the one before.
 
 ```text
 [0] User: "The conversation history before this point was compacted into the following summary:
@@ -131,7 +152,7 @@ Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/
 
 ## If it fails, and when it runs
 
-The session tells the UI with a `compaction_start` and a `compaction_end` event, which carry the size before and after. If anything fails ("nothing to compact", a failed summary), `compaction_end` carries the error, the session's `compact()` returns `False`, the history is not changed, and the turn goes on. The same `auto_compact` switch from above also turns off the repair in [17](17-overflow.md). The next call may then be too big; [17](17-overflow.md) catches the "too long" error and runs this same compaction once more.
+If it fails ("nothing to compact", a failed summary), `compact()` returns `False`, the history is not changed (see [the walk](#the-whole-flow-in-one-walk)), and the turn goes on with the old view. The same `auto_compact` switch from above also turns off the repair in [17](17-overflow.md). The next call may then be too big; [17](17-overflow.md) catches the "too long" error and runs this same compaction once more.
 
 Because it runs inside `prepare_next_turn`, compaction can happen in the middle of a long tool loop, not only between prompts. The summary call is slow, but a steer typed during it still joins the same turn, because steering is read right after `prepare_next_turn` returns ([07](07-steering.md#the-loop-from-05-with-two-new-places)). Apps can also compact by hand, as the CLI's `/compact` command does ([19](19-cli.md)). To tune the prompts on real sessions, `apps/cli/scripts/replay_compaction.py` prints the first summary a real model gives for the start of a saved session.
 
