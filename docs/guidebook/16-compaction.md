@@ -143,7 +143,9 @@ test_fizzbuzz.py
 
 Code makes the file lists so the summary cannot forget a file (see [the whole flow](#the-whole-flow-in-one-walk)). It takes the `path` of every `read`, `write` and `edit` call ([10](10-coding-tools.md)) in the old part, adds the lists from the previous marker, and puts a file that was both read and changed only under changed.
 
-To get the text part, we ask the model in three steps. First, secrets are hidden: the old part goes through the same plugin `context` chain as a normal call ([14](14-plugins.md#where-in-a-run-does-the-session-call-plugins)), so a key hidden from the model is also hidden from the summary. Second, the old part becomes **one plain text**, one line per message (`[User]: …`, `[Assistant tool calls]: …`, `[Tool result]: …`). Why? Sent as a normal chat, the model would continue it ("Sure, I will add tests now") instead of summarizing it. Tool results and long arguments are cut to about 2 000 characters, and thinking is left out. Third, the next compaction sends only the new messages plus the previous summary. This is an **[incremental summary](glossary.md#incremental-summary)**: nothing is summarized twice, so the call stays small even in a long session.
+To get the text part, the old part first goes through the plugins' `context` hook ([14](14-plugins.md#where-in-a-run-does-the-session-call-plugins)), so hidden keys stay hidden. Then it becomes **one plain text**, one line per message (`[User]: …`, `[Assistant tool calls]: …`, `[Tool result]: …`): sent as a chat, the model would just continue it ("Sure, I will add tests now") instead of summarizing. Long tool results and arguments are cut to about 2 000 characters, and thinking is left out.
+
+Later compactions send only the new messages plus the previous summary (an **[incremental summary](glossary.md#incremental-summary)**), so nothing is summarized twice.
 
 The reply is capped so it fits in the reserve (80% of it, or less if the model's own limit is lower). A summary that was cut off, failed or was stopped is thrown away, never half-used, because half a summary would hide part of the history without the model knowing.
 
