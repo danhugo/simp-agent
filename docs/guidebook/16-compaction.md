@@ -147,57 +147,6 @@ To get the text part, we ask the model in three steps. First, secrets are hidden
 
 The reply is capped so it fits in the reserve (80% of it, or less if the model's own limit is lower). A summary that was cut off, failed or was stopped is thrown away, never half-used, because half a summary would hide part of the history without the model knowing.
 
-Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `estimate_tokens`, `should_compact`; [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._prepare`
-
-## Where do we cut?
-
-We keep about N recent tokens word for word (N is 20 000 by default, 5 000 in our table). To find the cut, walk back from the end and add up sizes until we pass N:
-
-```text
-i=9  total=3
-i=8  total=18
-i=7  total=5008   past 5000, stop
-```
-
-Index 7 is a tool result. Keeping it without its call (index 6) would break the pair, so a cut never lands on a tool result: it moves back to the nearest user or assistant message, here **cut = 6**. (If there is none at or before index 7, the first one after it is used.) Messages 0..5 become the old part.
-
-The walk stops at the last marker's `first_kept_index` (0 the first time), and the cut is always after it, so each compaction only moves forward. One limit: if one turn alone is bigger than N, or even the window, the cut cannot go inside it ([17](17-overflow.md)).
-
-Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `find_cut`
-
-## What goes into the summary?
-
-The summary must keep the facts a later call needs, so it is built in a fixed order.
-
-First, code (not the model) lists the files the agent read and changed. After compaction the old tool calls are no longer sent, so this list is the only way the model still knows which files it touched; a model-written summary could forget one, code cannot. It takes the `path` of every `read`, `write` and `edit` call ([10](10-coding-tools.md)) in the old part, adds the lists from the previous marker, and puts a file that was both read and changed only under changed. Here: changed = `fizzbuzz.py`, `test_fizzbuzz.py`.
-
-Next, secrets are hidden. The old part goes through the same plugin `context` chain as a normal call ([14](14-plugins.md#where-in-a-run-does-the-session-call-plugins)), so a plugin that hides a key from the model also hides it from the summary model. The file lists are taken before this, from the real tool calls.
-
-Then the old part is turned into **one block of plain text**, one line per message (`[User]: …`, `[Assistant tool calls]: …`, `[Tool result]: …`), after the "Clean" step of [01](01-pick-clean.md#2-clean-transform_messages). Sent as a normal chat, the model tends to continue it ("Sure, I will add tests now"); as one text it summarizes. Tool results are shortened to about 2 000 characters and long arguments too, and thinking is left out: the summary needs what happened, not every byte.
-
-The model gets this text with a fixed format that starts with **every user request, in order, never dropping one**. That is how the first request survives. For our session the answer, with the file lists added by code, looks like this:
-
-```text
-## User Requests (chronological)
-1. Write fizzbuzz.py that prints 1 to 15.
-2. Add tests and run them.
-
-## Goal
-fizzbuzz.py works and its tests pass.
-...
-
-<modified-files>
-fizzbuzz.py
-test_fizzbuzz.py
-</modified-files>
-```
-
-(The real format has more sections: Progress, Key Decisions, Next Steps and others.)
-
-The next compaction sends only the messages that are new to the old part, plus the previous summary, and asks the model to keep all of it. This is an **[incremental summary](glossary.md#incremental-summary)**: nothing is summarized twice, so the call stays small even in a very long session.
-
-The reply is capped at 80% of the reserve (or less, if the model's own limit is lower), so it fits. A summary that was cut off, failed or was stopped is thrown away, never half-used: a half summary would hide part of the history without the model knowing. The cost of all this is one more model call per compaction, and a summary can still miss details; the fixed format, the incremental updates and the code-made file lists keep that loss small.
-
 Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `file_lists`, `serialize_conversation`, `summarize`, `compact`; [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession.compact`
 
 ## What does the next call see?
