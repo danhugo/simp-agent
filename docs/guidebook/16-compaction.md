@@ -66,11 +66,33 @@ _context(view):
     RETURN view
 ```
 
-What does `compact()` do inside? First it estimates the size before, and sends a `compaction_start` event with it (`tokens_before`) so the UI can show "compacting…". Then the helper `compact` in `agent/compaction.py` does the real work: it finds the cut, takes the file lists from the old part, runs the old part through the same `context` chain, turns it into one text, and asks the model for the summary (an incremental one if there was a marker before). If any step fails, the session sends `compaction_end` with the error and leaves the history as it was. If it works, the session appends the CompactionEntry marker, saves it to the store, sends `message_end`, and then `compaction_end` with the new size (`tokens_after`). Because the marker is now in the history, the `build_view` call right after already uses it.
+What does `compact()` do inside? First it estimates the size before, and sends a `compaction_start` event with it (`tokens_before`) so the UI can show "compacting…". Then the helper `compact` in `agent/compaction.py` does the real work: it finds the cut (`find_cut`, [where do we cut?](#where-do-we-cut)), takes the file lists from the old part (`file_lists`: files read and changed by real tool calls), runs the old part through the same `context` chain to hide secrets, turns it into one text, and asks the model for the summary (`summarize`, [what goes into the summary?](#what-goes-into-the-summary); an incremental one if there was a marker before). If any step fails, the session sends `compaction_end` with the error and leaves the history as it was. If it works, the session appends the CompactionEntry marker, saves it to the store, sends `message_end`, and then `compaction_end` with the new size (`tokens_after`). Because the marker is now in the history, the `build_view` call right after already uses it.
+
+```text
+session.compact():
+    before = estimate tokens of messages
+    SEND event compaction_start(before)
+    TRY:
+        // helper compact() in agent/compaction.py
+        start, previous = first_kept_index and summary of the last marker (or 0, none)
+        cut = find_cut(messages, start)          // IF none: fail "nothing to compact"
+        old = messages[start:cut], without markers and private notes
+        files = file_lists(old)                  // read / modified, from real tool calls
+        old = WAIT FOR _context(old)             // same plugin chain: hide secrets
+        summary = WAIT FOR summarize(old, previous)   // one model call; incremental if previous
+        entry = CompactionEntry(summary + files, cut)
+    IF it failed:
+        SEND event compaction_end(error, before, before)
+        RETURN False                             // history unchanged
+    ADD entry to messages, save it to the store
+    SEND event message_end(entry)
+    SEND event compaction_end(no error, before, tokens now)
+    RETURN True
+```
 
 The next sections explain each step: when the call is too big, where the cut goes, what goes into the summary, what the next call sees, and what happens on failure.
 
-Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._prepare`, `_context`, `compact`
+Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._prepare`, `_context`, `compact`; [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `compact`
 
 ## When do we compact?
 
