@@ -2,6 +2,10 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-10-28
+
+- ch16 "The whole flow, in one walk": added a short pseudo block for `compact()` under the words (session side + helper in `agent/compaction.py`), and named `find_cut` / `file_lists` / `summarize` in the paragraph. Checked against `session/__init__.py` and `agent/compaction.py` at `a5bec6b`.
+
 ## 2026-10-27
 
 - ch16 Compaction: rewritten in words around 7 questions (why, before/after, when, where to cut, what goes into the summary, next view, failure). Pseudocode and the dataclass block removed; inbound links from 17, 18, 19 updated.
