@@ -33,7 +33,7 @@ This chapter builds two things. A **[protocol](glossary.md#protocol)** is the fi
 
 ## Starting point: 24's `run()`, behind a web request
 
-[24](24-cli.md#the-question-goes-to-agentsession) built print mode. Its heart makes one `AgentSession` ([17](17-session.md)) and prints its events ([08](08-events-abort.md)):
+[24](24-cli.md#two-modes-print-mode-and-the-repl) built print mode. Its heart makes one `AgentSession` ([17](17-session.md)) and prints its events ([08](08-events-abort.md)):
 
 ```text
 store = JsonlStore(file "<sid>.jsonl" in session_dir(cwd))
