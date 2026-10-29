@@ -27,7 +27,7 @@ Code in this chapter (commit `2fc2776`):
 
 We keep the story of [16](16-compaction.md). The user works in one long session on the fizzbuzz project, and the model has a 200 000-token [context window](glossary.md#context-window). Before each model call, auto compaction checks the size and makes the history smaller when it gets close to the limit.
 
-But that size is a guess ([16](16-compaction.md#when-do-we-compact)), and the guess can be too low. Code and JSON often have more tokens per character than we assume, and the window number in a profile can be wrong. So one day the guess says 185 000, the check says "fine", and the agent reads one more large file. The provider counts 210 000 tokens and refuses:
+But that size is a guess ([16](16-compaction.md#when-do-we-compact)), and the guess can be too low. Code and JSON often have more tokens per character than we assume (we assume 4 characters per token), and the window number in a profile can be wrong. After the agent reads one more large file, the guess says 180 000: below the line of [16](16-compaction.md#when-do-we-compact), so no compaction. But the provider counts 210 000 tokens and refuses:
 
 ```text
 prompt is too long: 210000 tokens > 200000 maximum
@@ -56,7 +56,7 @@ AFTER a run ends:
 This fixes our one overflow with one provider. It breaks in four ways:
 
 - **Other providers say it differently.** OpenAI says "maximum context length", not "too long", so the check misses it. → [How do we know it is an overflow?](#how-do-we-know-it-is-an-overflow)
-- **Retry gets in the way.** Retry from [15](15-retry.md) might take the error for a short failure, wait, and send the same too-big request again. → [same section](#how-do-we-know-it-is-an-overflow)
+- **Retry gets in the way.** Retry from [15](15-retry.md) runs in the same place. Some overflow errors look like retry errors ("too many tokens" vs "too many requests"), so retry could wait and send the same too-big request again. → [same section](#how-do-we-know-it-is-an-overflow)
 - **It may never end.** If one compaction is not enough, it compacts again and again, paying for a summary each time. → [Why only once?](#why-only-once)
 - **Compaction can fail.** Then it calls the model again anyway and gets the same error. → [What if it still does not fit?](#what-if-it-still-does-not-fit)
 
@@ -79,7 +79,7 @@ Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/se
 
 Each provider words it differently: "prompt is too long", "maximum context length", "context_length_exceeded", "too many tokens", and so on. We keep all these wordings in one list, in the `ai` layer, next to the retry wordings of [15](15-retry.md#which-errors-are-worth-trying-again). Both lists read provider error text, so the session never needs to know which provider it talks to.
 
-One error must go to **one** fix only. "Too many tokens" (an overflow) looks a lot like "too many requests" (a rate limit, worth retrying). So the retry check asks "is this an overflow?" first, and says no if it is. An error is either an overflow or retryable, never both.
+One error must go to **one** fix only. "Too many tokens" (an overflow) looks a lot like "too many requests" (a rate limit, worth retrying). So before the retry check looks for retry words, it first asks "is this an overflow?". If yes, the error is not retried. An error is either an overflow or retryable, never both.
 
 The limit: a provider with a new wording is not caught until we add it to the list.
 

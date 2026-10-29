@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-29
 
+- ch17 fixes: the guess in the story is 180 000 (below the 183 616 line of ch16; 185 000 was above it); "4 characters per token" restated; "Retry gets in the way" says why retry could match an overflow; the "is this an overflow?" sentence no longer uses "it" twice.
 - ch17 rewritten reason first: naive version breaks in four ways, each linked to its fix; new "Our overflow, step by step" follows the 210 000-token error; then "How do we know it is an overflow?", "Why only once?", "What if it still does not fit?" (a list); pseudo-code replaced by plain words. Checked against `ai/__init__.py` and `session/__init__.py` (`_run`) at `07609fa`.
 - ch16 "If it fails, and when it runs" split into three questions: "What if compaction fails?", "Can it happen in the middle of work?", "Can I compact by hand?"; the `auto_compact` aside is dropped (already in "The whole flow"). Checked against `session/__init__.py` (`compact`, `_prepare`).
 - ch16 "What goes into the summary?": after the example, the summary is now built in 5 numbered steps in code order (list files, hide secrets, plain text, model writes the text part, put together), each with its reason; "old part" renamed "old messages"; the incremental summary has its own paragraph. Checked against `agent/compaction.py` (`compact`, `summarize`) at `98f190a`.
