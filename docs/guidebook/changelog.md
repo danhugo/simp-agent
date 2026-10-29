@@ -2,6 +2,10 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-10-30
+
+- ch24 CLI: pseudo-code for `main`, making the session, print-mode `run` and `env_api_key`, after the two-modes text. Checked against `apps/cli/src/simp_cli/__init__.py`.
+
 ## 2026-10-29
 
 - Renumbered the book: each Part big-picture page now has its own number (01, 06, 11, 16, 23), chapters shift to 02–32. Links, H1s, link texts and "ch NN" prose refs rewritten in one pass; the Next chain now runs through every page in order (last chapter of a Part → next big-picture page → its first chapter).
