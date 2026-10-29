@@ -176,10 +176,18 @@ Five messages instead of ten; in a real one-hour session the old part is far big
 
 Real code: [agent/compaction.py](../../packages/simp_agent/src/simp_agent/agent/compaction.py) — `build_view`
 
-## If it fails, and when it runs
+## What if compaction fails?
 
-If it fails ("nothing to compact", a failed summary), `compact()` returns `False`, the history is not changed (see [the walk](#the-whole-flow-in-one-walk)), and the turn goes on with the old view. The same `auto_compact` switch from above also turns off the repair in [17](17-overflow.md). The next call may then be too big; [17](17-overflow.md) catches the "too long" error and runs this same compaction once more.
+Then nothing changes: the history stays as it was, and the turn goes on with the full history. The next call may then be too big for the model and fail with a "too long" error. [17](17-overflow.md) catches that error and tries compaction once more.
 
-Because it runs inside `prepare_next_turn`, compaction can happen in the middle of a long tool loop, not only between prompts. The summary call is slow, but a steer typed during it still joins the same turn, because steering is read right after `prepare_next_turn` returns ([07](07-steering.md#the-loop-from-05-with-two-new-places)). Apps can also compact by hand, as the CLI's `/compact` command does ([19](19-cli.md)). To tune the prompts on real sessions, `apps/cli/scripts/replay_compaction.py` prints the first summary a real model gives for the start of a saved session.
+## Can it happen in the middle of work?
+
+Yes. The check runs before every model call, not only when the user sends a message. So in a long run with many tool calls, compaction can happen halfway, as soon as the history gets too big.
+
+The summary call is slow. If the user types a steer during it, the steer is not lost: the loop reads it right after, in the same turn ([07](07-steering.md#the-loop-from-05-with-two-new-places)).
+
+## Can I compact by hand?
+
+Yes. An app can ask for it at any time, like the CLI's `/compact` command ([19](19-cli.md)). To see what summary a real model writes for a saved session, run `apps/cli/scripts/replay_compaction.py`.
 
 **Builds on:** [13 Session](13-session.md) · [14 Plugins](14-plugins.md) · [15 Retry](15-retry.md) · **Next:** [17 Context overflow](17-overflow.md)
