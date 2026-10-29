@@ -2,7 +2,7 @@
 
 **Goal:** Build the browser UI on the protocol.
 
-**Builds on:** [26 Transport](26-transport.md), [25 Protocol models](25-server-run.md#protocol-models) · **Previous:** [29 Docker sandbox](29-docker-sandbox.md) · **Next:** [31 System tests and deploy](31-system-tests-deploy.md)
+**Builds on:** [26 Transport](26-transport.md), [25 Protocol models](25-server-run.md#how-does-the-server-trust-the-json) · **Previous:** [29 Docker sandbox](29-docker-sandbox.md) · **Next:** [31 System tests and deploy](31-system-tests-deploy.md)
 
 ## Where we are
 
@@ -258,5 +258,5 @@ Markdown is drawn with `react-markdown`, with one change: images are never loade
 
 Using `fetch` instead of `EventSource` costs about 15 lines of SSE parsing and a hand-written retry loop.
 
-**Builds on:** [26 Transport](26-transport.md), [25 Protocol models](25-server-run.md#protocol-models) · **Previous:** [29 Docker sandbox](29-docker-sandbox.md) · **Next:** [31 System tests and deploy](31-system-tests-deploy.md)
+**Builds on:** [26 Transport](26-transport.md), [25 Protocol models](25-server-run.md#how-does-the-server-trust-the-json) · **Previous:** [29 Docker sandbox](29-docker-sandbox.md) · **Next:** [31 System tests and deploy](31-system-tests-deploy.md)
 

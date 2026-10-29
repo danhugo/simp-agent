@@ -289,7 +289,7 @@ seq 8  run_state          error                           <- added by recover
 seq 9  notice             warning "interrupted: ..."      <- added by recover
 ```
 
-Why `run_state` is set directly: the normal path `set_state` checks the state table ([25 · Run state machine](25-server-run.md#run-state-machine)), and that table has no `waiting_approval -> error`. A crash is the one case where it is right. When Ana opens her tab, she sees a settled session with a red error, and she can press Continue.
+Why `run_state` is set directly: the normal path `set_state` checks the state table ([25 · Run state machine](25-server-run.md#what-states-can-a-run-be-in-and-why-keep-them)), and that table has no `waiting_approval -> error`. A crash is the one case where it is right. When Ana opens her tab, she sees a settled session with a red error, and she can press Continue.
 
 For many machines, you would put another class in the `store` slot.
 

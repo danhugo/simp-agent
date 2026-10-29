@@ -25,7 +25,7 @@ So before a risky call runs (`write` and `edit` change files, `bash` runs comman
 
 ## Starting point: the tool step from 05 and 06
 
-We do not write a new loop. Here is the tool step of `agent_loop` as [08](08-events-abort.md#starting-point-05s-loop-with-nobody-listening) left it (steering from [09](09-steering.md) does not touch this part):
+We do not write a new loop. Here is the tool step of `agent_loop` as [08](08-events-abort.md#starting-point-07s-loop-with-nobody-listening) left it (steering from [09](09-steering.md) does not touch this part):
 
 ```text
 FOR EACH call in msg:

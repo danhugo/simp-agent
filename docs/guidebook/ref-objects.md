@@ -199,7 +199,7 @@ Exercise: build an `AssistantMessage` with thinking, text and a tool call; send 
 
 ## Server protocol messages
 
-These are not `ai` objects. They are the wire messages of simp-server, defined in `apps/server/src/simp_server/protocol.py`. Chapter [25](25-server-run.md#protocol-models) explains why they look this way; [26](26-transport.md) shows how they flow. Every model has a fixed `type` field (the snake_case name, like `follow_up` for `FollowUp`).
+These are not `ai` objects. They are the wire messages of simp-server, defined in `apps/server/src/simp_server/protocol.py`. Chapter [25](25-server-run.md#how-does-the-server-trust-the-json) explains why they look this way; [26](26-transport.md) shows how they flow. Every model has a fixed `type` field (the snake_case name, like `follow_up` for `FollowUp`).
 
 | Group | Messages |
 |---|---|

@@ -26,7 +26,7 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-Go back to Ana from [25](25-server-run.md#problem). She types "write `fizzbuzz.py`" in a browser tab. In [25](25-server-run.md) we built the `Run`: it wraps her `AgentSession` and turns its events into protocol messages. But the run lives in Python and Ana's screen lives in a browser. Nothing yet connects them. This chapter builds that connection: the **transport**, the road that carries events out to the browser and commands back in.
+Go back to Ana from [25](25-server-run.md#ana-in-a-browser-tab). She types "write `fizzbuzz.py`" in a browser tab. In [25](25-server-run.md) we built the `Run`: it wraps her `AgentSession` and turns its events into protocol messages. But the run lives in Python and Ana's screen lives in a browser. Nothing yet connects them. This chapter builds that connection: the **transport**, the road that carries events out to the browser and commands back in.
 
 The road out must carry every event (text pieces, tool results, an approval question) to every open tab, live. The road in must carry what Ana sends: a prompt, "stop", "allow this bash call". That part is easy. The hard part is that the network is not kind. Ana's Wi-Fi drops for ten seconds in the middle of the run, and when the tab comes back it must get what it missed, with no gaps and no duplicates. Her colleague opens the same session on a slow laptop, and that slow tab must never slow down the agent. Ana closes her laptop, and the run must keep going and still be saved. And when the agent asks "may I run `bash`?" ([10](10-hooks-approval.md)), the answer now comes over HTTP, maybe from a different tab than the one that saw the question.
 
@@ -105,7 +105,7 @@ Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_se
 
 Events go out with **[SSE](glossary.md#sse)** (Server-Sent Events). SSE is one long HTTP response with `text/event-stream` type. The server writes small text blocks into it, one per event. The browser reads them with a small fetch-based reader (see [30](30-web-client.md#the-page-listens-sse-over-fetch-subscribe)).
 
-Commands come in with a normal `POST`. The body is JSON, checked by the `Command` parser from [25](25-server-run.md#protocol-models). A bad body gets `422`.
+Commands come in with a normal `POST`. The body is JSON, checked by the `Command` parser from [25](25-server-run.md#how-does-the-server-trust-the-json). A bad body gets `422`.
 
 Why not WebSocket? SSE is one-way, which is all we need out, since commands already have their own `POST`. Plain HTTP works through proxies, and when the stream ends our client reconnects by itself, with backoff ([30](30-web-client.md#the-page-listens-sse-over-fetch-subscribe)). That is how a dropped tab "learns" it was dropped: its stream simply ends. Both routes need auth ([27](27-store-auth.md)).
 
@@ -262,7 +262,7 @@ Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_se
 
 `start` does not wait for the run. It sets state `running` and starts `_run` as an asyncio task. So the POST returns `{"ok": true}` at once, and the results come over SSE.
 
-When a run ends, `_turn` starts the next one from any follow-up that came too late for the loop ([25 · Run state machine](25-server-run.md#run-state-machine)).
+When a run ends, `_turn` starts the next one from any follow-up that came too late for the loop ([25 · Run state machine](25-server-run.md#what-states-can-a-run-be-in-and-why-keep-them)).
 
 `Abort` sets state `aborting` and calls `session.abort()` ([08](08-events-abort.md)), but only if the run is busy and not already aborting, so a double click does nothing. `Compact` and `Continue` return `409` while busy.
 

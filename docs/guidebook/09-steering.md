@@ -51,7 +51,7 @@ In [08](08-events-abort.md) the user got a Stop button, but they do not want to 
 
 The two messages need different times. "Also read CHANGELOG.md" should reach the model **soon**, so the model can change its plan. "Then write a summary" should wait **until the current job is done**. So we give each its own kind of message. A [steer](glossary.md#steer) is delivered as soon as it is safe, in the middle of the run. A [follow-up](glossary.md#follow-up) waits until the agent would stop, then starts more work in the same run.
 
-Why "as soon as it is safe"? [08](08-events-abort.md#starting-point-05s-loop-with-nobody-listening) showed that every tool call must be followed by its tool result, or the vendor returns a 400 error. So we cannot put the user's message into the history at the moment they type it:
+Why "as soon as it is safe"? [08](08-events-abort.md#starting-point-07s-loop-with-nobody-listening) showed that every tool call must be followed by its tool result, or the vendor returns a 400 error. So we cannot put the user's message into the history at the moment they type it:
 
 ```text
 assistant: call c1 read README.md
