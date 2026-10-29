@@ -25,100 +25,81 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-We keep the story of [20](20-compaction.md). The user works in one long session on the fizzbuzz project, and the model has a 200 000-token [context window](glossary.md#context-window). Before each model call, auto compaction checks the size of the history and makes it smaller when it gets close to the limit.
+We keep the story of [20](20-compaction.md). The user works in one long session on the fizzbuzz project, and the model has a 200 000-token [context window](glossary.md#context-window). Before each model call, auto compaction checks the size and makes the history smaller when it gets close to the limit.
 
-But that check is only a guess. `estimate_tokens` counts real `usage` from the last answer, and for newer messages it uses "4 characters ≈ 1 token". Code and JSON often have more tokens per character than that. The window number in a profile ([22](22-profiles-plugins.md)) can also be wrong. So one day the estimate says 185 000 tokens, the check says "fine", and the user asks the agent to read one more large file. The provider counts 210 000 tokens and answers with an error: "prompt is too long: 210000 tokens > 200000 maximum". The stream ends with an assistant error message ([04](04-parse.md)).
+But that size is a guess ([20](20-compaction.md#when-do-we-compact)), and the guess can be too low. Code and JSON often have more tokens per character than we assume (we assume 4 characters per token), and the window number in a profile can be wrong. After the agent reads one more large file, the guess says 180 000: below the line of [20](20-compaction.md#when-do-we-compact), so no compaction. But the provider counts 210 000 tokens and refuses:
 
-This is a **[context overflow](glossary.md#context-overflow)**: the provider refuses a call because the request is bigger than the context window. The retry of [19](19-retry.md) cannot fix it, because the same request fails the same way every time. And without a fix the session is stuck: every new prompt makes the history even bigger.
+```text
+prompt is too long: 210000 tokens > 200000 maximum
+```
 
-The fix is to repair after the error. Chapter 20 **prevents** an overflow before the call, and this chapter **repairs** one after the call:
+This is a **[context overflow](glossary.md#context-overflow)**. Retry ([19](19-retry.md)) cannot fix it: the same request fails the same way every time. And the session is stuck, because every new prompt makes the history even bigger.
 
-| | When | How it knows | What it does |
-|---|---|---|---|
-| Prevent: auto compaction ([20](20-compaction.md)) | before each model call, in `_prepare` | `should_compact` on an estimate | compact, then call |
-| Repair: overflow recovery (this chapter) | after a failed call, in `_run` | `is_context_overflow` on the provider error | compact once, then call again |
+So we add a second line of defence. Chapter 20 **prevents** an overflow before the call; this chapter **repairs** one after it:
 
-Prevention handles most cases. Repair is the safety net for the times the guess was wrong.
+| | When | What it does |
+|---|---|---|
+| Prevent ([20](20-compaction.md)) | before each model call | compact if the guess is too big, then call |
+| Repair (this chapter) | after the provider says "too long" | compact once, then call again |
 
 ## Naive version
 
 ```text
-FUNCTION run(session, text):
-    WAIT for session.prompt(text)
+AFTER a run ends:
     WHILE the last message is an error:
-        IF its error text has "too long":
-            WAIT for session.compact()
-            WAIT for the agent to continue
+        IF the error text has "too long":
+            compact, then call the model again
         ELSE:
             STOP
 ```
 
-This fixes our one overflow with one provider. It breaks in three ways.
+This fixes our one overflow with one provider. It breaks in four ways:
 
-The check looks only for "too long". That is Anthropic's wording ("prompt is too long"). OpenAI says "maximum context length" or "context_length_exceeded", so the check misses them. Even when the check works, the loop has no end. Sometimes one compaction cannot make the request small enough, for example when one huge recent turn must stay (`find_cut` in [20](20-compaction.md#where-do-we-cut) keeps it). Then the loop compacts, fails, and compacts again, and each time it pays for a summary call. And if `compact()` itself fails, the loop still calls the model again and gets the same error.
+- **Other providers say it differently.** OpenAI says "maximum context length", not "too long", so the check misses it. → [How do we know it is an overflow?](#how-do-we-know-it-is-an-overflow)
+- **Retry gets in the way.** Retry from [19](19-retry.md) runs in the same place. Some overflow errors look like retry errors ("too many tokens" vs "too many requests"), so retry could wait and send the same too-big request again. → [same section](#how-do-we-know-it-is-an-overflow)
+- **It may never end.** If one compaction is not enough, it compacts again and again, paying for a summary each time. → [Why only once?](#why-only-once)
+- **Compaction can fail.** Then it calls the model again anyway and gets the same error. → [What if it still does not fit?](#what-if-it-still-does-not-fit)
 
-Where does the fix go? In the same place as retry: `AgentSession._run` ([19](19-retry.md#how-does-retry-work)). It runs after the agent loop ends with an error message. The retry loop from [19](19-retry.md) also needs a change. It must not see an overflow as a short failure. If it did, it would wait and then send the same too-big request again.
+## Our overflow, step by step
 
-| Problem | Fix | Section |
-|---|---|---|
-| many wordings | one regex in `ai` | [Detecting overflow](#detecting-overflow) |
-| retry would resend it | `is_retryable` says no for overflow | [Detecting overflow](#detecting-overflow) |
-| endless loop | an `overflowed` flag: compact once per run | [Compact and continue, once](#compact-and-continue-once) |
-| compaction fails | `compact()` returns `False`, so stop | [Compact and continue, once](#compact-and-continue-once) |
+Here is what happens to the 210 000-token error with the real fix:
 
-## Real design
+1. The model call fails. The run ends with an error message: "prompt is too long…".
+2. After the run, the session looks at that last message, in the same place where retry looks ([19](19-retry.md#how-does-retry-work)).
+3. It sees that the error is an overflow, not a short failure.
+4. It compacts once, the same compaction as [20](20-compaction.md). Old messages become a summary.
+5. It asks the model to go on (`continue_()`), with no new user message.
+6. This time the model gets the summary plus about 20 000 tokens of recent messages instead of 210 000, and it answers.
 
-### Detecting overflow
+The error message stays in the saved history, because history is never rewritten. But error turns are never sent to the model ([02](02-pick-clean.md#2-clean-transform_messages)), so the model does not see "prompt is too long". The UI sees the same "compacting…" events as in [20](20-compaction.md).
 
-Real code: [ai/__init__.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `_OVERFLOW`, `is_context_overflow`, `is_retryable`
+Real code: [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._run`
 
-```text
-_OVERFLOW = one regex, ignore case, any of:
-    "prompt (is) too long", "request_too_large", "exceeds the context window",
-    "maximum context length", "context_length_exceeded", "too many tokens",
-    "token limit exceeded"
+## How do we know it is an overflow?
 
-FUNCTION is_context_overflow(error):
-    RETURN true IF _OVERFLOW is found in (error or "")   // no text -> false
+Each provider words it differently: "prompt is too long", "maximum context length", "context_length_exceeded", "too many tokens", and so on. We keep all these wordings in one list, in the `ai` layer, next to the retry wordings of [19](19-retry.md#which-errors-are-worth-trying-again). Both lists read provider error text, so the session never needs to know which provider it talks to.
 
-FUNCTION is_retryable(error, kind):
-    IF kind is in NON_RETRYABLE: RETURN false            // see 15
-    RETURN NOT is_context_overflow(error) AND _RETRYABLE is found in (error or "")
-```
+One error must go to **one** fix only. "Too many tokens" (an overflow) looks a lot like "too many requests" (a rate limit, worth retrying). So before the retry check looks for retry words, it first asks "is this an overflow?". If yes, the error is not retried. An error is either an overflow or retryable, never both.
 
-One regex holds the wording of every provider, so the session never needs to know which provider it talks to. It lives in `ai`, next to the retry regex of [19](19-retry.md#which-errors-are-worth-trying-again), because both read provider error text. A wording the regex does not know is not seen as an overflow. The `error or ""` part makes both functions safe when there is no error text: they just return false.
+The limit: a provider with a new wording is not caught until we add it to the list.
 
-Look at the last line of `is_retryable`. It says "not an overflow" before it checks the retry words. This matters because some overflow messages also match retry words; "too many tokens" looks a lot like the "too many requests" of a rate limit. With this rule an error is an overflow or retryable, never both, so each error goes to exactly one fix. The limit of this design: when a provider uses a new wording, we must add a new pattern.
+Real code: [ai/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/ai/__init__.py) — `_OVERFLOW`, `is_context_overflow`, `is_retryable`
 
-### Compact and continue, once
+## Why only once?
 
-The loop in `AgentSession._run` was built in [19](19-retry.md#how-does-retry-work). That chapter showed only the retry branch; here is the overflow branch.
+A second compaction with the same settings would cut at the same place and give the same result, and it would pay for another summary. So each run remembers that it has already compacted for an overflow (the `overflowed` flag), and does not do it again.
 
-Real code: [session/__init__.py](../../packages/simp_agent/src/simp_agent/session/__init__.py) — `AgentSession._run`
+Overflow repair and retry keep separate counts. So one run can have both: overflow → compact → rate limit → wait → success.
 
-```text
-overflowed = false, attempt = 0
-WHILE last message is an assistant error:
-    IF self.auto_compact AND NOT overflowed AND is_context_overflow(last.error):
-        overflowed = true                  // never compact twice in one run
-        IF NOT (WAIT for self.compact()): STOP loop
-    ELSE IF ...retryable...:               // retry with backoff, chapter 19
-        ...
-    ELSE:
-        STOP loop
-    ADD (WAIT for a.continue_()) to new
-```
+## What if it still does not fit?
 
-The branch checks three things. `self.auto_compact` is the same switch as in [20](20-compaction.md#if-it-fails-and-when-it-runs): an app that turns off auto compaction also turns off overflow recovery, so there is one switch, not two. `not overflowed` makes the repair run only once per run. If one compaction was not enough, a second one with the same settings would cut at the same place and give the same result, so the flag stops the endless loop and the repeated cost. Then `compact()` runs. As [20](20-compaction.md#if-it-fails-and-when-it-runs) showed, it turns every failure ("nothing to compact", "summary call failed") into `False`. With no smaller history, a new call would only overflow again, so we stop.
+Then the run stops, and the error stays as the last message. A clear error is better than a loop. The user can start a new session.
 
-If compaction worked, the loop ends with `a.continue_()`, the same as a retry: no new user text, just call the model again. Why does the second call now fit? Because `compact()` appended a `CompactionEntry`, and `build_view` now sends the summary plus the recent messages instead of the full history ([20](20-compaction.md#what-does-the-next-call-see)). The overflow error itself stays in the history, because the history is append-only. But `transform_messages` drops error turns from what is sent ([02](02-pick-clean.md#2-clean-transform_messages)), so the model never sees "prompt is too long".
+- **A second overflow in the same run:** no second compaction (see above), and an overflow is never retried, so the run stops.
+- **Compaction fails** ("nothing to compact", or the summary call fails): there is no smaller history to send, so the run stops.
+- **The recent part alone is too big:** compaction always keeps the recent messages word for word ([20](20-compaction.md#where-do-we-cut)), so the next call overflows again, and the run stops.
+- **Auto compaction is turned off** (`auto_compact=False`): repair is off too, because it is the same switch. The run stops at the first overflow.
 
-Clients see the same `compaction_start` and `compaction_end` events as in [20](20-compaction.md). In the UI, a repair looks like a normal auto compaction with one error turn before it.
-
-### Edge cases
-
-The retry side of the loop is in [19](19-retry.md). Four cases matter for overflow.
-
-A **second overflow** in the same run skips the overflow branch, because `overflowed` is already true. An overflow is never retryable, so the loop stops, and the run ends with the error as the last message. With **`auto_compact=False`** the same thing happens at the first overflow: no compaction and no wasted retry. If the **recent part is too big** on its own, `compact()` does not cut harder; it keeps `keep_recent_tokens` as usual, so the second call overflows and the run stops. A clear error is better than a loop. The user sees the error and can start a new session. Last, an **overflow followed by a rate limit** works in one run, because the two counters are separate: `overflowed` is a flag and `attempt` counts retries. Overflow → compact → `429` → wait → success.
+Real code: [tests/test\_queues\_compaction.py](../../packages/simp_agent/tests/test_queues_compaction.py) — `test_overflow_compacts_and_retries_once`, `test_second_overflow_stops`
 
 **Builds on:** [20 Compaction](20-compaction.md) · **Next:** [22 Profiles and built-in plugins](22-profiles-plugins.md)

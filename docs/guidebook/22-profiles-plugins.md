@@ -28,9 +28,18 @@ Code in this chapter (commit `2fc2776`):
 
 ## Problem
 
-Back to fizzbuzz. Part 4 built a session that saves, retries, compacts and runs plugins. Now two people want to use it. One runs a small local model (`qwen`) on their own machine. The other wants the agent to only **plan** first, and not touch `fizzbuzz.py` until they say yes. Neither of them writes Python. How do they choose the model and the plugins?
+Part 4 built a session that saves, retries, compacts and runs plugins. But so far you choose the model and the plugins in Python code. Two needs are left:
 
-They write a settings file. The server reads `settings.toml`, and a **[profile](glossary.md#profile)** is one named block in it:
+- **Pick a model without code.** Someone wants the agent to use a small local model (`qwen`) on their own machine instead of Claude. They should only edit a settings file.
+- **Ready-made plugins.** [18](18-plugins.md) built the plugin hooks, but no real plugin yet. Two are worth shipping: one keeps secrets (API keys) away from the screen and the model, and one makes the agent plan first without touching files.
+
+This chapter does both. Part A turns a few lines of settings into a `Model`. Part B builds the two plugins.
+
+## Part A: Profiles
+
+### What a profile is
+
+A **[profile](glossary.md#profile)** is one named block of model settings in a settings file:
 
 ```toml
 [profiles.local]
@@ -39,201 +48,102 @@ model = "qwen"
 base_url = "http://localhost:8000/v1"
 api_key_env = "LOCAL_KEY"
 context_window = 32000
-plugins = ["plan_mode"]
 ```
 
-A profile is a plain dict: one model setup, plus a few app settings. The CLI reads `~/.simp-agent/settings.json`, and the server and the evals ([15](15-evals.md#how-do-you-run-it-and-read-the-result)) read `settings.toml`. The shape of a profile is the same in both.
+The server and the evals ([15](15-evals.md#how-do-you-run-it-and-read-the-result)) read profiles from `settings.toml`. The CLI reads them from `~/.simp-agent/settings.json`. The format differs, but a profile has the same keys in both, and once loaded it is just a plain dict.
 
-So this chapter turns plain text into real objects. `model = "qwen"` and its friends must become a `Model` ([02](02-pick-clean.md#in-model-and-context)), and both apps must read a profile the same way. `plugins = ["plan_mode"]` must become plugin objects. [18](18-plugins.md) built the hooks a plugin can use; here we write the first two real plugins: one keeps secrets away from the model, and one makes the agent read-only.
+The session wants a `Model` ([02](02-pick-clean.md#in-model-and-context)), not a dict. So we need one function that turns a profile into a `Model`, the same way for every app (`build_model`).
 
-## Naive version
+### Why not pass the dict straight to `Model`?
 
-A profile only makes the inputs of `AgentSession` ([17](17-session.md#why-does-the-session-own-the-agent)): the `Model` and the list of plugins ([18](18-plugins.md)). The session, the agent and the loop do not change. First try: pass the dict straight to `Model`:
+The first idea is `Model(id=profile["model"], **the other keys)`. With a profile like `local` it can go wrong in four ways. Each line shows the problem, then what `build_model` does instead:
 
-```python
-from simp_agent.ai import Model
+- **Unknown keys crash it.** A profile can hold app settings too, like a `plugins` list. `Model` has no such field, so Python raises `TypeError`. → It reads only the model keys it knows, so other keys stay for the app.
+- **The provider is wrong.** The profile says `api = "openai-completions"` but has no `provider` key, so `Model` keeps its default, `"anthropic"`. The library asks for the key by provider name and labels every reply with it, so the label is wrong, and an app that picks keys by provider gets the wrong key. → It sets the provider from `api`: `openai-…` gives `"openai"`, anything else `"anthropic"`.
+- **A missing key wipes a default.** If a profile has no `model`, the naive code passes `id=None`, and `Model`'s own default is lost. → It drops every missing (`None`) value, so `Model` keeps its defaults.
+- **No token counts.** OpenAI-style servers send token usage while streaming only if you ask for it. Without it, the size check of [20](20-compaction.md#when-do-we-compact) can only guess. → For OpenAI-style APIs it asks for usage (`include_usage`), unless the profile turns it off.
 
-def model_for(profile):
-    return Model(id=profile.get("model"), **{k: v for k, v in profile.items() if k != "model"})
-```
-
-Try it with the `local` profile above. It crashes at once: `plugins` goes to `Model`, which has no such field, so Python raises `TypeError`. Say we remove `plugins` by hand. Now it runs, but the `Model` is wrong. The profile has no `provider` key, so `provider` keeps `Model`'s default, `"anthropic"`, and the key lookup by provider name ([02](02-pick-clean.md#1-pick-_providers-register_provider)) picks the wrong key for an OpenAI-style server. There is a quieter bug too: if a profile has no `model` key, `profile.get("model")` is `None`, and `Model(id=None)` throws away `Model`'s own default `id`. And even with all keys right, the local server sends no token counts. OpenAI-style servers send usage in a stream only when asked (`stream_options`, which our `compat` flag `include_usage` turns on). Without real usage, `estimate_tokens` ([20](20-compaction.md#when-do-we-compact)) can only guess the size of the history. Last, nothing turns the name `"plan_mode"` into an object at all.
-
-## Real design
-
-### Profiles and build_model
+`build_model` lives in the `session` layer, not in an app, so the CLI and the server get the same `Model` from the same profile. (The CLI first puts its command-line flags on top of the profile, [24](24-cli.md).)
 
 Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session/profile.py) — `build_model`
 
-```text
-// A settings profile (plain dict) -> Model. Shared by the CLI and the server.
-FUNCTION build_model(pr):
-    api = pr "api", default "anthropic-messages"
-    kw:
-        id          = pr "model"
-        api         = api
-        provider    = "openai" IF api starts with "openai" ELSE "anthropic"
-        base_url    = pr "base_url"
-        api_key_env = pr "api_key_env"
-        compat      = a COPY of pr "compat" (empty if missing)
-    IF pr has max_tokens or context_window: ADD them to kw
-    IF api starts with "openai":
-        SET compat include_usage = true, ONLY IF not set yet
-    DROP every kw value that is None      // None -> Model's default
-    RETURN Model(kw)
-```
+### Where is the API key?
 
-Here is how each line answers the naive version. `provider` now follows `api`: `openai-completions` and `openai-responses` give `"openai"`, all others give `"anthropic"`. Only the keys listed here are read, and `model` becomes `id`; other keys such as `plugins` are left for the app, so one profile can hold model settings and app settings side by side. Every `None` is dropped, so `Model` keeps its own defaults. `include_usage` is set with `setdefault`, so a profile can still say `include_usage = false` for a server that does not support it. And `compat` is a copy, so the settings dict is never changed.
+Not in the profile. A profile holds only the **name** of an environment variable (`api_key_env = "LOCAL_KEY"`). The app looks up the key by that name: the CLI reads the environment variable when it calls the model ([24](24-cli.md)), and the server collects all keys once at start ([below](#from-settings-file-to-running-agent)). So a settings file can be shared or committed without leaking a key.
 
-`build_model` lives in the `session` layer, not in an app, because both apps call it and must get the same `Model` from the same profile. The CLI first puts its command-line flags on top of the profile (`resolve_config`) and checks a few things; then it calls `profile.build_model`. The server calls it directly. Neither file holds a key: a profile only has `api_key_env`, the **name** of an env var, and the app reads the key from there ([24](24-cli.md), [27](27-store-auth.md)).
+## Part B: Two built-in plugins
 
-### build_plugins: names to objects
+### Who uses them
+
+- The **server** turns both plugins on for every session. Plan mode starts off; the user switches it on from the web page.
+- The **CLI** uses no plugins.
+
+A profile may also list plugins by name (`plugins = ["plan_mode"]`). The server turns names into plugin objects (`build_plugins`), and checks every profile's list when it starts, so a typo like `"plan_mod"` stops the server with a clear message instead of failing in the first chat. The server always turns both built-ins on, so listing them in a profile changes nothing. The list will only matter once a third plugin exists.
+
+Each session gets **new** plugin objects, because a plugin keeps state (like plan mode's on/off) and two sessions must not share it.
 
 Real code: [plugins/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/plugins/__init__.py) — `build_plugins`
 
-```text
-FUNCTION build_plugins(names):
-    known = "redact_secrets" -> RedactSecrets, "plan_mode" -> PlanMode
-    IF any name is not in known:
-        RAISE error "unknown plugin ...; have [list]"
-    FOR EACH name, in order: MAKE a NEW object of its class
-    RETURN the list
-```
+### RedactSecrets: keep keys out of sight
 
-Why a new object each time? A plugin keeps state, like plan mode's on/off, and each session needs its own. Why raise on a typo? The server calls `build_plugins` once for every profile when it starts (`create_app`), so `plugins = ["plan_mod"]` stops the boot with a clear message instead of failing in the middle of the first chat.
+**The danger.** The agent runs `cat .env`, and an API key is in the output. Without a guard, the key goes to three places: the screen, the saved history, and the model provider. The user can also paste a key into their own message. **[RedactSecrets](glossary.md#redactsecrets)** replaces every secret it finds with `[REDACTED]`.
 
-The CLI uses no plugins. The server always gives each session both built-in plugins; the trace below shows how. Both plugins use only the hooks and the `PluginAPI` from [18](18-plugins.md); nothing in the session knows about them.
+**How it finds a secret.** Two ways:
 
-### Trace: one profile, from file to running agent
+- **By shape.** Known key formats: `sk-…` (OpenAI and Anthropic keys), JWTs, AWS key ids, GitHub tokens.
+- **By value.** At setup it collects the values of environment variables whose name has `KEY`, `TOKEN`, `SECRET` or `PASSWORD`, plus any secrets the app hands it. The server hands it the model keys directly: it removed them from the environment at start ([below](#from-settings-file-to-running-agent)), so the environment scan would not find them.
 
-Let us follow the `local` profile through the server, at commit `2fc2776` (`apps/server/src/simp_server/server.py`).
+**Where it masks.** It uses three plugin hooks ([18](18-plugins.md)):
 
-At start, `load_settings` reads `settings.toml` with `tomllib.loads`, so `settings["profiles"]["local"]` is now the plain dict from the file. If no `default_profile` is set, the first profile becomes the default. Then `take_keys` collects every `api_key_env` name from all profiles, here `LOCAL_KEY`, and moves those keys out of `os.environ` into `mgr.keys`, so a sandboxed command can never read them. Next, `create_app` calls `build_plugins(pr.get("plugins", []))` once for every profile. For `local` that is `build_plugins(["plan_mode"])`. The objects are thrown away; this call is only a check, so a typo stops the boot.
+- tool output as it streams to the screen (`tool_update`),
+- the finished tool result, before it is saved (`tool_result`),
+- everything sent to the model (`context`).
 
-When the user makes a new chat, the web page sends `POST /api/sessions` with `{"profile": "local"}`. `new_session` checks that `local` is in `settings["profiles"]` (else HTTP 400) and saves the session row with the profile **name**, not the dict.
+Why mask what the model sees, and not only tool output? Because the user may paste a key into their own message. That message is saved as typed, but the copy sent to the model is masked. Example, with `API_KEY=sk-abc...` in the environment:
 
-When the session is opened, `Run.__init__` does the real work:
-
-```python
-self.profile = mgr.settings["profiles"][row["profile"]]
-self.model = build_model(self.profile)
-...
-self.session = AgentSession(
-    self.model, ..., get_api_key=mgr.api_key_for(self.model), ...,
-    plugins=build_plugins(["redact_secrets", "plan_mode",
-                           *[n for n in self.profile.get("plugins", []) if n not in ("redact_secrets", "plan_mode")]]),
-    plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}})
-```
-
-`build_model` gives `Model(id="qwen", api="openai-completions", provider="openai", base_url="http://localhost:8000/v1", api_key_env="LOCAL_KEY", context_window=32000, compat={"include_usage": True})`; `max_tokens` keeps `Model`'s default. `api_key_for` returns a function that gives `mgr.keys["LOCAL_KEY"]`. The plugin list is `["redact_secrets", "plan_mode"]`: both built-ins come first, and `plan_mode` from the profile is not added twice. `plugin_config` hands all the keys the server holds to `RedactSecrets.setup` as known secret values ([18](18-plugins.md#how-does-a-plugin-change-the-session)).
-
-Now the user types "write fizzbuzz.py". The loop calls the local server at `base_url` with the `LOCAL_KEY` key, asks for token usage, and every tool result goes through `RedactSecrets`. If the user turned plan mode on, a `write` call is blocked. Each of these steps is explained below.
-
-### RedactSecrets
-
-The danger: the agent runs `cat .env` and an API key lands in the tool output. From there it goes to the model provider, into the saved history and onto the screen. Or the user pastes a key into their own message. **[RedactSecrets](glossary.md#redactsecrets)** (`plugins/redact_secrets.py`) replaces secrets with `[REDACTED]`.
-
-It finds a secret in two ways. First, by its **shape**:
-
-```python
-PATTERNS = re.compile(
-    r"sk-[A-Za-z0-9_-]{16,}"  # OpenAI / Anthropic style keys
-    r"|eyJ[\w-]+\.[\w-]+\.[\w-]+"  # JWT
-    r"|AKIA[0-9A-Z]{16}"  # AWS access key id
-    r"|gh[pousr]_[A-Za-z0-9]{30,}"  # GitHub tokens
-)
-SECRET_ENV = re.compile(r"KEY|TOKEN|SECRET|PASSWORD", re.I)
-MASK = "[REDACTED]"
-```
-
-Second, by its **value**. `setup` collects known values once:
-
-Real code: [plugins/redact_secrets.py](../../packages/simp_agent/src/simp_agent/plugins/redact_secrets.py) — `RedactSecrets.setup`, `mask`
-
-```text
-FUNCTION setup(api, config):
-    values = config "secrets" (empty list if missing)
-    IF config "env" is on (default on):
-        FOR EACH env var whose name has KEY / TOKEN / SECRET / PASSWORD:
-            ADD its value to values
-    secrets = values with length >= 8, no repeats, LONGEST FIRST
-
-FUNCTION mask(text):
-    REPLACE each value in secrets with MASK
-    REPLACE each PATTERNS match with MASK
-```
-
-Values shorter than 8 characters are skipped: if an env var holds `"1"`, masking every `1` would ruin the output. Longest first matters when one secret contains another. With `abcdefgh` and `abcdefgh123`, masking the short one first would leave `[REDACTED]123`, and part of the long secret would leak. The limit: only known shapes and known values are masked, so a secret with a new shape still gets through.
-
-Then three hooks use `mask`:
-
-Real code: [plugins/redact_secrets.py](../../packages/simp_agent/src/simp_agent/plugins/redact_secrets.py) — `tool_result`, `tool_update`, `context`, `deep`
-
-```text
-FUNCTION tool_result(call, result):     // the saved tool result
-    masked = mask(result content)
-    IF masked is different: REPLACE the content with masked
-
-FUNCTION tool_update(call, text):       // streamed output, before the UI sees it
-    RETURN mask(text)
-
-FUNCTION context(messages):             // the model's view of history
-    RETURN [deep(m) for each message]   // copies: history keeps the original
-
-FUNCTION deep(x):
-    string -> mask(x); list or dict -> deep of each item
-    dataclass -> a COPY with deep of each field, except id, signature, type, role
-```
-
-`deep` walks every string inside a message: text, thinking and tool call arguments. It skips `id`, `signature`, `type` and `role`, because these are provider data; if we changed them, the next call to the provider would fail.
-
-Example: env var `API_KEY` holds `sk-abc...`.
-
-| | In history (saved) | In the model's view |
+| | Saved in history | Sent to the model |
 |---|---|---|
-| tool result of `bash: cat .env` | `API_KEY=[REDACTED]` | `API_KEY=[REDACTED]` |
+| tool result of `cat .env` | `API_KEY=[REDACTED]` | `API_KEY=[REDACTED]` |
 | user message `my key is sk-abc...` | unchanged | `my key is [REDACTED]` |
 
-Why mask in `context` too, and not only in `tool_result`? Because of the second row. The user's message is theirs, so history keeps it as written, but the model never sees the key. The summary model of compaction does not see it either, because the session hands the same `context` chain to `compact()` ([20](20-compaction.md#what-goes-into-the-summary)).
+Compaction sends old messages to the model to be summarized. That call also goes through the `context` hook, so the key never ends up in the summary ([20](20-compaction.md#what-goes-into-the-summary)).
 
-### PlanMode
+Three small rules keep the masking safe:
 
-This is the fizzbuzz user who wants a plan first. They turn **[plan mode](glossary.md#plan-mode)** on and ask "write fizzbuzz.py". The agent may `read` and `ls`, then answers "I will write `fizzbuzz.py` with ...". If it tries `write`, the call is blocked. The user turns plan mode off, and the next prompt writes the file.
+- Values shorter than 8 characters are skipped. If an env var holds `"1"`, masking every `1` would ruin the output.
+- Longer secrets are masked first. With `abcdefgh` and `abcdefgh123`, masking the short one first would leave `[REDACTED]123`.
+- Provider fields such as message ids and signatures are never changed, or the next call to the provider would fail.
+
+The limit: only known shapes and known values are caught. A secret with a new shape gets through.
+
+Real code: [plugins/redact_secrets.py](../../packages/simp_agent/src/simp_agent/plugins/redact_secrets.py) — `RedactSecrets`
+
+### PlanMode: plan first, change nothing
+
+**The story.** The user wants to see a plan before the agent touches `fizzbuzz.py`. They turn **[plan mode](glossary.md#plan-mode)** on and ask "write fizzbuzz.py". The agent may `read` and `ls`, then answers "I will write `fizzbuzz.py` with ...". The user reads the plan, turns plan mode off, and the next prompt writes the file.
+
+**Two layers.** A prompt alone is not enough, because a model can ignore it:
+
+1. **Ask.** When plan mode is on, a section is added at the end of the system prompt ([17](17-session.md#prompt-sections)): "PLAN MODE is on: plan only. Read and explore, then describe the plan. …". This saves wasted turns.
+2. **Enforce.** Before each tool runs (`tool_call` hook), `write`, `edit` and `bash` are blocked. The model gets a normal "blocked" result ([18](18-plugins.md#what-if-a-plugin-lacks-a-method-or-crashes)), so it knows why.
+
+**It survives a restart.** Each switch on or off is saved in the history as a small entry that is never sent to the model (a custom entry, [18](18-plugins.md#how-does-a-plugin-change-the-session)). When the session is opened again, the plugin finds the last such entry and turns itself back on or off. No extra file is needed.
+
+The app does the switching (`set_enabled`). In the server, the web page sends a "set plan mode" command, and the server calls the plan mode plugin of that session ([26](26-transport.md)).
 
 Real code: [plugins/plan_mode.py](../../packages/simp_agent/src/simp_agent/plugins/plan_mode.py) — `PlanMode`
 
-```text
-BLOCKED = {write, edit, bash}
-PROMPT = "PLAN MODE is on: plan only. Read and explore, then describe the plan. ..."
+## From settings file to running agent
 
-CLASS PlanMode (name "plan_mode"):
-    start: enabled = False, api = none
+Here is the whole path for the `local` profile in the server:
 
-    FUNCTION setup(api, config):
-        keep api
-        last = the LAST CustomEntry in history with type "plan_mode"
-        IF last exists: _apply(last.data enabled)
-        ELSE: _apply(config "enabled", default False)   // start value for a new session
+1. **At start**, the server reads `settings.toml` and checks each profile's plugin names. Then it collects the model keys (every `api_key_env`, plus `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`) from `.env` and the environment, and removes them from the environment, so a command the agent runs can never read them.
+2. **New chat:** the web page asks for a session with profile `local`. The server saves the profile **name** with the session.
+3. **Open the session:** the server turns the profile into a `Model` (`build_model`), makes new `RedactSecrets` and `PlanMode` objects, gives `RedactSecrets` the keys it holds, and builds the `AgentSession` ([17](17-session.md)).
+4. **The user types "write fizzbuzz.py":** the model call goes to `http://localhost:8000/v1` with the `LOCAL_KEY` key and asks for token usage. Every tool result passes through `RedactSecrets`, and if plan mode is on, `write` is blocked.
 
-    FUNCTION _apply(on):
-        enabled = on
-        IF on: ADD prompt section "plan_mode" = PROMPT, order 1000   // last
-        ELSE: remove prompt section "plan_mode"
+The server code for these steps is in [25](25-server-run.md) and [27](27-store-auth.md).
 
-    FUNCTION set_enabled(on):
-        _apply(on)
-        WAIT for api.append_entry("plan_mode", {enabled: on})
-
-    FUNCTION tool_call(call):
-        IF enabled AND call.name is in BLOCKED:
-            RETURN {block: "plan mode is on (read-only)"}
-        RETURN nothing
-```
-
-There are two layers. The prompt section ([17](17-session.md#prompt-sections)) *asks* the model to plan only; order 1000 puts it after every other section. This saves wasted turns, but a model can ignore a prompt. So the `tool_call` hook *enforces* it: a `write`, `edit` or `bash` call is blocked, and the model gets the usual denial result from [18](18-plugins.md#what-if-a-plugin-lacks-a-method-or-crashes), so it knows why.
-
-The on/off state is saved as a `CustomEntry` through `api.append_entry` ([18](18-plugins.md#how-does-a-plugin-change-the-session)): it is in history, but never sent to the model. When a session is loaded again, `setup` finds the **last** such entry and restores the state, so plan mode survives a restart with no extra file. `config["enabled"]` is only the start value for a brand-new session.
-
-The app is what calls `set_enabled`. In the server, the web page sends a `SetPlanMode` command, and the server finds the `PlanMode` in `session.plugins` and calls it ([26](26-transport.md)).
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `load_settings`, `take_keys`, `create_app`, `Run.__init__`
 
 **Builds on:** [21 Context overflow](21-overflow.md) · **Next:** [23 Part 5 big picture](23-part-5-system.md)

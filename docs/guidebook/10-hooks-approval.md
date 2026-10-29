@@ -60,7 +60,7 @@ result = ToolResultMessage(call.id, call.name, "User denied: {reason}", is_error
 
 **Step 2: move the policy out.** The loop only calls a function that the caller puts in `LoopConfig`. The function returns `None` for "go on", or a string: the reason to deny. Any string denies, even `""`.
 
-**Step 3: a place to change results.** A second function runs after the tool. It returns a new result, or `None` to keep the old one. Why change a result after the tool ran? The output may hold a secret, such as an API key printed by `cat .env`, and it must be hidden before the model, the saved history or the screen sees it. That is what [RedactSecrets](22-profiles-plugins.md#redactsecrets) does.
+**Step 3: a place to change results.** A second function runs after the tool. It returns a new result, or `None` to keep the old one. Why change a result after the tool ran? The output may hold a secret, such as an API key printed by `cat .env`, and it must be hidden before the model, the saved history or the screen sees it. That is what [RedactSecrets](22-profiles-plugins.md#redactsecrets-keep-keys-out-of-sight) does.
 
 **Step 4: do not block forever.** Both functions get the [tool context](glossary.md#tool-context) `ctx` from [07](07-agent-loop.md). It holds `cancel`, so a hook that waits for a human can also stop waiting when Stop is pressed.
 
