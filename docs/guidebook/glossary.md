@@ -96,7 +96,7 @@ How `exec` stops a command: the shell starts in a new process group (`start_new_
 The dict `_PROVIDERS` in `ai` that maps a `Model.api` string (`anthropic-messages`, `openai-completions`, `openai-responses`) to a stream function. `register_provider` adds or replaces one; `ai.stream` looks it up. Home: [01](01-pick-clean.md#1-pick-_providers-register_provider).
 
 ## Context overflow
-An error that says the request is bigger than the model's context window. Found by `is_context_overflow`; never retried as-is. Defined and handled in [17](17-overflow.md#detecting-overflow).
+An error that says the request is bigger than the model's context window. Found by `is_context_overflow`; never retried as-is. Defined and handled in [17](17-overflow.md#how-do-we-know-it-is-an-overflow).
 
 ## Event
 A small dict with a `"type"` key (`agent_start`, `turn_start`, `message_update`, `message_end`, `tool_execution_start`, `turn_end`, `agent_end`, …) that the agent loop sends through `emit` so callers can watch a run. `Agent.subscribe` adds a listener. Home: [06](06-events-abort.md#events-one-stream-of-small-dicts).
