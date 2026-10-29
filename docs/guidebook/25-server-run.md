@@ -31,7 +31,7 @@ In [24](24-cli.md) you ran the agent in a terminal: one person, one screen, one 
 
 This chapter builds two things. A **[protocol](glossary.md#protocol)** is the fixed list of messages that go between server and browser. A **[Run](glossary.md#run)** is one server object per conversation: it owns the `AgentSession` ([17](17-session.md)), turns its events into protocol messages, and keeps one clear **[run state](glossary.md#run-state)**, a name like `idle` or `running`. Do not mix it up with an agent [run](glossary.md#run-agent) ([07](07-agent-loop.md)): the `Run` lives as long as the conversation, and it starts many agent runs, one per prompt.
 
-## Starting point: 19's `run()`, behind a web request
+## Starting point: 24's `run()`, behind a web request
 
 [24](24-cli.md#the-question-goes-to-agentsession) built print mode. Its heart makes one `AgentSession` ([17](17-session.md)) and prints its events ([08](08-events-abort.md)):
 

@@ -39,7 +39,7 @@ So the chapter has two halves. The first half tests the whole system with a fake
 
 ## Test the whole system
 
-### Starting point: 25's app, and 04's fake model
+### Starting point: 30's app, and 05's fake model
 
 At the end of [30](30-web-client.md) we have the web client talking to the server. Each server Run wraps one `AgentSession` from [17](17-session.md), and the server builds that session with `stream_fn=self.guarded_stream`, which wraps `mgr.stream_fn` (by default `ai.stream`, the real model). We also have a fake model already: [05](05-label-test.md) built `FakeProvider`, a `stream_fn` that plays [scripted replies](glossary.md#scripted-reply).
 
@@ -137,7 +137,7 @@ The repo has a second, older fake: `apps/server/src/simp_server/fake.py`. It is 
 
 Now the tests pass, so we turn to the second question: does the server stay alive?
 
-### Starting point: 25's server, started by hand
+### Starting point: 30's server, started by hand
 
 At the end of [30](30-web-client.md), someone starts the server by hand in a terminal. Logs are plain text lines on stderr. There is no backup. If the Mac reboots, the server stays down. We fix these three things in order: logs, backups, then a service that starts by itself.
 

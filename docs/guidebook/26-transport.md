@@ -30,7 +30,7 @@ Go back to Ana from [25](25-server-run.md#problem). She types "write `fizzbuzz.p
 
 The road out must carry every event (text pieces, tool results, an approval question) to every open tab, live. The road in must carry what Ana sends: a prompt, "stop", "allow this bash call". That part is easy. The hard part is that the network is not kind. Ana's Wi-Fi drops for ten seconds in the middle of the run, and when the tab comes back it must get what it missed, with no gaps and no duplicates. Her colleague opens the same session on a slow laptop, and that slow tab must never slow down the agent. Ana closes her laptop, and the run must keep going and still be saved. And when the agent asks "may I run `bash`?" ([10](10-hooks-approval.md)), the answer now comes over HTTP, maybe from a different tab than the one that saw the question.
 
-## Starting point: 20's Run, with no road to the browser
+## Starting point: 25's Run, with no road to the browser
 
 [25](25-server-run.md) ended with a real `Run`. It wraps one `AgentSession` ([17](17-session.md)). `Run.on_event` gets the same events as in [08](08-events-abort.md) and turns them into protocol messages. `Run.durable` gives each saved one the next [`seq`](glossary.md#seq), adds it to `log` and saves it. Trimmed, that part looks like this:
 
@@ -49,7 +49,7 @@ So the events exist, in order, with numbers. But no one reads them. Ana's tab ha
 - **Mid-message break: a tab joins mid-message.** It gets the next text delta (a [live event](glossary.md#live-event), with no `seq`, not saved), but not the text before it. The answer on screen starts in the middle.
 - **No-way-in break: there is no way back in.** Nothing takes "abort" or "allow" from the client.
 
-## Step by step: from 20's Run to real
+## Step by step: from 25's Run to real
 
 We grow the same `Run`. Each step fixes one break.
 

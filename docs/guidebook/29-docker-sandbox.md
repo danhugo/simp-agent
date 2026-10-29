@@ -41,7 +41,7 @@ The root check of `LocalEnv` keeps the *file* tools (`read`, `write`, `edit`, `l
 
 For one person on a laptop, this is fine: it is their own machine. For Ana and Bob together, it is not. Each session's commands must run in a closed box, apart from the server and from each other. That box is a **[sandbox](glossary.md#sandbox)**. We build it with Docker: a **[container](glossary.md#container)** is a process that sees its own files, its own users and its own limits, started from a ready-made image. It shares the host's kernel, so it starts in about a second, much faster than a full virtual machine.
 
-## Starting point: 23's server and LocalSandbox
+## Starting point: 28's server and LocalSandbox
 
 Here is the real `LocalSandbox.open` the server uses today (`server.py`, trimmed):
 

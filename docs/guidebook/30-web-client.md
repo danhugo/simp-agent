@@ -34,7 +34,7 @@ Recall what the server gives a client ([25](25-server-run.md), [26](26-transport
 
 A browser client sounds easy: open the stream and print what comes in. Three facts make it hard. First, the stream needs Ana's [Bearer token](glossary.md#bearer-token) in an `Authorization` header ([27](27-store-auth.md)), and the browser's built-in SSE reader, `EventSource`, cannot send headers. Second, the stream breaks: Wi-Fi drops, the laptop sleeps, Ana presses reload in the middle of a long answer. When the page connects again it must not show a word twice and must not skip one. Third, many event kinds change the same screen: text, finished messages, tool output, approval requests, run state, title and plan mode. If each one changes the page in its own way, the screen slowly drifts away from the truth on the server.
 
-## Starting point: 21's two routes, with no page on top
+## Starting point: 26's two routes, with no page on top
 
 [26](26-transport.md#sse-out-post-in) ended with two HTTP routes on the server. Events go out on one long SSE response, and each block is written by `sse`:
 

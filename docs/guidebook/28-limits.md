@@ -33,7 +33,7 @@ At the same time Bob opens three sessions, looks at them, and closes the tab. Ea
 
 So this chapter adds a budget, a kill switch and idle release. The budget refuses a model call when a user has spent too much today ([daily budget](glossary.md#daily-budget)) or one run has spent too much ([run budget](glossary.md#run-budget)). The kill switch lets the admin stop *all* model calls at once, for example after a bug or a leaked API key. [Idle release](glossary.md#idle-release) closes runs nobody uses and loads them back from the store when the user returns.
 
-## Starting point: 22's Run, with no limits
+## Starting point: 27's Run, with no limits
 
 At the end of [27](27-store-auth.md), each server `Run` wraps one `AgentSession` ([17](17-session.md)), and the `SessionManager` keeps loaded runs in memory and reloads them from the SQLite store. The agent loop calls the model through `stream_fn`, the function it takes as an input ([07](07-agent-loop.md), Step 5). The server passes it straight through:
 

@@ -75,11 +75,11 @@ Code in this chapter (commit `2fc2776`):
 - `packages/simp_agent/src/simp_agent/agent/__init__.py`: `LoopConfig.get_steering` / `get_follow_up`, the two `while` loops of `agent_loop`, the steering read in `_llm_turn`, and on `Agent`: `steer`, `follow_up`, `_take`, `clear_queues`, `has_queued`
 - `packages/simp_agent/tests/test_queues_compaction.py`: the queue tests
 
-## Starting point: 06's `Agent` and loop
+## Starting point: 08's `Agent` and loop
 
 So where can "Also read CHANGELOG.md" go today? We start from what [08](08-events-abort.md) ended with. `Agent._run` refuses a second run while one is going, and `agent_loop` reads the user's messages only once, at the start: it sends `agent_start`, adds the prompts (the only place user messages come in), runs one turn per pass while the model asks for tools (model call, tool calls, abort exit), and sends `agent_end`.
 
-So with 06's code the message has nowhere to go. The easy patch is to keep the text in `Agent` and call `prompt()` again when the run ends. That keeps the history valid, but it comes **too late**: the model has already answered about README.md alone. It also keeps **one place for two needs**: the urgent steer and the "later" follow-up wait together, so the agent cannot treat them differently. Everything waiting goes out together, so there is **no choice of batch size**, but sometimes the user wants each message handled as its own task. And each delivery is a new run, with a new `agent_start` and `agent_end` [event](glossary.md#event), so a UI that shows "busy" until `agent_end` gives **a flickering UI**.
+So with 08's code the message has nowhere to go. The easy patch is to keep the text in `Agent` and call `prompt()` again when the run ends. That keeps the history valid, but it comes **too late**: the model has already answered about README.md alone. It also keeps **one place for two needs**: the urgent steer and the "later" follow-up wait together, so the agent cannot treat them differently. Everything waiting goes out together, so there is **no choice of batch size**, but sometimes the user wants each message handled as its own task. And each delivery is a new run, with a new `agent_start` and `agent_end` [event](glossary.md#event), so a UI that shows "busy" until `agent_end` gives **a flickering UI**.
 
 ## Step by step: grow the loop
 

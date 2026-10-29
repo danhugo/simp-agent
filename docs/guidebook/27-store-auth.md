@@ -33,7 +33,7 @@ Bob, Ana's colleague, uses the same server. Nothing says who sends a request, so
 
 So we need two things. A **[store](glossary.md#store)**: one place on disk for users, sessions, events and cost. And **[auth](glossary.md#auth)**: a way to check who sends each request.
 
-## Starting point: 21's Run, with the store left open
+## Starting point: 26's Run, with the store left open
 
 [26](26-transport.md#seq-one-counter-for-everything) ended with a `Run` that numbers each durable event and each `"msg"` row of its [`AgentSession`](17-session.md), then hands the row to the store (`server.py`, commit `2fc2776`):
 

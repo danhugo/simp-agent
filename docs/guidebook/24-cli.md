@@ -26,7 +26,7 @@ At the end of Part 4 we have an `AgentSession` ([17](17-session.md)) with plugin
 
 The CLI (command-line interface: the program you run in a terminal) is the thin layer that connects keys, screen and disk to that session. It adds no agent behaviour of its own. Its code is in `apps/cli/src/simp_cli/`. The CLI is the first of two front doors to the same `AgentSession`; the server in [25](25-server-run.md) is the second.
 
-## Starting point: 18's AgentSession, called from Python
+## Starting point: 22's AgentSession, called from Python
 
 At the end of [22](22-profiles-plugins.md) we use the `AgentSession` of [17](17-session.md) like this: build it, `subscribe` to its events ([08](08-events-abort.md)), and `await session.prompt(...)`. The first idea for a CLI is to put exactly that inside an `input()` loop, with one `asyncio.run` per line:
 

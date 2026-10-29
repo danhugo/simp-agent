@@ -150,35 +150,35 @@ Which chapter adds which feature, and in which layer it lives:
 
 | Feature | Chapter | Where in the code |
 |---|---|---|
-| Message types | 01 | `ai` |
-| Real providers (Translate + Send) | 02 | `ai/providers/` |
-| Parse into one message | 03 | `ai` |
-| Label + fake model for tests | 04 | `ai`, `testing` (`FakeProvider`) |
-| Agent loop | 05 | `agent` (`agent_loop`) |
-| Events and abort | 06 | `agent` |
-| Steering | 07 | `agent` (`Agent`) |
-| Hooks and approval | 08 | `agent`, `session` |
-| Execution environment | 09 | `agent/env.py` |
-| Coding tools | 10 | `coding/tools.py` |
-| System prompt | 11 | `coding` |
-| Evals | 12 | `evals/` |
-| Sessions and saving | 13 | `session` |
-| Plugins | 14 | `session` (`PluginAPI`) |
-| Retry | 15 | `session` |
-| Compaction | 16 | `agent/compaction.py`, `session` |
-| Context overflow | 17 | `session` |
-| Profiles, built-in plugins | 18 | `session/profile.py`, `plugins` |
-| CLI | 19 | `apps/cli` |
-| Server run, transport, store, limits | 20–23 | `apps/server` |
-| Docker sandbox | 24 | `apps/server/sandboxes` |
-| Web client | 25 | `apps/web` |
-| System tests, deploy | 26 | `apps/web/e2e`, `deploy/` |
+| Message types | 02 | `ai` |
+| Real providers (Translate + Send) | 03 | `ai/providers/` |
+| Parse into one message | 04 | `ai` |
+| Label + fake model for tests | 05 | `ai`, `testing` (`FakeProvider`) |
+| Agent loop | 07 | `agent` (`agent_loop`) |
+| Events and abort | 08 | `agent` |
+| Steering | 09 | `agent` (`Agent`) |
+| Hooks and approval | 10 | `agent`, `session` |
+| Execution environment | 12 | `agent/env.py` |
+| Coding tools | 13 | `coding/tools.py` |
+| System prompt | 14 | `coding` |
+| Evals | 15 | `evals/` |
+| Sessions and saving | 17 | `session` |
+| Plugins | 18 | `session` (`PluginAPI`) |
+| Retry | 19 | `session` |
+| Compaction | 20 | `agent/compaction.py`, `session` |
+| Context overflow | 21 | `session` |
+| Profiles, built-in plugins | 22 | `session/profile.py`, `plugins` |
+| CLI | 24 | `apps/cli` |
+| Server run, transport, store, limits | 25–28 | `apps/server` |
+| Docker sandbox | 29 | `apps/server/sandboxes` |
+| Web client | 30 | `apps/web` |
+| System tests, deploy | 31 | `apps/web/e2e`, `deploy/` |
 
 ## The running examples
 
 Each Part uses small examples that fit its layer:
 
-- Part 1 (01–04) sends one prompt about a `README` to a model.
+- Part 1 (02–05) sends one prompt about a `README` to a model.
 - Part 2 ([07](07-agent-loop.md)) has the loop read `README.md` and answer.
 - Part 3 ([13](13-coding-tools.md)) edits `a.txt` and `shape.py` with the real tools; [15](15-evals.md) then meets fizzbuzz as an eval task.
 

@@ -26,7 +26,7 @@ Code in this chapter (commit `2fc2776`):
 - `packages/simp_agent/src/simp_agent/agent/__init__.py`: the `send` / `add` helpers inside `agent_loop`, `_emit_all`, `_end`, `_stream`, the end of `_llm_turn`, `Agent`
 - `packages/simp_agent/tests/test_harden.py`: the abort and subscriber tests
 
-## Starting point: 05's loop, with nobody listening
+## Starting point: 07's loop, with nobody listening
 
 We do not write a new loop. We start from the `agent_loop` of [07](07-agent-loop.md#agent_loop-the-loop). It already calls `send(...)` at each important moment; 05 just did not say who hears it. Here is that loop again, short, with each event marked where it is sent:
 
