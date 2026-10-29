@@ -72,7 +72,7 @@ EXIT with the code from repl(model, args)
 
 Real code: [apps/cli/src/simp_cli/__init__.py](../../apps/cli/src/simp_cli/__init__.py), function `main`.
 
-`main()` reads flags with `argparse` and builds the model (from a profile, [18](18-profiles-plugins.md#profiles-and-build_model)). If there is a task (`-p "task"` or plain words), it runs **[print mode](glossary.md#print-mode)**: one task, then exit. With no task, it starts the **[REPL](glossary.md#repl)** (read–eval–print loop: a chat screen where you type many lines). The REPL import is inside `main`, so print mode does not load `prompt_toolkit` (the library that draws the REPL screen). If building the model fails with a `ValueError` (for example, an unknown profile), `main` calls `argparse`'s `p.error`, which prints the usage and the error and exits with code 2.
+`main()` reads flags with `argparse` and builds the model (from a profile, [18](18-profiles-plugins.md#part-a-profiles)). If there is a task (`-p "task"` or plain words), it runs **[print mode](glossary.md#print-mode)**: one task, then exit. With no task, it starts the **[REPL](glossary.md#repl)** (read–eval–print loop: a chat screen where you type many lines). The REPL import is inside `main`, so print mode does not load `prompt_toolkit` (the library that draws the REPL screen). If building the model fails with a `ValueError` (for example, an unknown profile), `main` calls `argparse`'s `p.error`, which prints the usage and the error and exits with code 2.
 
 Our fizzbuzz command has a task, so `main` calls `run`.
 
