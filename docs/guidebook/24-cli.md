@@ -28,6 +28,10 @@ flowchart LR
 
 ## Two modes: print mode and the REPL
 
+![One CLI run: keys go in through route to the session, events come back through Chat or LinePrinter to the screen, approval is a loop, resume reads the JSONL file](img/24-cli-run.png)
+
+*Read it top to bottom: your keys go right through `route` into the grey `AgentSession`, its events come back left through `Chat` or `LinePrinter` to your screen, approval goes there and back as a loop, and resume reads the old JSONL file and draws it through the same `on_message`.*
+
 The CLI has two modes, and `main` picks one by asking "did you give a task?". With a task (`simp-agent "write fizzbuzz.py"`, or `-p "task"`) it runs **[print mode](glossary.md#print-mode)**: one task, then exit, with exit code 0 if it worked and 1 if it failed or was stopped, so scripts and pipes can use it. With no task it starts the **[REPL](glossary.md#repl)** (read–eval–print loop): a chat screen, built with the `prompt_toolkit` library, where you type many lines. `main` loads the REPL code only in that case, so print mode does not need `prompt_toolkit`.
 
 Both modes build the session the same way. They give `AgentSession` the coding tools of [13](13-coding-tools.md), a `JsonlStore` for this folder, the messages already in that store, and an approve function. The model comes from a profile ([22](22-profiles-plugins.md#part-a-profiles)). The API key is read by the app, not by the provider ([02](02-pick-clean.md#1-pick-_providers-register_provider)): `env_api_key` reads it from an environment variable. The settings file can only name that variable (`api_key_env`), never hold the key itself, because a settings file is easy to share or commit by mistake.
