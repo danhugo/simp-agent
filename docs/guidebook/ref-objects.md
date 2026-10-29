@@ -1,6 +1,6 @@
 # Reference · The `ai` objects
 
-**Used by:** [01 Pick + Clean](01-pick-clean.md) · [02](02-translate-send.md) · [03](03-parse.md) · [05](05-agent-loop.md) · [13 Session](13-session.md) · [14](14-plugins.md) · [16](16-compaction.md) · [20 The server run](20-server-run.md) · [21](21-transport.md) · [25](25-web-client.md)
+**Used by:** [02 Pick + Clean](02-pick-clean.md) · [03](03-translate-send.md) · [04](04-parse.md) · [07](07-agent-loop.md) · [17 Session](17-session.md) · [18](18-plugins.md) · [20](20-compaction.md) · [25 The server run](25-server-run.md) · [26](26-transport.md) · [30](30-web-client.md)
 
 This page is a lookup page, not a chapter. Chapters introduce each object at the block that first uses it, and only the parts that block needs. Here is every field in one place, plus how history turns into JSON and back.
 
@@ -27,7 +27,7 @@ Plain dicts (like vendor examples) break fast: one place writes `"args"`, anothe
 - **A class per kind.** A typo in a field name fails when the object is built.
 - **Content is a list of blocks**, in model order.
 - **A fixed `role` (messages) or `type` (blocks)** on every class, so `from_dict` knows which class a dict was.
-- **Our own shape, not a vendor's.** Providers translate at the edge ([ch 02](02-translate-send.md)).
+- **Our own shape, not a vendor's.** Providers translate at the edge ([ch 03](03-translate-send.md)).
 - **Not pydantic.** No extra dependency in the lowest layer; we do not validate on load, the data was written by us.
 
 ## Messages
@@ -64,11 +64,11 @@ tool_calls(): RETURN only the ToolCall blocks
 
 | Field | Who uses it |
 |---|---|
-| `content` | everyone; built by Parse ([ch 03](03-parse.md)) |
-| `stop_reason` | the loop ([ch 05](05-agent-loop.md)) decides "run tools?" from `tool_calls()`, and uses `stop_reason` for `error`/`aborted`/`length` ([06](06-events-abort.md), [15](15-retry.md)) |
-| `usage` | [usage](glossary.md#usage); compaction estimates size ([ch 16](16-compaction.md)) |
-| `error`, `error_kind` | providers never raise, they return this ([ch 02](02-translate-send.md)); `is_retryable` reads it ([ch 04](04-label-test.md), [15](15-retry.md)) |
-| `api`, `provider`, `model` | labels set by Label ([ch 04](04-label-test.md)); read by Clean's thinking rule ([ch 01](01-pick-clean.md#thinking-who-can-read-it-back)) |
+| `content` | everyone; built by Parse ([ch 04](04-parse.md)) |
+| `stop_reason` | the loop ([ch 07](07-agent-loop.md)) decides "run tools?" from `tool_calls()`, and uses `stop_reason` for `error`/`aborted`/`length` ([08](08-events-abort.md), [19](19-retry.md)) |
+| `usage` | [usage](glossary.md#usage); compaction estimates size ([ch 20](20-compaction.md)) |
+| `error`, `error_kind` | providers never raise, they return this ([ch 03](03-translate-send.md)); `is_retryable` reads it ([ch 05](05-label-test.md), [19](19-retry.md)) |
+| `api`, `provider`, `model` | labels set by Label ([ch 05](05-label-test.md)); read by Clean's thinking rule ([ch 02](02-pick-clean.md#thinking-who-can-read-it-back)) |
 
 ## Content blocks
 
@@ -94,7 +94,7 @@ class ToolCall:
     type: Literal["tool_call"] = "tool_call"
 ```
 
-`signature` is a vendor value we never read or change, only send back. `ToolCall.arguments` is already a parsed dict ([ch 03](03-parse.md)).
+`signature` is a vendor value we never read or change, only send back. `ToolCall.arguments` is already a parsed dict ([ch 04](04-parse.md)).
 
 ## Two history entries that are not messages
 
@@ -114,10 +114,10 @@ class CustomEntry:
     role: Literal["custom"] = "custom"
 ```
 
-- A **[compaction entry](glossary.md#compaction-entry)**: "everything before `first_kept_index` is replaced by `summary`". History is append-only. Built in [ch 16](16-compaction.md).
-- A **[custom entry](glossary.md#custom-entry)**: plugin data kept in history, so it comes back on resume. A plugin adds one with `append_entry` (in `session/__init__.py`), which saves it to the store like a message. Used in [ch 14](14-plugins.md) and [ch 18](18-profiles-plugins.md).
+- A **[compaction entry](glossary.md#compaction-entry)**: "everything before `first_kept_index` is replaced by `summary`". History is append-only. Built in [ch 20](20-compaction.md).
+- A **[custom entry](glossary.md#custom-entry)**: plugin data kept in history, so it comes back on resume. A plugin adds one with `append_entry` (in `session/__init__.py`), which saves it to the store like a message. Used in [ch 18](18-plugins.md) and [ch 22](22-profiles-plugins.md).
 
-Both are saved like messages but never sent: Clean skips them ([ch 01](01-pick-clean.md#2-clean-transform_messages)).
+Both are saved like messages but never sent: Clean skips them ([ch 02](02-pick-clean.md#2-clean-transform_messages)).
 
 ## Request objects: `Tool`, `Context`, `Model`
 
@@ -146,7 +146,7 @@ class Model:
     compat: dict = field(default_factory=dict)
 ```
 
-`compat` known keys: openai `include_usage`, `max_tokens_field`, `supports_finish_reason`; all `reasoning_effort`; anthropic `thinking_budget` ([ch 02](02-translate-send.md)). These are not saved in history, so they have no `role`.
+`compat` known keys: openai `include_usage`, `max_tokens_field`, `supports_finish_reason`; all `reasoning_effort`; anthropic `thinking_budget` ([ch 03](03-translate-send.md)). These are not saved in history, so they have no `role`.
 
 ## Going to JSON and back
 
@@ -177,7 +177,7 @@ flowchart LR
 
 - **Old files still load.** A field added later has a default, so a dict without it still builds.
 - **Cost:** `from_dict` trusts its input. Unknown `role` → `KeyError`; stray field → `TypeError`. Fine for files we wrote.
-- The CLI saves sessions as JSON lines with this pair (`JsonlStore.append` / `load` in `apps/cli/src/simp_cli/__init__.py`; [ch 13](13-session.md)).
+- The CLI saves sessions as JSON lines with this pair (`JsonlStore.append` / `load` in `apps/cli/src/simp_cli/__init__.py`; [ch 17](17-session.md)).
 
 Tests (`tests/test_reasoning.py`, `tests/test_compaction_serialize.py`):
 
@@ -199,7 +199,7 @@ Exercise: build an `AssistantMessage` with thinking, text and a tool call; send 
 
 ## Server protocol messages
 
-These are not `ai` objects. They are the wire messages of simp-server, defined in `apps/server/src/simp_server/protocol.py`. Chapter [20](20-server-run.md#protocol-models) explains why they look this way; [21](21-transport.md) shows how they flow. Every model has a fixed `type` field (the snake_case name, like `follow_up` for `FollowUp`).
+These are not `ai` objects. They are the wire messages of simp-server, defined in `apps/server/src/simp_server/protocol.py`. Chapter [25](25-server-run.md#protocol-models) explains why they look this way; [26](26-transport.md) shows how they flow. Every model has a fixed `type` field (the snake_case name, like `follow_up` for `FollowUp`).
 
 | Group | Messages |
 |---|---|
@@ -224,7 +224,7 @@ The full text of live events is saved later: text and thinking in `AssistantMess
 
 ## Web client `ChatState`
 
-The whole chat state of the browser client, from `apps/web/src/state.ts`. Chapter [25](25-web-client.md#events-arrive-the-reducer-statets) explains the reducer that fills it.
+The whole chat state of the browser client, from `apps/web/src/state.ts`. Chapter [30](30-web-client.md#events-arrive-the-reducer-statets) explains the reducer that fills it.
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -241,7 +241,7 @@ The whole chat state of the browser client, from `apps/web/src/state.ts`. Chapte
 
 ## Server store tables
 
-The full `SCHEMA` of simp-server's SQLite store, from `apps/server/src/simp_server/store.py`. Chapter [22](22-store-auth.md#opening-the-store) explains each table where it is used; `usage` is used in [23](23-limits.md).
+The full `SCHEMA` of simp-server's SQLite store, from `apps/server/src/simp_server/store.py`. Chapter [27](27-store-auth.md#opening-the-store) explains each table where it is used; `usage` is used in [28](28-limits.md).
 
 ```sql
 CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, name TEXT UNIQUE, token_sha256 TEXT UNIQUE, password TEXT,
@@ -255,15 +255,15 @@ CREATE TABLE IF NOT EXISTS usage(user_id TEXT, session_id TEXT, model TEXT, inpu
     cost REAL DEFAULT 0);
 ```
 
-`sessions.profile` names the model profile ([18](18-profiles-plugins.md)); `sessions.sandbox_ref` names the sandbox to open again ([24](24-docker-sandbox.md)).
+`sessions.profile` names the model profile ([22](22-profiles-plugins.md)); `sessions.sandbox_ref` names the sandbox to open again ([29](29-docker-sandbox.md)).
 
 ## `PluginAPI` methods
 
-The handle a plugin gets in `setup` ([ch 14](14-plugins.md)). Code: `packages/simp_agent/src/simp_agent/session/__init__.py` — `PluginAPI`.
+The handle a plugin gets in `setup` ([ch 18](18-plugins.md)). Code: `packages/simp_agent/src/simp_agent/session/__init__.py` — `PluginAPI`.
 
 - `register_tool`, `unregister_tool` — add or remove a tool (same name replaces)
 - `add_prompt_section`, `remove_prompt_section` — system prompt parts
-- `append_entry` — save a [CustomEntry](13-session.md)
+- `append_entry` — save a [CustomEntry](17-session.md)
 - `send_message` — steer, follow-up or a new prompt
 - `set_model`, `abort`
 - `get_messages`, `env`, `cwd`
