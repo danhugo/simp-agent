@@ -263,3 +263,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - 2026-10-27: ch18 — plugin hooks picture (img/14-plugin-hooks) + hooks told as a story along it; key-hider section merged into it.
 - 2026-10-27: ch18 — plugin/hook picture v6 (general, colored), plugin vs hook stated, walk rewritten general-first; ch10 defines 'hook' at first use.
 - 2026-10-28: ch20 — new section "The whole flow, in one walk": story in words, short `_prepare`/`_context` pseudo code, then what `compact()` does in order; duplicate sentences in "What does the next call see?" and "If it fails" trimmed.
+- 2026-10-29: ch24 — rewritten around the user's five wishes (stream, type during a run, approve, Ctrl-C, continue); words first, code only for background task, approval future, shared replay; new block-1 picture.
