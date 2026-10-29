@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#fff;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;color:#0f172a}
+.wrap{width:1180px;padding:24px 30px}
+h1{font-size:21px;margin:0 0 4px}.sub{color:#475569;font-size:13.5px;margin-bottom:14px;max-width:1110px}
+.g{display:grid;grid-template-columns:220px 40px 1fr 40px 260px;row-gap:10px;align-items:center}
+.colh{font-size:12px;font-weight:800;letter-spacing:.06em;color:#64748b}
+.you{border:3px solid #2563eb;background:#eff6ff;border-radius:9px;padding:7px 10px;font-size:13.5px}
+.new{border:3px solid #b45309;background:#fef3c7;box-shadow:0 2px 6px rgba(180,83,9,.2);border-radius:9px;padding:7px 10px;font-size:13.5px}
+.old{border:2px solid #e2e8f0;background:#f8fafc;border-radius:9px;padding:7px 10px;font-size:13.5px;color:#94a3b8}
+.old b{color:#64748b}.fade{opacity:.5;border-style:dashed}
+code{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:12.5px}
+.ar{text-align:center;font-size:22px;color:#475569;font-weight:700}
+.sec{grid-column:1/6;font-size:13px;font-weight:800;border-top:1.5px solid #e2e8f0;padding-top:8px;margin-top:4px}
+.n{display:inline-block;background:#b45309;color:#fff;border-radius:50%;width:18px;height:18px;text-align:center;font-size:11px;font-weight:800;line-height:18px;margin-right:4px}
+</style></head><body><div class="wrap">
+<h1>Ana's prompt on the server: browser → typed command → Run → AgentSession → events</h1>
+<div class="sub"><b style="color:#1d4ed8">Blue</b> is Ana and her browser. <b style="color:#b45309">Yellow</b> is new in this chapter: the protocol and the <code>Run</code>. <b style="color:#94a3b8">Grey</b> was built earlier: <code>AgentSession</code> (Part 4). The faded box is built in ch26.</div>
+<div class="g">
+<div class="colh" style="color:#1d4ed8">ANA'S BROWSER</div><div></div><div class="colh" style="color:#b45309">THE SERVER · NEW (ch25)</div><div></div><div class="colh">ALREADY BUILT</div>
+
+<div class="sec">1 · The prompt goes in (one short POST)</div>
+<div class="you">Ana presses Enter.<br>POST <code>{"type":"prompt", "text":"write fizzbuzz.py"}</code></div><div class="ar">→</div>
+<div class="new"><span class="n">1</span>the <code>type</code> field picks the model → typed <code>Prompt</code> (bad JSON → 422)<br>
+<span class="n">2</span><code>SessionManager.get</code> finds Ana's one <code>Run</code><br>
+<span class="n">3</span><code>Run.command</code>: busy? → queue it. idle? → <code>Run.start</code><br>
+<span class="n">4</span><code>start</code>: state idle → running (checked, saved), work handed to a <b>background task</b></div><div></div><div></div>
+<div class="you">POST answers <code>{"ok": true}</code> at once</div><div class="ar">←</div><div class="new">returns without waiting for the agent</div><div></div><div></div>
+
+<div class="sec">2 · The agent works (minutes, in the background task)</div>
+<div></div><div></div><div class="new">background task: <code>_turn</code> calls <code>session.prompt(text)</code></div><div class="ar">→</div>
+<div class="old"><b>AgentSession</b> (Part 4)<br>loop, tools, approval</div>
+<div></div><div></div><div class="new"><code>Run</code> in its 3 roles: store (<code>append</code>), <code>approve</code>, <code>on_event</code></div><div class="ar">←</div><div class="old">events, saved messages, approval asks</div>
+
+<div class="sec">3 · Events come back</div>
+<div class="you fade">Ana's tab draws the text</div><div class="ar" style="opacity:.5">←</div>
+<div class="new"><code>Run.on_event</code> → <b>live</b> events (text pieces, not saved) and <b>durable</b> events (saved, with <code>seq</code>)</div><div></div>
+<div class="old fade">carried to the browser: ch26</div>
+
+<div class="sec">4 · The run ends</div>
+<div></div><div></div><div class="new"><code>_turn</code> picks the next state: running → idle (or error); a late follow-up starts the next run</div><div></div><div></div>
+</div></div></body></html>
