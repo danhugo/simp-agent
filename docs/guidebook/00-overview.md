@@ -2,7 +2,7 @@
 
 **Goal:** See the whole of simp-agent before building it piece by piece.
 
-**Builds on:** — (start here) · **Next:** [01 Pick + Clean](01-pick-clean.md)
+**Builds on:** — (start here) · **Next:** [01 Part 1 big picture](01-part-1-ai.md)
 
 ## Where we are
 
@@ -66,7 +66,7 @@ Read the arrow as "is used by". `ai` is used by `agent`, `agent` by `coding`, an
 
 A layer may import the layers to its left, never the ones to its right. And the library never imports the apps. So `ai` knows nothing about tools, and `agent` knows nothing about files on disk or about sessions.
 
-**Why?** Each layer can be understood and tested alone. When you read chapter 05 (the loop), you do not need to know about sessions. When something breaks in `ai`, you know nothing above it caused the bug. And you can replace a top part (for example, the CLI) without touching the core. The cost: some features (like approval or saving) are split across layers, so you must know which layer owns what; the table above is that guide.
+**Why?** Each layer can be understood and tested alone. When you read chapter 07 (the loop), you do not need to know about sessions. When something breaks in `ai`, you know nothing above it caused the bug. And you can replace a top part (for example, the CLI) without touching the core. The cost: some features (like approval or saving) are split across layers, so you must know which layer owns what; the table above is that guide.
 
 This rule is not just a promise. A test checks it on every run.
 
@@ -113,9 +113,9 @@ If you add `from ..session import AgentSession` inside `agent/`, this test fails
 
 The apps use the library; they are never used by it.
 
-- **CLI** (`apps/cli/`, package `simp_cli`): a terminal app. It uses only `AgentSession`. Chapter 19.
-- **Server** (`apps/server/`, package `simp_server`): runs sessions for many users over HTTP. Key classes in `server.py`: `Run`, `SessionManager`, the `Sandbox`, `Store` and `Auth` protocols. Chapters 20–24.
-- **Web client** (`apps/web/`): a TypeScript browser app. It talks to the server through the protocol; its types are generated into `protocol.gen.ts`. Chapter 25.
+- **CLI** (`apps/cli/`, package `simp_cli`): a terminal app. It uses only `AgentSession`. Chapter 24.
+- **Server** (`apps/server/`, package `simp_server`): runs sessions for many users over HTTP. Key classes in `server.py`: `Run`, `SessionManager`, the `Sandbox`, `Store` and `Auth` protocols. Chapters 25–29.
+- **Web client** (`apps/web/`): a TypeScript browser app. It talks to the server through the protocol; its types are generated into `protocol.gen.ts`. Chapter 30.
 
 ```mermaid
 flowchart TB
@@ -135,14 +135,14 @@ We build in the same order as the layers: bottom first. Each chapter adds one ca
 
 | Part | Chapters | What you have at the end |
 |---|---|---|
-| 1 · Talk to a model (`ai`) | [01](01-pick-clean.md)–[04](04-label-test.md) | Pick + Clean (with the message types), Translate + Send, Parse, Label + a fake model for tests. |
-| 2 · The loop (`agent`) | [05](05-agent-loop.md)–[08](08-hooks-approval.md) | A loop that runs tools, sends events, can be stopped, steered and checked. |
-| 3 · Coding (`coding`) | [09](09-exec-env.md)–[12](12-evals.md) | A safe place to touch files, real coding tools, a system prompt, evals. |
-| 4 · Sessions (`session`, `plugins`) | [13](13-session.md)–[18](18-profiles-plugins.md) | Saved conversations, plugins, retry, compaction, overflow recovery, profiles. |
-| 5 · Apps | [19](19-cli.md)–[26](26-system-tests-deploy.md) | CLI, server, transport, store, limits, Docker sandbox, web client, deploy. |
-| Wrap-up | [27](27-limits-choices-extend.md) | Why it is built this way, where it stops, how to extend it. |
+| 1 · Talk to a model (`ai`) | [02](02-pick-clean.md)–[05](05-label-test.md) | Pick + Clean (with the message types), Translate + Send, Parse, Label + a fake model for tests. |
+| 2 · The loop (`agent`) | [07](07-agent-loop.md)–[10](10-hooks-approval.md) | A loop that runs tools, sends events, can be stopped, steered and checked. |
+| 3 · Coding (`coding`) | [12](12-exec-env.md)–[15](15-evals.md) | A safe place to touch files, real coding tools, a system prompt, evals. |
+| 4 · Sessions (`session`, `plugins`) | [17](17-session.md)–[22](22-profiles-plugins.md) | Saved conversations, plugins, retry, compaction, overflow recovery, profiles. |
+| 5 · Apps | [24](24-cli.md)–[31](31-system-tests-deploy.md) | CLI, server, transport, store, limits, Docker sandbox, web client, deploy. |
+| Wrap-up | [32](32-limits-choices-extend.md) | Why it is built this way, where it stops, how to extend it. |
 
-**Why bottom first?** Every chapter can then be tested with what already exists. Chapter 04 builds `FakeProvider` at the end of Part 1 on purpose: with a fake model, every later chapter can test the loop, tools and sessions without a network or an API key.
+**Why bottom first?** Every chapter can then be tested with what already exists. Chapter 05 builds `FakeProvider` at the end of Part 1 on purpose: with a fake model, every later chapter can test the loop, tools and sessions without a network or an API key.
 
 ## Capability table
 
@@ -179,8 +179,8 @@ Which chapter adds which feature, and in which layer it lives:
 Each Part uses small examples that fit its layer:
 
 - Part 1 (01–04) sends one prompt about a `README` to a model.
-- Part 2 ([05](05-agent-loop.md)) has the loop read `README.md` and answer.
-- Part 3 ([10](10-coding-tools.md)) edits `a.txt` and `shape.py` with the real tools; [12](12-evals.md) then meets fizzbuzz as an eval task.
+- Part 2 ([07](07-agent-loop.md)) has the loop read `README.md` and answer.
+- Part 3 ([13](13-coding-tools.md)) edits `a.txt` and `shape.py` with the real tools; [15](15-evals.md) then meets fizzbuzz as an eval task.
 
 From Part 4 on, the book follows one task, taken from the real eval file `evals/tasks/fizzbuzz.toml`:
 
@@ -193,8 +193,8 @@ The same file has a `check` that imports `fizzbuzz` and asserts the result, so w
 
 We follow this task as the system grows:
 
-- In Part 3 the eval ([12](12-evals.md)) runs it and checks `fizzbuzz.py`.
+- In Part 3 the eval ([15](15-evals.md)) runs it and checks `fizzbuzz.py`.
 - In Part 4 the conversation is saved and can be resumed.
 - In Part 5 you type the task in a terminal or a browser.
 
-**Builds on:** — · **Next:** [01 Pick + Clean](01-pick-clean.md)
+**Builds on:** — · **Next:** [01 Part 1 big picture](01-part-1-ai.md)
