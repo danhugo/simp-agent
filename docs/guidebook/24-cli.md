@@ -36,6 +36,42 @@ The CLI has two modes, and `main` picks one by asking "did you give a task?". Wi
 
 Both modes build the session the same way. They give `AgentSession` the coding tools of [13](13-coding-tools.md), a `JsonlStore` for this folder, the messages already in that store, and an approve function. The model comes from a profile ([22](22-profiles-plugins.md#part-a-profiles)). The API key is read by the app, not by the provider ([02](02-pick-clean.md#1-pick-_providers-register_provider)): `env_api_key` reads it from an environment variable. The settings file can only name that variable (`api_key_env`), never hold the key itself, because a settings file is easy to share or commit by mistake.
 
+```text
+FUNCTION main():
+    flags    = read the command line
+    settings = read ~/.simp-agent/settings.json (empty if there is none)
+    model    = build_model(the profile, with the flags on top)        // 22
+    task     = the -p text, or the words after simp-agent
+    IF there is a task:                       // print mode
+        EXIT with run(task, model, flags)     // 0 = it worked, 1 = error or stopped
+    ELSE:                                     // REPL
+        load the REPL code (needs prompt_toolkit)
+        EXIT with repl(model, flags)
+
+FUNCTION make the session (both modes do this):
+    id    = --resume ID, OR the newest session of this folder (-c), OR a new id
+    store = JsonlStore(~/.simp-agent/sessions/<this folder>/<id>.jsonl)
+    RETURN AgentSession(
+        model,
+        the coding tools,                                 // 13
+        store,
+        messages    = store.load(),                       // old messages, so we resume
+        get_api_key = env_api_key(model),
+        approve     = nothing IF -y ELSE ask "Allow? [y/N/a]")
+
+FUNCTION run(task, model, flags):             // print mode
+    session = make the session
+    send its events to a LinePrinter
+    Ctrl-C -> session.abort()
+    WAIT for session.prompt(task)
+    RETURN 1 IF the last message is an error or was stopped, ELSE 0
+
+FUNCTION env_api_key(model):                  // the key comes from an env var, never the file
+    IF the profile names a variable (api_key_env) and it is set: RETURN its value
+    IF the api is OpenAI-style: RETURN OPENAI_API_KEY, or "dummy" (a local server needs no key)
+    RETURN ANTHROPIC_API_KEY
+```
+
 Real code: [apps/cli/src/simp_cli/\_\_init\_\_.py](../../apps/cli/src/simp_cli/__init__.py), functions `main`, `run`, `resolve_config`, `env_api_key`.
 
 The rest of the chapter takes your five wishes one at a time, and for each one says what print mode does and what the REPL does.
