@@ -42,18 +42,31 @@ The rest of the chapter follows Ana's prompt along this picture, one question at
 
 ## How does the server trust the JSON?
 
-The server reads every body as one of a fixed set of typed Pydantic models, picked by the `type` field, and rejects anything else. A loose dict would break in silly ways: `{"txt": "hi"}` would give a `KeyError` and a 500 error deep in the code, and nothing would tell the browser which shapes exist.
+**The problem.** Every command arrives as a JSON body from a browser. If the server just reads it as a dict, a typo breaks it badly: `{"txt": "hi"}` instead of `{"text": "hi"}` gives a `KeyError` deep in the code and a 500 error, and the browser never learns what went wrong.
 
-When Ana's tab opens, it first shakes hands: it sends `Hello` with its protocol version, and the server answers `Hello` or a `HelloError` listing the versions it supports, so an old tab learns at once that the server changed. Then, when Ana presses Enter, the browser POSTs `{"type": "prompt", "text": "write fizzbuzz.py"}` to `/api/sessions/{sid}/commands`. Every message model has a `type` field with one fixed value, and that field is the **[discriminator](glossary.md#discriminator)**: Pydantic reads it first and checks the body only against the one model it names. A message from the browser is a **command**, and there are eight:
+**The fix: one typed class per kind of message.** The protocol (`protocol.py`) lists every message the browser may send, as a Pydantic class. Every body has a `type` field, and the server uses it to pick the one class to check against (this field is the **[discriminator](glossary.md#discriminator)**). A message from the browser is a **command**, and there are eight:
 
 ```python
 Command = Annotated[Union[Prompt, Steer, FollowUp, Abort, Approve, Compact, Continue, SetPlanMode],
                     Field(discriminator="type")]
 ```
 
-Each one maps to a session feature you already know: prompt, steering and follow-up ([09](09-steering.md)), abort ([08](08-events-abort.md)), approval ([10](10-hooks-approval.md)), compaction ([20](20-compaction.md)), continue and plan mode ([22](22-profiles-plugins.md)). So Ana's body becomes `Prompt(text="write fizzbuzz.py")`.
+Each one maps to a session feature you already know: prompt, steering and follow-up ([09](09-steering.md)), abort ([08](08-events-abort.md)), approval ([10](10-hooks-approval.md)), compaction ([20](20-compaction.md)), continue and plan mode ([22](22-profiles-plugins.md)).
 
-All models share one base class with two rules. The first: unknown fields are an error (`extra="forbid"`), so `{"type": "prompt", "txt": "hi"}` is rejected with a clear 422 answer that lists what is wrong, not dropped in silence. The second sounds backwards: a field with a default is marked "required" in the schema. That is for the other direction. When the server sends a model, every default is filled in, so the field is always in the JSON, and the browser can trust it is there with no `undefined` checks.
+**Ana's prompt.** When she presses Enter, the browser POSTs to `/api/sessions/{sid}/commands`:
+
+```text
+{"type": "prompt", "text": "write fizzbuzz.py"}
+  -> type is "prompt", so check it against Prompt
+  -> Prompt(text="write fizzbuzz.py")
+```
+
+**Two rules for every class:**
+
+- **Unknown fields are an error.** `{"type": "prompt", "txt": "hi"}` is rejected with a clear 422 answer that says `txt` is not allowed and `text` is missing. Nothing is dropped in silence.
+- **Fields with a default are always sent.** When the server sends a message to the browser, every field is in the JSON, even if it still has its default. So the browser never has to check for a missing field. (Technically, the schema marks these fields "required", which looks odd for a field with a default; this is the reason.)
+
+**A version check first.** When Ana's tab opens, it sends a `Hello` with its protocol version. The server answers `Hello`, or a `HelloError` with the versions it supports, so an old tab learns at once that the server has changed.
 
 Messages from the server to the browser are **server events**, and they come in two kinds. A **[durable event](glossary.md#durable-event)** (a saved user message, an assistant message, a run state change) is saved and has a `seq` number, one per event. A **[live event](glossary.md#live-event)** is a streaming piece of text; it has no `seq` and is not saved, because the full text is saved later in the durable message. One more event, the **[snapshot](glossary.md#snapshot)**, tells a tab that connects "where we are now". How events, `seq` and the snapshot are used is [26](26-transport.md); the full list of event names is in [ref-objects · Server protocol messages](ref-objects.md#server-protocol-messages).
 
@@ -73,9 +86,25 @@ Real code: class `Protocol` in [protocol.py](../../apps/server/src/simp_server/p
 
 ## Which object runs Ana's prompt?
 
-Her session's `Run`, and there is exactly one `Run` per session. Every route for a session asks `SessionManager.get(user, sid)` for it. The manager first checks that this user has this session (404 if not). The first time, it opens the sandbox, reads the saved log, builds a `Run` from it and calls `recover()`, which closes a run that a server crash left busy ([27](27-store-auth.md#recover)); after that it returns the same object from its `runs` dict. So two requests for one session always reach the same `Run`, and the `Run` lives on after the request that made it. It is not kept forever: the manager has a cap on open sessions, and when it is full it drops the least recently used idle `Run` (or answers 503 if none is idle).
+Her session's `Run`. There is exactly **one `Run` per session**, so two requests for the same session (a prompt, then an abort) always reach the same object.
 
-The `Run` builds its own `AgentSession`, and it plugs itself in three roles. It is the session's store ([17](17-session.md)): it has the `append` method, so each saved message goes into the server's log. Its `approve` method is the session's approval function ([10](10-hooks-approval.md)). Its `approve` is also where the state moves to `waiting_approval` while it waits for the answer. And it subscribes its `on_event` method to the session's events ([08](08-events-abort.md)). That is the whole link: the library does not know a server exists. The same three slots got a `JsonlStore`, a terminal `ask` and a `LinePrinter` in the CLI ([24](24-cli.md)). The other things the `Run` passes in come from later chapters: the money check before each model call ([28](28-limits.md)), the sandbox ([29](29-docker-sandbox.md)), and the `redact_secrets` and `plan_mode` plugins, always on, so API keys never reach the model and the web plan-mode switch always works.
+**Who finds it.** Every route for a session asks `SessionManager.get(user, sid)`:
+
+1. Check that this user owns this session (404 if not).
+2. If the `Run` is already open, return it.
+3. Otherwise open it: open the sandbox, read the saved log, build a `Run` from it, and call `recover()`, which tidies up a run that a server crash left busy ([27](27-store-auth.md#recover)). Keep it in the manager's `runs` dict.
+
+The `Run` lives on after the request that made it. But not forever: there is a cap on open sessions, and when it is full, the manager closes the idle `Run` that was used least recently (or answers 503 if none is idle).
+
+**How it plugs into the session.** The `Run` builds its own `AgentSession` and fills three slots, the same slots the CLI filled ([24](24-cli.md)):
+
+| Slot of `AgentSession` | CLI | Server `Run` |
+|---|---|---|
+| the store ([17](17-session.md)) | `JsonlStore` | `Run.append`: saves into the server's log |
+| the approval function ([10](10-hooks-approval.md)) | asks in the terminal | `Run.approve`: sets the state to `waiting_approval` and waits for the browser's answer |
+| the event listener ([08](08-events-abort.md)) | `LinePrinter` / `Chat` | `Run.on_event`: turns events into protocol events |
+
+That is the whole link: the library does not know a server exists. The `Run` also passes in things from later chapters: a money check before each model call ([28](28-limits.md)), the sandbox ([29](29-docker-sandbox.md)), and the `redact_secrets` and `plan_mode` plugins, always on ([22](22-profiles-plugins.md)).
 
 Real code: `Run.__init__` and `SessionManager.get` in [server.py](../../apps/server/src/simp_server/server.py).
 
@@ -83,7 +112,17 @@ Real code: `Run.__init__` and `SessionManager.get` in [server.py](../../apps/ser
 
 ## What states can a Run be in, and why keep them?
 
-A `Run` is always in one of five states, and only some moves between them are legal. The state answers "what is allowed now?": Ana can press abort twice, or answer an approval that is already gone, and the server must know.
+A `Run` is always in one of five states:
+
+| State | Meaning |
+|---|---|
+| `idle` | nothing is running; a prompt starts a run |
+| `running` | the agent is working |
+| `waiting_approval` | the agent waits for Ana to allow or deny a tool |
+| `aborting` | Ana pressed Stop; the run is ending |
+| `error` | the last run ended with an error; Ana can continue or send a new prompt |
+
+The state answers "what is allowed now?". Ana can press Stop twice, or answer an approval that is already gone, and the server must know what to do. So only some moves between states are legal.
 
 The legal moves live in one table, `TRANSITIONS`, next to the models:
 
@@ -102,7 +141,13 @@ stateDiagram-v2
     error --> idle
 ```
 
-Every change goes through one method, `set_state`. It first calls `check_transition`, which raises if the move is not in the table, then stores the new state, then saves a durable `RunState` event. So a wrong move, like `idle` straight to `waiting_approval`, fails at once on the server with a clear message, instead of showing a strange state in the UI that nobody can explain. And because every change is a saved event, a tab that comes back reads the current state from the log. Two places set `error` directly, without the table, on purpose: the safety net that closes a run whose background task failed, and [27 · recover](27-store-auth.md#recover), because after a server restart the saved state can still say `running` with no loop behind it.
+Every change goes through one method (`set_state`), which does three things:
+
+1. Check the move against the table, and raise if it is not there (`check_transition`). So a wrong move, like `idle` straight to `waiting_approval`, fails at once on the server with a clear message, not as a strange state in the UI.
+2. Store the new state.
+3. Save it as a durable `RunState` event. So a tab that comes back reads the current state from the log.
+
+Two places set `error` directly, without the table, on purpose: the safety net that closes a run whose background task failed, and [27 · recover](27-store-auth.md#recover), because after a server restart the saved state can still say `running` with no loop behind it.
 
 Real code: `TRANSITIONS`, `check_transition` in [protocol.py](../../apps/server/src/simp_server/protocol.py); `Run.set_state` in [server.py](../../apps/server/src/simp_server/server.py).
 
@@ -110,7 +155,19 @@ Real code: `TRANSITIONS`, `check_transition` in [protocol.py](../../apps/server/
 
 `Run.start()` puts the agent work in a background task and returns at once, so the POST answers `{"ok": true}` in a moment while the agent works on. This is the same idea as the REPL in [24 · How can I type while the agent works?](24-cli.md#how-can-i-type-while-the-agent-works): do not wait for the run, hand it to the [event loop](glossary.md#event-loop). Here it matters even more, because an HTTP request that stays open for two minutes is cut by proxies and browsers, and Ana would see nothing until the end.
 
-`start()` first sets the state to `running`, then makes the work: for a prompt, a call to `session.prompt(text)`; for `Compact` or `Continue`, the session's `compact` or `continue_`. It starts that work as a task and returns. The task runs `_turn`, which waits for the work to end; if the work raised an error, it saves it as an error notice. Then it picks the next state. After an abort it clears the steer and follow-up queues ([09](09-steering.md)), goes to `idle` and adds a "run aborted" notice. If the last assistant message ended with an error, it goes to `error`. Otherwise it goes to `idle`, and if a follow-up came in after the loop stopped, it starts the next run at once, inside the same money budget as this run ([28](28-limits.md)). Around all this, a `finally` is the last safety net: if `_turn` itself failed (a failed save, a cancel) and left the session busy, it writes `error` and a "run stopped unexpectedly" notice.
+What `start()` does:
+
+1. Set the state to `running`.
+2. Pick the work: for a prompt, `session.prompt(text)`; for `Compact` or `Continue`, the session's `compact` or `continue_`.
+3. Start that work as a background task (`_turn`) and return.
+
+When the work ends, `_turn` picks the next state:
+
+- **Ana pressed Stop:** clear the steer and follow-up queues ([09](09-steering.md)), go to `idle`, add a "run aborted" notice.
+- **The last answer was an error:** go to `error`.
+- **Otherwise:** go to `idle`. If a follow-up came in after the loop stopped, start the next run at once, inside the same money budget ([28](28-limits.md)).
+
+If the work raised an exception, it is saved as an error notice first. And a last safety net (a `finally`) catches the case where `_turn` itself fails (a failed save, a cancel) and leaves the session busy: it writes `error` and a "run stopped unexpectedly" notice.
 
 While the agent works, every session event reaches `Run.on_event`, which turns it into a protocol event: a live event for each piece of streaming text, a durable event for each saved message. Sending them to Ana's tab is [26](26-transport.md).
 
@@ -135,13 +192,34 @@ One saved message has a side job. When an assistant answer is saved and the sess
 
 Only the first one starts a run; the other is queued, because the `Run` checks its state before it starts anything. Without this, Ana could click "send" twice, both requests would call `session.prompt()`, and two agent loops would write into one message list.
 
-`Run.command()` handles every command. For a prompt, steer or follow-up it asks "am I busy?", where busy means the state is `running`, `waiting_approval` or `aborting`. If not busy, it calls `start()`. If busy, it does not start a second loop: a steer goes to the session's steer queue and anything else to the follow-up queue ([09](09-steering.md)), the same two queues the REPL used; if the queues are full, the answer is a 429 error. `Compact` and `Continue` are refused with a 409 error while busy, an `Abort` only acts on a busy run that is not already aborting, and an `Approve` gets a 409 if no approval with that call id is waiting. So one `Run` has at most one loop. How the queue works on the wire, and its limit, is [26 · The command queue](26-transport.md#the-command-queue).
+`Run.command()` handles every command. "Busy" means the state is `running`, `waiting_approval` or `aborting`:
+
+| Command | Not busy | Busy |
+|---|---|---|
+| `Prompt`, `FollowUp` | start a run | queue it as a follow-up ([09](09-steering.md)) |
+| `Steer` | start a run | queue it as a steer |
+| `Abort` | nothing | go to `aborting` and stop the session (once; a second Stop does nothing) |
+| `Compact`, `Continue` | start that work | refused: 409 |
+| `Approve` | refused: 409 if no approval with that call id is waiting | |
+| `SetPlanMode` | turn plan mode on or off, at any time | |
+
+The queues have a limit: when they are full, a new message gets a 429. So one `Run` has at most one loop. How the queue looks on the wire is [26 · The command queue](26-transport.md#the-command-queue).
 
 Real code: `Run.command` and `Run.busy` in [server.py](../../apps/server/src/simp_server/server.py).
 
 ## How does the server start?
 
-`simp-server run` starts the real server. `__main__.py` looks at the first word: `run` and the admin commands (`seed`, `passwd`, `users`, `revoke`, `rotate`, `backup`, `pause`, `resume`, from [27](27-store-auth.md) and [28](28-limits.md)) go to `server.py`, and `build-sandbox` builds the sandbox image ([29](29-docker-sandbox.md)). Anything else runs a fake server that plays a scripted run with no model, so the web client and its browser tests ([30](30-web-client.md), [31](31-system-tests-deploy.md)) run with no API key and no cost.
+One command, `simp-server`, does several jobs. The first word picks the job:
+
+| Command | What it does |
+|---|---|
+| `simp-server run` | start the real server |
+| `simp-server seed`, `passwd`, `users`, `revoke`, `rotate`, `backup` | manage users and data ([27](27-store-auth.md)) |
+| `simp-server pause`, `resume` | pause and resume all model calls ([28](28-limits.md)) |
+| `simp-server build-sandbox` | build the sandbox image ([29](29-docker-sandbox.md)) |
+| anything else, e.g. `simp-server fake` | a fake server that plays a scripted run with no model |
+
+The fake server lets the web client and its browser tests ([30](30-web-client.md), [31](31-system-tests-deploy.md)) run with no API key and no cost.
 
 Real code: function `main` in [apps/server/src/simp_server/\_\_main\_\_.py](../../apps/server/src/simp_server/__main__.py).
 

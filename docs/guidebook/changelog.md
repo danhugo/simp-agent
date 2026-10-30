@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-30
 
+- ch25 server run, section by section: "trust the JSON" now goes problem → one class per message → Ana's example → two rules as a list → version check; "Which object runs" has the lookup as 3 steps and the three session slots as a table next to the CLI; the five run states get a meaning table and `set_state` is 3 steps; `start`/`_turn` as steps and a list of end cases; `Run.command` as a busy / not-busy table; `simp-server` commands as a table. Checked against `server.py`, `protocol.py`, `__main__.py`.
 - ch24 CLI: approval in the REPL as 5 steps; Ctrl-C as a table (running / asking / idle × print mode / REPL); resume flags as example commands (`-r` is a start flag, not a REPL command). Checked against `repl.py` and `__init__.py`.
 - ch24 CLI "How can I type while the agent works?": concrete story (rename to fizz.py mid-run), why the input()+wait loop blocks, a timeline, and a table of what each kind of line does when idle or running. Checked against `repl.py` (`start`, `submit`, `command`) and `route`.
 - ch24 CLI: REPL components shown with a labelled example screen and one `render(80)` call before the class names. Checked against `apps/cli/src/simp_cli/components.py`.
