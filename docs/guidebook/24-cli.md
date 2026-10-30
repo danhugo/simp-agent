@@ -141,22 +141,37 @@ LOOP:
 
 While it waits for the agent, nothing reads the keyboard. Your `call it fizz.py` sits there until the agent has already written `fizzbuzz.py`.
 
-**The fix: start the run, do not wait for it.** When you send a prompt, the REPL starts the agent's run in the background and goes straight back to the input line:
+**The fix, in two changed lines.** Here is the simple loop next to a loop that works the same way as the real REPL:
+
+```text
+simple (stuck)                          REPL (works)
+LOOP:                                   LOOP:
+    line = input("> ")                      line = await read_line()   // parks only this loop
+    WAIT for session.prompt(line)           submit(line)               // never waits for the agent
+```
+
+The first change is `await read_line()` instead of `input()`. A plain `input()` stops the whole program until you press Enter. `await` stops only this loop: the [event loop](glossary.md#event-loop) parks it until a key comes, and in the meantime runs any other job that is ready, here the agent's run.
+
+The second change is `submit(line)` instead of waiting for the agent. `submit` looks at the line (with `route`, below) and acts at once. For a new prompt it calls `start`, which hands the agent's run to the event loop as a background task and returns:
 
 ```python
 def start(self, coro) -> None:
     self.task = asyncio.ensure_future(coro)   # start it, do not wait
 ```
 
-Real code: [repl.py](../../apps/cli/src/simp_cli/repl.py), method `Repl.start`.
+Real code: [repl.py](../../apps/cli/src/simp_cli/repl.py), methods `Repl.start` and `Repl.submit`. The real REPL has no `LOOP` line of its own: prompt_toolkit runs it (`app.run_async()`) and calls `submit(line)` once per Enter. It works exactly like the loop above.
 
-Python's [event loop](glossary.md#event-loop) then switches between two jobs: the agent (waiting for the model, running tools) and the input line (reading your keys). Most of the time the agent is only waiting for the model, so your keys are read at once:
+So there are two jobs on one event loop: the input loop and the agent's run. They never run at the same moment; they take turns, and a turn ends at every `await`. The agent awaits a lot (each piece of the model's answer, each tool), so your keys are handled almost at once. Our story, step by step:
 
 ```text
-you type:   write fizzbuzz.py ⏎ ........ call it fizz.py ⏎ ...............
-agent:      [model thinks .......] [model call 2: sees "call it fizz.py"] ...
-screen:     "queued (steer)" appears as soon as you press Enter
+0 s  you: Enter on "write fizzbuzz.py" → submit → route: idle → start(agent run)   input loop parks
+0 s  agent: sends the request, await model                                          → parks
+2 s  model text arrives → agent: "thinking…", await model                            → parks
+3 s  you: Enter on "call it fizz.py" → submit → route: running → session.steer(...)  agent still parked
+4 s  model text arrives → agent reads the steer before its next model call, writes fizz.py
 ```
+
+At 3 s, `route` sees a run is going, so your line becomes a steer for **that** run. A second run is never started while one is going.
 
 **What your line means.** When you press Enter, the REPL looks at the line and at whether the agent is running (`route`):
 
