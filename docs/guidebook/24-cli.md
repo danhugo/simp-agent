@@ -88,7 +88,14 @@ session.subscribe(LinePrinter(args.thinking))
 self.session.subscribe(self.on_event)   # on_event(e) ends with self.chat.on_event(e)
 ```
 
-In print mode the output often goes to a file or a pipe, where single tokens make a mess. So a `LinePrinter` keeps the text pieces in a buffer and prints each line as soon as it is complete. Thinking text is dim, but only when the output is a real terminal; in a pipe there are no **[ANSI codes](glossary.md#ansi-codes)**. Tool calls print as `> bash: ...`.
+In print mode the output often goes to a file or a pipe, where single tokens make a mess. So a `LinePrinter` keeps the text pieces in a buffer and prints each line as soon as it is complete. Thinking is printed in lighter grey text, so you can tell it apart from the answer. Grey text needs hidden control characters (**[ANSI codes](glossary.md#ansi-codes)**) that only a terminal understands. In a file or a pipe they would show up as junk like `\033[2m`, so the CLI adds them only when the output is a real terminal. Each tool call prints one line starting with `> `, and a failed tool adds a line starting with `!`:
+
+```text
+I will write the file.
+> write: fizzbuzz.py
+> bash: python fizzbuzz.py
+  ! python: command not found
+```
 
 In the REPL, events go to a `Chat`, which draws them as small **[components](glossary.md#component)**: `UserMsg`, `AssistantMsg`, `ToolCall` and `Notice`. A component is any object with `render(width) -> list[str]`; it draws into a string, not into the terminal, so a test can call `render(80)` and read the lines. Parts that still change (the answer being streamed, a tool waiting for its result) stay in a live area at the bottom. When a part is finished, it is written once into the normal terminal text above, so you can scroll back and copy it. That is also why the REPL is not full screen. The streamed answer shows as plain text and becomes Markdown only when done, because half-done Markdown jumps around.
 
