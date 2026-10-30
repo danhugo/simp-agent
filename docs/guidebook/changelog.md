@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-10-30
 
+- ch24 CLI "How can I type while the agent works?": concrete story (rename to fizz.py mid-run), why the input()+wait loop blocks, a timeline, and a table of what each kind of line does when idle or running. Checked against `repl.py` (`start`, `submit`, `command`) and `route`.
 - ch24 CLI: REPL components shown with a labelled example screen and one `render(80)` call before the class names. Checked against `apps/cli/src/simp_cli/components.py`.
 - ch24 CLI: print-mode output explained in plain words (grey thinking text, why ANSI codes only on a real terminal) with an example of tool-call lines.
 - ch24 CLI: a short code block for how each mode subscribes to the session events (`LinePrinter` in print mode, `Repl.on_event` → `Chat` in the REPL).

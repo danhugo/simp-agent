@@ -129,18 +129,45 @@ Real code: `LinePrinter` in [\_\_init\_\_.py](../../apps/cli/src/simp_cli/__init
 
 ## How can I type while the agent works?
 
-In the REPL you can always type, because the agent runs as a background task on the same event loop as the input line. A first idea would be a loop of `input()` and `asyncio.run(session.prompt(line))`, but then the program waits inside `asyncio.run` and never reads the keyboard until the run ends. So `start` does not wait; it only hands the run to the [event loop](glossary.md#event-loop) and returns:
+**What you want.** You type `write fizzbuzz.py`, and the agent starts. Halfway, you decide the file should be called `fizz.py`. You want to type that **now**, not after the agent is done.
+
+**Why the simple version cannot.** The simplest REPL is a loop:
+
+```text
+LOOP:
+    line = input("> ")               // wait for you to type
+    WAIT for session.prompt(line)    // wait for the agent to finish
+```
+
+While it waits for the agent, nothing reads the keyboard. Your `call it fizz.py` sits there until the agent has already written `fizzbuzz.py`.
+
+**The fix: start the run, do not wait for it.** When you send a prompt, the REPL starts the agent's run in the background and goes straight back to the input line:
 
 ```python
 def start(self, coro) -> None:
-    self.task = asyncio.ensure_future(coro)
+    self.task = asyncio.ensure_future(coro)   # start it, do not wait
 ```
 
 Real code: [repl.py](../../apps/cli/src/simp_cli/repl.py), method `Repl.start`.
 
-There is one event loop for the whole REPL, and it shares its time between the agent task and the screen. So while the agent works, the input line still reads your keys.
+Python's [event loop](glossary.md#event-loop) then switches between two jobs: the agent (waiting for the model, running tools) and the input line (reading your keys). Most of the time the agent is only waiting for the model, so your keys are read at once:
 
-When you press Enter, `route(line, running)` decides what the line means. A line that starts with `/` is a command (`/help`, `/history`, `/new`, `/sessions`, `/compact`, `/exit`). When the agent is idle, any other line is a new prompt. When it is running, a plain line is a **[steer](glossary.md#steer)** and a line that starts with `>>` is a follow-up; these go to the two queues of [09](09-steering.md#the-agent-side-two-lists-and-a-mode). So in our story you type `call it fizz.py` while the agent works, and the agent sees it at its next turn. Commands that change the session (`/new`, `/sessions`, `/compact`) answer `busy: Ctrl-C to abort first` while running.
+```text
+you type:   write fizzbuzz.py ⏎ ........ call it fizz.py ⏎ ...............
+agent:      [model thinks .......] [model call 2: sees "call it fizz.py"] ...
+screen:     "queued (steer)" appears as soon as you press Enter
+```
+
+**What your line means.** When you press Enter, the REPL looks at the line and at whether the agent is running (`route`):
+
+| You type | Agent idle | Agent running |
+|---|---|---|
+| `call it fizz.py` | a new prompt: starts a run | a **steer**: the agent reads it before its next model call |
+| `>> then add tests` | a new prompt | a **follow-up**: starts after the agent would stop |
+| `/help`, `/history`, `/exit` | runs the command | runs the command |
+| `/new`, `/sessions`, `/compact` | runs the command | refused: `busy: Ctrl-C to abort first` |
+
+Steers and follow-ups go to the two queues of [09](09-steering.md#the-agent-side-two-lists-and-a-mode). Commands that change the session are refused during a run, so the session is not replaced or compacted while the agent is using it.
 
 Real code: `route` in [\_\_init\_\_.py](../../apps/cli/src/simp_cli/__init__.py); `Repl.submit` and `Repl.command` in [repl.py](../../apps/cli/src/simp_cli/repl.py).
 
