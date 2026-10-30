@@ -141,37 +141,38 @@ LOOP:
 
 While it waits for the agent, nothing reads the keyboard. Your `call it fizz.py` sits there until the agent has already written `fizzbuzz.py`.
 
-**The fix, in two changed lines.** Here is the simple loop next to a loop that works the same way as the real REPL:
+**The fix: two changes.** Here is the simple loop next to one that works:
 
 ```text
 simple (stuck)                          REPL (works)
 LOOP:                                   LOOP:
-    line = input("> ")                      line = await read_line()   // only the input loop waits
-    WAIT for session.prompt(line)           submit(line)               // never waits for the agent
+    line = wait for a line                  line = wait for a line, WITHOUT stopping the agent
+    WAIT for the agent to finish            IF new prompt: START the agent in the background, do not wait
+                                            ELSE: give the line to the running agent (steer / follow-up)
 ```
 
-The first change is `await read_line()` instead of `input()`. `input()` stops the whole program until you press Enter. `await` stops only the input loop; while it waits for your key, the [event loop](glossary.md#event-loop) runs the agent.
+First, waiting for your key must not stop the agent. Second, a new prompt starts the agent in the background and the loop goes straight back to the keyboard. While an agent is running, a new line does not start a second one; it is handed to the running agent. Every language can do this: with a second thread, a goroutine in Go, or `async`/`await` with an event loop as in Python and JavaScript.
 
-The second change is `submit(line)` instead of waiting for the agent. `submit` looks at the line (with `route`, below) and acts at once. For a new prompt it calls `start`, which hands the agent's run to the event loop as a background task and returns:
+**In Python.** The CLI uses `asyncio`. "Wait without stopping the agent" is `await`: it stops only the input loop, and while it waits for your key the [event loop](glossary.md#event-loop) runs the agent. "Start in the background" is `ensure_future`, which hands the agent's run to the event loop and returns at once:
 
 ```python
 def start(self, coro) -> None:
     self.task = asyncio.ensure_future(coro)   # start it, do not wait
 ```
 
-Real code: [repl.py](../../apps/cli/src/simp_cli/repl.py), methods `Repl.start` and `Repl.submit`. The real REPL has no `LOOP` line of its own: prompt_toolkit runs it (`app.run_async()`) and calls `submit(line)` once per Enter. It works exactly like the loop above.
+The two jobs, input loop and agent, take turns on one event loop; a turn ends at every `await`. The agent awaits a lot (each piece of the model's answer, each tool), so your keys are handled almost at once. The real REPL has no `LOOP` line of its own: prompt_toolkit runs it and calls `submit(line)` once per Enter.
 
-So there are two jobs on one event loop: the input loop and the agent's run. They never run at the same moment; they take turns, and a turn ends at every `await`. The agent awaits a lot (each piece of the model's answer, each tool), so your keys are handled almost at once. Our story, step by step:
+Real code: [repl.py](../../apps/cli/src/simp_cli/repl.py), methods `Repl.start` and `Repl.submit`.
+
+Our story, step by step:
 
 ```text
-0 s  you: Enter on "write fizzbuzz.py" → submit → route: idle → start(agent run)   input loop parks
-0 s  agent: sends the request, await model                                          → parks
-2 s  model text arrives → agent: "thinking…", await model                            → parks
-3 s  you: Enter on "call it fizz.py" → submit → route: running → session.steer(...)  agent still parked
+0 s  you: Enter on "write fizzbuzz.py" → idle → start the agent in the background
+0 s  agent: sends the request, waits for the model
+2 s  model text arrives → agent: "thinking…", waits again
+3 s  you: Enter on "call it fizz.py" → agent is running → steer for this run
 4 s  model text arrives → agent reads the steer before its next model call, writes fizz.py
 ```
-
-At 3 s, `route` sees a run is going, so your line becomes a steer for **that** run. A second run is never started while one is going.
 
 **What your line means.** When you press Enter, the REPL looks at the line and at whether the agent is running (`route`):
 
