@@ -80,6 +80,14 @@ The rest of the chapter takes your five wishes one at a time, and for each one s
 
 The CLI subscribes to the session's events ([08](08-events-abort.md)) and draws each one as it comes; the two modes only draw differently.
 
+```python
+# print mode (run): one listener that prints whole lines
+session.subscribe(LinePrinter(args.thinking))
+
+# REPL (Repl.new_session): one listener that updates the status bar, then draws in the chat
+self.session.subscribe(self.on_event)   # on_event(e) ends with self.chat.on_event(e)
+```
+
 In print mode the output often goes to a file or a pipe, where single tokens make a mess. So a `LinePrinter` keeps the text pieces in a buffer and prints each line as soon as it is complete. Thinking text is dim, but only when the output is a real terminal; in a pipe there are no **[ANSI codes](glossary.md#ansi-codes)**. Tool calls print as `> bash: ...`.
 
 In the REPL, events go to a `Chat`, which draws them as small **[components](glossary.md#component)**: `UserMsg`, `AssistantMsg`, `ToolCall` and `Notice`. A component is any object with `render(width) -> list[str]`; it draws into a string, not into the terminal, so a test can call `render(80)` and read the lines. Parts that still change (the answer being streamed, a tool waiting for its result) stay in a live area at the bottom. When a part is finished, it is written once into the normal terminal text above, so you can scroll back and copy it. That is also why the REPL is not full screen. The streamed answer shows as plain text and becomes Markdown only when done, because half-done Markdown jumps around.
