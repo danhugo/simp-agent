@@ -150,7 +150,7 @@ LOOP:                                   LOOP:
     WAIT for session.prompt(line)           submit(line)               // never waits for the agent
 ```
 
-The first change is `await read_line()` instead of `input()`. A plain `input()` stops the whole program until you press Enter. `await` stops only the **input loop** (the `LOOP` above). The [event loop](glossary.md#event-loop), Python's scheduler that runs all jobs in turn, sets the input loop aside: it does not run and uses no time until you press a key; then the event loop lets it go on from that line. In the meantime the event loop runs any other job that is ready, here the agent's run.
+The first change is `await read_line()` instead of `input()`. `input()` stops the whole program until you press Enter. `await` stops only the input loop; while it waits for your key, the [event loop](glossary.md#event-loop) runs the agent.
 
 The second change is `submit(line)` instead of waiting for the agent. `submit` looks at the line (with `route`, below) and acts at once. For a new prompt it calls `start`, which hands the agent's run to the event loop as a background task and returns:
 
