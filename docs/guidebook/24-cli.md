@@ -190,19 +190,39 @@ async def approve(self, call) -> str:
 
 Real code: [repl.py](../../apps/cli/src/simp_cli/repl.py), method `Repl.approve`.
 
-While the agent task waits, the loop keeps drawing and reading keys. Your next Enter goes to `submit`, which sees the waiting box and fills it with the answer (`self.pending.set_result(...)`). Then the agent task goes on.
+Step by step, when the agent wants to write `fizzbuzz.py`:
+
+1. The session calls `approve(call)` and waits for the answer.
+2. `approve` makes the empty box and waits on it. The input line changes from `> ` to `Allow? [y/N/a] `.
+3. The agent task is paused at that wait, but the event loop is not: the screen still draws and the input line still reads keys.
+4. You type `y` and press Enter. `submit` sees the waiting box and puts `"allow"` in it (`self.pending.set_result(...)`).
+5. `approve` wakes up with `"allow"`, and the agent writes the file.
 
 ## What does Ctrl-C do?
 
-Ctrl-C stops the run, not the program: it calls `session.abort()` ([08](08-events-abort.md#abort-one-asyncioevent)), and the agent stops cleanly. In print mode the program then exits with code 1. If Ctrl-C comes while print mode is asking for approval, the answer is deny and the run is aborted.
+Ctrl-C stops the run, not the program: it calls `session.abort()` ([08](08-events-abort.md#abort-one-asyncioevent)), and the agent stops cleanly. What happens next depends on when you press it:
 
-In the REPL, Ctrl-C while running aborts the run, and while asking it also denies the tool. When idle, the first Ctrl-C only warns; a second one within 2 seconds exits. Ctrl-D on an empty line also exits.
+| When you press Ctrl-C | Print mode | REPL |
+|---|---|---|
+| the agent is running | stop the run, exit with code 1 | stop the run, back to the input line |
+| it is asking `Allow?` | answer "deny", stop the run | answer "deny", stop the run |
+| the agent is idle | (print mode is never idle) | first time: warns `Ctrl-C again to exit`; again within 2 seconds: exit |
+
+In the REPL, Ctrl-D on an empty line also exits.
 
 Real code: `run` and `interrupt_action` in [\_\_init\_\_.py](../../apps/cli/src/simp_cli/__init__.py); `Repl.ctrl_c` in [repl.py](../../apps/cli/src/simp_cli/repl.py).
 
 ## How do I continue tomorrow?
 
-Every session is saved as a JSONL file ([17](17-session.md#where-do-we-save)), and each working folder has its own sessions: for `/Users/a/proj` they live in `~/.simp-agent/sessions/Users-a-proj/`, one `<id>.jsonl` per session (function `session_dir`). `-c` opens the newest session of this folder, `--resume ID` opens one by id, and `-r` in the REPL lists them to pick. Opening means `messages=store.load()`: the session starts with yesterday's messages, and the next prompt goes on from there.
+Every session is saved as a JSONL file ([17](17-session.md#where-do-we-save)), and each working folder has its own sessions: for `/Users/a/proj` they live in `~/.simp-agent/sessions/Users-a-proj/`, one `<id>.jsonl` per session (function `session_dir`). You choose which one to open when you start the CLI:
+
+```sh
+simp-agent -c                  # the newest session of this folder
+simp-agent --resume 3f9a1c2e   # one session, by id
+simp-agent -r                  # list the sessions of this folder and pick one
+```
+
+Opening means `messages=store.load()`: the session starts with yesterday's messages, and the next prompt goes on from there.
 
 The REPL must also show yesterday's chat again. It does that by sending each saved message through the same `Chat.on_message` that live events use at each `message_end`. To keep the screen short it replays only the last 20 messages and says how to see the rest (`/history`):
 
