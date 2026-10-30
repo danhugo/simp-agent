@@ -97,7 +97,33 @@ I will write the file.
   ! python: command not found
 ```
 
-In the REPL, events go to a `Chat`, which draws them as small **[components](glossary.md#component)**: `UserMsg`, `AssistantMsg`, `ToolCall` and `Notice`. A component is any object with `render(width) -> list[str]`; it draws into a string, not into the terminal, so a test can call `render(80)` and read the lines. Parts that still change (the answer being streamed, a tool waiting for its result) stay in a live area at the bottom. When a part is finished, it is written once into the normal terminal text above, so you can scroll back and copy it. That is also why the REPL is not full screen. The streamed answer shows as plain text and becomes Markdown only when done, because half-done Markdown jumps around.
+In the REPL, the screen is built from small pieces, one for each part of the chat. Each piece is a **[component](glossary.md#component)**:
+
+```text
+> write fizzbuzz.py                  ← UserMsg: what you typed
+I will write the file and run it.    ← AssistantMsg: the answer (thinking in grey above it)
+> write: fizzbuzz.py                 ← ToolCall: one tool call and its output
+> bash: python fizzbuzz.py           ← ToolCall
+  1
+  2
+  Fizz
+— earlier history compacted —        ← Notice: a short status line
+```
+
+A `Chat` takes the session's events and keeps one component for each part.
+
+Each component knows how to draw itself, but it does not print. You give it the screen width, and it gives back the lines to show (`render(width)`). The REPL then prints those lines. For example, the second tool call above:
+
+```python
+c = ToolCall(call)              # the bash call: python fizzbuzz.py
+c.output = "1\n2\nFizz\n"       # output so far
+c.render(80)
+# ['> bash: python fizzbuzz.py', '  1', '  2', '  Fizz']   (each line also has its colour codes)
+```
+
+Because `render` only returns text, a test can call `render(80)` and check the lines without a real terminal.
+
+Parts that still change (the answer being streamed, a tool waiting for its result) stay in a live area at the bottom. When a part is finished, it is written once into the normal terminal text above, so you can scroll back and copy it. That is also why the REPL is not full screen. The streamed answer shows as plain text and becomes Markdown only when done, because half-done Markdown jumps around.
 
 Real code: `LinePrinter` in [\_\_init\_\_.py](../../apps/cli/src/simp_cli/__init__.py); `Chat` and the components in [components.py](../../apps/cli/src/simp_cli/components.py).
 
