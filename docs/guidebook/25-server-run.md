@@ -44,6 +44,26 @@ The server gives all three from one object, the **`Run`**. A `Run` is one server
 | the approval function ([10](10-hooks-approval.md)) | asks in the terminal | `Run.approve`: sets the state to `waiting_approval` and waits for the browser's answer |
 | the event listener ([08](08-events-abort.md)) | `LinePrinter` / `Chat` | `Run.on_event`: turns events into protocol events |
 
+In pseudo-code, here is where the `Run` sits, from the server down to the session:
+
+```text
+server (one process)
+    manager = SessionManager()                 // keeps every open Run: runs[session id] -> Run
+
+    ON POST /api/sessions/{sid}/commands:
+        run = manager.get(user, sid)            // Ana's Run: the open one, or a new one from her saved log
+        WAIT for run.command(the checked command)
+        ANSWER {"ok": true}
+
+CLASS Run:                                      // one per conversation
+    CREATE:
+        session = AgentSession(model,
+                      store   = this Run,       // slot 1: each message is saved by Run.append
+                      approve = Run.approve)    // slot 2: ask the browser, not the terminal
+        session.subscribe(Run.on_event)         // slot 3: events become messages for the browser
+        state = idle
+```
+
 That is the whole link: the library does not know a server exists.
 
 **Who finds the Run.** Every route for a session asks `SessionManager.get(user, sid)`. It checks that Ana owns the session, and returns her open `Run`, or opens it from the saved log. The `Run` lives on after the request that made it.
