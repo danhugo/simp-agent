@@ -2,6 +2,10 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-11-02
+
+- ch27 store and auth rewritten like ch24/25: Ana/Bob story, one-sentence summary, block map fixed to 23 (blocks 3 and 4), new picture img/27-store-auth, four reader problems as question sections, low-level details (scrypt cost, compare_digest, to_thread, WAL, ALTER TABLE, set_state bypass) moved to Implementation notes. Checked against `store.py`, `server.py`.
+
 ## 2026-10-30
 
 - ch25 server run, section by section: "trust the JSON" now goes problem → one class per message → Ana's example → two rules as a list → version check; "Which object runs" has the lookup as 3 steps and the three session slots as a table next to the CLI; the five run states get a meaning table and `set_state` is 3 steps; `start`/`_turn` as steps and a list of end cases; `Run.command` as a busy / not-busy table; `simp-server` commands as a table. Checked against `server.py`, `protocol.py`, `__main__.py`.
