@@ -48,7 +48,7 @@ That is the whole link: the library does not know a server exists.
 
 **Who finds the Run.** Every route for a session asks `SessionManager.get(user, sid)`. It checks that Ana owns the session, and returns her open `Run`, or opens it from the saved log. The `Run` lives on after the request that made it.
 
-Real code: `Run.__init__` and `SessionManager.get` in [server.py](../../apps/server/src/simp_server/server.py).
+Real code: [server.py](../../apps/server/src/simp_server/server.py).
 
 <a id="protocol-models"></a>
 
@@ -70,7 +70,7 @@ If something is wrong, for example `"txt"` instead of `"text"`, the server answe
 
 In Python, each form is a Pydantic class in `protocol.py`, and the `type` field picks the class (Pydantic calls it a **[discriminator](glossary.md#discriminator)**).
 
-Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_server/protocol.py), class `_M`, `Command`; `post_command` in [server.py](../../apps/server/src/simp_server/server.py).
+Real code: [protocol.py](../../apps/server/src/simp_server/protocol.py) (the command forms) and [server.py](../../apps/server/src/simp_server/server.py).
 
 ## Start the agent, reply "got it" right away
 
@@ -86,10 +86,10 @@ SessionManager.get            -> Ana's Run, state idle
 Run.start                     -> idle -> running (saved), task started
 POST answers {"ok": true}       (the agent still works)
 ... session events -> Run.on_event -> live text, saved messages ...
-_turn ends, last stop_reason "stop" -> running -> idle (saved)
+the agent's run ends well  -> running -> idle (saved)
 ```
 
-Real code: `Run.start`, `Run._run`, `Run._turn`, `Run.on_event` in [server.py](../../apps/server/src/simp_server/server.py).
+Real code: `Run.start` and `Run.on_event` in [server.py](../../apps/server/src/simp_server/server.py).
 
 <a id="the-title-call"></a>
 
@@ -107,7 +107,7 @@ The agent now works in the background, and the input in Ana's tab stays open. So
 
 So while the agent works, a new line is queued, never a second loop. How the queue looks on the wire is [26 · The command queue](26-transport.md#the-command-queue).
 
-Real code: `Run.command` and `Run.busy` in [server.py](../../apps/server/src/simp_server/server.py).
+Real code: `Run.command` in [server.py](../../apps/server/src/simp_server/server.py).
 
 <a id="run-state-machine"></a>
 
@@ -158,7 +158,7 @@ So far everything happened on the server. The last problem from the list is on t
 
 A script, `gen_protocol.py`, generates the TypeScript types (`protocol.gen.ts`) from the same Python classes. The web client ([30](30-web-client.md)) imports them, so a renamed Python field breaks the browser build at once, not Ana's screen later. With `--check`, the script only fails if the file is out of date, so the tests catch a forgotten update.
 
-Real code: class `Protocol` in [protocol.py](../../apps/server/src/simp_server/protocol.py); function `generate` in [gen_protocol.py](../../apps/server/src/simp_server/gen_protocol.py).
+Real code: [gen_protocol.py](../../apps/server/src/simp_server/gen_protocol.py).
 
 ## How does the server start?
 
