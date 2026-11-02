@@ -125,22 +125,23 @@ The table above asked one question: is the `Run` busy? The answer is its state. 
 
 Only some moves between states are legal, so a wrong one is caught at once.
 
-The legal moves live in one table, `TRANSITIONS`, next to the models:
+Start at `idle` and follow Ana's prompt. Each arrow says what moves the `Run`:
 
 ```mermaid
 stateDiagram-v2
-    idle --> running
-    running --> waiting_approval
-    running --> aborting
-    running --> idle
-    running --> error
-    waiting_approval --> running
-    waiting_approval --> aborting
-    aborting --> idle
-    aborting --> error
-    error --> running
-    error --> idle
+    [*] --> idle
+    idle --> running : Ana sends a prompt
+    running --> waiting_approval : agent wants a risky tool
+    waiting_approval --> running : Ana answers
+    running --> idle : run ends well
+    running --> error : last answer is an error
+    error --> running : new prompt or Continue
+    running --> aborting : Ana presses Stop
+    waiting_approval --> aborting : Ana presses Stop
+    aborting --> idle : the run has stopped
 ```
+
+Ana's normal path is the first line: `idle → running → idle`, with a short trip to `waiting_approval` when she approves `bash`. Stop and errors are the side paths. These legal moves are written in one table, `TRANSITIONS`, next to the protocol (it also allows two rare moves for failures, not drawn here).
 
 Every change goes through one method (`set_state`), which does three things:
 
