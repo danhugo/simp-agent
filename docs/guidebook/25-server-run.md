@@ -70,17 +70,9 @@ Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_
 
 The command reaches `Run.command()`, and for a prompt the `Run` calls `start()`. `Run.start()` puts the agent work in a background task and returns at once, so the POST answers `{"ok": true}` in a moment while the agent works on. This is the same idea as the REPL in [24 · How can I type while the agent works?](24-cli.md#how-can-i-type-while-the-agent-works): do not wait for the run, hand it to the [event loop](glossary.md#event-loop). Here it matters even more, because an HTTP request that stays open for two minutes is cut by proxies and browsers, and Ana would see nothing until the end.
 
-What `start()` does:
-
-1. Set the state to `running`.
-2. Pick the work: for a prompt, `session.prompt(text)`; for `Compact` or `Continue`, the session's `compact` or `continue_`.
-3. Start that work as a background task (`_turn`) and return.
-
-When the work ends, `_turn` picks the next state: `idle` (or straight into the next run, if a follow-up is waiting), `error` if the last answer was an error, and `idle` with a "run aborted" notice after Stop. If anything fails on the way, a safety net still writes `error`, so a session is never left busy.
-
 While the agent works, every session event reaches `Run.on_event`, which turns it into a protocol event: a live event for each piece of streaming text, a durable event for each saved message. Sending them to Ana's tab is [26](26-transport.md).
 
-Here is Ana's prompt from start to end:
+Here is Ana's prompt from start to end. When the work ends, the `Run` goes back to `idle`, or to `error` if the last answer was an error:
 
 ```text
 POST {"type":"prompt", ...}   -> Prompt(text="write fizzbuzz.py")
@@ -94,7 +86,6 @@ _turn ends, last stop_reason "stop" -> running -> idle (saved)
 Real code: `Run.start`, `Run._run`, `Run._turn`, `Run.on_event` in [server.py](../../apps/server/src/simp_server/server.py).
 
 <a id="the-title-call"></a>
-One small side job: after the first answer is saved, a background **[title call](glossary.md#title-call)** asks the model for a short name for the session.
 
 ## A second prompt while the first one runs
 
@@ -106,12 +97,9 @@ Ana may send another line, or click Send twice, while the agent still works. Onl
 |---|---|---|
 | `Prompt`, `FollowUp` | start a run | queue it as a follow-up ([09](09-steering.md)) |
 | `Steer` | start a run | queue it as a steer |
-| `Abort` | nothing | go to `aborting` and stop the session (once; a second Stop does nothing) |
-| `Compact`, `Continue` | start that work | refused: 409 |
-| `Approve` | refused: 409 if no approval with that call id is waiting | |
-| `SetPlanMode` | turn plan mode on or off, at any time | |
+| `Abort` | nothing | go to `aborting` and stop the session |
 
-The queues have a limit: when they are full, a new message gets a 429. So one `Run` has at most one loop. How the queue looks on the wire is [26 · The command queue](26-transport.md#the-command-queue).
+So while the agent works, a new line is queued, never a second loop. How the queue looks on the wire is [26 · The command queue](26-transport.md#the-command-queue).
 
 Real code: `Run.command` and `Run.busy` in [server.py](../../apps/server/src/simp_server/server.py).
 
@@ -129,7 +117,7 @@ The table above asked one question: is the `Run` busy? The answer is its state. 
 | `aborting` | Ana pressed Stop; the run is ending |
 | `error` | the last run ended with an error; Ana can continue or send a new prompt |
 
-The state answers "what is allowed now?". Ana can press Stop twice, or answer an approval that is already gone, and the server must know what to do. So only some moves between states are legal.
+Only some moves between states are legal, so a wrong one is caught at once.
 
 The legal moves live in one table, `TRANSITIONS`, next to the models:
 
@@ -160,15 +148,15 @@ Real code: `TRANSITIONS`, `check_transition` in [protocol.py](../../apps/server/
 
 ## The browser side: how does it use the same commands?
 
-Ana's tab must send exactly the commands the server reads, and read exactly the events it sends. The TypeScript types are generated from the same Python models, so there is only one place to change. Without this, someone renames a Python field, the browser still sends the old name, and the server rejects it, or worse, the browser reads a field that is no longer there and shows nothing.
+Ana's tab must send exactly the commands the server reads, and read exactly the events it sends. Without a shared definition, someone renames a Python field, the browser still sends the old name, and the server rejects it, or worse, the browser reads a field that is no longer there and shows nothing.
 
-`protocol.py` has one extra model, `Protocol`, that is used only for this: it holds one of each wire type (hello, command, event, session info), so Pydantic can turn all of them into one **[JSON Schema](glossary.md#json-schema)** document. `gen_protocol.py` gives that schema to a ready tool, `json-schema-to-typescript`, and writes the result to `apps/web/src/protocol.gen.ts`. With `--check` it only compares and fails if the file is out of date, so a test run catches a forgotten update. The web client ([30](30-web-client.md)) imports these types, so a renamed Python field breaks the TypeScript build at once, not the user's screen later.
+A script, `gen_protocol.py`, generates the TypeScript types (`protocol.gen.ts`) from the same Python classes. The web client ([30](30-web-client.md)) imports them, so a renamed Python field breaks the browser build at once, not Ana's screen later. With `--check`, the script only fails if the file is out of date, so the tests catch a forgotten update.
 
 Real code: class `Protocol` in [protocol.py](../../apps/server/src/simp_server/protocol.py); function `generate` in [gen_protocol.py](../../apps/server/src/simp_server/gen_protocol.py).
 
 ## How does the server start?
 
-`simp-server run` starts the real server. `simp-server fake` starts a fake server that plays a scripted run with no model, so the web client and its browser tests ([30](30-web-client.md), [31](31-system-tests-deploy.md)) run with no API key and no cost. The other subcommands manage users, data and the sandbox, and belong to [27](27-store-auth.md)–[29](29-docker-sandbox.md).
+`simp-server run` starts the real server; `simp-server fake` starts a fake one with a scripted run and no model, for tests ([31](31-system-tests-deploy.md)).
 
 Real code: function `main` in [apps/server/src/simp_server/\_\_main\_\_.py](../../apps/server/src/simp_server/__main__.py).
 
