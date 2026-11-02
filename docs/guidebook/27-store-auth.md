@@ -8,11 +8,15 @@
 
 ## Ana, Bob and a restart
 
-Go back to Ana from [26](26-transport.md). Her tab gets every event live, and it catches up after a Wi-Fi drop. But all of it lives only in the memory of one Python process.
+Go back to Ana from [26](26-transport.md). Her tab gets every event live. It catches up after a Wi-Fi drop. But all of it lives only in the memory of one Python process.
 
-Now the admin restarts the server to install an update. The next morning Ana's fizzbuzz chat is gone: every user, session and event was in that process. Worse, the restart came while the agent was running `bash`. The last state said "running", but no loop runs any more, so her tab waits forever. And Bob, Ana's colleague, uses the same server. Nothing says who sends a request, so Bob (or anyone who can reach the port) can open Ana's session and read it.
+Now the admin restarts the server to install an update. The next morning Ana's fizzbuzz chat is gone. Every user, session and event was in that process.
 
-In one sentence: **the server now remembers who you are and everything that happened, in one file on disk, so a restart loses nothing and Bob never sees Ana's work.** Two parts do this. The **[store](glossary.md#store)** is the one place on disk for users, sessions, events and cost; its job is to keep them safe across restarts. **[Auth](glossary.md#auth)** is the check at the door; its job is to turn each request into a user, or refuse it.
+Worse, the restart came while the agent was running `bash`. The last [run state](glossary.md#run-state) (the session's label, like `idle` or `running`) said "running". But no loop runs any more, so her tab waits forever.
+
+And Bob, Ana's colleague, uses the same server. Nothing says who sends a request. Bob can open Ana's session and read it. So can anyone who can reach the port.
+
+In one sentence: **the server now remembers who you are and everything that happened, in one file on disk, so a restart loses nothing and Bob never sees Ana's work.** Two parts do this. The **[store](glossary.md#store)** is the one place on disk for users, sessions, events and cost. It keeps them safe across restarts. **[Auth](glossary.md#auth)** is the check at the door. It turns each request into a user, or refuses it.
 
 In the map of [23](23-part-5-system.md), this chapter is block 3 (Auth) and the saving and loading part of block 4 (Load run).
 
@@ -46,15 +50,15 @@ The chapter follows this picture and solves four problems, in this order:
 
 The first problem from the list: Ana opens the web client ([30](30-web-client.md)) and types her name and password. The server must check them, so it needs a row for Ana in a `users` table. The row is written when she signs up, or when the admin runs `simp-server seed`.
 
-Her password is not kept as text, because anyone who copies the database file could read it. We keep a **hash** of it: a scrambled form that lets us check a password but not get it back. For passwords we use **[scrypt](glossary.md#scrypt)**, a hash that is slow on purpose, so an attacker who copies the file can try only a few guesses per second. Each password is mixed with a **[salt](glossary.md#salt)** (random bytes), so two users with the same password get different hashes.
+Her password is not kept as text, because anyone who copies the database file could read it. We keep a **hash** of it: a scrambled form that lets us check a password but not get it back. For passwords we use **[scrypt](glossary.md#scrypt)**, a hash that is slow on purpose. So an attacker who copies the file can try only a few guesses per second. Each password is mixed with a **[salt](glossary.md#salt)** (random bytes), so two users with the same password get different hashes.
 
-When the password matches, `login` gives Ana a **[token](glossary.md#token-auth)**: a long random string. Her browser sends it on every later request, in the header `Authorization: Bearer <token>`. So she types the password once, and the token proves who she is after that.
+When the password matches, `login` gives Ana a **[token](glossary.md#token-auth)**: a long random string. Her browser sends it on every later request, in the header `Authorization: Bearer <token>`. She types the password once, and the token proves who she is after that.
 
 <a id="token-hashes"></a>
 
-The server does not keep the token either, only its SHA-256 hash, so a copied database gives nothing that works as a token. Why is a fast hash enough here, when passwords need the slow one? A token is 32 random bytes, so nobody can guess it; a password can be guessed.
+The server does not keep the token either. It keeps only its SHA-256 hash. So a copied database gives nothing that works as a token. Why is a fast hash enough here, when passwords need the slow one? A token is 32 random bytes, so nobody can guess it. A password can be guessed.
 
-There are two kinds of token, and one query checks both. A **[per-device token](glossary.md#per-device-token)** comes from each login and has its own row, so `logout` ends just that one device. A **[static token](glossary.md#static-token)** is one long-lived token per user, made by the admin with `simp-server seed` and replaced with `simp-server rotate`. When the admin runs `revoke`, the user is marked disabled and all tokens die at once.
+There are two kinds of token, and one query checks both. A **[per-device token](glossary.md#per-device-token)** comes from each login. It has its own row, so `logout` ends just that one device. A **[static token](glossary.md#static-token)** is one long-lived token per user. The admin makes it with `simp-server seed` and replaces it with `simp-server rotate`. When the admin runs `revoke`, the user is marked disabled and all tokens die at once.
 
 On each request, the class in the server's `auth` slot reads the header and asks the store "whose token is this?":
 
@@ -68,7 +72,7 @@ user_by_token(token):
                                        OR who has a device token with hash = sha(token)
 ```
 
-`auth` and `store` are two of the three **[server slots](glossary.md#server-slot)**: named places where the server takes one class, picked by name from `DEFAULT_PLUGINS`. The defaults are `StaticTokenAuth` and `SqliteStore`; a team with its own login system would put another class in the `auth` slot. ([29](29-docker-sandbox.md) fills the third slot, `sandbox`.)
+`auth` and `store` are two of the three **[server slots](glossary.md#server-slot)**. A slot is a named place where the server takes one class, picked by name from `DEFAULT_PLUGINS`. The defaults are `StaticTokenAuth` and `SqliteStore`. A team with its own login system would put another class in the `auth` slot. [29](29-docker-sandbox.md) fills the third slot, `sandbox`.
 
 Real code: [store.py](../../apps/server/src/simp_server/store.py) — `hash_password`, `check_password`, `SqliteStore.login`, `sha`, `SqliteStore.user_by_token`; [server.py](../../apps/server/src/simp_server/server.py) — `StaticTokenAuth.authenticate`, `DEFAULT_PLUGINS`
 
@@ -81,34 +85,34 @@ Real code: [store.py](../../apps/server/src/simp_server/store.py) — `hash_pass
 
 ## How does Bob never see Ana's session?
 
-Auth answered problem 1: the server now knows the request is from Bob. Problem 2 is that Bob asks for Ana's session `s1`.
+Auth answered problem 1. The server now knows the request is from Bob. Problem 2 is that Bob asks for Ana's session `s1`.
 
-We could add an "is this yours?" check to every route, but one forgotten route would leak data. Instead, every table except `users` has a `user_id` column, and every read of a session, its entries or its usage has `user_id = ?` in its SQL. So the ownership check cannot be forgotten: it is part of the query itself.
+We could add an "is this yours?" check to every route, but one forgotten route would leak data. Instead, every table except `users` has a `user_id` column. Every read of a session, its entries or its usage has `user_id = ?` in its SQL. So the ownership check cannot be forgotten. It is part of the query itself.
 
 ```text
 get_session(user_id, sid):
     SELECT the session row WHERE id = sid AND user_id = user_id     // Bob's id + s1 -> no row -> HTTP 404
 ```
 
-Bob gets 404, the same answer as for a session that does not exist, so he cannot even learn that `s1` is there. Only the few queries that find the user in the first place (`login`, `user_by_token`) search by name or token instead.
+Bob gets 404, the same answer as for a session that does not exist. So he cannot even learn that `s1` is there. Only the few queries that find the user in the first place (`login`, `user_by_token`) search by name or token instead.
 
 Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.get_session`, `SqliteStore.entries`
 
 ## How is nothing lost?
 
-Ana may now open her own session. Problem 3: every message and event of her conversation must reach the disk at once, so a restart a second later loses nothing.
+Ana may now open her own session. Problem 3: every message and event of her conversation must reach the disk at once. Then a restart a second later loses nothing.
 
-[25](25-server-run.md) and [26](26-transport.md) already left a hook for this: the `Run` numbers each saved thing with one counter, `seq` ([26 · seq](26-transport.md#seq-one-counter-for-everything)), and hands it to `store.add_entry`. The store writes it as one row of the `entries` table:
+[25](25-server-run.md) and [26](26-transport.md) already left a hook for this. The `Run` (one server object per conversation) numbers each saved thing with one counter, `seq` ([26 · seq](26-transport.md#seq-one-counter-for-everything)). It hands each one to `store.add_entry`. The store writes it as one row of the `entries` table:
 
 ```text
 entries(session_id, user_id, seq, type, json)     // one row per message or event
 ```
 
-A row is one of two kinds, sharing that one `seq`. A **message** (`type = "msg"`) is part of the history the model sees ([17](17-session.md)). A **durable event** (`type` like `run_state` or `tool_result`) is what the browser sees ([25](25-server-run.md)). Keeping both in one table, in one order, means one read later gives back the whole conversation. Besides `users`, the store has four more tables: `tokens` (device tokens), `sessions` (one row per conversation), `entries`, and `usage` (tokens and cost of each model call, read by [28 Limits](28-limits.md)).
+A row is one of two kinds, sharing that one `seq`. A **message** (`type = "msg"`) is part of the history the model sees ([17](17-session.md)). A **durable event** is a saved event for the browser, with a `type` like `run_state` or `tool_result` ([25](25-server-run.md)). Both sit in one table, in one order. So one read later gives back the whole conversation. Besides `users`, the store has four more tables: `tokens` (device tokens), `sessions` (one row per conversation), `entries`, and `usage` (tokens and cost of each model call, read by [28 Limits](28-limits.md)).
 
 <a id="opening-the-store"></a>
 
-All tables live in one **SQLite** file, `<data_dir>/simp.db` (by default `~/.simp-server`). At start, the server calls `open()` on the class in the `store` slot, which connects to the file and creates any missing tables. Why SQLite and not a database server like Postgres? The server runs on one machine ([31](31-system-tests-deploy.md)), SQLite needs no extra program, and a backup is a copy of one file. The cost is that only one write runs at a time, which is fine for one team's small writes.
+All tables live in one **SQLite** file, `<data_dir>/simp.db` (by default `~/.simp-server`). At start, the server calls `open()` on the class in the `store` slot. It connects to the file and creates any missing tables. Why SQLite and not a database server like Postgres? The server runs on one machine ([31](31-system-tests-deploy.md)). SQLite needs no extra program. A backup is a copy of one file. The cost is that only one write runs at a time. That is fine for one team's small writes.
 
 Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.open`, `SqliteStore.add_entry`
 
@@ -121,18 +125,22 @@ Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteSto
 
 ## How is a session loaded again exactly?
 
-Problem 4: after the restart, Ana opens her tab, and the server must rebuild her `Run` from the rows of the section before. This is the bottom row of the picture.
+Problem 4: after the restart, the server must rebuild Ana's `Run` from the rows of the section before. This is the bottom row of the picture.
 
-The next morning Ana opens her tab. The server restarted in the night, so it has no `Run` for her session in memory any more; all it has is the rows on disk. So her first request asks the manager for her `Run` (`SessionManager.get`, [25](25-server-run.md)), and the manager builds a new one from those rows:
+The next morning Ana opens her tab. After the restart there is no `Run` for her session in memory. There are only the rows on disk. So her first request asks the manager for her `Run` (`SessionManager.get`, [25](25-server-run.md)). The manager builds a new one from those rows:
 
 1. Find the session row and check that it is Ana's (as in the section before).
 2. Read all its rows in `seq` order.
-3. Give the message rows to a new `AgentSession` as its history, so the agent remembers the whole chat. Keep the other rows (the events) as the log that a reconnecting tab replays ([26](26-transport.md)).
+3. Give the message rows to a new `AgentSession` ([17](17-session.md)) as its history. Now the agent remembers the whole chat. Keep the event rows as the event log (the saved events a reconnecting tab replays, [26](26-transport.md)).
 4. Take the state from the last saved state row, and go on counting `seq` from the last one.
 
 For a session that ended well, that is all: Ana sees her chat as it was, and can go on.
 
-Ana's session did not end well. When the server died, her agent had just asked to run `bash` and was waiting for it. So two things in the rows are now false. The last state says `running`, but no agent loop runs any more, so her tab would wait forever. And the last assistant message asks for a `bash` call that never got a result; models refuse a history like that (each tool call needs its result, [02](02-pick-clean.md)), so even pressing Continue would fail. So before the manager hands back the `Run`, it calls `recover()` to close the broken run:
+Ana's session did not end well. When the server died, her agent was waiting for a `bash` call. Two things in the rows are now wrong.
+
+First, the last state says `running`. But no agent loop runs any more, so her tab would wait forever. Second, the last assistant message asks for a `bash` call that never got a result. Models refuse a history like that, because each tool call needs its result ([02](02-pick-clean.md)). So even pressing Continue would fail.
+
+So before the manager hands back the `Run`, it calls `recover()` to close the broken run:
 
 ```text
 recover():
