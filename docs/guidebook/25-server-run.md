@@ -22,7 +22,13 @@ Moving events to the browser, reconnecting after a reload and the approval answe
 
 *Read it top to bottom: Ana's JSON (blue) becomes a typed `Command`, `SessionManager` finds her `Run`, and `Run.start` hands the work to a background task that runs the grey `AgentSession`. Its events come back to `Run.on_event`, which turns them into protocol events; carrying those to the browser is [26](26-transport.md).*
 
-The rest of the chapter follows Ana's prompt along this picture, one question at a time.
+The rest of the chapter first shows how the server plugs into `AgentSession`, then follows Ana's prompt along this picture. Each step meets one of the problems above:
+
+1. **Read the JSON.** Every command comes as a JSON body; one typo must not crash the server.
+2. **Start the agent, answer at once.** A run takes minutes, but an HTTP request must answer in a moment.
+3. **A new line while the agent works.** Ana may send more; there must never be two agent loops on one session.
+4. **Know the state.** To decide step 3, the `Run` must always know what it is doing.
+5. **Same types in the browser.** Python and TypeScript must agree on every message.
 
 <a id="the-run"></a>
 
@@ -46,7 +52,7 @@ Real code: `Run.__init__` and `SessionManager.get` in [server.py](../../apps/ser
 
 <a id="protocol-models"></a>
 
-## Ana's prompt arrives: how does the server read it?
+## Step 1 · Read Ana's JSON
 
 Now follow Ana's prompt into this `Run`. It arrives as a JSON body in an HTTP request, so the server must first turn it into a command it can trust. If it just read the body as a dict, a typo would break it badly: `{"txt": "hi"}` instead of `{"text": "hi"}` gives a `KeyError` deep in the code and a 500 error, and the browser never learns what went wrong.
 
@@ -66,9 +72,9 @@ In Python, each form is a Pydantic class in `protocol.py`, and the `type` field 
 
 Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_server/protocol.py), class `_M`, `Command`; `post_command` in [server.py](../../apps/server/src/simp_server/server.py).
 
-## The Run starts the work: why does the request not wait for it?
+## Step 2 · Start the agent, answer the request at once
 
-The command reaches `Run.command()`, and for a prompt the `Run` calls `start()`. `Run.start()` puts the agent work in a background task and returns at once, so the POST answers `{"ok": true}` in a moment while the agent works on. This is the same idea as the REPL in [24 · How can I type while the agent works?](24-cli.md#how-can-i-type-while-the-agent-works): do not wait for the run, hand it to the [event loop](glossary.md#event-loop). Here it matters even more, because an HTTP request that stays open for two minutes is cut by proxies and browsers, and Ana would see nothing until the end.
+Ana's prompt is now a trusted `Prompt`. The problem now: her agent will work for two minutes, but the POST that carried the prompt must answer at once; a request held open that long is cut by proxies and browsers. So the command goes to `Run.command()`, which calls `start()`, and `start()` puts the agent work in a background task and returns at once, so the POST answers `{"ok": true}` in a moment while the agent works on. This is the same idea as the REPL in [24 · How can I type while the agent works?](24-cli.md#how-can-i-type-while-the-agent-works): do not wait for the run, hand it to the [event loop](glossary.md#event-loop).
 
 While the agent works, every session event reaches `Run.on_event`, which turns it into a protocol event: a live event for each piece of streaming text, a durable event for each saved message. Sending them to Ana's tab is [26](26-transport.md).
 
@@ -87,7 +93,7 @@ Real code: `Run.start`, `Run._run`, `Run._turn`, `Run.on_event` in [server.py](.
 
 <a id="the-title-call"></a>
 
-## A second prompt while the first one runs
+## Step 3 · A new line while the agent works
 
 Ana may send another line, or click Send twice, while the agent still works. Only the first one starts a run; the other is queued, because the `Run` checks its state before it starts anything. Without this, Ana could click "send" twice, both requests would call `session.prompt()`, and two agent loops would write into one message list.
 
@@ -105,7 +111,7 @@ Real code: `Run.command` and `Run.busy` in [server.py](../../apps/server/src/sim
 
 <a id="run-state-machine"></a>
 
-## The Run's state: how does it know it is busy?
+## Step 4 · The Run's state
 
 The table above asked one question: is the `Run` busy? The answer is its state. A `Run` is always in one of five states:
 
@@ -146,7 +152,7 @@ Real code: `TRANSITIONS`, `check_transition` in [protocol.py](../../apps/server/
 
 <a id="gen_protocol--protocolgents"></a>
 
-## The browser side: how does it use the same commands?
+## Step 5 · The same types in the browser
 
 Ana's tab must send exactly the commands the server reads, and read exactly the events it sends. Without a shared definition, someone renames a Python field, the browser still sends the old name, and the server rejects it, or worse, the browser reads a field that is no longer there and shows nothing.
 
