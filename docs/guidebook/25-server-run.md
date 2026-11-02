@@ -24,11 +24,31 @@ Moving events to the browser, reconnecting after a reload and the approval answe
 
 The rest of the chapter follows Ana's prompt along this picture, one question at a time.
 
+<a id="the-run"></a>
+
+## How does the server plug into the AgentSession?
+
+The same way the CLI does: it fills the session's three slots, but from a server object, the `Run`. There is exactly **one `Run` per session**, so every request for Ana's session (a prompt, then an abort) reaches the same object.
+
+The `Run` builds its own `AgentSession` and fills the three slots the CLI filled in [24](24-cli.md):
+
+| Slot of `AgentSession` | CLI | Server `Run` |
+|---|---|---|
+| the store ([17](17-session.md)) | `JsonlStore` | `Run.append`: saves into the server's log |
+| the approval function ([10](10-hooks-approval.md)) | asks in the terminal | `Run.approve`: sets the state to `waiting_approval` and waits for the browser's answer |
+| the event listener ([08](08-events-abort.md)) | `LinePrinter` / `Chat` | `Run.on_event`: turns events into protocol events |
+
+That is the whole link: the library does not know a server exists.
+
+**Who finds the Run.** Every route for a session asks `SessionManager.get(user, sid)`. It checks that Ana owns the session, and returns her open `Run`, or opens it from the saved log. The `Run` lives on after the request that made it.
+
+Real code: `Run.__init__` and `SessionManager.get` in [server.py](../../apps/server/src/simp_server/server.py).
+
 <a id="protocol-models"></a>
 
-## How does the server trust the JSON?
+## Ana's prompt arrives: how does the server read it?
 
-**The problem.** Every command arrives as a JSON body from a browser. If the server just reads it as a dict, a typo breaks it badly: `{"txt": "hi"}` instead of `{"text": "hi"}` gives a `KeyError` deep in the code and a 500 error, and the browser never learns what went wrong.
+Now follow Ana's prompt into this `Run`. It arrives as a JSON body in an HTTP request, so the server must first turn it into a command it can trust. If it just read the body as a dict, a typo would break it badly: `{"txt": "hi"}` instead of `{"text": "hi"}` gives a `KeyError` deep in the code and a 500 error, and the browser never learns what went wrong.
 
 **The fix: one typed class per kind of message.** The protocol (`protocol.py`) lists every message the browser may send, as a Pydantic class. Every body has a `type` field, and the server uses it to pick the one class to check against (this field is the **[discriminator](glossary.md#discriminator)**). A message from the browser is a **command**, and there are eight:
 
@@ -53,29 +73,9 @@ Messages the other way, from the server to the browser, are **server events**: a
 
 Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_server/protocol.py), class `_M`, `Command`; `post_command` in [server.py](../../apps/server/src/simp_server/server.py).
 
-<a id="the-run"></a>
+## The Run starts the work: why does the request not wait for it?
 
-## Which object runs Ana's prompt?
-
-Her session's `Run`. There is exactly **one `Run` per session**, so two requests for the same session (a prompt, then an abort) always reach the same object.
-
-**Who finds it.** Every route for a session asks `SessionManager.get(user, sid)`. It checks that Ana owns the session, and returns her open `Run`, or opens it from the saved log. The `Run` lives on after the request that made it.
-
-**How it plugs into the session.** The `Run` builds its own `AgentSession` and fills three slots, the same slots the CLI filled ([24](24-cli.md)):
-
-| Slot of `AgentSession` | CLI | Server `Run` |
-|---|---|---|
-| the store ([17](17-session.md)) | `JsonlStore` | `Run.append`: saves into the server's log |
-| the approval function ([10](10-hooks-approval.md)) | asks in the terminal | `Run.approve`: sets the state to `waiting_approval` and waits for the browser's answer |
-| the event listener ([08](08-events-abort.md)) | `LinePrinter` / `Chat` | `Run.on_event`: turns events into protocol events |
-
-That is the whole link: the library does not know a server exists.
-
-Real code: `Run.__init__` and `SessionManager.get` in [server.py](../../apps/server/src/simp_server/server.py).
-
-## How does a prompt get to the server without waiting minutes?
-
-`Run.start()` puts the agent work in a background task and returns at once, so the POST answers `{"ok": true}` in a moment while the agent works on. This is the same idea as the REPL in [24 · How can I type while the agent works?](24-cli.md#how-can-i-type-while-the-agent-works): do not wait for the run, hand it to the [event loop](glossary.md#event-loop). Here it matters even more, because an HTTP request that stays open for two minutes is cut by proxies and browsers, and Ana would see nothing until the end.
+The command reaches `Run.command()`, and for a prompt the `Run` calls `start()`. `Run.start()` puts the agent work in a background task and returns at once, so the POST answers `{"ok": true}` in a moment while the agent works on. This is the same idea as the REPL in [24 · How can I type while the agent works?](24-cli.md#how-can-i-type-while-the-agent-works): do not wait for the run, hand it to the [event loop](glossary.md#event-loop). Here it matters even more, because an HTTP request that stays open for two minutes is cut by proxies and browsers, and Ana would see nothing until the end.
 
 What `start()` does:
 
@@ -103,9 +103,9 @@ Real code: `Run.start`, `Run._run`, `Run._turn`, `Run.on_event` in [server.py](.
 <a id="the-title-call"></a>
 One small side job: after the first answer is saved, a background **[title call](glossary.md#title-call)** asks the model for a short name for the session.
 
-## What if two prompts come at once?
+## A second prompt while the first one runs
 
-Only the first one starts a run; the other is queued, because the `Run` checks its state before it starts anything. Without this, Ana could click "send" twice, both requests would call `session.prompt()`, and two agent loops would write into one message list.
+Ana may send another line, or click Send twice, while the agent still works. Only the first one starts a run; the other is queued, because the `Run` checks its state before it starts anything. Without this, Ana could click "send" twice, both requests would call `session.prompt()`, and two agent loops would write into one message list.
 
 `Run.command()` handles every command. "Busy" means the state is `running`, `waiting_approval` or `aborting`:
 
@@ -124,9 +124,9 @@ Real code: `Run.command` and `Run.busy` in [server.py](../../apps/server/src/sim
 
 <a id="run-state-machine"></a>
 
-## What states can a Run be in, and why keep them?
+## The Run's state: how does it know it is busy?
 
-A `Run` is always in one of five states:
+The table above asked one question: is the `Run` busy? The answer is its state. A `Run` is always in one of five states:
 
 | State | Meaning |
 |---|---|
@@ -165,9 +165,9 @@ Real code: `TRANSITIONS`, `check_transition` in [protocol.py](../../apps/server/
 
 <a id="gen_protocol--protocolgents"></a>
 
-## How do browser and server keep the same types?
+## The browser side: how does it use the same commands?
 
-The TypeScript types are generated from the same Python models, so there is only one place to change. Without this, someone renames a Python field, the browser still sends the old name, and the server rejects it, or worse, the browser reads a field that is no longer there and shows nothing.
+Ana's tab must send exactly the commands the server reads, and read exactly the events it sends. The TypeScript types are generated from the same Python models, so there is only one place to change. Without this, someone renames a Python field, the browser still sends the old name, and the server rejects it, or worse, the browser reads a field that is no longer there and shows nothing.
 
 `protocol.py` has one extra model, `Protocol`, that is used only for this: it holds one of each wire type (hello, command, event, session info), so Pydantic can turn all of them into one **[JSON Schema](glossary.md#json-schema)** document. `gen_protocol.py` gives that schema to a ready tool, `json-schema-to-typescript`, and writes the result to `apps/web/src/protocol.gen.ts`. With `--check` it only compares and fails if the file is out of date, so a test run catches a forgotten update. The web client ([30](30-web-client.md)) imports these types, so a renamed Python field breaks the TypeScript build at once, not the user's screen later.
 
