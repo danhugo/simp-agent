@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#fff;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;color:#0f172a}
+.wrap{width:1180px;padding:24px 30px}
+h1{font-size:21px;margin:0 0 4px}.sub{color:#475569;font-size:13.5px;margin-bottom:14px;max-width:1110px}
+.g{display:grid;grid-template-columns:200px 34px 1fr 34px 1fr 34px 1fr 34px 220px;row-gap:10px;align-items:center}
+.colh{font-size:12px;font-weight:800;letter-spacing:.06em;color:#64748b}
+.you{border:3px solid #2563eb;background:#eff6ff;border-radius:9px;padding:7px 10px;font-size:13.5px}
+.new{border:3px solid #b45309;background:#fef3c7;box-shadow:0 2px 6px rgba(180,83,9,.2);border-radius:9px;padding:7px 10px;font-size:13.5px}
+.old{border:2px solid #e2e8f0;background:#f8fafc;border-radius:9px;padding:7px 10px;font-size:13.5px;color:#94a3b8}
+.old b{color:#64748b}.fade{opacity:.5;border-style:dashed}
+code{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:12.5px}
+.ar{text-align:center;font-size:22px;color:#475569;font-weight:700}
+.sec{grid-column:1/6;font-size:13px;font-weight:800;border-top:1.5px solid #e2e8f0;padding-top:8px;margin-top:4px}
+.n{display:inline-block;background:#b45309;color:#fff;border-radius:50%;width:18px;height:18px;text-align:center;font-size:11px;font-weight:800;line-height:18px;margin-right:4px}
+</style></head><body><div class="wrap">
+<h1>Store and auth: who is this, may they see it, save it, load it again</h1>
+<div class="sub"><b style="color:#1d4ed8">Blue</b> is Ana and her browser. <b style="color:#b45309">Yellow</b> is new in this chapter: auth and the store. <b style="color:#94a3b8">Grey</b> was built earlier: the <code>Run</code> (ch25).</div>
+<div class="g">
+<div class="sec" style="grid-column:1/10">1 · Every request</div>
+<div class="you">Ana's request<br><code>Authorization: Bearer &lt;token&gt;</code></div><div class="ar">→</div>
+<div class="new"><span class="n">1</span><b>Who is this user?</b><br>auth: <code>user_by_token</code> → Ana, or 401</div><div class="ar">→</div>
+<div class="new"><span class="n">2</span><b>May she open this session?</b><br><code>get_session(user_id, sid)</code> → row, or 404</div><div class="ar">→</div>
+<div class="old"><b>Run</b> (ch25)<br>each message and event</div><div class="ar">→</div>
+<div class="new"><span class="n">3</span><b>Saved at once</b><br><code>add_entry</code> → one row in <code>entries</code>, in one SQLite file <code>simp.db</code></div>
+<div class="sec" style="grid-column:1/10">2 · After a restart</div>
+<div class="new"><b>simp.db</b><br>the same rows, in <code>seq</code> order</div><div class="ar">→</div>
+<div class="new"><span class="n">4</span><b>Load entries</b><br><code>SessionManager.get</code> reads Ana's rows</div><div class="ar">→</div>
+<div class="old"><b>Rebuild the Run</b><br>msg rows → history, other rows → event log</div><div class="ar">→</div>
+<div class="new"><span class="n">5</span><b>recover</b><br>busy when it died? → close it: state error</div><div class="ar">→</div>
+<div class="you">Ana's tab shows a settled session</div>
+</div></div></body></html>
