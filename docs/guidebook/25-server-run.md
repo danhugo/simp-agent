@@ -28,9 +28,9 @@ The rest of the chapter follows Ana's prompt along this picture, one question at
 
 ## How does the server plug into the AgentSession?
 
-The same way the CLI does: it fills the session's three slots, but from a server object, the `Run`. There is exactly **one `Run` per session**, so every request for Ana's session (a prompt, then an abort) reaches the same object.
+`AgentSession` does not decide three things by itself; the app that creates it must give them: **where to save** each message (the store), **who to ask** before a risky tool (the approval function), and **who gets the events** (the listener). The CLI gave a JSONL file, a question in the terminal, and a printer ([24](24-cli.md)).
 
-The `Run` builds its own `AgentSession` and fills the three slots the CLI filled in [24](24-cli.md):
+The server gives all three from one object, the **`Run`**. A `Run` is one server object per conversation: it creates Ana's `AgentSession`, plugs itself into those three places, and also keeps track of what the session is doing now (its state, later in this chapter). There is exactly one `Run` per session, so every request for Ana's session (a prompt, then an abort) reaches the same object.
 
 | Slot of `AgentSession` | CLI | Server `Run` |
 |---|---|---|
