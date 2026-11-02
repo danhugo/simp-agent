@@ -18,6 +18,20 @@ Do not mix it up with an agent [run](glossary.md#run-agent) ([07](07-agent-loop.
 
 Moving events to the browser, reconnecting after a reload and the approval answer are [26 Transport](26-transport.md); saving everything and logging in are [27 Store and auth](27-store-auth.md). In the map of [23](23-part-5-system.md), this chapter is block 4 (Load run) and block 6 (Command).
 
+```mermaid
+flowchart LR
+    W["2 Web client (ch30)"] -- "POST command (JSON)" --> C["6 Command (ch25)"]
+    C --> L["4 Load run (ch25)"]
+    L --> AS["AgentSession (Part 4)"]
+    AS -- events --> E["8 Events (ch26)"]
+    style C fill:#ffd54f,stroke:#333,stroke-width:2px
+    style L fill:#ffd54f,stroke:#333,stroke-width:2px
+    style W fill:#eee,stroke:#bbb,color:#999
+    style E fill:#eee,stroke:#bbb,color:#999
+```
+
+*Yellow is this chapter. Grey blocks are built in other chapters; the numbers are the blocks of [23](23-part-5-system.md).*
+
 ![Ana's prompt on the server: browser POSTs JSON, it becomes a typed Command, SessionManager finds the Run, Run.start starts a background task with AgentSession, its events come back to Run.on_event](img/25-server-run.png)
 
 *Read it top to bottom: Ana's JSON (blue) becomes a typed `Command`, `SessionManager` finds her `Run`, and `Run.start` hands the work to a background task that runs the grey `AgentSession`. Its events come back to `Run.on_event`, which turns them into protocol events; carrying those to the browser is [26](26-transport.md).*
