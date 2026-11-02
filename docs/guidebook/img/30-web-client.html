@@ -1,0 +1,29 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#fff;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;color:#0f172a}
+.wrap{width:1180px;padding:24px 30px}
+h1{font-size:21px;margin:0 0 4px}.sub{color:#475569;font-size:13.5px;margin-bottom:14px;max-width:1110px}
+.g{display:grid;grid-template-columns:200px 34px 1fr 34px 1fr 34px 1fr 34px 220px;row-gap:10px;align-items:center}
+.colh{font-size:12px;font-weight:800;letter-spacing:.06em;color:#64748b}
+.you{border:3px solid #2563eb;background:#eff6ff;border-radius:9px;padding:7px 10px;font-size:13.5px}
+.new{border:3px solid #b45309;background:#fef3c7;box-shadow:0 2px 6px rgba(180,83,9,.2);border-radius:9px;padding:7px 10px;font-size:13.5px}
+.old{border:2px solid #e2e8f0;background:#f8fafc;border-radius:9px;padding:7px 10px;font-size:13.5px;color:#94a3b8}
+.old b{color:#64748b}.fade{opacity:.5;border-style:dashed}
+code{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:12.5px}
+.ar{text-align:center;font-size:22px;color:#475569;font-weight:700}
+.sec{grid-column:1/6;font-size:13px;font-weight:800;border-top:1.5px solid #e2e8f0;padding-top:8px;margin-top:4px}
+.n{display:inline-block;background:#b45309;color:#fff;border-radius:50%;width:18px;height:18px;text-align:center;font-size:11px;font-weight:800;line-height:18px;margin-right:4px}
+</style></head><body><div class="wrap">
+<h1>Web client: events flow in one way, commands go out the other</h1>
+<div class="sub"><b style="color:#1d4ed8">Blue</b> is Ana and her browser. <b style="color:#b45309">Yellow</b> is new in this chapter: the code in <code>apps/web</code>. <b style="color:#94a3b8">Grey</b> was built earlier: the server (ch25&ndash;29).</div>
+<div class="g">
+<div class="sec" style="grid-column:1/10">1 &middot; Events in (one long SSE response)</div>
+<div class="old"><b>Server</b> (ch26)<br>events: durable with <code>seq</code>, live deltas with <code>offset</code></div><div class="ar">&rarr;</div>
+<div class="new"><span class="n">1</span><b>subscribe()</b><br>reads SSE with <code>fetch</code> + token; reconnects with <code>Last-Event-ID</code></div><div class="ar">&rarr;</div>
+<div class="new"><span class="n">2</span><b>reduce(state, event)</b><br>skips old <code>seq</code>; <code>appendAt</code> drops dup/gap deltas</div><div class="ar">&rarr;</div>
+<div class="new"><span class="n">3</span><b>ChatState</b><br>one object: <code>items</code>, <code>inFlight</code>, <code>pending</code>&hellip;</div><div class="ar">&rarr;</div>
+<div class="you">React draws the page Ana sees</div>
+<div class="sec" style="grid-column:1/10">2 &middot; Commands out (one POST each)</div>
+<div class="you">Ana types &ldquo;write <code>fizzbuzz.py</code>&rdquo; or clicks a button</div><div class="ar">&rarr;</div>
+<div class="new"><span class="n">4</span><b>api.ts</b><br><code>api.command</code>: POST with <code>Authorization: Bearer</code></div><div class="ar">&rarr;</div>
+<div class="old"><b>Server</b> runs it<br>the result comes back as events in row 1</div>
+</div></div></body></html>
