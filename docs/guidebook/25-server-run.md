@@ -50,26 +50,19 @@ Real code: `Run.__init__` and `SessionManager.get` in [server.py](../../apps/ser
 
 Now follow Ana's prompt into this `Run`. It arrives as a JSON body in an HTTP request, so the server must first turn it into a command it can trust. If it just read the body as a dict, a typo would break it badly: `{"txt": "hi"}` instead of `{"text": "hi"}` gives a `KeyError` deep in the code and a 500 error, and the browser never learns what went wrong.
 
-**The fix: one typed class per kind of message.** The protocol (`protocol.py`) lists every message the browser may send, as a Pydantic class. Every body has a `type` field, and the server uses it to pick the one class to check against (this field is the **[discriminator](glossary.md#discriminator)**). A message from the browser is a **command**, and there are eight:
+The server keeps one **form** for each kind of message the browser may send. There are eight kinds, called **commands**: prompt, steer, follow-up, abort, approve, compact, continue and plan mode. Each form lists its fields, and every JSON body names its form in a `type` field.
 
-```python
-Command = Annotated[Union[Prompt, Steer, FollowUp, Abort, Approve, Compact, Continue, SetPlanMode],
-                    Field(discriminator="type")]
-```
-
-Each one maps to a session feature you already know: prompt, steering and follow-up ([09](09-steering.md)), abort ([08](08-events-abort.md)), approval ([10](10-hooks-approval.md)), compaction ([20](20-compaction.md)), continue and plan mode ([22](22-profiles-plugins.md)).
-
-**Ana's prompt.** When she presses Enter, the browser POSTs to `/api/sessions/{sid}/commands`:
+Ana's body is checked like this:
 
 ```text
 {"type": "prompt", "text": "write fizzbuzz.py"}
-  -> type is "prompt", so check it against Prompt
+  -> type is "prompt", so use the prompt form: one field, text, a string
   -> Prompt(text="write fizzbuzz.py")
 ```
 
-**Unknown fields are an error.** `{"type": "prompt", "txt": "hi"}` is rejected with a clear 422 answer that says `txt` is not allowed and `text` is missing. Nothing is dropped in silence.
+If something is wrong, for example `"txt"` instead of `"text"`, the server answers at once with a 422 that says `txt` is not allowed and `text` is missing. The bad body never reaches the `Run`, and nothing is dropped in silence.
 
-Messages the other way, from the server to the browser, are **server events**: a **[live event](glossary.md#live-event)** for each piece of streaming text, and a **[durable event](glossary.md#durable-event)**, saved with a `seq` number, for each saved message or state change. How they reach the browser is [26](26-transport.md).
+In Python, each form is a Pydantic class in `protocol.py`, and the `type` field picks the class (Pydantic calls it a **[discriminator](glossary.md#discriminator)**).
 
 Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_server/protocol.py), class `_M`, `Command`; `post_command` in [server.py](../../apps/server/src/simp_server/server.py).
 
