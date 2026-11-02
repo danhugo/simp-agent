@@ -105,7 +105,7 @@ Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_se
 
 Events go out with **[SSE](glossary.md#sse)** (Server-Sent Events). SSE is one long HTTP response with `text/event-stream` type. The server writes small text blocks into it, one per event. The browser reads them with a small fetch-based reader (see [30](30-web-client.md#the-page-listens-sse-over-fetch-subscribe)).
 
-Commands come in with a normal `POST`. The body is JSON, checked by the `Command` parser from [25](25-server-run.md#how-does-the-server-trust-the-json). A bad body gets `422`.
+Commands come in with a normal `POST`. The body is JSON, checked by the `Command` parser from [25](25-server-run.md#protocol-models). A bad body gets `422`.
 
 Why not WebSocket? SSE is one-way, which is all we need out, since commands already have their own `POST`. Plain HTTP works through proxies, and when the stream ends our client reconnects by itself, with backoff ([30](30-web-client.md#the-page-listens-sse-over-fetch-subscribe)). That is how a dropped tab "learns" it was dropped: its stream simply ends. Both routes need auth ([27](27-store-auth.md)).
 
@@ -262,7 +262,7 @@ Real code: [apps/server/src/simp_server/server.py](../../apps/server/src/simp_se
 
 `start` does not wait for the run. It sets state `running` and starts `_run` as an asyncio task. So the POST returns `{"ok": true}` at once, and the results come over SSE.
 
-When a run ends, `_turn` starts the next one from any follow-up that came too late for the loop ([25 · Run state machine](25-server-run.md#what-states-can-a-run-be-in-and-why-keep-them)).
+When a run ends, `_turn` starts the next one from any follow-up that came too late for the loop ([25 · Run state machine](25-server-run.md#run-state-machine)).
 
 `Abort` sets state `aborting` and calls `session.abort()` ([08](08-events-abort.md)), but only if the run is busy and not already aborting, so a double click does nothing. `Compact` and `Continue` return `409` while busy.
 

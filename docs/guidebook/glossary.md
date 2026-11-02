@@ -258,28 +258,28 @@ An object with `render(width) -> list[str]` that draws one part of the chat (`Us
 Special characters a terminal reads as colour or style. Not wanted in files or pipes, so `LinePrinter` uses them only on a TTY. Home: [24](24-cli.md#how-does-the-answer-appear-as-it-is-written).
 
 ## Protocol
-The fixed set of typed messages between simp-server and the web client, defined in `protocol.py`. Home: [25](25-server-run.md#how-does-the-server-trust-the-json).
+The fixed set of typed messages between simp-server and the web client, defined in `protocol.py`. Home: [25](25-server-run.md#protocol-models).
 
 ## Run
-The server object (`Run` in `server.py`) that owns one `AgentSession`, its event log and its run state. Home: [25](25-server-run.md#which-object-runs-anas-prompt).
+The server object (`Run` in `server.py`) that owns one `AgentSession`, its event log and its run state. Home: [25](25-server-run.md#the-run).
 
 ## Run state
-One of `idle`, `running`, `waiting_approval`, `aborting`, `error`. Every change is checked by `check_transition`. Home: [25](25-server-run.md#what-states-can-a-run-be-in-and-why-keep-them).
+One of `idle`, `running`, `waiting_approval`, `aborting`, `error`. Every change is checked by `check_transition`. Home: [25](25-server-run.md#run-state-machine).
 
 ## Discriminator
-A field (here `type`) whose value says which model a JSON object is. Home: [25](25-server-run.md#how-does-the-server-trust-the-json).
+A field (here `type`) whose value says which model a JSON object is. Home: [25](25-server-run.md#protocol-models).
 
 ## Durable event
-A server event with a `seq` number. It is saved and can be sent again after a reconnect. Home: [25](25-server-run.md#how-does-the-server-trust-the-json).
+A server event with a `seq` number. It is saved and can be sent again after a reconnect. Home: [25](25-server-run.md#protocol-models).
 
 ## Live event
-A streaming piece of text with no `seq`. It is not saved and is lost on reconnect. Home: [25](25-server-run.md#how-does-the-server-trust-the-json).
+A streaming piece of text with no `seq`. It is not saved and is lost on reconnect. Home: [25](25-server-run.md#protocol-models).
 
 ## Snapshot
-The event sent after a (re)connect with `last_seq`, run state, in-flight text and any pending approval. Home: [25](25-server-run.md#how-does-the-server-trust-the-json). How it works with replay: [26](26-transport.md#replay-after-then-snapshot-then-live).
+The event sent after a (re)connect with `last_seq`, run state, in-flight text and any pending approval. Home: [25](25-server-run.md#protocol-models). How it works with replay: [26](26-transport.md#replay-after-then-snapshot-then-live).
 
 ## JSON Schema
-A standard JSON format that describes data shapes. Used here to generate TypeScript types. Home: [25](25-server-run.md#how-do-browser-and-server-keep-the-same-types).
+A standard JSON format that describes data shapes. Used here to generate TypeScript types. Home: [25](25-server-run.md#gen_protocol--protocolgents).
 
 ## SSE
 Server-Sent Events: one long HTTP response where the server writes events as text blocks. Our browser client reads them with `fetch`, not `EventSource`, because `EventSource` cannot send the `Authorization` header ([30](30-web-client.md#the-page-listens-sse-over-fetch-subscribe)). Home: [26](26-transport.md#sse-out-post-in). OpenAI Responses names each event in its `type` ([04](04-parse.md#openai-responses-named-events)).
