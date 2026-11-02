@@ -25,7 +25,7 @@ Moving events to the browser, reconnecting after a reload and the approval answe
 The rest of the chapter first shows how the server plugs into `AgentSession`, then follows Ana's prompt along this picture. Each step meets one of the problems above:
 
 1. **Read the JSON.** Every command comes as a JSON body; one typo must not crash the server.
-2. **Start the agent, answer at once.** A run takes minutes, but an HTTP request must answer in a moment.
+2. **Start the agent, reply "got it" right away.** A run takes minutes, but the HTTP request that carried the prompt must get its reply in a moment; the agent's answer comes later, as events.
 3. **A new line while the agent works.** Ana may send more; there must never be two agent loops on one session.
 4. **Know the state.** To decide that, the `Run` must always know what it is doing.
 5. **Same types in the browser.** Python and TypeScript must agree on every message.
@@ -72,7 +72,7 @@ In Python, each form is a Pydantic class in `protocol.py`, and the `type` field 
 
 Real code: [apps/server/src/simp_server/protocol.py](../../apps/server/src/simp_server/protocol.py), class `_M`, `Command`; `post_command` in [server.py](../../apps/server/src/simp_server/server.py).
 
-## Start the agent, answer the request at once
+## Start the agent, reply "got it" right away
 
 Ana's prompt is now a trusted `Prompt`. The problem now: her agent will work for two minutes, but the POST that carried the prompt must answer at once; a request held open that long is cut by proxies and browsers. So the command goes to `Run.command()`, which calls `start()`, and `start()` puts the agent work in a background task and returns at once, so the POST answers `{"ok": true}` in a moment while the agent works on. This is the same idea as the REPL in [24 · How can I type while the agent works?](24-cli.md#how-can-i-type-while-the-agent-works): do not wait for the run, hand it to the [event loop](glossary.md#event-loop).
 
