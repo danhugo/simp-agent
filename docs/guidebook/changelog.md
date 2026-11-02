@@ -280,3 +280,4 @@ Changes to this book, newest first. Each entry names the project commit the text
 - 2026-10-29: ch24 — rewritten around the user's five wishes (stream, type during a run, approve, Ctrl-C, continue); words first, code only for background task, approval future, shared replay; new block-1 picture.
 - 2026-10-29: ch24 — picture of one CLI run (img/24-cli-run): keys → route → session, events → Chat/LinePrinter → screen, approval loop, resume.
 - 2026-10-29: ch25 — rewritten like ch24: Ana's story, one section per reader question (trust the JSON, same types, which object, states, no waiting, two prompts, start), words first, 3 code blocks; new picture img/25-server-run; old file list, pseudo dumps and run_id/_untitle/npx details dropped; anchors kept.
+- 2026-11-02: ch27 — density pass: long sentences split, one job per paragraph, earlier terms (Run, run state, durable event, event log) recalled at first use; no structure or fact change.
