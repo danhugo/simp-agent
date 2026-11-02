@@ -123,9 +123,16 @@ Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteSto
 
 Problem 4: after the restart, Ana opens her tab, and the server must rebuild her `Run` from the rows of the section before. This is the bottom row of the picture.
 
-`SessionManager.get` ([25](25-server-run.md)) finds the session row (with Ana's `user_id`, as above), reads its entries in `seq` order, and builds a new `Run` from them. The `Run` splits the rows back: the `msg` rows become the message history for its `AgentSession`, and the other rows become the event log that a reconnecting tab replays ([26](26-transport.md)). Its state is the last saved `run_state`, and its counter goes on from the last `seq`.
+The next morning Ana opens her tab. The server restarted in the night, so it has no `Run` for her session in memory any more; all it has is the rows on disk. So her first request asks the manager for her `Run` (`SessionManager.get`, [25](25-server-run.md)), and the manager builds a new one from those rows:
 
-That is enough for a session that ended well. But the restart came while Ana's agent was running `bash`. So the loaded `Run` says `running`, though no loop runs, and the last assistant message asks for a tool call that has no result. The model API refuses such a history, so even Continue would fail. Before `get` returns, it waits for `recover()`, which closes the broken run:
+1. Find the session row and check that it is Ana's (as in the section before).
+2. Read all its rows in `seq` order.
+3. Give the message rows to a new `AgentSession` as its history, so the agent remembers the whole chat. Keep the other rows (the events) as the log that a reconnecting tab replays ([26](26-transport.md)).
+4. Take the state from the last saved state row, and go on counting `seq` from the last one.
+
+For a session that ended well, that is all: Ana sees her chat as it was, and can go on.
+
+Ana's session did not end well. When the server died, her agent had just asked to run `bash` and was waiting for it. So two things in the rows are now false. The last state says `running`, but no agent loop runs any more, so her tab would wait forever. And the last assistant message asks for a `bash` call that never got a result; models refuse a history like that (each tool call needs its result, [02](02-pick-clean.md)), so even pressing Continue would fail. So before the manager hands back the `Run`, it calls `recover()` to close the broken run:
 
 ```text
 recover():
@@ -135,7 +142,7 @@ recover():
     state = error, save a warning notice "interrupted: the server restarted during this run"
 ```
 
-Ana's rows after the restart, in `seq` order:
+The end of Ana's rows, before and after `recover`:
 
 ```text
 seq 4  msg                assistant, asks bash c2
