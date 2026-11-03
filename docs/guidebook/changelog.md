@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-11-03
 
+- `img/architecture.drawio` page 1a: boxes resized to fit their text (wider column, heights from the text length) and the page laid out again; frames and notes follow.
 - `img/architecture.drawio`: page 2a "ask the AI block" now links to page 1a (ai.stream flowchart); page 1a "start" links back to 2a, and its done / error ends say where the agent loop goes next ("add the answer to history", then stop on error).
 - `img/architecture.drawio`: new page "1a · ai.stream (flowchart)": pick the adapter (unknown api → error), clean the history, API key check (built-in adapters, fatal), start, translate and send, a chunk loop that parses each chunk into events, final answer, done; any exception inside the adapter → one error event with the partial answer. Notes: stamping api/provider/model, and abort is done by the agent loop, not here. Checked against `ai/__init__.py` and `ai/providers/anthropic.py`.
 - `img/architecture.drawio`, page "2a · Agent loop": three nested dashed boxes for the outer loop (follow-ups), inner loop (one turn per pass) and tool loop (each tool call); "stop the run" moved out of the loop area; the two abort checks renamed "abort() before this tool?" (skip the rest) and "abort() during the tools?"; legend now explains three loops.
