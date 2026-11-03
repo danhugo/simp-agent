@@ -1,404 +1,428 @@
 <mxfile host="65bd71144e">
     <diagram id="agent" name="2 · Agent block">
-        <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="4431" dy="5346" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
-                <mxCell id="0"/>
-                <mxCell id="1" parent="0"/>
+                <mxCell id="0" />
+                <mxCell id="1" parent="0" />
                 <mxCell id="a101" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=2;fontColor=#475569;" value="&lt;b style=&quot;font-size:20px&quot;&gt;INPUT&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="330" width="1100" x="250" as="geometry"/>
+                    <mxGeometry height="330" width="1100" x="250" as="geometry" />
                 </mxCell>
                 <mxCell id="a102" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:26px&quot;&gt;setup (given once)&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;system prompt&lt;/b&gt;&lt;br&gt;&lt;b&gt;model info&lt;/b&gt; (passed down to the AI block)&lt;br&gt;&lt;b&gt;tools&lt;/b&gt;: name, schema, and the code that runs it&lt;br&gt;&lt;b&gt;history&lt;/b&gt;: earlier messages, if you resume&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="265" width="520" x="270" y="45" as="geometry"/>
+                    <mxGeometry height="265" width="520" x="270" y="45" as="geometry" />
                 </mxCell>
-                <mxCell id="a103" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:26px&quot;&gt;each run&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;prompt(text)&lt;/b&gt;: a new user message&lt;br&gt;&lt;b&gt;continue_()&lt;/b&gt;: go on from the history&lt;br&gt;&lt;b&gt;while it works:&lt;/b&gt;&lt;br&gt;steer(text): a message read after the tools&lt;br&gt;follow_up(text): read only when it would stop&lt;br&gt;abort(): stop now&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="265" width="520" x="810" y="45" as="geometry"/>
+                <mxCell id="a103" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:26px&quot;&gt;each run&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;prompt(text)&lt;/b&gt;: a new user message&lt;br&gt;&lt;b&gt;continue_()&lt;/b&gt;: go on from the history&lt;br&gt;&lt;b&gt;while it works:&lt;/b&gt;&lt;br&gt;steer(text): read before each model call and after each tool batch&lt;br&gt;follow_up(text): read only when it would stop&lt;br&gt;abort(): stop now&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="265" width="520" x="810" y="45" as="geometry" />
                 </mxCell>
                 <mxCell id="a104" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#dbeafe;strokeColor=#1d4ed8;strokeWidth=5;shadow=1;fontColor=#1e3a8a;" value="&lt;b style=&quot;font-size:30px&quot;&gt;AGENT BLOCK · the loop&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="860" width="1136" x="250" y="400" as="geometry"/>
+                    <mxGeometry height="860" width="1136" x="250" y="400" as="geometry" />
                 </mxCell>
                 <mxCell id="a105" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=none;strokeColor=none;" value="&lt;b style=&quot;font-size:20px&quot;&gt;its job&lt;/b&gt;&lt;div style=&quot;font-size:18px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;keep asking the model until it stops calling tools&lt;br&gt;the model asks for tools, the agent runs them, and sends the results back&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="90" width="1040" x="280" y="450" as="geometry"/>
+                    <mxGeometry height="90" width="1040" x="280" y="450" as="geometry" />
                 </mxCell>
                 <mxCell id="a106" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:22px&quot;&gt;1 · build the request&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;history → only what the model may see&lt;br&gt;system prompt + tools&lt;br&gt;→ model info + context&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="140" width="460" x="290" y="570" as="geometry"/>
+                    <mxGeometry height="140" width="460" x="290" y="570" as="geometry" />
                 </mxCell>
                 <UserObject label="&lt;b style=&quot;font-size:22px&quot;&gt;AI BLOCK (Part 1) · click to open&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;every event → straight out to OUTPUT (message_update)&lt;br&gt;last event (done / error) → step 2&lt;/div&gt;" link="data:page/id,ai-detail" tooltip="open the AI block detail" id="a107">
                     <mxCell parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fde68a;strokeColor=#b45309;strokeWidth=3;fontColor=#7c2d12;" vertex="1">
-                        <mxGeometry height="140" width="480" x="830" y="570" as="geometry"/>
+                        <mxGeometry height="140" width="480" x="830" y="570" as="geometry" />
                     </mxCell>
                 </UserObject>
                 <mxCell id="a108" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:22px&quot;&gt;2 · add the answer to the history&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;error or aborted → stop the run&lt;br&gt;no tool calls → turn ends&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="110" width="460" x="290" y="770" as="geometry"/>
+                    <mxGeometry height="110" width="460" x="290" y="770" as="geometry" />
                 </mxCell>
                 <mxCell id="a109" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:22px&quot;&gt;3 · run each tool call&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;before_tool_call: may deny it&lt;br&gt;check the args, run the tool&lt;br&gt;after_tool_call: may change the result&lt;br&gt;the result goes into the history&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="170" width="460" x="290" y="940" as="geometry"/>
+                    <mxGeometry height="170" width="460" x="290" y="940" as="geometry" />
                 </mxCell>
                 <mxCell id="a110" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:22px&quot;&gt;4 · anything more to do?&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;tool results → ask the model again&lt;br&gt;a steer message → add it, ask again&lt;br&gt;else a follow_up → add it, ask again&lt;br&gt;else → the run ends&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="170" width="480" x="830" y="940" as="geometry"/>
+                    <mxGeometry height="170" width="480" x="830" y="940" as="geometry" />
                 </mxCell>
                 <mxCell id="a111" edge="1" parent="1" source="a106" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a107" value="model info + context">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a112" edge="1" parent="1" source="a107" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;exitX=0.5;exitY=1;entryX=1;entryY=0.5;" target="a108" value="the full answer">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a113" edge="1" parent="1" source="a108" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a109" value="has tool calls">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a114" edge="1" parent="1" source="a109" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a110" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a115" edge="1" parent="1" source="a110" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#2563eb;dashed=1;strokeWidth=2;exitX=0.5;exitY=1;entryX=0;entryY=0.5;" target="a106" value="yes: next turn">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a116" edge="1" parent="1" source="a108" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;exitX=1;exitY=0.8;entryX=0.3;entryY=0;" target="a110" value="no tool calls">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a117" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=2;fontColor=#475569;" value="&lt;b style=&quot;font-size:20px&quot;&gt;OUTPUT&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="330" width="1100" x="250" y="1330" as="geometry"/>
+                    <mxGeometry height="330" width="1100" x="250" y="1330" as="geometry" />
                 </mxCell>
                 <mxCell id="a118" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:24px&quot;&gt;events, live (to subscribers)&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;agent_start / agent_end&lt;br&gt;turn_start / turn_end&lt;br&gt;message_start / message_end: one message added&lt;br&gt;message_update: one AI event, passed on&lt;br&gt;tool_execution_start / update / end&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="265" width="520" x="270" y="1375" as="geometry"/>
+                    <mxGeometry height="265" width="520" x="270" y="1375" as="geometry" />
                 </mxCell>
                 <mxCell id="a119" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:24px&quot;&gt;the result&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;the new messages of this run&lt;br&gt;(user, assistant, tool results)&lt;br&gt;the history now holds them too&lt;br&gt;an error never raises: it ends as an error message&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="265" width="520" x="810" y="1375" as="geometry"/>
+                    <mxGeometry height="265" width="520" x="810" y="1375" as="geometry" />
                 </mxCell>
                 <mxCell id="a120" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#475569;" value="&lt;b style=&quot;font-size:22px&quot;&gt;plugs in&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;env&lt;/b&gt;: where tools run (local, or other)&lt;br&gt;&lt;b&gt;get_api_key&lt;/b&gt;: the key, before every AI call&lt;br&gt;&lt;b&gt;stream_fn&lt;/b&gt;: the AI block, or a fake one for tests&lt;br&gt;&lt;b&gt;hooks&lt;/b&gt;: before / after a tool call&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="230" width="420" x="1520" y="715" as="geometry"/>
+                    <mxGeometry height="230" width="420" x="1520" y="715" as="geometry" />
                 </mxCell>
                 <mxCell id="a121" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#475569;" value="&lt;b style=&quot;font-size:22px&quot;&gt;used by: the coding agent / UI (Part 3)&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;shows the events&lt;br&gt;sends prompt, steer, abort&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="120" width="500" x="550" y="1730" as="geometry"/>
+                    <mxGeometry height="120" width="500" x="550" y="1730" as="geometry" />
                 </mxCell>
                 <mxCell id="a122" edge="1" parent="1" source="a101" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#475569;strokeWidth=3;" target="a104" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a123" edge="1" parent="1" source="a104" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#475569;strokeWidth=3;" target="a117" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a124" edge="1" parent="1" source="a107" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#b45309;dashed=1;strokeWidth=2;exitX=1;exitY=0.7;entryX=0.95;entryY=0;" target="a117" value="every event, at once, as message_update">
                     <mxGeometry relative="1" x="-0.3414" as="geometry">
-                        <mxPoint as="offset"/>
+                        <mxPoint as="offset" />
                         <Array as="points">
-                            <mxPoint x="1343.4" y="668"/>
-                            <mxPoint x="1343.4" y="1330"/>
+                            <mxPoint x="1343.4" y="668" />
+                            <mxPoint x="1343.4" y="1330" />
                         </Array>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="a125" edge="1" parent="1" source="a120" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#94a3b8;dashed=1;strokeWidth=2;" target="a104" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a126" edge="1" parent="1" source="a117" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#94a3b8;dashed=1;strokeWidth=2;" target="a121" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <UserObject label="&lt;b style=&quot;font-size:18px&quot;&gt;open the loop as a flowchart →&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;/div&gt;" link="data:page/id,loop" tooltip="the full logic" id="a127">
                     <mxCell parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#1d4ed8;" vertex="1">
-                        <mxGeometry height="50" width="280" x="1050" y="1190" as="geometry"/>
+                        <mxGeometry height="50" width="280" x="1050" y="1190" as="geometry" />
                     </mxCell>
                 </UserObject>
-                <mxCell id="ex_in" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:22px&quot;&gt;example: what goes in&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;setup&lt;/b&gt;&lt;br&gt;system prompt: &quot;You are a coding agent. Work in /home/me/proj.&quot;&lt;br&gt;model info: anthropic-messages · claude-sonnet-5-5&lt;br&gt;tools: read, write, edit, ls, grep, find, bash&lt;br&gt;before_tool_call: ask the user before write and bash&lt;br&gt;&lt;br&gt;&lt;b&gt;this run&lt;/b&gt;&lt;br&gt;prompt(&quot;write fizz.py and run it&quot;)&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;history before: empty (a new session)&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="310" width="760" x="2020" y="45" as="geometry"/>
+                <mxCell id="ex_in" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:22px&quot;&gt;example: what goes in&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;setup&lt;/b&gt;&lt;br&gt;system prompt: &quot;You are a coding agent. Work in /home/me/proj.&quot;&lt;br&gt;model info: anthropic-messages · claude-sonnet-5-5&lt;br&gt;tools: read, write, edit, ls, grep, find, bash&lt;br&gt;before_tool_call: ask the user before write, edit and bash&lt;br&gt;&lt;br&gt;&lt;b&gt;this run&lt;/b&gt;&lt;br&gt;prompt(&quot;write fizz.py and run it&quot;)&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;history before: empty (a new session)&lt;/span&gt;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="310" width="760" x="2020" y="45" as="geometry" />
                 </mxCell>
                 <mxCell id="ex_run" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:22px&quot;&gt;example: one run, turn by turn&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;turn 1&lt;/b&gt;&lt;br&gt;1 · request: system prompt + tools + [user &quot;write fizz.py and run it&quot;]&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;AI block streams: &quot;I will write the file.&quot; + a tool call&lt;br&gt;2 · answer: tool call write {&quot;path&quot;: &quot;fizz.py&quot;, &quot;content&quot;: &quot;for i in …&quot;}&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;stop_reason: tool_use&lt;br&gt;3 · before_tool_call: &quot;Allow write: fizz.py?&quot; → allow&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;run it → tool result: &quot;Wrote 120 chars to fizz.py&quot;&lt;br&gt;4 · it had a tool call → ask again&lt;br&gt;&lt;br&gt;&lt;b&gt;turn 2&lt;/b&gt;&lt;br&gt;1 · request: the same history + the tool result&lt;br&gt;2 · answer: tool call bash {&quot;command&quot;: &quot;python fizz.py&quot;}&lt;br&gt;3 · allow → tool result: &quot;1\n2\nFizz\n…\nFizzBuzz\n[exit code: 0]&quot;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;span style=&quot;color:#94a3b8&quot;&gt;(the output streams to the screen while it runs)&lt;/span&gt;&lt;br&gt;4 · it had a tool call → ask again&lt;br&gt;&lt;br&gt;&lt;b&gt;turn 3&lt;/b&gt;&lt;br&gt;2 · answer: text &quot;fizz.py prints FizzBuzz from 1 to 15.&quot;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;stop_reason: stop, no tool calls&lt;br&gt;4 · no tool calls, no steer, no follow_up → the run ends&lt;br&gt;&lt;br&gt;&lt;b&gt;other cases&lt;/b&gt;: Stop, steer, follow_up, cut-off answer, deny, vendor error&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;see page 2a: one example per path, next to the flowchart&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="860" width="760" x="2020" y="400" as="geometry"/>
+                    <mxGeometry height="860" width="760" x="2020" y="400" as="geometry" />
                 </mxCell>
-                <mxCell id="ex_out" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:22px&quot;&gt;example: what comes out&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;events, live&lt;/b&gt; (in order)&lt;br&gt;agent_start&lt;br&gt;message_start / message_end  &lt;span style=&quot;color:#94a3b8&quot;&gt;(user: the prompt)&lt;/span&gt;&lt;br&gt;turn_start&lt;br&gt;message_start, message_update × n, message_end  &lt;span style=&quot;color:#94a3b8&quot;&gt;(answer 1)&lt;/span&gt;&lt;br&gt;tool_execution_start, tool_execution_end  &lt;span style=&quot;color:#94a3b8&quot;&gt;(write)&lt;/span&gt;&lt;br&gt;message_start / message_end  &lt;span style=&quot;color:#94a3b8&quot;&gt;(tool result)&lt;/span&gt;&lt;br&gt;turn_end&lt;br&gt;turn_start … the same for turn 2 (bash, with tool_execution_update)&lt;br&gt;turn_start … answer 3 … turn_end&lt;br&gt;agent_end&lt;br&gt;&lt;br&gt;&lt;b&gt;the result&lt;/b&gt;: 6 new messages in the history&lt;br&gt;user · assistant (write) · tool result · assistant (bash) · tool result · assistant (text)&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="480" width="760" x="2020" y="1330" as="geometry"/>
+                <mxCell id="ex_out" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:22px&quot;&gt;example: what comes out&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;events, live&lt;/b&gt; (in order)&lt;br&gt;agent_start&lt;br&gt;message_start / message_end  &lt;span style=&quot;color:#94a3b8&quot;&gt;(user: the prompt)&lt;/span&gt;&lt;br&gt;turn_start&lt;br&gt;message_update × n while it streams, then message_start / message_end  &lt;span style=&quot;color:#94a3b8&quot;&gt;(answer 1)&lt;/span&gt;&lt;br&gt;tool_execution_start, tool_execution_end  &lt;span style=&quot;color:#94a3b8&quot;&gt;(write)&lt;/span&gt;&lt;br&gt;message_start / message_end  &lt;span style=&quot;color:#94a3b8&quot;&gt;(tool result)&lt;/span&gt;&lt;br&gt;turn_end&lt;br&gt;turn_start … the same for turn 2 (bash, with tool_execution_update)&lt;br&gt;turn_start … answer 3 … turn_end&lt;br&gt;agent_end&lt;br&gt;&lt;br&gt;&lt;b&gt;the result&lt;/b&gt;: 6 new messages in the history&lt;br&gt;user · assistant (write) · tool result · assistant (bash) · tool result · assistant (text)&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="480" width="760" x="2020" y="1330" as="geometry" />
                 </mxCell>
-            </root>
+            <mxCell id="rules" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#475569;" value="&lt;b style=&quot;font-size:22px&quot;&gt;rules of the agent&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;• the Agent owns messages: one history list, the loop adds to it&lt;br&gt;• one run at a time: prompt() while running raises RuntimeError (use steer or follow_up)&lt;br&gt;• continue_() needs the last message to be user or tool_result&lt;br&gt;• tools run one after another, never in parallel&lt;br&gt;• each queue read gives one message (&quot;one-at-a-time&quot;), or all with &quot;all&quot;&lt;br&gt;• abort keeps the queues; each run starts with a new cancel flag&lt;br&gt;• a hook or subscriber that raises ends the run with an error message, with no events&lt;br&gt;• subscribe(fn) returns a function that unsubscribes&lt;/div&gt;" vertex="1"><mxGeometry x="1440" y="975" width="560" height="330" as="geometry" /></mxCell></root>
         </mxGraphModel>
     </diagram>
     <diagram id="loop" name="2a · Agent loop (flowchart)">
-        <mxGraphModel dx="4571" dy="3462" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="4831" dy="5346" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
-                <mxCell id="0"/>
-                <mxCell id="1" parent="0"/>
+                <mxCell id="0" />
+                <mxCell id="1" parent="0" />
                 <mxCell id="L_outer" parent="1" style="rounded=1;arcSize=1;whiteSpace=wrap;html=1;dashed=1;strokeWidth=2;fillColor=#faf5ff;strokeColor=#7c3aed;fontColor=#7c3aed;fontSize=17;fontStyle=1;verticalAlign=top;align=left;spacingLeft=12;spacingRight=12;spacingTop=4;" value="outer loop · follow-ups" vertex="1">
-                    <mxGeometry height="2250" width="1650" x="340" y="215" as="geometry"/>
+                    <mxGeometry height="2430.0" width="1650" x="340" y="215" as="geometry" />
                 </mxCell>
                 <mxCell id="L_inner" parent="1" style="rounded=1;arcSize=1;whiteSpace=wrap;html=1;dashed=1;strokeWidth=2;fillColor=#eff6ff;strokeColor=#2563eb;fontColor=#2563eb;fontSize=17;fontStyle=1;verticalAlign=top;align=right;spacingLeft=12;spacingRight=12;spacingTop=4;" value="inner loop · one turn per pass" vertex="1">
-                    <mxGeometry height="1950" width="1580" x="360" y="245" as="geometry"/>
+                    <mxGeometry height="2130.0" width="1580" x="360" y="245" as="geometry" />
                 </mxCell>
                 <mxCell id="L_tool" parent="1" style="rounded=1;arcSize=1;whiteSpace=wrap;html=1;dashed=1;strokeWidth=2;fillColor=#f8fafc;strokeColor=#475569;fontColor=#475569;fontSize=17;fontStyle=1;verticalAlign=top;align=left;spacingLeft=12;spacingRight=12;spacingTop=4;" value="tool loop · each tool call" vertex="1">
-                    <mxGeometry height="1125" width="840" x="1070" y="875" as="geometry"/>
+                    <mxGeometry height="1155.0" width="840" x="1070" y="1055.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a128" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#f1f5f9;strokeColor=#475569;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;start: prompt(text) or continue_()&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: agent_start, then message_start/end for the prompt&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="80" width="460" x="470" as="geometry"/>
+                    <mxGeometry height="80" width="460" x="470" as="geometry" />
                 </mxCell>
                 <mxCell id="a129" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;read the steer queue&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;any message typed while it was idle? keep it as &quot;waiting&quot;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="80" width="460" x="470" y="130" as="geometry"/>
+                    <mxGeometry height="80" width="460" x="470" y="130" as="geometry" />
                 </mxCell>
                 <mxCell id="a130" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;turn_start · add the waiting messages to history&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;(steer or follow_up messages)&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: turn_start, message_start/end&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="110" width="460" x="470" y="260" as="geometry"/>
+                    <mxGeometry height="110" width="460" x="470" y="260" as="geometry" />
                 </mxCell>
                 <UserObject label="&lt;b style=&quot;font-size:20px&quot;&gt;ask the AI block · click to open&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;one ai.stream call (page 1a)&lt;br&gt;streams: each event goes to the screen at once&lt;br&gt;abort() mid-stream: stops at once,&lt;br&gt;keeps the partial answer, stop_reason = aborted&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: message_update for every AI event&lt;/span&gt;&lt;/div&gt;" link="data:page/id,ai-flow" tooltip="open page 1a · ai.stream (flowchart)" id="a131">
                     <mxCell parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fde68a;strokeColor=#b45309;strokeWidth=3;fontColor=#7c2d12;" vertex="1">
-                        <mxGeometry height="180" width="460" x="470" y="420" as="geometry"/>
+                        <mxGeometry height="180" width="460" x="470" y="600.0" as="geometry" />
                     </mxCell>
                 </UserObject>
                 <mxCell id="a132" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;add the answer to history&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: message_start/end&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="80" width="460" x="470" y="615" as="geometry"/>
+                    <mxGeometry height="80" width="460" x="470" y="795.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a133" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="stop_reason is&lt;br&gt;error or aborted?" vertex="1">
-                    <mxGeometry height="150" width="360" x="520" y="710" as="geometry"/>
+                    <mxGeometry height="150" width="360" x="520" y="890.0" as="geometry" />
                 </mxCell>
-                <mxCell id="a134" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#f1f5f9;strokeColor=#475569;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;stop the run&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: turn_end, agent_end&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="90" width="300" x="-139" y="740" as="geometry"/>
+                <mxCell id="a134" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fef2f2;strokeColor=#dc2626;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;stop the run&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: turn_end, agent_end&lt;/span&gt;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="90" width="300" x="-139" y="920.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a135" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="a tool call&lt;br&gt;not handled yet?" vertex="1">
-                    <mxGeometry height="150" width="360" x="520" y="910" as="geometry"/>
+                    <mxGeometry height="150" width="360" x="520" y="1090.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a136" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="abort() before&lt;br&gt;this tool?" vertex="1">
-                    <mxGeometry height="150" width="320" x="1140" y="910" as="geometry"/>
+                    <mxGeometry height="150" width="320" x="1140" y="1090.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a137" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="answer cut off?&lt;br&gt;(stop_reason = length)" vertex="1">
-                    <mxGeometry height="150" width="340" x="1130" y="1110" as="geometry"/>
+                    <mxGeometry height="150" width="340" x="1130" y="1290.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a138" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;result: truncated, not run&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;its args may be cut in half&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="90" width="340" x="1550" y="1140" as="geometry"/>
+                    <mxGeometry height="90" width="340" x="1550" y="1320.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a139" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;tool_execution_start&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="50" width="360" x="1120" y="1320" as="geometry"/>
+                    <mxGeometry height="50" width="360" x="1120" y="1500.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a140" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="before_tool_call&lt;br&gt;denies it?" vertex="1">
-                    <mxGeometry height="150" width="320" x="1140" y="1420" as="geometry"/>
+                    <mxGeometry height="150" width="320" x="1140" y="1600.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a141" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;result: &quot;User denied: …&quot;&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;the tool does not run&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="90" width="340" x="1550" y="1450" as="geometry"/>
+                    <mxGeometry height="90" width="340" x="1550" y="1630.0" as="geometry" />
                 </mxCell>
-                <mxCell id="a142" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;run the tool&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;find it, check the args, execute&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: tool_execution_update (progress)&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="100" width="420" x="1090" y="1620" as="geometry"/>
+                <mxCell id="a142" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;run the tool&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;find it, check the args, execute&lt;br&gt;any failure (unknown tool, bad args, the tool raises) → an error result, the loop goes on&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: tool_execution_update (progress)&lt;/span&gt;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="130" width="420" x="1090" y="1800.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a143" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;after_tool_call: may change the result&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: tool_execution_end&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="80" width="420" x="1090" y="1770" as="geometry"/>
+                    <mxGeometry height="80" width="420" x="1090" y="1980.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a144" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;add the result to history&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: message_start/end&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="80" width="420" x="1090" y="1900" as="geometry"/>
+                    <mxGeometry height="80" width="420" x="1090" y="2110.0" as="geometry" />
                 </mxCell>
-                <mxCell id="a145" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="abort() during&lt;br&gt;the tools?" vertex="1">
-                    <mxGeometry height="140" width="320" x="540" y="1336" as="geometry"/>
+                <mxCell id="a145" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="was abort()&lt;br&gt;set?" vertex="1">
+                    <mxGeometry height="140" width="320" x="540" y="1516.0" as="geometry" />
                 </mxCell>
-                <mxCell id="a146" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#f1f5f9;strokeColor=#475569;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;add an aborted answer · stop&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: turn_end, agent_end&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="90" width="340" x="-139" y="1361" as="geometry"/>
+                <mxCell id="a146" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fef2f2;strokeColor=#dc2626;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;add an aborted answer · stop&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: turn_end, agent_end&lt;/span&gt;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="90" width="340" x="-139" y="1541.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a147" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;turn_end&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: turn_end&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="70" width="300" x="550" y="1628" as="geometry"/>
+                    <mxGeometry height="70" width="300" x="550" y="1808.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a148" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="this turn had tool calls,&lt;br&gt;or a steer is waiting?" vertex="1">
-                    <mxGeometry height="160" width="400" x="500" y="2008" as="geometry"/>
+                    <mxGeometry height="160" width="400" x="500" y="2188.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a149" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="a follow_up&lt;br&gt;is waiting?" vertex="1">
-                    <mxGeometry height="150" width="340" x="530" y="2291" as="geometry"/>
+                    <mxGeometry height="150" width="340" x="530" y="2471.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a150" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#f1f5f9;strokeColor=#475569;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;the run ends&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: agent_end with the new messages&lt;/span&gt;&lt;br&gt;prompt() returns them&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="100" width="420" x="490" y="2530" as="geometry"/>
+                    <mxGeometry height="100" width="420" x="490" y="2710.0" as="geometry" />
                 </mxCell>
                 <mxCell id="a151" edge="1" parent="1" source="a128" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a129" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a152" edge="1" parent="1" source="a129" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a130" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
-                <mxCell id="a153" edge="1" parent="1" source="a130" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a131" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                <mxCell id="a153" edge="1" parent="1" source="b1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a131" value="">
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a154" edge="1" parent="1" source="a131" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a132" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a155" edge="1" parent="1" source="a132" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a133" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a156" edge="1" parent="1" source="a139" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a140" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a157" edge="1" parent="1" source="a142" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a143" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a158" edge="1" parent="1" source="a143" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a144" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a159" edge="1" parent="1" source="a133" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a134" value="yes">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a160" edge="1" parent="1" source="a133" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a135" value="no">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a161" edge="1" parent="1" source="a135" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a136" value="yes">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a162" edge="1" parent="1" source="a135" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a145" value="no">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a163" edge="1" parent="1" source="a136" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;exitX=0.5;exitY=0;entryX=1;entryY=0.5;" target="a145" value="yes: skip the rest">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a164" edge="1" parent="1" source="a136" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a137" value="no">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a165" edge="1" parent="1" source="a137" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a138" value="yes">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a166" edge="1" parent="1" source="a137" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a139" value="no">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a167" edge="1" parent="1" source="a140" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a141" value="yes">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a168" edge="1" parent="1" source="a140" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a142" value="no">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a170" edge="1" parent="1" source="a138" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;exitX=0.5;exitY=1;entryX=1;entryY=0.5;" target="a144" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a171" edge="1" parent="1" source="a144" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#2563eb;dashed=1;strokeWidth=2;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" target="a135" value="next tool call">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a172" edge="1" parent="1" source="a145" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a146" value="yes">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a173" edge="1" parent="1" source="a145" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a147" value="no">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a174" edge="1" parent="1" source="a147" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a148" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a175" edge="1" parent="1" source="a148" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#2563eb;dashed=1;strokeWidth=3;exitX=0;exitY=0.5;entryX=0;entryY=0.3;" target="a130" value="yes: next turn (inner loop)">
                     <mxGeometry relative="1" x="-0.3547" y="15" as="geometry">
-                        <mxPoint y="1" as="offset"/>
+                        <mxPoint y="1" as="offset" />
                         <Array as="points">
-                            <mxPoint x="384.5" y="2088"/>
-                            <mxPoint x="384.5" y="293"/>
+                            <mxPoint x="384.5" y="2268.0" />
+                            <mxPoint x="384.5" y="293" />
                         </Array>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="a176" edge="1" parent="1" source="a148" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a149" value="no">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="a177" edge="1" parent="1" source="a149" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#7c3aed;dashed=1;strokeWidth=3;exitX=1;exitY=0.5;entryX=1;entryY=0.3;" target="a130" value="yes: add it, next turn (outer loop)">
                     <mxGeometry relative="1" x="-0.264" as="geometry">
                         <Array as="points">
-                            <mxPoint x="1960" y="2366"/>
-                            <mxPoint x="1960" y="293"/>
+                            <mxPoint x="1960" y="2546.0" />
+                            <mxPoint x="1960" y="293" />
                         </Array>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="a178" edge="1" parent="1" source="a149" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a150" value="no">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
-                <mxCell id="a179" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#cbd5e1;" value="&lt;b style=&quot;font-size:20px&quot;&gt;three loops&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b style=&#39;color:#7c3aed&#39;&gt;outer loop&lt;/b&gt;: the model is done, but a follow_up waits → ask again&lt;br&gt;&lt;b style=&#39;color:#2563eb&#39;&gt;inner loop&lt;/b&gt;: the model called tools, or you typed a steer → ask again&lt;br&gt;&lt;b style=&#39;color:#475569&#39;&gt;tool loop&lt;/b&gt;: one pass for each tool call in the answer&lt;br&gt;grey text = the events sent out at that step&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="170" width="620" x="1000" y="2530" as="geometry"/>
+                <mxCell id="a179" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#cbd5e1;" value="&lt;b style=&quot;font-size:20px&quot;&gt;three loops&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b style='color:#7c3aed'&gt;outer loop&lt;/b&gt;: the model is done, but a follow_up waits → ask again&lt;br&gt;&lt;b style='color:#2563eb'&gt;inner loop&lt;/b&gt;: the model called tools, or you typed a steer → ask again&lt;br&gt;&lt;b style='color:#475569'&gt;tool loop&lt;/b&gt;: one pass for each tool call in the answer&lt;br&gt;&lt;b style=&quot;color:#1d4ed8&quot;&gt;1 2 3 4&lt;/b&gt;: the steps of page 2 (build, add the answer, tools, anything more?)&lt;br&gt;&lt;b style=&quot;color:#dc2626&quot;&gt;red&lt;/b&gt;: a way out of the run (error or abort)&lt;br&gt;grey text = the events sent out at that step&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="230" width="620" x="1000" y="2710.0" as="geometry" />
                 </mxCell>
                 <UserObject label="&lt;b style=&quot;font-size:20px&quot;&gt;← back to the agent block&lt;/b&gt;" link="data:page/id,agent" id="back2">
                     <mxCell parent="1" style="rounded=1;html=1;fillColor=#f1f5f9;strokeColor=#64748b;" vertex="1">
-                        <mxGeometry height="50" width="260" x="20" y="20" as="geometry"/>
+                        <mxGeometry height="50" width="260" x="20" y="20" as="geometry" />
                     </mxCell>
                 </UserObject>
-                <mxCell id="ab1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#fef2f2;strokeColor=#dc2626;dashed=1;" value="&lt;b style=&quot;font-size:20px&quot;&gt;you press Stop: abort()&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;sets the cancel flag, at any time, from outside the loop (UI, Ctrl-C, server)&lt;br&gt;• model streaming: the stream is closed at once&lt;br&gt;• tools running: checked before each tool call&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="190" width="460" x="2070" y="400" as="geometry"/>
+                <mxCell id="ab1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#fef2f2;strokeColor=#dc2626;dashed=1;" value="&lt;b style=&quot;font-size:20px&quot;&gt;you press Stop: abort()&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;sets the cancel flag, at any time, from outside the loop (UI, Ctrl-C, server)&lt;br&gt;• model streaming: the stream is closed at once&lt;br&gt;• waiting for approval: the answer is &quot;User denied: aborted&quot;&lt;br&gt;• tools running: the tool sees ctx.cancel and stops; checked before each tool&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="230" width="460" x="-300" y="560" as="geometry" />
                 </mxCell>
-                <mxCell id="ab2" edge="1" parent="1" source="ab1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeWidth=2;dashed=1;strokeColor=#dc2626;exitX=0;exitY=0.35;entryX=1;entryY=0.5;" target="a131" value="abort() any time: close the stream">
-                    <mxGeometry relative="1" as="geometry"/>
+                <mxCell id="ab2" edge="1" parent="1" source="ab1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeWidth=2;dashed=1;strokeColor=#dc2626;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="a131" value="abort() any time: close the stream">
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
-                <mxCell id="ab3" edge="1" parent="1" source="ab1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeWidth=2;dashed=1;strokeColor=#dc2626;exitX=0.5;exitY=1;entryX=1;entryY=0.1;" target="L_tool" value="checked before each tool">
-                    <mxGeometry relative="1" as="geometry"/>
+                <mxCell id="ab3" edge="1" parent="1" source="ab1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeWidth=2;dashed=1;strokeColor=#dc2626;exitX=0.5;exitY=1;entryX=0;entryY=0.5;" target="a145" value="checked before each tool, and after the tools">
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
-            <mxCell id="ex_c0" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;examples: one path through this chart each&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;each one starts from the run on page 2 (&quot;write fizz.py and run it&quot;)&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;the boxes named in &quot;quotes&quot; are the boxes of this chart&lt;/span&gt;&lt;/div&gt;" vertex="1"><mxGeometry x="2070" y="650" width="700" height="124" as="geometry"/></mxCell><mxCell id="ex_c1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#dc2626;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;1 · you press Stop while the model writes&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&quot;ask the AI block&quot;: the stream is closed at once&lt;br&gt;the partial answer &quot;I will write the&quot; is kept, stop_reason = aborted&lt;br&gt;&quot;add the answer to history&quot; → &quot;stop_reason is error or aborted?&quot; yes&lt;br&gt;→ &quot;stop the run&quot;   &lt;span style=&quot;color:#94a3b8&quot;&gt;events: turn_end, agent_end&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;the steer and follow_up queues are kept for next time&lt;/span&gt;&lt;/div&gt;" vertex="1"><mxGeometry x="2070" y="804" width="700" height="193" as="geometry"/></mxCell><mxCell id="ex_c2" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#dc2626;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;2 · you press Stop while bash runs&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;bash sees ctx.cancel: the command is killed&lt;br&gt;result: &quot;…[Command interrupted by the user after 3s]&quot;&lt;br&gt;next tool call? &quot;abort() before this tool?&quot; yes → skip the rest&lt;br&gt;&quot;abort() during the tools?&quot; yes&lt;br&gt;→ &quot;add an aborted answer · stop&quot;   &lt;span style=&quot;color:#94a3b8&quot;&gt;events: turn_end, agent_end&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;skipped calls get &quot;No result provided&quot; when the history is sent again&lt;/span&gt;&lt;/div&gt;" vertex="1"><mxGeometry x="2070" y="1027" width="700" height="216" as="geometry"/></mxCell><mxCell id="ex_c3" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#2563eb;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;3 · you type a steer: &quot;call it fizz2.py&quot;&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;it waits in the steer queue; the loop reads it at a safe point:&lt;br&gt;• before the next model call, or • after the tool batch&lt;br&gt;&quot;this turn had tool calls, or a steer is waiting?&quot; yes&lt;br&gt;→ &quot;turn_start · add the waiting messages&quot;: user &quot;call it fizz2.py&quot;&lt;br&gt;→ the next model call sees it   &lt;span style=&quot;color:#94a3b8&quot;&gt;a steer never cuts a tool batch&lt;/span&gt;&lt;/div&gt;" vertex="1"><mxGeometry x="2070" y="1273" width="700" height="193" as="geometry"/></mxCell><mxCell id="ex_c4" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#7c3aed;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;4 · you send a follow_up: &quot;&gt;&gt; then add tests&quot;&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;it waits until the loop would stop&lt;br&gt;turn 3 ends with text, no tool calls, no steer&lt;br&gt;&quot;a follow_up is waiting?&quot; yes → add it, next turn (outer loop)&lt;br&gt;→ the model now writes the tests, in the same run&lt;/div&gt;" vertex="1"><mxGeometry x="2070" y="1496" width="700" height="170" as="geometry"/></mxCell><mxCell id="ex_c5" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#b45309;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;5 · the answer is cut off (max tokens)&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;the model writes a long write call, the vendor stops: stop_reason = length&lt;br&gt;&quot;a tool call not handled yet?&quot; yes → &quot;answer cut off?&quot; yes&lt;br&gt;→ result: &quot;Tool call was truncated (max tokens); not executed&quot;&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;no tool_execution events: the cut args are never run&lt;/span&gt;&lt;br&gt;&quot;this turn had tool calls?&quot; yes → ask again; the model sees the error&lt;/div&gt;" vertex="1"><mxGeometry x="2070" y="1696" width="700" height="216" as="geometry"/></mxCell><mxCell id="ex_c6" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#475569;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;6 · you deny a tool&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&quot;before_tool_call denies it?&quot; yes: you answered N to &quot;Allow bash?&quot;&lt;br&gt;→ result: &quot;User denied: denied&quot;, is_error = true&lt;br&gt;→ after_tool_call → add the result → ask again&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;the model reads the denial and picks another plan&lt;/span&gt;&lt;/div&gt;" vertex="1"><mxGeometry x="2070" y="1942" width="700" height="170" as="geometry"/></mxCell><mxCell id="ex_c7" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#dc2626;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;7 · the vendor fails (network down)&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;AI block: one error event, stop_reason = error&lt;br&gt;&quot;stop_reason is error or aborted?&quot; yes → &quot;stop the run&quot;&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;retry is not here: the session (Part 4) may wait and call continue_()&lt;/span&gt;&lt;/div&gt;" vertex="1"><mxGeometry x="2070" y="2142" width="700" height="147" as="geometry"/></mxCell></root>
+                <mxCell id="ex_c0" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;examples: one path through this chart each&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;each one starts from the run on page 2 (&quot;write fizz.py and run it&quot;)&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;the boxes named in &quot;quotes&quot; are the boxes of this chart&lt;/span&gt;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="124" width="700" x="2070" y="650" as="geometry" />
+                </mxCell>
+                <mxCell id="ex_c1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#dc2626;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;1 · you press Stop while the model writes&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&quot;ask the AI block&quot;: the stream is closed at once&lt;br&gt;the partial answer &quot;I will write the&quot; is kept, stop_reason = aborted&lt;br&gt;&quot;add the answer to history&quot; → &quot;stop_reason is error or aborted?&quot; yes&lt;br&gt;→ &quot;stop the run&quot;   &lt;span style=&quot;color:#94a3b8&quot;&gt;events: turn_end, agent_end&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;the steer and follow_up queues are kept for next time&lt;/span&gt;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="193" width="700" x="2070" y="804" as="geometry" />
+                </mxCell>
+                <mxCell id="ex_c2" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#dc2626;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;2 · you press Stop while bash runs&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;bash sees ctx.cancel (the cancel flag every tool gets): the command is killed&lt;br&gt;result: &quot;…[Command interrupted by the user after 3s]&quot;&lt;br&gt;next tool call? &quot;abort() before this tool?&quot; yes → skip the rest&lt;br&gt;&quot;was abort() set?&quot; yes&lt;br&gt;→ &quot;add an aborted answer · stop&quot;   &lt;span style=&quot;color:#94a3b8&quot;&gt;events: turn_end, agent_end&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;skipped calls get &quot;No result provided&quot; when the history is sent again&lt;/span&gt;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="216" width="700" x="2070" y="1027" as="geometry" />
+                </mxCell>
+                <mxCell id="ex_c3" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#2563eb;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;3 · you type a steer: &quot;call it fizz2.py&quot;&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;it waits in the steer queue; the loop reads it at a safe point:&lt;br&gt;• before the next model call, or • after the tool batch&lt;br&gt;&quot;this turn had tool calls, or a steer is waiting?&quot; yes&lt;br&gt;→ &quot;turn_start · add the waiting messages&quot;: user &quot;call it fizz2.py&quot;&lt;br&gt;→ the next model call sees it   &lt;span style=&quot;color:#94a3b8&quot;&gt;a steer never cuts a tool batch&lt;/span&gt;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="193" width="700" x="2070" y="1273" as="geometry" />
+                </mxCell>
+                <mxCell id="ex_c4" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#7c3aed;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;4 · you send a follow_up: &quot;&gt;&gt; then add tests&quot;&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;it waits until the loop would stop&lt;br&gt;turn 3 ends with text, no tool calls, no steer&lt;br&gt;&quot;a follow_up is waiting?&quot; yes → add it, next turn (outer loop)&lt;br&gt;→ the model now writes the tests, in the same run&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="170" width="700" x="2070" y="1496" as="geometry" />
+                </mxCell>
+                <mxCell id="ex_c5" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#b45309;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;5 · the answer is cut off (max tokens)&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;the model writes a long write call, the vendor stops: stop_reason = length&lt;br&gt;&quot;a tool call not handled yet?&quot; yes → &quot;answer cut off?&quot; yes&lt;br&gt;→ result: &quot;Tool call was truncated (max tokens); not executed&quot;&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;no tool_execution events: the cut args are never run&lt;/span&gt;&lt;br&gt;&quot;this turn had tool calls?&quot; yes → ask again; the model sees the error&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="216" width="700" x="2070" y="1696" as="geometry" />
+                </mxCell>
+                <mxCell id="ex_c6" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#475569;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;6 · you deny a tool&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&quot;before_tool_call denies it?&quot; yes: you answered N to &quot;Allow bash?&quot;&lt;br&gt;→ result: &quot;User denied: denied&quot;, is_error = true&lt;br&gt;→ after_tool_call → add the result → ask again&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;the model reads the denial and picks another plan&lt;/span&gt;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="170" width="700" x="2070" y="1942" as="geometry" />
+                </mxCell>
+                <mxCell id="ex_c7" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#dc2626;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;7 · the vendor fails (network down)&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;AI block: one error event, stop_reason = error&lt;br&gt;&quot;stop_reason is error or aborted?&quot; yes → &quot;stop the run&quot;&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;retry is not here: the session (Part 4) may wait and call continue_()&lt;/span&gt;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="147" width="700" x="2070" y="2142" as="geometry" />
+                </mxCell>
+            <mxCell id="b1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#1d4ed8;" value="&lt;b style=&quot;font-size:20px&quot;&gt;build the request&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;prepare_next_turn: what the model may see (the session may compact here)&lt;br&gt;read the steer queue again: a steer typed now joins this call&lt;br&gt;tools changed? add a short note for the model&lt;br&gt;system prompt and API key for this call&lt;/div&gt;" vertex="1"><mxGeometry x="470" y="420" width="460" height="160" as="geometry" /></mxCell><mxCell id="b1e" edge="1" parent="1" source="a130" target="b1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeWidth=2;strokeColor=#1d4ed8;" value=""><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="a169" edge="1" parent="1" source="a141" target="a143" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeWidth=2;strokeColor=#1d4ed8;" value=""><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="s1" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#1d4ed8;strokeColor=none;fontColor=#ffffff;fontSize=20;fontStyle=1;" value="1" vertex="1"><mxGeometry x="945.0" y="430.0" width="44" height="44" as="geometry" /></mxCell><mxCell id="s2" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#1d4ed8;strokeColor=none;fontColor=#ffffff;fontSize=20;fontStyle=1;" value="2" vertex="1"><mxGeometry x="945.0" y="805.0" width="44" height="44" as="geometry" /></mxCell><mxCell id="s3" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#1d4ed8;strokeColor=none;fontColor=#ffffff;fontSize=20;fontStyle=1;" value="3" vertex="1"><mxGeometry x="1850.0" y="1063.0" width="44" height="44" as="geometry" /></mxCell><mxCell id="s4" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#1d4ed8;strokeColor=none;fontColor=#ffffff;fontSize=20;fontStyle=1;" value="4" vertex="1"><mxGeometry x="915.0" y="2246.0" width="44" height="44" as="geometry" /></mxCell></root>
         </mxGraphModel>
     </diagram>
     <diagram id="ai-detail" name="1 · AI block (detail)">
         <mxGraphModel dx="3129" dy="2696" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
-                <mxCell id="0"/>
-                <mxCell id="1" parent="0"/>
+                <mxCell id="0" />
+                <mxCell id="1" parent="0" />
                 <mxCell id="c2" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=2;fontColor=#475569;" value="&lt;b style=&quot;font-size:20px&quot;&gt;INPUT&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="430" width="900" x="300" as="geometry"/>
+                    <mxGeometry height="430" width="900" x="300" as="geometry" />
                 </mxCell>
                 <mxCell id="c3" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fde68a;strokeColor=#b45309;strokeWidth=5;shadow=1;" value="&lt;b style=&quot;font-size:30px&quot;&gt;&lt;span style=&quot;color:#7c2d12&quot;&gt;AI BLOCK · ai.stream(model, context)&lt;/span&gt;&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="1100" width="900" x="300" y="500" as="geometry"/>
+                    <mxGeometry height="1100" width="900" x="300" y="500" as="geometry" />
                 </mxCell>
                 <mxCell id="c4" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=2;fontColor=#475569;" value="&lt;b style=&quot;font-size:20px&quot;&gt;OUTPUT: events&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="400" width="1000" x="250" y="1680" as="geometry"/>
+                    <mxGeometry height="400" width="1000" x="250" y="1680" as="geometry" />
                 </mxCell>
                 <mxCell id="c5" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:26px&quot;&gt;model info&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;which model&lt;/b&gt;&lt;br&gt;id: claude-sonnet-5-5&lt;br&gt;provider: anthropic&lt;br&gt;&lt;b&gt;how to reach it&lt;/b&gt;&lt;br&gt;api: which adapter to use&lt;br&gt;base_url: the server address&lt;br&gt;api_key_env: the env var with the key&lt;br&gt;&lt;b&gt;its limits&lt;/b&gt;&lt;br&gt;max_tokens: longest reply&lt;br&gt;context_window: most it can read&lt;br&gt;&lt;b&gt;vendor quirks (compat)&lt;/b&gt;&lt;br&gt;e.g. thinking budget, reasoning effort&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="370" width="420" x="320" y="45" as="geometry"/>
+                    <mxGeometry height="370" width="420" x="320" y="45" as="geometry" />
                 </mxCell>
                 <mxCell id="c6" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:26px&quot;&gt;context&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;system prompt&lt;/b&gt;&lt;br&gt;who the model is, what the project wants&lt;br&gt;&lt;b&gt;history (messages)&lt;/b&gt;&lt;br&gt;user: what you asked&lt;br&gt;assistant: text, thinking, tool calls&lt;br&gt;tool result: what a tool returned&lt;br&gt;&lt;b&gt;tools&lt;/b&gt;&lt;br&gt;name and description&lt;br&gt;parameters (JSON schema), e.g. read(path)&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="370" width="420" x="760" y="45" as="geometry"/>
+                    <mxGeometry height="370" width="420" x="760" y="45" as="geometry" />
                 </mxCell>
                 <mxCell id="c7" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#475569;" value="&lt;b style=&quot;font-size:22px&quot;&gt;plugs in: one adapter per vendor&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;the adapters&lt;/b&gt;&lt;br&gt;anthropic-messages&lt;br&gt;openai-completions&lt;br&gt;openai-responses&lt;br&gt;and your own, with register_provider&lt;br&gt;&lt;b&gt;each adapter does 3 things&lt;/b&gt;&lt;br&gt;1. translate our context to vendor JSON&lt;br&gt;2. send it, open one HTTP stream&lt;br&gt;3. parse vendor chunks into our events&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="320" width="400" x="1280" y="500" as="geometry"/>
+                    <mxGeometry height="320" width="400" x="1280" y="500" as="geometry" />
                 </mxCell>
                 <mxCell id="c8" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#475569;" value="&lt;b style=&quot;font-size:22px&quot;&gt;plugs in: a fake model (tests)&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;plays scripted answers in order&lt;br&gt;no network, no key&lt;br&gt;records every call it got&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="150" width="400" x="1280" y="900" as="geometry"/>
+                    <mxGeometry height="150" width="400" x="1280" y="900" as="geometry" />
                 </mxCell>
                 <mxCell id="c9" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fef3c7;strokeColor=#b45309;strokeWidth=2;fontColor=#1c1917;" value="&lt;b style=&quot;font-size:22px&quot;&gt;1 · pick the adapter&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;look up model info: api&lt;br&gt;&lt;b&gt;why:&lt;/b&gt; each vendor has its own API;&lt;br&gt;the app never needs to know which&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="140" width="420" x="560" y="570" as="geometry"/>
+                    <mxGeometry height="140" width="420" x="560" y="570" as="geometry" />
                 </mxCell>
                 <mxCell id="c10" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fef3c7;strokeColor=#b45309;strokeWidth=2;fontColor=#1c1917;" value="&lt;b style=&quot;font-size:22px&quot;&gt;2 · clean the history&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;drop failed or stopped answers&lt;br&gt;give every tool call a result&lt;br&gt;thinking from another model becomes plain text&lt;br&gt;(only the same model can read its own thinking)&lt;br&gt;&lt;b&gt;why:&lt;/b&gt; a broken history makes the vendor refuse&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="190" width="450" x="330" y="790" as="geometry"/>
+                    <mxGeometry height="190" width="450" x="330" y="790" as="geometry" />
                 </mxCell>
                 <mxCell id="c11" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fee2e2;strokeColor=#dc2626;strokeWidth=2;fontColor=#1c1917;" value="&lt;b style=&quot;font-size:22px&quot;&gt;error event, sent right away&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;no adapter for this api&lt;br&gt;stop_reason = error&lt;br&gt;no api / provider / model written&lt;br&gt;(no adapter ran)&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="170" width="360" x="820" y="790" as="geometry"/>
+                    <mxGeometry height="170" width="360" x="820" y="790" as="geometry" />
                 </mxCell>
                 <mxCell id="c12" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fef3c7;strokeColor=#b45309;strokeWidth=2;fontColor=#1c1917;" value="&lt;b style=&quot;font-size:22px&quot;&gt;3 · the adapter talks to the vendor&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;translate&lt;/b&gt; our context to vendor JSON&lt;br&gt;&lt;b&gt;send&lt;/b&gt; it, one HTTP stream&lt;br&gt;&lt;b&gt;parse&lt;/b&gt; vendor chunks into our events&lt;br&gt;&lt;b&gt;on failure&lt;/b&gt; (no key, network, bad stream):&lt;br&gt;an error event, stop_reason = error&lt;br&gt;&lt;b&gt;so the stream never raises&lt;/b&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="210" width="460" x="420" y="1060" as="geometry"/>
+                    <mxGeometry height="210" width="460" x="420" y="1060" as="geometry" />
                 </mxCell>
                 <mxCell id="c13" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fef3c7;strokeColor=#b45309;strokeWidth=2;fontColor=#1c1917;" value="&lt;b style=&quot;font-size:22px&quot;&gt;4 · write who wrote the answer&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;copy 3 fields from model info into the answer:&lt;br&gt;api, provider, model&lt;br&gt;e.g. anthropic-messages · anthropic · claude-sonnet-5-5&lt;br&gt;&lt;b&gt;why:&lt;/b&gt; the answer stays in the history.&lt;br&gt;Next time, step 2 reads these fields to know&lt;br&gt;if its thinking may be sent back (same model only).&lt;br&gt;then the event goes out to OUTPUT&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="230" width="560" x="360" y="1340" as="geometry"/>
+                    <mxGeometry height="230" width="560" x="360" y="1340" as="geometry" />
                 </mxCell>
                 <mxCell id="c14" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:24px&quot;&gt;streamed events, chunk by chunk&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;start&lt;/b&gt;&lt;br&gt;the answer begins&lt;br&gt;&lt;b&gt;text_delta&lt;/b&gt;&lt;br&gt;a chunk of words&lt;br&gt;&lt;b&gt;thinking_start / delta / end&lt;/b&gt;&lt;br&gt;a chunk of thinking&lt;br&gt;&lt;b&gt;toolcall_start / delta / end&lt;/b&gt;&lt;br&gt;a chunk of a tool call (JSON)&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="330" width="470" x="270" y="1730" as="geometry"/>
+                    <mxGeometry height="330" width="470" x="270" y="1730" as="geometry" />
                 </mxCell>
                 <mxCell id="c15" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:24px&quot;&gt;last event: done or error&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;carries the full answer (AssistantMessage)&lt;br&gt;&lt;b&gt;content&lt;/b&gt;&lt;br&gt;text, thinking, tool calls&lt;br&gt;&lt;b&gt;stop_reason&lt;/b&gt;&lt;br&gt;stop / tool_use / length / error / aborted&lt;br&gt;&lt;b&gt;usage&lt;/b&gt;&lt;br&gt;tokens in and out&lt;br&gt;&lt;b&gt;who wrote it&lt;/b&gt;&lt;br&gt;api, provider, model&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="330" width="470" x="760" y="1730" as="geometry"/>
+                    <mxGeometry height="330" width="470" x="760" y="1730" as="geometry" />
                 </mxCell>
                 <mxCell id="c16" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#475569;" value="&lt;b style=&quot;font-size:22px&quot;&gt;used by: agent loop (Part 2)&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;shows chunks live&lt;br&gt;keeps the final answer&lt;br&gt;runs the tool calls&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="150" width="400" x="550" y="2150" as="geometry"/>
+                    <mxGeometry height="150" width="400" x="550" y="2150" as="geometry" />
                 </mxCell>
                 <mxCell id="c17" edge="1" parent="1" source="c2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#475569;strokeWidth=3;" target="c3" value="model info + context">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="c18" edge="1" parent="1" source="c9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1e3a8a;strokeWidth=2;" target="c10" value="found">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="c19" edge="1" parent="1" source="c9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#dc2626;strokeWidth=2;" target="c11" value="no adapter">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="c20" edge="1" parent="1" source="c10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1e3a8a;strokeWidth=2;" target="c12" value="a clean copy">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="c21" edge="1" parent="1" source="c12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1e3a8a;strokeWidth=2;" target="c13" value="one event (a chunk, done or error)">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="c22" edge="1" parent="1" source="c13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#2563eb;dashed=1;strokeWidth=2;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" target="c12" value="next chunk, until done or error">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="c23" edge="1" parent="1" source="c7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#94a3b8;dashed=1;strokeWidth=2;entryX=1;entryY=0.3;" target="c12" value="picked by api">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="c24" edge="1" parent="1" source="c8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#94a3b8;dashed=1;strokeWidth=2;entryX=1;entryY=0.7;" target="c12" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="c25" edge="1" parent="1" source="c3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#475569;strokeWidth=3;" target="c4" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="c26" edge="1" parent="1" source="c4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#94a3b8;dashed=1;strokeWidth=2;" target="c16" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="c27" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:22px&quot;&gt;example: the context sent in&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;system_prompt&lt;/b&gt;&lt;br&gt;&quot;You are a coding agent. Work in /home/me/proj.&quot;&lt;br&gt;&lt;br&gt;&lt;b&gt;messages&lt;/b&gt; (the history)&lt;br&gt;1. user: &quot;what does fizz.py do?&quot;&lt;br&gt;2. assistant (anthropic-messages · anthropic · claude-sonnet-5-5)&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;thinking: &quot;I should read the file&quot;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;tool call: read {&quot;path&quot;: &quot;fizz.py&quot;}&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;stop_reason: tool_use&lt;br&gt;3. tool result (read): &quot;for i in range(1, 16): ...&quot;&lt;br&gt;&lt;br&gt;&lt;b&gt;tools&lt;/b&gt;&lt;br&gt;read(path): &quot;Read a file&quot;&lt;br&gt;write(path, content): &quot;Write a file&quot;&lt;br&gt;&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;so now the model must answer the user,&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;color:#94a3b8&quot;&gt;using what the tool returned&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="620" width="700" x="1760" as="geometry"/>
+                    <mxGeometry height="620" width="700" x="1760" as="geometry" />
                 </mxCell>
                 <mxCell id="c28" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;strokeWidth=2;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:22px&quot;&gt;example: the events that come out&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;1. start&lt;/b&gt; &lt;span style=&quot;color:#94a3b8&quot;&gt;(an empty answer to fill)&lt;/span&gt;&lt;br&gt;&lt;b&gt;2. thinking_start&lt;/b&gt;&lt;br&gt;&lt;b&gt;3. thinking_delta&lt;/b&gt; &quot;The loop prints&quot;&lt;br&gt;&lt;b&gt;4. thinking_delta&lt;/b&gt; &quot; FizzBuzz up to 15.&quot;&lt;br&gt;&lt;b&gt;5. thinking_end&lt;/b&gt;&lt;br&gt;&lt;b&gt;6. text_delta&lt;/b&gt; &quot;fizz.py prints&quot;&lt;br&gt;&lt;b&gt;7. text_delta&lt;/b&gt; &quot; FizzBuzz from 1 to 15.&quot;&lt;br&gt;&lt;b&gt;8. done&lt;/b&gt; &lt;span style=&quot;color:#94a3b8&quot;&gt;(the full answer)&lt;/span&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;content: [thinking &quot;The loop prints FizzBuzz up to 15.&quot;,&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;text &quot;fizz.py prints FizzBuzz from 1 to 15.&quot;]&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;stop_reason: stop&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;usage: input 812, output 64&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;api · provider · model: anthropic-messages · anthropic · claude-sonnet-5-5&lt;br&gt;&lt;br&gt;&lt;b&gt;if the model wants a tool instead&lt;/b&gt; (like answer 2 above):&lt;br&gt;&lt;b&gt;toolcall_start&lt;/b&gt; name: &quot;read&quot;&lt;br&gt;&lt;b&gt;toolcall_delta&lt;/b&gt; &quot;{\&quot;path\&quot;: &quot;&lt;br&gt;&lt;b&gt;toolcall_delta&lt;/b&gt; &quot;\&quot;fizz.py\&quot;}&quot;&lt;br&gt;&lt;b&gt;toolcall_end&lt;/b&gt;&lt;br&gt;&lt;b&gt;done&lt;/b&gt; stop_reason: tool_use&lt;br&gt;&lt;br&gt;&lt;b&gt;if it fails&lt;/b&gt; (e.g. network down):&lt;br&gt;start … then &lt;b&gt;error&lt;/b&gt;, stop_reason: error, error: &quot;Connection error&quot;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="860" width="760" x="1760" y="1180" as="geometry"/>
+                    <mxGeometry height="860" width="760" x="1760" y="1180" as="geometry" />
                 </mxCell>
                 <mxCell id="c29" edge="1" parent="1" source="c2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#94a3b8;dashed=1;strokeWidth=2;" target="c27" value="example">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="c30" edge="1" parent="1" source="c4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#94a3b8;dashed=1;strokeWidth=2;" target="c28" value="example">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <UserObject label="&lt;b style=&quot;font-size:20px&quot;&gt;← back to the agent block&lt;/b&gt;" link="data:page/id,agent" id="back">
                     <mxCell parent="1" style="rounded=1;html=1;fillColor=#f1f5f9;strokeColor=#64748b;" vertex="1">
-                        <mxGeometry height="50" width="260" x="20" y="20" as="geometry"/>
+                        <mxGeometry height="50" width="260" x="20" y="20" as="geometry" />
                     </mxCell>
                 </UserObject>
             </root>
@@ -407,114 +431,114 @@
     <diagram id="ai-flow" name="1a · ai.stream (flowchart)">
         <mxGraphModel dx="2705" dy="2092" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
-                <mxCell id="0"/>
-                <mxCell id="1" parent="0"/>
+                <mxCell id="0" />
+                <mxCell id="1" parent="0" />
                 <mxCell id="F_try" parent="1" style="rounded=1;arcSize=1;whiteSpace=wrap;html=1;dashed=1;strokeWidth=2;fillColor=#f8fafc;strokeColor=#475569;fontColor=#475569;fontSize=17;fontStyle=1;verticalAlign=top;align=left;spacingLeft=12;spacingRight=12;spacingTop=4;" value="inside the adapter · any exception goes to the error exit" vertex="1">
-                    <mxGeometry height="766" width="1090" x="400" y="836" as="geometry"/>
+                    <mxGeometry height="766" width="1090" x="400" y="836" as="geometry" />
                 </mxCell>
                 <mxCell id="F_chunk" parent="1" style="rounded=1;arcSize=1;whiteSpace=wrap;html=1;dashed=1;strokeWidth=2;fillColor=#eff6ff;strokeColor=#2563eb;fontColor=#2563eb;fontSize=17;fontStyle=1;verticalAlign=top;align=right;spacingLeft=12;spacingRight=12;spacingTop=4;" value="chunk loop · each chunk from the vendor" vertex="1">
-                    <mxGeometry height="215" width="1055" x="420" y="1190" as="geometry"/>
+                    <mxGeometry height="215" width="1055" x="420" y="1190" as="geometry" />
                 </mxCell>
                 <UserObject label="&lt;b style=&quot;font-size:20px&quot;&gt;start: ai.stream(model, context, api_key)&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;called by &quot;ask the AI block&quot; in page 2a, once for each model call · click to go back&lt;/div&gt;" link="data:page/id,loop" tooltip="back to page 2a · Agent loop" id="f1">
                     <mxCell parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f1f5f9;strokeColor=#475569;" vertex="1">
-                        <mxGeometry height="138" width="520" x="440" as="geometry"/>
+                        <mxGeometry height="138" width="520" x="440" as="geometry" />
                     </mxCell>
                 </UserObject>
                 <mxCell id="f2" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="an adapter for&lt;br&gt;model.api?" vertex="1">
-                    <mxGeometry height="150" width="360" x="520" y="198" as="geometry"/>
+                    <mxGeometry height="150" width="360" x="520" y="198" as="geometry" />
                 </mxCell>
                 <mxCell id="f3" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#fef2f2;strokeColor=#dc2626;" value="&lt;b style=&quot;font-size:20px&quot;&gt;error event · end&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;error: &quot;Unknown api: …&quot;&lt;br&gt;no vendor is called&lt;br&gt;back in 2a: &quot;add the answer to history&quot;, then the loop stops (stop_reason = error)&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: error&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="181" width="440" x="1050" y="182" as="geometry"/>
+                    <mxGeometry height="181" width="440" x="1050" y="182" as="geometry" />
                 </mxCell>
                 <mxCell id="f4" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#1d4ed8;" value="&lt;b style=&quot;font-size:20px&quot;&gt;clean the history (transform_messages)&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;drop failed or stopped answers&lt;br&gt;a tool call with no result gets &quot;No result provided&quot;&lt;br&gt;skip compaction and custom entries&lt;br&gt;fix thinking blocks for this model&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="158" width="520" x="440" y="408" as="geometry"/>
+                    <mxGeometry height="158" width="520" x="440" y="408" as="geometry" />
                 </mxCell>
                 <mxCell id="f5" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="an API key&lt;br&gt;was given?" vertex="1">
-                    <mxGeometry height="150" width="360" x="520" y="626" as="geometry"/>
+                    <mxGeometry height="150" width="360" x="520" y="626" as="geometry" />
                 </mxCell>
                 <mxCell id="f6" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#fef2f2;strokeColor=#dc2626;" value="&lt;b style=&quot;font-size:20px&quot;&gt;error event · end&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;error: &quot;no API key for provider …&quot;&lt;br&gt;error_kind = fatal, so it is never retried&lt;br&gt;(only the built-in adapters check this)&lt;br&gt;back in 2a: &quot;add the answer to history&quot;, then the loop stops (stop_reason = error)&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: error&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="204" width="440" x="1050" y="599" as="geometry"/>
+                    <mxGeometry height="204" width="440" x="1050" y="599" as="geometry" />
                 </mxCell>
                 <mxCell id="f7" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#1d4ed8;" value="&lt;b style=&quot;font-size:20px&quot;&gt;adapter: start&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;an empty answer, filled in as chunks come&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: start&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="112" width="520" x="440" y="876" as="geometry"/>
+                    <mxGeometry height="112" width="520" x="440" y="876" as="geometry" />
                 </mxCell>
-                <mxCell id="f8" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#1d4ed8;" value="&lt;b style=&quot;font-size:20px&quot;&gt;translate and send&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;our context → the vendor&#39;s request&lt;br&gt;open the HTTP stream&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="112" width="520" x="440" y="1048" as="geometry"/>
+                <mxCell id="f8" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#1d4ed8;" value="&lt;b style=&quot;font-size:20px&quot;&gt;translate and send&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;our context → the vendor's request&lt;br&gt;open the HTTP stream&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="112" width="520" x="440" y="1048" as="geometry" />
                 </mxCell>
                 <mxCell id="f9" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="another chunk&lt;br&gt;from the vendor?" vertex="1">
-                    <mxGeometry height="150" width="360" x="520" y="1230" as="geometry"/>
+                    <mxGeometry height="150" width="360" x="520" y="1230" as="geometry" />
                 </mxCell>
                 <mxCell id="f10" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#1d4ed8;" value="&lt;b style=&quot;font-size:20px&quot;&gt;parse the chunk&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;add its text to the answer&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: text_delta, thinking_start / _delta / _end, toolcall_start / _delta / _end&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="135" width="460" x="990" y="1237" as="geometry"/>
+                    <mxGeometry height="135" width="460" x="990" y="1237" as="geometry" />
                 </mxCell>
                 <mxCell id="f11" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#1d4ed8;" value="&lt;b style=&quot;font-size:20px&quot;&gt;the final answer&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;content, stop_reason (stop · tool_use · length), token usage&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="112" width="520" x="440" y="1465" as="geometry"/>
+                    <mxGeometry height="112" width="520" x="440" y="1465" as="geometry" />
                 </mxCell>
                 <mxCell id="f12" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f1f5f9;strokeColor=#475569;" value="&lt;b style=&quot;font-size:20px&quot;&gt;done event · end&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;carries the full answer (AssistantMessage)&lt;br&gt;back in 2a: &quot;add the answer to history&quot;&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: done&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="135" width="520" x="440" y="1662" as="geometry"/>
+                    <mxGeometry height="135" width="520" x="440" y="1662" as="geometry" />
                 </mxCell>
                 <mxCell id="f13" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#fef2f2;strokeColor=#dc2626;" value="&lt;b style=&quot;font-size:20px&quot;&gt;error event · end&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;an HTTP error, a network error, a bad answer …&lt;br&gt;keeps the partial answer, stop_reason = error&lt;br&gt;back in 2a: &quot;add the answer to history&quot;, then the loop stops (stop_reason = error)&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: error&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="204" width="440" x="-159" y="1117" as="geometry"/>
+                    <mxGeometry height="204" width="440" x="-159" y="1117" as="geometry" />
                 </mxCell>
                 <mxCell id="n1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#cbd5e1;strokeWidth=1;" value="&lt;b style=&quot;font-size:20px&quot;&gt;stamp who wrote it&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;around the adapter, stream() puts api, provider and model on every event that carries a message&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="135" width="460" x="1570" y="836" as="geometry"/>
+                    <mxGeometry height="135" width="460" x="1570" y="836" as="geometry" />
                 </mxCell>
                 <mxCell id="n2" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#cbd5e1;strokeWidth=1;" value="&lt;b style=&quot;font-size:20px&quot;&gt;abort comes from outside&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;no cancel flag in this block: the agent loop waits for the next chunk and the cancel flag at the same time, and closes the stream if cancel comes first (grey exit)&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="190" width="460" x="1570" y="1011" as="geometry"/>
+                    <mxGeometry height="190" width="460" x="1570" y="1011" as="geometry" />
                 </mxCell>
                 <mxCell id="n3" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#cbd5e1;strokeWidth=1;" value="&lt;b style=&quot;font-size:20px&quot;&gt;reading this chart&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;blue frame: one pass for each chunk&lt;br&gt;grey frame: inside the adapter, any exception → error exit&lt;br&gt;red: an error event, the last event&lt;br&gt;grey text = the events sent out at that step&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="181" width="460" x="1570" y="1235" as="geometry"/>
+                    <mxGeometry height="181" width="460" x="1570" y="1235" as="geometry" />
                 </mxCell>
                 <mxCell id="ae1" edge="1" parent="1" source="f1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="f2" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="ae2" edge="1" parent="1" source="f2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="f3" value="no">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="ae3" edge="1" parent="1" source="f2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="f4" value="yes">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="ae4" edge="1" parent="1" source="f4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="f5" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="ae5" edge="1" parent="1" source="f5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="f6" value="no">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="ae6" edge="1" parent="1" source="f5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="f7" value="yes">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="ae7" edge="1" parent="1" source="f7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="f8" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="ae8" edge="1" parent="1" source="f8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="f9" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="ae9" edge="1" parent="1" source="f9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="f10" value="yes">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="ae10" edge="1" parent="1" source="f10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;dashed=1;strokeColor=#2563eb;exitX=0.5;exitY=0;entryX=1;entryY=0.5;" target="f9" value="next chunk">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="ae11" edge="1" parent="1" source="f9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="f11" value="no more">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="ae12" edge="1" parent="1" source="f11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="f12" value="">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="ae13" edge="1" parent="1" source="F_try" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;dashed=1;strokeColor=#dc2626;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" target="f13" value="any exception">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="u1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#1d4ed8;" value="&lt;b style=&quot;font-size:20px&quot;&gt;up to the agent loop (page 2a)&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;each event is sent up as soon as its chunk arrives&lt;br&gt;the screen draws it right away (message_update)&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="140" width="460" x="1570" y="1450" as="geometry"/>
+                    <mxGeometry height="140" width="460" x="1570" y="1450" as="geometry" />
                 </mxCell>
                 <mxCell id="ue1" edge="1" parent="1" source="f10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeWidth=2;strokeColor=#2563eb;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="u1" value="each event, right away">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
                 <mxCell id="x1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f1f5f9;strokeColor=#475569;dashed=1;" value="&lt;b style=&quot;font-size:20px&quot;&gt;stream closed · no event&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;the agent loop stopped reading and closed the stream&lt;br&gt;the HTTP request ends, the model stops writing&lt;br&gt;the agent loop keeps the partial answer, stop_reason = aborted&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="210" width="440" x="-130" y="1490" as="geometry"/>
+                    <mxGeometry height="210" width="440" x="-130" y="1490" as="geometry" />
                 </mxCell>
                 <mxCell id="xe1" edge="1" parent="1" source="F_chunk" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeWidth=2;dashed=1;strokeColor=#475569;exitX=0;exitY=0.85;entryX=0.5;entryY=0;" target="x1" value="abort: the agent loop closes the stream">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry" />
                 </mxCell>
             </root>
         </mxGraphModel>
