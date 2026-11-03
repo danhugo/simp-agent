@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="agent" name="2 · Agent block">
-        <mxGraphModel dx="3146" dy="2751" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="2304" dy="2220" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -99,7 +99,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="loop" name="2a · Agent loop (flowchart)">
-        <mxGraphModel dx="2753" dy="2458" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="1910" dy="1509" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/><mxCell id="L_outer" parent="1" style="rounded=1;arcSize=1;whiteSpace=wrap;html=1;dashed=1;strokeWidth=2;fillColor=#faf5ff;strokeColor=#7c3aed;fontColor=#7c3aed;fontSize=17;fontStyle=1;verticalAlign=top;align=left;spacingLeft=12;spacingRight=12;spacingTop=4;" value="outer loop · follow-ups" vertex="1"><mxGeometry x="340" y="215" width="1650" height="2250" as="geometry"/></mxCell><mxCell id="L_inner" parent="1" style="rounded=1;arcSize=1;whiteSpace=wrap;html=1;dashed=1;strokeWidth=2;fillColor=#eff6ff;strokeColor=#2563eb;fontColor=#2563eb;fontSize=17;fontStyle=1;verticalAlign=top;align=right;spacingLeft=12;spacingRight=12;spacingTop=4;" value="inner loop · one turn per pass" vertex="1"><mxGeometry x="360" y="245" width="1580" height="1950" as="geometry"/></mxCell><mxCell id="L_tool" parent="1" style="rounded=1;arcSize=1;whiteSpace=wrap;html=1;dashed=1;strokeWidth=2;fillColor=#f8fafc;strokeColor=#475569;fontColor=#475569;fontSize=17;fontStyle=1;verticalAlign=top;align=left;spacingLeft=12;spacingRight=12;spacingTop=4;" value="tool loop · each tool call" vertex="1"><mxGeometry x="1070" y="875" width="840" height="1125" as="geometry"/></mxCell>
@@ -157,22 +157,22 @@
                     <mxGeometry height="80" width="420" x="1090" y="1900" as="geometry"/>
                 </mxCell>
                 <mxCell id="a145" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="abort() during&lt;br&gt;the tools?" vertex="1">
-                    <mxGeometry height="140" width="320" x="540" y="2050" as="geometry"/>
+                    <mxGeometry height="140" width="320" x="540" y="1336" as="geometry"/>
                 </mxCell>
                 <mxCell id="a146" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#f1f5f9;strokeColor=#475569;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;add an aborted answer · stop&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: turn_end, agent_end&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="90" width="340" x="30" y="2075" as="geometry"/>
+                    <mxGeometry height="90" width="340" x="-139" y="1361" as="geometry"/>
                 </mxCell>
                 <mxCell id="a147" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#eff6ff;strokeColor=#1d4ed8;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;turn_end&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: turn_end&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="70" width="300" x="550" y="2240" as="geometry"/>
+                    <mxGeometry height="70" width="300" x="550" y="1628" as="geometry"/>
                 </mxCell>
                 <mxCell id="a148" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="this turn had tool calls,&lt;br&gt;or a steer is waiting?" vertex="1">
-                    <mxGeometry height="160" width="400" x="500" y="2360" as="geometry"/>
+                    <mxGeometry height="160" width="400" x="500" y="2008" as="geometry"/>
                 </mxCell>
                 <mxCell id="a149" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1d4ed8;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="a follow_up&lt;br&gt;is waiting?" vertex="1">
-                    <mxGeometry height="150" width="340" x="530" y="2580" as="geometry"/>
+                    <mxGeometry height="150" width="340" x="530" y="2291" as="geometry"/>
                 </mxCell>
                 <mxCell id="a150" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#f1f5f9;strokeColor=#475569;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;the run ends&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: agent_end with the new messages&lt;/span&gt;&lt;br&gt;prompt() returns them&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="100" width="420" x="490" y="2790" as="geometry"/>
+                    <mxGeometry height="100" width="420" x="490" y="2530" as="geometry"/>
                 </mxCell>
                 <mxCell id="a151" edge="1" parent="1" source="a128" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a129" value="">
                     <mxGeometry relative="1" as="geometry"/>
@@ -247,10 +247,10 @@
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="a175" edge="1" parent="1" source="a148" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#2563eb;dashed=1;strokeWidth=3;exitX=0;exitY=0.5;entryX=0;entryY=0.3;" target="a130" value="yes: next turn (inner loop)">
-                    <mxGeometry relative="1" x="-0.0018" y="15" as="geometry">
+                    <mxGeometry relative="1" x="-0.3547" y="15" as="geometry">
                         <mxPoint y="1" as="offset"/>
                         <Array as="points">
-                            <mxPoint x="384.5" y="2440"/>
+                            <mxPoint x="384.5" y="2088"/>
                             <mxPoint x="384.5" y="293"/>
                         </Array>
                     </mxGeometry>
@@ -259,7 +259,12 @@
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="a177" edge="1" parent="1" source="a149" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#7c3aed;dashed=1;strokeWidth=3;exitX=1;exitY=0.5;entryX=1;entryY=0.3;" target="a130" value="yes: add it, next turn (outer loop)">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" x="-0.264" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1960" y="2366"/>
+                            <mxPoint x="1960" y="293"/>
+                        </Array>
+                    </mxGeometry>
                 </mxCell>
                 <mxCell id="a178" edge="1" parent="1" source="a149" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#1d4ed8;strokeWidth=2;" target="a150" value="no">
                     <mxGeometry relative="1" as="geometry"/>
