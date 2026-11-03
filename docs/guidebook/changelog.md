@@ -2,6 +2,10 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-11-03
+
+- `img/architecture.drawio`, page "2a · Agent loop": three nested dashed boxes for the outer loop (follow-ups), inner loop (one turn per pass) and tool loop (each tool call); "stop the run" moved out of the loop area; the two abort checks renamed "abort() before this tool?" (skip the rest) and "abort() during the tools?"; legend now explains three loops.
+
 ## 2026-11-02
 
 - ch27 store and auth rewritten like ch24/25: Ana/Bob story, one-sentence summary, block map fixed to 23 (blocks 3 and 4), new picture img/27-store-auth, four reader problems as question sections, low-level details (scrypt cost, compare_digest, to_thread, WAL, ALTER TABLE, set_state bypass) moved to Implementation notes. Checked against `store.py`, `server.py`.
