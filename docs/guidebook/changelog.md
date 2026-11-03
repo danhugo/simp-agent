@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-11-04
 
+- `img/architecture.drawio` page "2 · Agent block": three example boxes like the AI block page: what goes in (setup + prompt "write fizz.py and run it"), one run turn by turn (write → approve → bash → final text, plus what a steer or Stop would do), and what comes out (the live events in order and the 6 new messages). Checked against `agent/__init__.py` and `coding/tools.py`.
 - `img/architecture.drawio`: both flowcharts now show that streaming and abort run at the same time. Page 2a: "ask the AI block" says each event goes to the screen at once and abort() mid-stream stops at once with the partial answer; a new red dashed box "you press Stop: abort()" points into the model call and the tool loop. Page 1a: each parsed chunk goes up to the agent loop right away (new box), and a grey exit "stream closed · no event" shows abort closing the stream from outside, separate from the error exit.
 
 ## 2026-11-03
