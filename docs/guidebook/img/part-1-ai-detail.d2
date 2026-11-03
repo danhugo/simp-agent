@@ -1,0 +1,222 @@
+# Part 1 · the AI block, one level deeper, with its inside as a flow.
+# Code: packages/simp_agent/src/simp_agent/ai/__init__.py (Model, Context, stream, transform_messages, _PROVIDERS),
+#       ai/providers/*.py (adapters), testing/__init__.py (FakeProvider)
+# Render: d2 --layout=elk part-1-ai-detail.d2 part-1-ai-detail.png
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+  }
+}
+
+direction: down
+
+# ---------- row 1: plugs (left) + INPUT (right) ----------
+adapters: "plugs in: one adapter per vendor" {
+  label.near: top-left
+  style: {fill: "#ffffff"; stroke: "#94a3b8"; stroke-dash: 5; stroke-width: 2; border-radius: 10; font-size: 30; bold: true; font-color: "#475569"}
+  body: |md
+    **the adapters**  
+    anthropic-messages  
+    openai-completions  
+    openai-responses  
+    and your own, with register_provider  
+
+    **each adapter does 3 things**  
+    1. translate our context to vendor JSON  
+    2. send it, open one HTTP stream  
+    3. parse vendor chunks into our events  
+  | {shape: text; style.font-size: 24}
+}
+
+fake: "plugs in: a fake model (tests)" {
+  label.near: top-left
+  style: {fill: "#ffffff"; stroke: "#94a3b8"; stroke-dash: 5; stroke-width: 2; border-radius: 10; font-size: 30; bold: true; font-color: "#475569"}
+  body: |md
+    plays scripted answers in order  
+    no network, no key  
+    records every call it got  
+  | {shape: text; style.font-size: 24}
+}
+
+in: "INPUT" {
+  style: {fill: "#f8fafc"; stroke: "#cbd5e1"; stroke-width: 2; font-size: 30; bold: true; font-color: "#475569"}
+  grid-columns: 2
+  grid-gap: 30
+
+  model: "model info" {
+    label.near: top-left
+    style: {fill: "#ffffff"; stroke: "#64748b"; stroke-width: 2; border-radius: 10; font-size: 36; bold: true; font-color: "#0f172a"}
+    body: |md
+      **which model**  
+      id: claude-sonnet-5-5  
+      provider: anthropic  
+
+      **how to reach it**  
+      api: which adapter to use  
+      base_url: the server address  
+      api_key_env: the env var with the key  
+
+      **its limits**  
+      max_tokens: longest reply  
+      context_window: most it can read  
+
+      **vendor quirks (compat)**  
+      e.g. thinking budget, reasoning effort  
+    | {shape: text; style.font-size: 26}
+  }
+
+  context: "context" {
+    label.near: top-left
+    style: {fill: "#ffffff"; stroke: "#64748b"; stroke-width: 2; border-radius: 10; font-size: 36; bold: true; font-color: "#0f172a"}
+    body: |md
+      **system prompt**  
+      who the model is, what the project wants  
+
+      **history (messages)**  
+      user: what you asked  
+      assistant: text, thinking, tool calls  
+      tool result: what a tool returned  
+
+      **tools**  
+      name and description  
+      parameters (JSON schema), e.g. read(path)  
+    | {shape: text; style.font-size: 26}
+  }
+}
+
+
+# ---------- row 2: the AI BLOCK, opened as a flow ----------
+ai: "AI BLOCK  ·  ai.stream(model, context)" {
+  style: {fill: "#fde68a"; stroke: "#b45309"; stroke-width: 6; border-radius: 18; font-size: 44; bold: true; font-color: "#7c2d12"; shadow: true}
+  direction: down
+
+  pick: "1 · pick the adapter" {
+    label.near: top-left
+    style: {fill: "#fef3c7"; stroke: "#b45309"; stroke-width: 2; border-radius: 10; font-size: 30; bold: true; font-color: "#1c1917"}
+    body: |md
+      look up model info: api  
+      **why:** each vendor has its own API;  
+      the app never needs to know which  
+    | {shape: text; style.font-size: 24}
+  }
+  clean: "2 · clean the history" {
+    label.near: top-left
+    style: {fill: "#fef3c7"; stroke: "#b45309"; stroke-width: 2; border-radius: 10; font-size: 30; bold: true; font-color: "#1c1917"}
+    body: |md
+      drop failed or stopped answers  
+      give every tool call a result  
+      thinking from another model becomes plain text  
+      (only the same model can read its own thinking)  
+      **why:** a broken history makes the vendor refuse  
+    | {shape: text; style.font-size: 24}
+  }
+  adapter: "3 · the adapter talks to the vendor" {
+    label.near: top-left
+    style: {fill: "#fef3c7"; stroke: "#b45309"; stroke-width: 2; border-radius: 10; font-size: 30; bold: true; font-color: "#1c1917"}
+    body: |md
+      **translate** our context to vendor JSON  
+      **send** it, one HTTP stream  
+      **parse** vendor chunks into our events  
+      **on failure** (no key, network, bad stream):  
+      an error event, stop_reason = error  
+      **so the stream never raises**  
+    | {shape: text; style.font-size: 24}
+  }
+  tag: "4 · write who wrote the answer" {
+    label.near: top-left
+    style: {fill: "#fef3c7"; stroke: "#b45309"; stroke-width: 2; border-radius: 10; font-size: 30; bold: true; font-color: "#1c1917"}
+    body: |md
+      copy 3 fields from model info into the answer:  
+      api, provider, model  
+      e.g. anthropic-messages · anthropic · claude-sonnet-5-5  
+
+      **why:** the answer stays in the history.  
+      Next time, step 2 reads these fields to know  
+      if its thinking may be sent back (same model only).  
+
+      then the event goes out to OUTPUT,  
+      and step 3 reads the next chunk  
+    | {shape: text; style.font-size: 24}
+  }
+  err: "error event, sent right away" {
+    label.near: top-left
+    style: {fill: "#fee2e2"; stroke: "#dc2626"; stroke-width: 2; border-radius: 10; font-size: 30; bold: true; font-color: "#1c1917"}
+    body: |md
+      no adapter for this api  
+      stop_reason = error  
+      no api / provider / model written (no adapter ran)  
+    | {shape: text; style.font-size: 24}
+  }
+
+  pick -> clean: "found" {style.font-size: 22}
+  clean -> adapter: "a clean copy" {style.font-size: 22}
+  adapter -> tag: "one event (a chunk, done or error)" {style.font-size: 22}
+  adapter -> adapter: "next chunk, until done or error" {style: {stroke: "#2563eb"; stroke-dash: 4; font-size: 22}}
+  pick -> err: "no adapter" {style: {stroke: "#dc2626"; font-size: 22}}
+}
+
+# ---------- row 3: OUTPUT ----------
+out: "OUTPUT: events" {
+  style: {fill: "#f8fafc"; stroke: "#cbd5e1"; stroke-width: 2; font-size: 30; bold: true; font-color: "#475569"}
+  grid-columns: 2
+  grid-gap: 30
+
+  live: "streamed events, chunk by chunk" {
+    width: 620
+    label.near: top-left
+    style: {fill: "#ffffff"; stroke: "#64748b"; stroke-width: 2; border-radius: 10; font-size: 32; bold: true; font-color: "#0f172a"}
+    body: |md
+      **start**  
+      the answer begins  
+
+      **text_delta**  
+      a chunk of words  
+
+      **thinking_start / delta / end**  
+      a chunk of thinking  
+
+      **toolcall_start / delta / end**  
+      a chunk of a tool call (JSON)  
+    | {shape: text; style.font-size: 24}
+  }
+
+  last: "last event: done or error" {
+    width: 620
+    label.near: top-left
+    style: {fill: "#ffffff"; stroke: "#64748b"; stroke-width: 2; border-radius: 10; font-size: 32; bold: true; font-color: "#0f172a"}
+    body: |md
+      carries the full answer (AssistantMessage)  
+
+      **content**  
+      text, thinking, tool calls  
+
+      **stop_reason**  
+      stop / tool_use / length / error / aborted  
+
+      **usage**  
+      tokens in and out  
+
+      **who wrote it**  
+      api, provider, model  
+    | {shape: text; style.font-size: 24}
+  }
+}
+
+# ---------- row 4: who uses it ----------
+loop: "used by: agent loop (Part 2)" {
+  label.near: top-left
+  style: {fill: "#ffffff"; stroke: "#94a3b8"; stroke-dash: 5; stroke-width: 2; border-radius: 10; font-size: 30; bold: true; font-color: "#475569"}
+  body: |md
+    shows chunks live  
+    keeps the final answer  
+    runs the tool calls  
+  | {shape: text; style.font-size: 24}
+}
+
+# ---------- links ----------
+in -> ai: "model info + context" {style: {stroke: "#475569"; stroke-width: 4; font-size: 22}}
+adapters -> ai.adapter: "picked by api" {style: {stroke: "#94a3b8"; stroke-dash: 5; stroke-width: 2; font-size: 20}}
+fake -> ai.adapter: "" {style: {stroke: "#94a3b8"; stroke-dash: 5; stroke-width: 2; font-size: 20}}
+ai -> out {style: {stroke: "#475569"; stroke-width: 4}}
+out -> loop {style: {stroke: "#94a3b8"; stroke-dash: 5; stroke-width: 2}}

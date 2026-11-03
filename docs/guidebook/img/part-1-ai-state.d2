@@ -1,0 +1,45 @@
+# Part 1 · the AI block seen from outside: what goes in, what comes out, what plugs in
+# One colour only: the AI block is the focus. Everything else is plain grey.
+# Code: packages/simp_agent/src/simp_agent/ai/__init__.py (stream, register_provider)
+# Render: d2 part-1-ai-state.d2 part-1-ai-state.png
+
+direction: down
+
+classes: {
+  plain: {style: {fill: "#ffffff"; stroke: "#64748b"; stroke-width: 2; border-radius: 10; font-size: 26; font-color: "#1e293b"}}
+  side: {style: {fill: "#ffffff"; stroke: "#cbd5e1"; stroke-width: 2; stroke-dash: 5; border-radius: 10; font-size: 22; font-color: "#64748b"}}
+  group: {style: {fill: "#f8fafc"; stroke: "#cbd5e1"; stroke-width: 2; font-size: 26; font-color: "#475569"}}
+}
+
+in: "INPUT" {
+  class: group
+  direction: right
+  model: "model info" {class: plain}
+  context: "context\nprompt + history + tools" {class: plain}
+}
+
+ai: "AI BLOCK" {
+  style: {fill: "#fde68a"; stroke: "#b45309"; stroke-width: 6; border-radius: 18; font-size: 64; bold: true; font-color: "#7c2d12"; shadow: true}
+  job: "ai.stream(model, context)\n\none call works for every vendor's model\nthe answer streams back chunk by chunk, as events\nevery error is caught and sent as an error event,\nso the stream never raises" {
+    width: 820
+    style: {fill: "#fef3c7"; stroke: "#fef3c7"; font-size: 30; bold: true; font-color: "#1c1917"}
+  }
+}
+
+out: "OUTPUT: events" {
+  class: group
+  direction: right
+  live: "streamed events, chunk by chunk\ntext · thinking · tool call\n-> the app shows them live" {class: plain}
+  last: "last event: done or error\ncarries the full answer\n(AssistantMessage)" {class: plain}
+  live -> last: "then" {style: {stroke: "#94a3b8"; font-size: 20}}
+}
+
+vendors: "plugs in: one adapter per vendor\n(Anthropic, OpenAI ...)" {class: side}
+fake: "plugs in: a fake model\n(for tests)" {class: side}
+loop: "used by: agent loop\n(Part 2)" {class: side}
+
+in -> ai {style: {stroke: "#475569"; stroke-width: 4}}
+ai -> out {style: {stroke: "#475569"; stroke-width: 4}}
+vendors -> ai {style: {stroke: "#cbd5e1"; stroke-dash: 5; stroke-width: 2}}
+fake -> ai {style: {stroke: "#cbd5e1"; stroke-dash: 5; stroke-width: 2}}
+out -> loop {style: {stroke: "#cbd5e1"; stroke-dash: 5; stroke-width: 2}}
