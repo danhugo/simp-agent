@@ -678,7 +678,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="session-flow" name="4a · Session run (flowchart)">
-        <mxGraphModel dx="2014" dy="1819" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="1528" dy="1392" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -774,31 +774,19 @@
                 <mxCell id="t7y_t8_14" edge="1" parent="1" source="t7y" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;" target="t8" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="t6y_t8_15" edge="1" parent="1" source="t6y" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;" target="t8" value="compaction ok">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
                 <mxCell id="t5_t9_16" edge="1" parent="1" source="t5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" target="t9" value="no">
                     <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="300" y="1279"/>
-                            <mxPoint x="300" y="2091"/>
-                        </Array>
+                        
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="t8_t5_17" edge="1" parent="1" source="t8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;dashed=1;strokeWidth=3;exitX=1;exitY=0.5;entryX=1;entryY=0.5;" target="t5" value="next try (retry loop)">
                     <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="1530" y="1884"/>
-                            <mxPoint x="1530" y="1279"/>
-                        </Array>
+                        
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="t6y_t10_18" edge="1" parent="1" source="t6y" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;dashed=1;strokeColor=#dc2626;exitX=0.5;exitY=0;entryX=0.5;entryY=0;" target="t10" value="compaction failed">
                     <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="1270" y="1394"/>
-                            <mxPoint x="-320" y="1394"/>
-                        </Array>
+                        
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="t7y_t11_19" edge="1" parent="1" source="t7y" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;dashed=1;strokeColor=#dc2626;" target="t11" value="abort()">
@@ -835,7 +823,9 @@
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="t11_t9" edge="1" parent="1" source="t11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#64748b;strokeWidth=2;" target="t9" value="then the run ends">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry">
+                        
+                    </mxGeometry>
                 </mxCell>
                 <mxCell id="t0note" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fffbeb;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#334155;" value="&lt;b style=&quot;font-size:20px&quot;&gt;note · where continue_() comes from&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;prompt(text)&lt;/b&gt;: the app has new text from the user&lt;br&gt;&lt;b&gt;continue_()&lt;/b&gt;: no new text, go on from the history&lt;br&gt;&lt;br&gt;&lt;b&gt;first check inside continue_()&lt;/b&gt;:&lt;br&gt;skip compaction / custom entries and error answers,&lt;br&gt;the last message must be &lt;b&gt;user&lt;/b&gt; or &lt;b&gt;tool_result&lt;/b&gt;&lt;br&gt;(the model still owes an answer); a normal assistant answer → ValueError &quot;Cannot continue&quot;&lt;br&gt;&lt;br&gt;&lt;b&gt;who calls it&lt;/b&gt;&lt;br&gt;• the session itself, in the retry loop (most common)&lt;br&gt;• an app that resumes a run cut off in the middle&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;the CLI: simp -c opens the chat and waits for you; it does not call continue_()&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;example&lt;/b&gt;&lt;br&gt;history: user &quot;write fizz.py&quot; → assistant: tool call write → tool result &quot;ok&quot;&lt;br&gt;the app crashes before the next model call&lt;br&gt;later: continue_() → last is tool_result → OK, the model answers &quot;Done, fizz.py written.&quot;&lt;br&gt;call continue_() again → last is assistant → &quot;Cannot continue&quot;&lt;/div&gt;" vertex="1">
                     <mxGeometry height="520" width="740" x="-340" as="geometry"/>
@@ -849,7 +839,15 @@
                 <mxCell id="t1b_t2" edge="1" parent="1" source="t1b" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;" target="t2" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-            <mxCell id="t4out" value="&lt;b style=&quot;font-size:20px&quot;&gt;sent out while the agent runs&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;to the store&lt;/b&gt;: every message_end → store.append(message), right away&lt;br&gt;&lt;b&gt;to subscribers (the app), then plugins' on_event&lt;/b&gt;:&lt;br&gt;&amp;nbsp;&amp;nbsp;every agent event (page 2): turn_*, message_*, message_update (AI chunks), tool_execution_*&lt;br&gt;&amp;nbsp;&amp;nbsp;tool_execution_update goes through plugins' tool_update first (hide secrets)&lt;br&gt;&amp;nbsp;&amp;nbsp;compaction_start / compaction_end: the &quot;too big?&quot; check before a model call&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;(the summary is saved too: message_end with a CompactionEntry)&lt;br&gt;&amp;nbsp;&amp;nbsp;plugin_error: a plugin hook raised&lt;br&gt;&amp;nbsp;&amp;nbsp;plugin events: api.emit(...), api.append_entry(...) → message_end&lt;br&gt;&lt;b&gt;to the human&lt;/b&gt;: approve(call) for bash / write / edit, the run waits for the answer&lt;br&gt;&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;after the run: auto_retry_*, and compaction_* for an overflow&lt;/span&gt;&lt;/div&gt;" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#334155;" vertex="1" parent="1"><mxGeometry x="1380.0" y="898.0" width="700" height="330" as="geometry"/></mxCell><mxCell id="t4_out" value="events, live" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#94a3b8;strokeWidth=2;fontSize=14;fontStyle=2;fontColor=#64748b;" edge="1" parent="1" source="t4" target="t4out"><mxGeometry relative="1" as="geometry"/></mxCell></root>
+                <mxCell id="t4out" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#334155;" value="&lt;b style=&quot;font-size:20px&quot;&gt;sent out while the agent runs&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;to the store&lt;/b&gt;: every message_end → store.append(message), right away&lt;br&gt;&lt;b&gt;to subscribers (the app), then plugins' on_event&lt;/b&gt;:&lt;br&gt;&amp;nbsp;&amp;nbsp;every agent event (page 2): turn_*, message_*, message_update (AI chunks), tool_execution_*&lt;br&gt;&amp;nbsp;&amp;nbsp;tool_execution_update goes through plugins' tool_update first (hide secrets)&lt;br&gt;&amp;nbsp;&amp;nbsp;compaction_start / compaction_end: the &quot;too big?&quot; check before a model call&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;(the summary is saved too: message_end with a CompactionEntry)&lt;br&gt;&amp;nbsp;&amp;nbsp;plugin_error: a plugin hook raised&lt;br&gt;&amp;nbsp;&amp;nbsp;plugin events: api.emit(...), api.append_entry(...) → message_end&lt;br&gt;&lt;b&gt;to the human&lt;/b&gt;: approve(call) for bash / write / edit, the run waits for the answer&lt;br&gt;&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;after the run: auto_retry_*, and compaction_* for an overflow&lt;/span&gt;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="330" width="700" x="1384" y="886" as="geometry"/>
+                </mxCell>
+                <mxCell id="t4_out" edge="1" parent="1" source="t4" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#94a3b8;strokeWidth=2;fontSize=14;fontStyle=2;fontColor=#64748b;" target="t4out" value="events, live">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            <mxCell id="t1y_t1b" edge="1" parent="1" source="t1y" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;" target="t1b" value="then">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell></root>
         </mxGraphModel>
     </diagram>
 </mxfile>
