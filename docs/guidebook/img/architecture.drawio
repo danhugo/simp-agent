@@ -570,7 +570,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="session" name="4 · Session block">
-        <mxGraphModel dx="1614" dy="1819" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -656,11 +656,17 @@
                 <mxCell id="e_out" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#94a3b8;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:22px&quot;&gt;example: what comes out&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;events&lt;/b&gt;: the agent events of 4 turns, plus&lt;br&gt;auto_retry_start, auto_retry_end&lt;br&gt;&lt;b&gt;the store&lt;/b&gt;: 3f9a.jsonl has 9 more lines&lt;br&gt;(the error answer is saved too; the model never sees it again)&lt;br&gt;&lt;b&gt;the result&lt;/b&gt;: the new messages of this run&lt;/div&gt;" vertex="1">
                     <mxGeometry height="185" width="760" x="2050" y="725" as="geometry"/>
                 </mxCell>
-            <mxCell id="cp" value="&lt;b style=&quot;font-size:20px&quot;&gt;the coding part plugs in (Part 3)&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;the session imports from coding/:&lt;br&gt;• TOOLS: the 7 coding tools (default tools)&lt;br&gt;• the coding prompt: prompt section &quot;coding&quot;, order 0&lt;br&gt;• AGENTS.md / CLAUDE.md of the project: section &quot;context_file&quot;, order 10&lt;br&gt;give system_prompt= → it replaces the coding prompt,&lt;br&gt;and no AGENTS.md is read&lt;br&gt;&lt;br&gt;&lt;b&gt;prompt sections&lt;/b&gt;: sorted by order (0, 10, plugins 100),&lt;br&gt;joined into the system prompt, built again every turn&lt;/div&gt;" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#475569;" vertex="1" parent="1"><mxGeometry x="1450" y="1420" width="560" height="300" as="geometry"/></mxCell><mxCell id="cp_s3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#94a3b8;dashed=1;strokeWidth=2;" edge="1" parent="1" source="cp" target="s0"><mxGeometry relative="1" as="geometry"/></mxCell></root>
+                <mxCell id="cp" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#475569;" value="&lt;b style=&quot;font-size:20px&quot;&gt;the coding part plugs in (Part 3)&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;the session imports from coding/:&lt;br&gt;• TOOLS: the 7 coding tools (default tools)&lt;br&gt;• the coding prompt: prompt section &quot;coding&quot;, order 0&lt;br&gt;• AGENTS.md / CLAUDE.md of the project: section &quot;context_file&quot;, order 10&lt;br&gt;give system_prompt= → it replaces the coding prompt,&lt;br&gt;and no AGENTS.md is read&lt;br&gt;&lt;br&gt;&lt;b&gt;prompt sections&lt;/b&gt;: sorted by order (0, 10, plugins 100),&lt;br&gt;joined into the system prompt, built again every turn&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="300" width="560" x="1450" y="1420" as="geometry"/>
+                </mxCell>
+                <mxCell id="cp_s3" edge="1" parent="1" source="cp" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#94a3b8;dashed=1;strokeWidth=2;" target="s0" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
         </mxGraphModel>
     </diagram>
     <diagram id="session-flow" name="4a · Session run (flowchart)">
-        <mxGraphModel dx="4143" dy="3339" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="1336" dy="1223" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -724,9 +730,6 @@
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="t1_t2_3" edge="1" parent="1" source="t1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;" target="t2" value="no">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="t1y_t2_4" edge="1" parent="1" source="t1y" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;" target="t2" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="t2_t2y_5" edge="1" parent="1" source="t2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;" target="t2y" value="yes">
@@ -816,7 +819,13 @@
                 <mxCell id="x6" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#475569;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;6 · a plugin answers&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;prompt(&quot;/plan&quot;) → the plan_mode plugin handles it&lt;br&gt;→ &quot;stop · nothing runs&quot;: no model call at all&lt;/div&gt;" vertex="1">
                     <mxGeometry height="114" width="720" x="2020" y="1521" as="geometry"/>
                 </mxCell>
-            <mxCell id="t10_t9" value="then the run ends" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#64748b;strokeWidth=2;" edge="1" parent="1" source="t10" target="t9"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="t11_t9" value="then the run ends" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#64748b;strokeWidth=2;" edge="1" parent="1" source="t11" target="t9"><mxGeometry relative="1" as="geometry"/></mxCell></root>
+                <mxCell id="t10_t9" edge="1" parent="1" source="t10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#64748b;strokeWidth=2;" target="t9" value="then the run ends">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="t11_t9" edge="1" parent="1" source="t11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#64748b;strokeWidth=2;" target="t9" value="then the run ends">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            <mxCell id="t0note" value="&lt;b style=&quot;font-size:20px&quot;&gt;note · where continue_() comes from&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;prompt(text)&lt;/b&gt;: the app has new text from the user&lt;br&gt;&lt;b&gt;continue_()&lt;/b&gt;: no new text, go on from the history&lt;br&gt;&lt;br&gt;&lt;b&gt;first check inside continue_()&lt;/b&gt;:&lt;br&gt;skip compaction / custom entries and error answers,&lt;br&gt;the last message must be &lt;b&gt;user&lt;/b&gt; or &lt;b&gt;tool_result&lt;/b&gt;&lt;br&gt;(the model still owes an answer); a normal assistant answer → ValueError &quot;Cannot continue&quot;&lt;br&gt;&lt;br&gt;&lt;b&gt;who calls it&lt;/b&gt;&lt;br&gt;• the session itself, in the retry loop (most common)&lt;br&gt;• an app that resumes a run cut off in the middle&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;the CLI: simp -c opens the chat and waits for you; it does not call continue_()&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;example&lt;/b&gt;&lt;br&gt;history: user &quot;write fizz.py&quot; → assistant: tool call write → tool result &quot;ok&quot;&lt;br&gt;the app crashes before the next model call&lt;br&gt;later: continue_() → last is tool_result → OK, the model answers &quot;Done, fizz.py written.&quot;&lt;br&gt;call continue_() again → last is assistant → &quot;Cannot continue&quot;&lt;/div&gt;" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fffbeb;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#334155;" vertex="1" parent="1"><mxGeometry x="-340.0" y="0.0" width="740" height="520" as="geometry"/></mxCell><mxCell id="t0note_e" value="" style="endArrow=none;dashed=1;strokeColor=#94a3b8;strokeWidth=2;" edge="1" parent="1" source="t0note" target="t0"><mxGeometry relative="1" as="geometry"/></mxCell></root>
         </mxGraphModel>
     </diagram>
 </mxfile>
