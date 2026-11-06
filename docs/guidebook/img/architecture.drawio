@@ -113,7 +113,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="loop" name="2a · Agent loop (flowchart)">
-        <mxGraphModel dx="2740" dy="2458" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -336,9 +336,6 @@
                 <mxCell id="b1e" edge="1" parent="1" source="a130" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeWidth=2;strokeColor=#1d4ed8;" target="b1" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="a169" edge="1" parent="1" source="a141" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeWidth=2;strokeColor=#1d4ed8;" target="a143" value="">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
                 <mxCell id="s1" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#1d4ed8;strokeColor=none;fontColor=#ffffff;fontSize=20;fontStyle=1;" value="1" vertex="1">
                     <mxGeometry height="44" width="44" x="945" y="430" as="geometry"/>
                 </mxCell>
@@ -351,7 +348,16 @@
                 <mxCell id="s4" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#1d4ed8;strokeColor=none;fontColor=#ffffff;fontSize=20;fontStyle=1;" value="4" vertex="1">
                     <mxGeometry height="44" width="44" x="915" y="2246" as="geometry"/>
                 </mxCell>
-            <mxCell id="hooknote" value="&lt;b style=&quot;font-size:20px&quot;&gt;the agent's 2 hooks&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;a &lt;b&gt;hook&lt;/b&gt; = an empty slot: a function the app may give the agent,&lt;br&gt;called at a fixed moment. None given → skipped.&lt;br&gt;&lt;br&gt;&lt;b&gt;before_tool_call(call, ctx)&lt;/b&gt; → None = run it, a text = deny (the reason)&lt;br&gt;&lt;b&gt;after_tool_call(call, result, ctx)&lt;/b&gt; → a new result, or None = keep it&lt;br&gt;(it runs after a deny too)&lt;br&gt;&lt;br&gt;only 2 hooks here, plain functions, no plugins.&lt;br&gt;&lt;b&gt;Part 4&lt;/b&gt;: the session fills these 2 slots with its own functions;&lt;br&gt;inside, they run every plugin's tool_call / tool_result,&lt;br&gt;then approve() asks you (bash / write / edit).&lt;br&gt;&lt;br&gt;&lt;b&gt;example&lt;/b&gt; (no session):&lt;br&gt;&lt;span style=&quot;font-family:Menlo&quot;&gt;Agent(..., before_tool_call=lambda call, ctx:&lt;br&gt;&amp;nbsp;&amp;nbsp;&quot;no shell&quot; if call.name == &quot;bash&quot; else None)&lt;/span&gt;&lt;br&gt;→ bash gets &quot;User denied: no shell&quot;; other tools run&lt;/div&gt;" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fffbeb;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#334155;" vertex="1" parent="1"><mxGeometry x="1930.0" y="1600.0" width="620" height="470" as="geometry"/></mxCell><mxCell id="hn_a140" value="" style="endArrow=none;dashed=1;strokeColor=#94a3b8;strokeWidth=2;" edge="1" parent="1" source="hooknote" target="a140"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="hn_a143" value="" style="endArrow=none;dashed=1;strokeColor=#94a3b8;strokeWidth=2;" edge="1" parent="1" source="hooknote" target="a143"><mxGeometry relative="1" as="geometry"/></mxCell></root>
+                <mxCell id="hooknote" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fffbeb;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#334155;" value="&lt;b style=&quot;font-size:20px&quot;&gt;the agent's 2 hooks&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;a &lt;b&gt;hook&lt;/b&gt; = an empty slot: a function the app may give the agent,&lt;br&gt;called at a fixed moment. None given → skipped.&lt;br&gt;&lt;br&gt;&lt;b&gt;before_tool_call(call, ctx)&lt;/b&gt; → None = run it, a text = deny (the reason)&lt;br&gt;&lt;b&gt;after_tool_call(call, result, ctx)&lt;/b&gt; → a new result, or None = keep it&lt;br&gt;(it runs after a deny too)&lt;br&gt;&lt;br&gt;only 2 hooks here, plain functions, no plugins.&lt;br&gt;&lt;b&gt;Part 4&lt;/b&gt;: the session fills these 2 slots with its own functions;&lt;br&gt;inside, they run every plugin's tool_call / tool_result,&lt;br&gt;then approve() asks you (bash / write / edit).&lt;br&gt;&lt;br&gt;&lt;b&gt;example&lt;/b&gt; (no session):&lt;br&gt;&lt;span style=&quot;font-family:Menlo&quot;&gt;Agent(..., before_tool_call=lambda call, ctx:&lt;br&gt;&amp;nbsp;&amp;nbsp;&quot;no shell&quot; if call.name == &quot;bash&quot; else None)&lt;/span&gt;&lt;br&gt;→ bash gets &quot;User denied: no shell&quot;; other tools run&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="470" width="620" x="1930" y="1600" as="geometry"/>
+                </mxCell>
+                <mxCell id="hn_a140" edge="1" parent="1" source="hooknote" style="endArrow=none;dashed=1;strokeColor=#94a3b8;strokeWidth=2;" target="a140" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="hn_a143" edge="1" parent="1" source="hooknote" style="endArrow=none;dashed=1;strokeColor=#94a3b8;strokeWidth=2;" target="a143" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
         </mxGraphModel>
     </diagram>
     <diagram id="ai-detail" name="1 · AI block (detail)">
@@ -570,7 +576,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="session" name="4 · Session block">
-        <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="1614" dy="1819" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -672,7 +678,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="session-flow" name="4a · Session run (flowchart)">
-        <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="1682" dy="1527" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -688,10 +694,10 @@
                 <mxCell id="t1y" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f0fdfa;strokeColor=#0f766e;" value="&lt;b style=&quot;font-size:20px&quot;&gt;get ready, once&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;read AGENTS.md → a prompt section&lt;br&gt;plugins: setup(api, config), session_start&lt;/div&gt;" vertex="1">
                     <mxGeometry height="114" width="420" x="1060" y="169" as="geometry"/>
                 </mxCell>
-                <mxCell id="t2" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0f766e;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="a plugin answered&lt;br&gt;the prompt itself?&lt;br&gt;(input hook)" vertex="1">
+                <mxCell id="t2" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0f766e;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="input hook:&lt;br&gt;a plugin says &quot;handled&quot;,&lt;br&gt;no model needed?" vertex="1">
                     <mxGeometry height="150" width="360" x="520" y="361" as="geometry"/>
                 </mxCell>
-                <mxCell id="t2y" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f1f5f9;strokeColor=#475569;" value="&lt;b style=&quot;font-size:20px&quot;&gt;stop · nothing runs&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;e.g. a /plan command handled by a plugin&lt;br&gt;returns no new messages&lt;/div&gt;" vertex="1">
+                <mxCell id="t2y" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f1f5f9;strokeColor=#475569;" value="&lt;b style=&quot;font-size:20px&quot;&gt;stop · the model is not called&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;the plugin did the job itself&lt;br&gt;e.g. you type /stats → the plugin prints the token count&lt;br&gt;nothing is added to history; returns []&lt;/div&gt;" vertex="1">
                     <mxGeometry height="114" width="420" x="1060" y="379" as="geometry"/>
                 </mxCell>
                 <mxCell id="t3" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f0fdfa;strokeColor=#0f766e;" value="&lt;b style=&quot;font-size:20px&quot;&gt;plugins may change the text, add messages&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;continue_() skips this: there is no new text&lt;/div&gt;" vertex="1">
@@ -822,7 +828,7 @@
                 <mxCell id="x5" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#dc2626;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;5 · a fatal error&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;no API key: error_kind = fatal&lt;br&gt;&quot;short failure?&quot; no → &quot;stop with the error&quot;, no retry&lt;/div&gt;" vertex="1">
                     <mxGeometry height="114" width="720" x="2020" y="1377" as="geometry"/>
                 </mxCell>
-                <mxCell id="x6" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#475569;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;6 · a plugin answers&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;prompt(&quot;/plan&quot;) → the plan_mode plugin handles it&lt;br&gt;→ &quot;stop · nothing runs&quot;: no model call at all&lt;/div&gt;" vertex="1">
+                <mxCell id="x6" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#475569;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;6 · a plugin handles it&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;prompt(&quot;/stats&quot;) → a stats plugin prints the token count, says &quot;handled&quot;&lt;br&gt;→ &quot;stop · the model is not called&quot;: no model call at all&lt;/div&gt;" vertex="1">
                     <mxGeometry height="114" width="720" x="2020" y="1521" as="geometry"/>
                 </mxCell>
                 <mxCell id="t10_t9" edge="1" parent="1" source="t10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#64748b;strokeWidth=2;" target="t9" value="then the run ends">
