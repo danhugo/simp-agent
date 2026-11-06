@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="agent" name="2 · Agent block">
-        <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="2674" dy="2751" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -113,7 +113,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="loop" name="2a · Agent loop (flowchart)">
-        <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="2740" dy="2458" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -570,7 +570,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="session" name="4 · Session block">
-        <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="1614" dy="1819" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -662,11 +662,11 @@
                 <mxCell id="cp_s3" edge="1" parent="1" source="cp" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#94a3b8;dashed=1;strokeWidth=2;" target="s0" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-            </root>
+            <mxCell id="plughooks" value="&lt;b style=&quot;font-size:20px&quot;&gt;plugins &amp;amp; hooks&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;hook&lt;/b&gt; = a method with a fixed name. The session calls it at a fixed moment.&lt;br&gt;&lt;b&gt;plugin&lt;/b&gt; = a plain object with some of these methods. It writes only the ones it needs.&lt;br&gt;The session calls each plugin in list order, and each one gets the last one's output.&lt;br&gt;&lt;br&gt;&lt;b&gt;when → hook&lt;/b&gt;&lt;br&gt;first run → setup(api, config), session_start&lt;br&gt;new text → input (change it, or handled: no model call), before_agent_start (add messages)&lt;br&gt;before each model call → context (edit what the model sees)&lt;br&gt;each tool → tool_call (block / change args), tool_update (hide secrets), tool_result (change it)&lt;br&gt;each event → on_event · shutdown() → session_shutdown&lt;br&gt;&lt;br&gt;&lt;b&gt;from Part 2&lt;/b&gt;: the agent has only 2 hooks, before_tool_call / after_tool_call (plain functions).&lt;br&gt;The session plugs its own functions in there; inside, they call every plugin's tool_call / tool_result,&lt;br&gt;then approve().&lt;br&gt;&lt;br&gt;&lt;b&gt;the other way&lt;/b&gt;: setup gets a PluginAPI, so a plugin can add tools and prompt sections,&lt;br&gt;send a message, set the model, abort.&lt;br&gt;A hook that raises → a plugin_error event; the run goes on (tool_call: the tool is blocked).&lt;br&gt;&lt;br&gt;&lt;b&gt;example&lt;/b&gt;: a plugin with one hook&lt;br&gt;&lt;span style=&quot;font-family:Menlo&quot;&gt;class HideKeys:&lt;br&gt;&amp;nbsp;&amp;nbsp;def tool_update(self, call, text):&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;return text.replace(KEY, &quot;***&quot;)&lt;/span&gt;&lt;br&gt;AgentSession(..., plugins=[HideKeys()]) → bash output shows *** instead of the key&lt;/div&gt;" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#334155;" vertex="1" parent="1"><mxGeometry x="1450" y="1780.0" width="760" height="640" as="geometry"/></mxCell><mxCell id="plughooks_e" value="" style="endArrow=none;dashed=1;strokeColor=#94a3b8;strokeWidth=2;" edge="1" parent="1" source="plughooks" target="pl"><mxGeometry relative="1" as="geometry"/></mxCell></root>
         </mxGraphModel>
     </diagram>
     <diagram id="session-flow" name="4a · Session run (flowchart)">
-        <mxGraphModel dx="1336" dy="1223" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="1528" dy="1392" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -682,7 +682,7 @@
                 <mxCell id="t1y" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f0fdfa;strokeColor=#0f766e;" value="&lt;b style=&quot;font-size:20px&quot;&gt;get ready, once&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;read AGENTS.md → a prompt section&lt;br&gt;plugins: setup(api, config), session_start&lt;/div&gt;" vertex="1">
                     <mxGeometry height="114" width="420" x="1060" y="169" as="geometry"/>
                 </mxCell>
-                <mxCell id="t2" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0f766e;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="a plugin answered&lt;br&gt;the prompt itself?" vertex="1">
+                <mxCell id="t2" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0f766e;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="a plugin answered&lt;br&gt;the prompt itself?&lt;br&gt;(input hook)" vertex="1">
                     <mxGeometry height="150" width="360" x="520" y="361" as="geometry"/>
                 </mxCell>
                 <mxCell id="t2y" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f1f5f9;strokeColor=#475569;" value="&lt;b style=&quot;font-size:20px&quot;&gt;stop · nothing runs&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;e.g. a /plan command handled by a plugin&lt;br&gt;returns no new messages&lt;/div&gt;" vertex="1">
@@ -825,7 +825,13 @@
                 <mxCell id="t11_t9" edge="1" parent="1" source="t11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#64748b;strokeWidth=2;" target="t9" value="then the run ends">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-            <mxCell id="t0note" value="&lt;b style=&quot;font-size:20px&quot;&gt;note · where continue_() comes from&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;prompt(text)&lt;/b&gt;: the app has new text from the user&lt;br&gt;&lt;b&gt;continue_()&lt;/b&gt;: no new text, go on from the history&lt;br&gt;&lt;br&gt;&lt;b&gt;first check inside continue_()&lt;/b&gt;:&lt;br&gt;skip compaction / custom entries and error answers,&lt;br&gt;the last message must be &lt;b&gt;user&lt;/b&gt; or &lt;b&gt;tool_result&lt;/b&gt;&lt;br&gt;(the model still owes an answer); a normal assistant answer → ValueError &quot;Cannot continue&quot;&lt;br&gt;&lt;br&gt;&lt;b&gt;who calls it&lt;/b&gt;&lt;br&gt;• the session itself, in the retry loop (most common)&lt;br&gt;• an app that resumes a run cut off in the middle&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;the CLI: simp -c opens the chat and waits for you; it does not call continue_()&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;example&lt;/b&gt;&lt;br&gt;history: user &quot;write fizz.py&quot; → assistant: tool call write → tool result &quot;ok&quot;&lt;br&gt;the app crashes before the next model call&lt;br&gt;later: continue_() → last is tool_result → OK, the model answers &quot;Done, fizz.py written.&quot;&lt;br&gt;call continue_() again → last is assistant → &quot;Cannot continue&quot;&lt;/div&gt;" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fffbeb;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#334155;" vertex="1" parent="1"><mxGeometry x="-340.0" y="0.0" width="740" height="520" as="geometry"/></mxCell><mxCell id="t0note_e" value="" style="endArrow=none;dashed=1;strokeColor=#94a3b8;strokeWidth=2;" edge="1" parent="1" source="t0note" target="t0"><mxGeometry relative="1" as="geometry"/></mxCell></root>
+                <mxCell id="t0note" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fffbeb;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#334155;" value="&lt;b style=&quot;font-size:20px&quot;&gt;note · where continue_() comes from&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;prompt(text)&lt;/b&gt;: the app has new text from the user&lt;br&gt;&lt;b&gt;continue_()&lt;/b&gt;: no new text, go on from the history&lt;br&gt;&lt;br&gt;&lt;b&gt;first check inside continue_()&lt;/b&gt;:&lt;br&gt;skip compaction / custom entries and error answers,&lt;br&gt;the last message must be &lt;b&gt;user&lt;/b&gt; or &lt;b&gt;tool_result&lt;/b&gt;&lt;br&gt;(the model still owes an answer); a normal assistant answer → ValueError &quot;Cannot continue&quot;&lt;br&gt;&lt;br&gt;&lt;b&gt;who calls it&lt;/b&gt;&lt;br&gt;• the session itself, in the retry loop (most common)&lt;br&gt;• an app that resumes a run cut off in the middle&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;the CLI: simp -c opens the chat and waits for you; it does not call continue_()&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;example&lt;/b&gt;&lt;br&gt;history: user &quot;write fizz.py&quot; → assistant: tool call write → tool result &quot;ok&quot;&lt;br&gt;the app crashes before the next model call&lt;br&gt;later: continue_() → last is tool_result → OK, the model answers &quot;Done, fizz.py written.&quot;&lt;br&gt;call continue_() again → last is assistant → &quot;Cannot continue&quot;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="520" width="740" x="-340" as="geometry"/>
+                </mxCell>
+                <mxCell id="t0note_e" edge="1" parent="1" source="t0note" style="endArrow=none;dashed=1;strokeColor=#94a3b8;strokeWidth=2;" target="t0" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
         </mxGraphModel>
     </diagram>
 </mxfile>
