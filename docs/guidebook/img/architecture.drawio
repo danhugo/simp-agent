@@ -683,7 +683,7 @@
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
                 <mxCell id="F_retry" parent="1" style="rounded=1;arcSize=1;whiteSpace=wrap;html=1;dashed=1;strokeWidth=2;fillColor=#f0fdfa;strokeColor=#0f766e;fontColor=#0f766e;fontSize=17;fontStyle=1;verticalAlign=top;align=right;spacingLeft=12;spacingRight=12;spacingTop=4;" value="retry loop · after each failed run" vertex="1">
-                    <mxGeometry height="837" width="1180" x="380" y="994" as="geometry"/>
+                    <mxGeometry height="837" width="1180" x="380" y="1164.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="t0" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f1f5f9;strokeColor=#475569;" value="&lt;b style=&quot;font-size:20px&quot;&gt;start: prompt(text) or continue_()&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;from the app&lt;/div&gt;" vertex="1">
                     <mxGeometry height="91" width="520" x="440" as="geometry"/>
@@ -694,46 +694,46 @@
                 <mxCell id="t1y" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f0fdfa;strokeColor=#0f766e;" value="&lt;b style=&quot;font-size:20px&quot;&gt;get ready, once&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;read AGENTS.md → a prompt section&lt;br&gt;plugins: setup(api, config), session_start&lt;/div&gt;" vertex="1">
                     <mxGeometry height="114" width="420" x="1060" y="169" as="geometry"/>
                 </mxCell>
-                <mxCell id="t2" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0f766e;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="run each plugin's input hook&lt;br&gt;(the plugin does its job here)&lt;br&gt;one returned &quot;handled&quot;?" vertex="1">
-                    <mxGeometry height="150" width="420" x="490" y="361" as="geometry"/>
+                <mxCell id="t2" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0f766e;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="a plugin returned&lt;br&gt;&quot;handled&quot;?" vertex="1">
+                    <mxGeometry height="150" width="360" x="520" y="531.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="t2y" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f1f5f9;strokeColor=#475569;" value="&lt;b style=&quot;font-size:20px&quot;&gt;stop · the model is not called&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;the plugin's work is already done:&lt;br&gt;it ran inside the input hook, before it returned &quot;handled&quot;&lt;br&gt;e.g. /stats: the hook prints the token count, then returns {&quot;handled&quot;: True}&lt;br&gt;nothing is added to history; prompt() returns []&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="150" width="420" x="1060" y="379" as="geometry"/>
+                    <mxGeometry height="150" width="420" x="1060" y="549.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="t3" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f0fdfa;strokeColor=#0f766e;" value="&lt;b style=&quot;font-size:20px&quot;&gt;plugins may change the text, add messages&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;continue_() skips this: there is no new text&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="117" width="520" x="440" y="571" as="geometry"/>
+                    <mxGeometry height="117" width="520" x="440" y="741.0" as="geometry"/>
                 </mxCell>
                 <UserObject label="&lt;b style=&quot;font-size:20px&quot;&gt;run the agent · click to open its flowchart&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;page 2a: the whole loop, with the session's hooks&lt;br&gt;before each model call: compact if too big&lt;br&gt;before each tool: plugins (block or change args),&lt;br&gt;then approve() for bash / write / edit&lt;br&gt;every event: saved (message_end) and sent on&lt;/div&gt;" link="data:page/id,loop" tooltip="open page 2a · Agent loop" id="t4">
                     <mxCell parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#fde68a;strokeColor=#b45309;strokeWidth=3;fontColor=#7c2d12;" vertex="1">
-                        <mxGeometry height="186" width="520" x="440" y="788" as="geometry"/>
+                        <mxGeometry height="186" width="520" x="440" y="958.0" as="geometry"/>
                     </mxCell>
                 </UserObject>
                 <mxCell id="t5" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0f766e;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="the last answer&lt;br&gt;is an error?" vertex="1">
-                    <mxGeometry height="150" width="360" x="520" y="1034" as="geometry"/>
+                    <mxGeometry height="150" width="360" x="520" y="1204.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="t6" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0f766e;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="too long for the model?&lt;br&gt;(first time, auto_compact on)" vertex="1">
-                    <mxGeometry height="150" width="360" x="520" y="1244" as="geometry"/>
+                    <mxGeometry height="150" width="360" x="520" y="1414.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="t6y" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f0fdfa;strokeColor=#0f766e;" value="&lt;b style=&quot;font-size:20px&quot;&gt;compact once&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;summarize the old messages, keep the recent ones&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: compaction_start, compaction_end&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="137" width="420" x="1060" y="1250" as="geometry"/>
+                    <mxGeometry height="137" width="420" x="1060" y="1420.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="t7" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0f766e;strokeWidth=2;fontSize=17;fontStyle=1;fontColor=#0f172a;" value="a short failure?&lt;br&gt;(429, 5xx, network; retries left)" vertex="1">
-                    <mxGeometry height="150" width="360" x="520" y="1454" as="geometry"/>
+                    <mxGeometry height="150" width="360" x="520" y="1624.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="t7y" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f0fdfa;strokeColor=#0f766e;" value="&lt;b style=&quot;font-size:20px&quot;&gt;wait, then try again&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;wait 2s, then 4s, then 8s (3 retries)&lt;br&gt;abort() during the wait → stop&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: auto_retry_start&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="137" width="420" x="1060" y="1460" as="geometry"/>
+                    <mxGeometry height="137" width="420" x="1060" y="1630.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="t8" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#1d4ed8;" value="&lt;b style=&quot;font-size:20px&quot;&gt;go on: continue_()&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;the agent asks the model again on the same history&lt;br&gt;the error answer stays saved, but the model never sees it&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="137" width="520" x="440" y="1664" as="geometry"/>
+                    <mxGeometry height="137" width="520" x="440" y="1834.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="t9" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f1f5f9;strokeColor=#475569;" value="&lt;b style=&quot;font-size:20px&quot;&gt;the run ends&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;if it retried: auto_retry_end (success or not)&lt;br&gt;returns the new messages of this run&lt;br&gt;&lt;span style=&quot;color:#64748b&quot;&gt;events: auto_retry_end&lt;/span&gt;&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="137" width="520" x="440" y="1881" as="geometry"/>
+                    <mxGeometry height="137" width="520" x="440" y="2051.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="t10" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#fef2f2;strokeColor=#dc2626;" value="&lt;b style=&quot;font-size:20px&quot;&gt;stop with the error&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;a fatal, budget or policy error, a second overflow,&lt;br&gt;no retries left, or compaction failed&lt;br&gt;the error answer is the last message&lt;br&gt;if it retried before: auto_retry_end (no success)&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="160" width="480" x="-120" y="1454" as="geometry"/>
+                    <mxGeometry height="160" width="480" x="-120" y="1624.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="t11" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#fef2f2;strokeColor=#dc2626;" value="&lt;b style=&quot;font-size:20px&quot;&gt;stop · aborted during the wait&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;auto_retry_end (no success)&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="86" width="300" x="1620" y="1460" as="geometry"/>
+                    <mxGeometry height="86" width="300" x="1620" y="1630.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="t0_t1_1" edge="1" parent="1" source="t0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;" target="t1" value="">
                     <mxGeometry relative="1" as="geometry"/>
@@ -741,7 +741,7 @@
                 <mxCell id="t1_t1y_2" edge="1" parent="1" source="t1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;" target="t1y" value="yes">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="t1_t2_3" edge="1" parent="1" source="t1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;" target="t2" value="no">
+                <mxCell id="t1_t2_3" edge="1" parent="1" source="t1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;" target="t1b" value="no">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="t2_t2y_5" edge="1" parent="1" source="t2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;" target="t2y" value="yes">
@@ -780,24 +780,24 @@
                 <mxCell id="t5_t9_16" edge="1" parent="1" source="t5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" target="t9" value="no">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
-                            <mxPoint x="300" y="1109"/>
-                            <mxPoint x="300" y="1921"/>
+                            <mxPoint x="300" y="1279.0"/>
+                            <mxPoint x="300" y="2091.0"/>
                         </Array>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="t8_t5_17" edge="1" parent="1" source="t8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;dashed=1;strokeWidth=3;exitX=1;exitY=0.5;entryX=1;entryY=0.5;" target="t5" value="next try (retry loop)">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
-                            <mxPoint x="1530" y="1714"/>
-                            <mxPoint x="1530" y="1109"/>
+                            <mxPoint x="1530" y="1884.0"/>
+                            <mxPoint x="1530" y="1279.0"/>
                         </Array>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="t6y_t10_18" edge="1" parent="1" source="t6y" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;dashed=1;strokeColor=#dc2626;exitX=0.5;exitY=0;entryX=0.5;entryY=0;" target="t10" value="compaction failed">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
-                            <mxPoint x="1270" y="1224"/>
-                            <mxPoint x="-320" y="1224"/>
+                            <mxPoint x="1270" y="1394.0"/>
+                            <mxPoint x="-320" y="1394.0"/>
                         </Array>
                     </mxGeometry>
                 </mxCell>
@@ -811,25 +811,25 @@
                     <mxGeometry height="206" width="460" x="2020" y="246" as="geometry"/>
                 </mxCell>
                 <mxCell id="n3" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#cbd5e1;strokeWidth=1;" value="&lt;b style=&quot;font-size:20px&quot;&gt;not drawn here&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;the hooks inside the agent run are on page 2a&lt;br&gt;saving: every message_end is saved right away, so a crash loses at most the message being written&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="160" width="460" x="2020" y="492" as="geometry"/>
+                    <mxGeometry height="160" width="460" x="2020" y="662.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="x1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#0f766e;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;1 · a normal run&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;prompt(&quot;now add tests&quot;) → get ready (first time) → no plugin answers&lt;br&gt;→ run the agent → last answer ok → the run ends&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="114" width="720" x="2020" y="732" as="geometry"/>
+                    <mxGeometry height="114" width="720" x="2020" y="902.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="x2" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#0f766e;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;2 · a 429 rate limit&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;last answer: error &quot;429 Too Many Requests&quot;&lt;br&gt;&quot;is an error?&quot; yes → &quot;too long?&quot; no → &quot;short failure?&quot; yes&lt;br&gt;→ auto_retry_start, wait 2s → continue_() → ok&lt;br&gt;→ &quot;the run ends&quot;: auto_retry_end (success)&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="160" width="720" x="2020" y="876" as="geometry"/>
+                    <mxGeometry height="160" width="720" x="2020" y="1046.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="x3" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#0f766e;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;3 · too long for the model&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;last answer: error &quot;prompt is too long: 210000 tokens&quot;&lt;br&gt;&quot;too long?&quot; yes → compact once → continue_() → ok&lt;br&gt;a second &quot;too long&quot; in the same run → stop with the error&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="137" width="720" x="2020" y="1066" as="geometry"/>
+                    <mxGeometry height="137" width="720" x="2020" y="1236.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="x4" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#dc2626;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;4 · Stop during the wait&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;429 → wait 4s (attempt 2) → you press Stop&lt;br&gt;→ &quot;stop · aborted during the wait&quot; → auto_retry_end (no success)&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="114" width="720" x="2020" y="1233" as="geometry"/>
+                    <mxGeometry height="114" width="720" x="2020" y="1403.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="x5" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#dc2626;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;5 · a fatal error&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;no API key: error_kind = fatal&lt;br&gt;&quot;short failure?&quot; no → &quot;stop with the error&quot;, no retry&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="114" width="720" x="2020" y="1377" as="geometry"/>
+                    <mxGeometry height="114" width="720" x="2020" y="1547.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="x6" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#475569;fontColor=#334155;fontFamily=Menlo;" value="&lt;b style=&quot;font-size:20px&quot;&gt;6 · a plugin handles it&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;prompt(&quot;/stats&quot;) → a stats plugin prints the token count, says &quot;handled&quot;&lt;br&gt;→ &quot;stop · the model is not called&quot;: no model call at all&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="114" width="720" x="2020" y="1521" as="geometry"/>
+                    <mxGeometry height="114" width="720" x="2020" y="1691.0" as="geometry"/>
                 </mxCell>
                 <mxCell id="t10_t9" edge="1" parent="1" source="t10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#64748b;strokeWidth=2;" target="t9" value="then the run ends">
                     <mxGeometry relative="1" as="geometry"/>
@@ -843,7 +843,9 @@
                 <mxCell id="t0note_e" edge="1" parent="1" source="t0note" style="endArrow=none;dashed=1;strokeColor=#94a3b8;strokeWidth=2;" target="t0" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-            </root>
+            <mxCell id="t1b" value="&lt;b style=&quot;font-size:20px&quot;&gt;run each plugin's input hook&lt;/b&gt;&lt;div style=&quot;font-size:15px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;the plugin does its job here, then returns:&lt;br&gt;nothing · a new text · or &quot;handled&quot; (job done)&lt;/div&gt;" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;strokeWidth=2;fontColor=#0f172a;fillColor=#f0fdfa;strokeColor=#0f766e;" vertex="1" parent="1"><mxGeometry x="470" y="361" width="460" height="120" as="geometry"/></mxCell><mxCell id="t1b_t2" edge="1" parent="1" source="t1b" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;strokeColor=#0f766e;strokeWidth=2;" target="t2" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell></root>
         </mxGraphModel>
     </diagram>
 </mxfile>
