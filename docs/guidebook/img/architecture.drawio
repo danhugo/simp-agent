@@ -866,7 +866,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="server" name="5 · Server: sessions for many users">
-        <mxGraphModel dx="2740" dy="2458" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="2577" dy="2314" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -894,7 +894,7 @@
                 <mxCell id="store" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:24px&quot;&gt;store · one SQLite file&lt;/b&gt;&lt;div style=&quot;font-size:20px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;users, sessions, messages, events, usage&lt;br&gt;&lt;b&gt;every row has user_id; reads filter by it&lt;/b&gt;&lt;/div&gt;" vertex="1">
                     <mxGeometry height="160" width="880" x="30" y="710" as="geometry"/>
                 </mxCell>
-                <mxCell id="budget" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:24px&quot;&gt;budget · before EVERY model call&lt;/b&gt;&lt;div style=&quot;font-size:20px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;paused? → user revoked? →&lt;br&gt;daily $ limit? → run $ limit?&lt;br&gt;any yes → an error answer&lt;/div&gt;" vertex="1">
+                <mxCell id="budget" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:24px&quot;&gt;budget · before EVERY model call&lt;/b&gt;&lt;div style=&quot;font-size:20px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;paused? → user revoked? →&lt;br&gt;daily $ limit? → run $ limit?&lt;br&gt;any yes → an error answer&lt;br&gt;(this is the stream_fn socket of each Run)&lt;/div&gt;" vertex="1">
                     <mxGeometry height="160" width="880" x="1090" y="710" as="geometry"/>
                 </mxCell>
                 <mxCell id="L3" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=2;fontColor=#475569;" value="&lt;b style=&quot;font-size:26px&quot;&gt;LAYER 3 · PER SESSION · dashed = loaded on demand&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;/div&gt;" vertex="1">
@@ -935,18 +935,16 @@
                 <mxCell id="p5e3" edge="1" parent="1" source="auth" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;labelBackgroundColor=#ffffff;strokeColor=#475569;strokeWidth=2;" target="mgr" value="user id + session id">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="p5e4" edge="1" parent="1" source="mgr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;labelBackgroundColor=#ffffff;strokeColor=#475569;strokeWidth=2;exitX=0.4;exitY=1;entryX=0.9;entryY=0;" target="runA" value="load or reuse">
+                <mxCell id="p5e4" edge="1" parent="1" source="mgr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;labelBackgroundColor=#ffffff;strokeColor=#475569;strokeWidth=2;exitX=0.25;exitY=1;entryX=0.5;entryY=0;" target="runA" value="load or reuse">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="p5e5" edge="1" parent="1" source="mgr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;labelBackgroundColor=#ffffff;strokeColor=#475569;strokeWidth=2;exitX=0.55;exitY=1;entryX=0;entryY=0.3;" target="runB" value="">
+                <mxCell id="p5e5" edge="1" parent="1" source="mgr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;labelBackgroundColor=#ffffff;strokeColor=#475569;strokeWidth=2;exitX=0.4;exitY=1;entryX=0;entryY=0.5;" target="runB" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="p5e6" edge="1" parent="1" source="runA" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;labelBackgroundColor=#ffffff;strokeColor=#15803d;strokeWidth=2;dashed=1;exitX=0.3;exitY=0;entryX=0.3;entryY=1;" target="store" value="rows, user_id = A">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="p5e7" edge="1" parent="1" source="runA" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;labelBackgroundColor=#ffffff;strokeColor=#15803d;strokeWidth=2;exitX=1;exitY=0.05;entryX=0.1;entryY=1;" target="budget" value="each model call">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
+                
                 <mxCell id="p5e8" edge="1" parent="1" source="sockets" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;labelBackgroundColor=#ffffff;strokeColor=#15803d;strokeWidth=2;" target="box" value="env">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
