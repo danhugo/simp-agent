@@ -932,17 +932,17 @@
                 <mxCell id="uB" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;" value="&lt;b style=&quot;font-size:24px&quot;&gt;user B · browser&lt;/b&gt;&lt;div style=&quot;font-size:20px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;same, own token&lt;br&gt;sees only own sessions&lt;/div&gt;" vertex="1">
                     <mxGeometry height="150" width="420" x="1300" as="geometry"/>
                 </mxCell>
-                <mxCell id="L1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=2;fontColor=#475569;" value="&lt;b style=&quot;font-size:26px&quot;&gt;LAYER 1 · SHARED · one server for everyone&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;/div&gt;" vertex="1">
+                <mxCell id="L1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#FFFFCC;strokeColor=#000000;strokeWidth=2;fontColor=#475569;gradientColor=none;" value="&lt;b style=&quot;font-size:26px&quot;&gt;LAYER 1 · SHARED · one server for everyone&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;/div&gt;" vertex="1">
                     <mxGeometry height="390" width="2000" y="230" as="geometry"/>
                 </mxCell>
-                <mxCell id="auth" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:24px&quot;&gt;auth&lt;/b&gt;&lt;div style=&quot;font-size:20px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;token → user id (not for signup / login)&lt;br&gt;session must belong to the user, else 404&lt;br&gt;the &lt;span style=&quot;color:#db2777&quot;&gt;event&lt;/span&gt; stream re-checks the token every 15 s&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="200" width="420" x="30" y="290" as="geometry"/>
+                <mxCell id="auth" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:24px&quot;&gt;auth&lt;/b&gt;&lt;div style=&quot;font-size:20px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;b&gt;token → user id &lt;/b&gt;(not for signup / login)&lt;br&gt;session must belong to the user, else 404&lt;br&gt;the &lt;span style=&quot;color: rgb(219, 39, 119);&quot;&gt;event&lt;/span&gt; stream re-checks the token every 15 s&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="250" width="420" x="30" y="290" as="geometry"/>
                 </mxCell>
                 <mxCell id="mgr" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:24px&quot;&gt;SessionManager&lt;/b&gt;&lt;div style=&quot;font-size:20px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;session id → Run (a cache, N at most)&lt;br&gt;drop = least recently used Run that is idle:&lt;br&gt;not busy, no open tab, no task running&lt;br&gt;idle 15 min → dropped (checked every 60 s)&lt;br&gt;none can be dropped → 503&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="250" width="600" x="480" y="290" as="geometry"/>
+                    <mxGeometry height="250" width="600" x="590" y="290" as="geometry"/>
                 </mxCell>
                 <mxCell id="keys" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:24px&quot;&gt;API keys · admin switch&lt;/b&gt;&lt;div style=&quot;font-size:20px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;one key per env name (model.api_key_env),&lt;br&gt;the same for all users → the get_api_key socket&lt;br&gt;hidden from the sandbox; also given to redact_secrets&lt;br&gt;paused → no model calls&lt;/div&gt;" vertex="1">
-                    <mxGeometry height="200" width="860" x="1110" y="290" as="geometry"/>
+                    <mxGeometry height="250" width="692" x="1252" y="290" as="geometry"/>
                 </mxCell>
                 <mxCell id="L2" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#f8fafc;strokeColor=#cbd5e1;strokeWidth=2;fontColor=#475569;" value="&lt;b style=&quot;font-size:26px&quot;&gt;LAYER 2 · PER USER = only rows of data&lt;/b&gt;&lt;div style=&quot;font-size:16px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;&lt;/div&gt;" vertex="1">
                     <mxGeometry height="260" width="2000" y="640" as="geometry"/>
@@ -982,14 +982,14 @@
                 <mxCell id="note5" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fffbeb;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#334155;" value="&lt;b style=&quot;font-size:24px&quot;&gt;not here&lt;/b&gt;&lt;div style=&quot;font-size:20px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;no per-user container, key or process&lt;br&gt;a user = user_id in rows&lt;/div&gt;" vertex="1">
                     <mxGeometry height="130" width="780" x="1190" y="1800" as="geometry"/>
                 </mxCell>
-                <mxCell id="p5e1" edge="1" parent="1" source="uA" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;labelBackgroundColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=2;exitX=0;exitY=0.75;entryX=0.5;entryY=0;exitDx=0;exitDy=0;fillColor=#dae8fc;" target="auth" value="token">
-                    <mxGeometry relative="1" x="-0.0058" as="geometry"/>
+                <mxCell id="p5e1" edge="1" parent="1" source="uA" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;labelBackgroundColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=2;exitX=0;exitY=0.75;entryX=0.25;entryY=0;exitDx=0;exitDy=0;fillColor=#dae8fc;entryDx=0;entryDy=0;" target="auth" value="token">
+                    <mxGeometry relative="1" x="0.1507" as="geometry"/>
                 </mxCell>
                 <mxCell id="p5e2" edge="1" parent="1" source="uB" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;labelBackgroundColor=#ffffff;strokeColor=#d79b00;strokeWidth=2;exitX=0.2;exitY=1;entryX=0.8;entryY=0;fillColor=#ffe6cc;" target="auth" value="token">
-                    <mxGeometry relative="1" as="geometry">
+                    <mxGeometry relative="1" x="0.0276" as="geometry">
                         <Array as="points">
                             <mxPoint x="1384" y="198.2"/>
-                            <mxPoint x="350" y="198.2"/>
+                            <mxPoint x="366" y="198.2"/>
                         </Array>
                     </mxGeometry>
                 </mxCell>
@@ -1009,19 +1009,21 @@
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="p5e9" edge="1" parent="1" source="runA" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;labelBackgroundColor=#ffffff;strokeWidth=2;dashed=1;exitX=0;exitY=0.1;entryX=0;entryY=0.5;strokeColor=#db2777;fontColor=#db2777;" target="uA" value="&lt;span style=&quot;color:#db2777&quot;&gt;events&lt;/span&gt; via /events (a queue per tab)">
-                    <mxGeometry relative="1" as="geometry">
+                    <mxGeometry relative="1" x="0.0149" as="geometry">
                         <Array as="points">
+                            <mxPoint x="30" y="1126"/>
                             <mxPoint x="-64" y="1126"/>
-                            <mxPoint x="-64" y="75"/>
+                            <mxPoint x="-64" y="85"/>
                         </Array>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="p5e10" edge="1" parent="1" source="runB" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;labelBackgroundColor=#ffffff;strokeWidth=2;dashed=1;exitX=1;exitY=0.5;entryX=1;entryY=0.5;strokeColor=#db2777;fontColor=#db2777;" target="uB" value="&lt;span style=&quot;color:#db2777&quot;&gt;events&lt;/span&gt; via /events (a queue per tab)">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-            <mxCell id="p5e11" edge="1" parent="1" source="mgr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;labelBackgroundColor=#ffffff;strokeColor=#475569;strokeWidth=2;exitX=0.4;exitY=1;entryX=0;entryY=0.5;" target="runB2" value="">
+                <mxCell id="p5e11" edge="1" parent="1" source="mgr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;fontStyle=2;fontColor=#64748b;labelBackgroundColor=#ffffff;strokeColor=#475569;strokeWidth=2;exitX=0.4;exitY=1;entryX=0;entryY=0.5;" target="runB2" value="">
                     <mxGeometry relative="1" as="geometry"/>
-                </mxCell></root>
+                </mxCell>
+            <mxCell id="runnote" value="&lt;b style=&quot;font-size:22px&quot;&gt;what is a Run?&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.5;margin-top:6px;padding-left:14px&quot;&gt;the server's wrapper around &lt;b&gt;one AgentSession&lt;/b&gt; (one per session)&lt;br&gt;why: the session was built for 1 person, 1 screen (CLI);&lt;br&gt;the web has many users, many tabs, restarts, sandboxes, budgets&lt;br&gt;it fills the sockets (store, env, approve, &lt;span style=&quot;color:#db2777&quot;&gt;events&lt;/span&gt;),&lt;br&gt;keeps the run state, takes commands from the browser&lt;br&gt;in memory only: dropped and rebuilt with no loss&lt;br&gt;(the real data is in SQLite and the session's files)&lt;br&gt;&lt;i&gt;→ see Run A1 below&lt;/i&gt;&lt;/div&gt;" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=4;fillColor=#fffbeb;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#334155;" vertex="1" parent="1"><mxGeometry x="740" y="-150" width="540" height="340" as="geometry"/></mxCell><mxCell id="runnote_e" value="" style="endArrow=none;dashed=1;strokeColor=#94a3b8;strokeWidth=2;" edge="1" parent="1" source="runnote" target="mgr"><mxGeometry relative="1" as="geometry"/></mxCell></root>
         </mxGraphModel>
     </diagram>
 </mxfile>
