@@ -42,6 +42,9 @@
   align-self: flex-end; background: var(--user); padding: 10px var(--sp-4); border-radius: var(--radius-lg);
   max-width: 80%; white-space: pre-wrap; overflow-wrap: anywhere;
 }
+.msg.user.pending { opacity: 0.6; }
+.msg.user.failed { opacity: 1; outline: 1px solid var(--err); }
+.msg-status { display: block; font-size: 11px; opacity: 0.8; margin-top: 2px; text-align: right; }
 .msg.assistant { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .md { overflow-wrap: anywhere; }
 .md > :first-child { margin-top: 0; }

@@ -83,6 +83,19 @@ test("steer while running", async ({ page }) => {
   await expect(page.locator(".msg.user").last()).toHaveText("turn left");
 });
 
+test("steer shows at once as pending, then exactly once", async ({ page }) => {
+  await login(page);
+  await say(page, "slow");
+  await expect(page.locator(".streaming .md")).toContainText("w1 ");
+  await say(page, "go right");
+  await expect(page.locator(".msg.user.pending")).toHaveText("go rightPending");
+  await expect(page.locator(".streaming")).toBeVisible();  // still mid-turn
+  await page.screenshot({ path: "test-results/pending-steer.png" });
+  await expect(badge(page)).toHaveText("idle", { timeout: 15000 });
+  await expect(page.locator(".msg.user", { hasText: "go right" })).toHaveCount(1);
+  await expect(page.locator(".msg.user.pending")).toHaveCount(0);
+});
+
 test("a second tab sees the same events", async ({ page, context }) => {
   await login(page);
   const two = await context.newPage();
