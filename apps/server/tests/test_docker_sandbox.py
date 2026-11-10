@@ -57,3 +57,19 @@ async def test_open_close(sandbox):
         await sandbox.open("../x")
     await sandbox.close(sid)
     assert subprocess.run(["docker", "inspect", env.container], capture_output=True).returncode != 0
+
+
+async def test_coding_tools_with_host_paths(sandbox):
+    """ls/grep get the host workspace path from the tools; inside the container that is /work."""
+    from simp_agent.coding import make_tools
+    env = await sandbox.open("s-paths")
+    await env.write_bytes("notes.txt", b"hello world\n")
+
+    from simp_agent.agent import ToolContext
+
+    async def noop(_): pass
+    ctx = ToolContext(asyncio.Event(), env, env.root, noop)
+    tools = {t.name: t for t in make_tools()}
+    assert "notes.txt" in await tools["ls"].execute({}, ctx)
+    assert "hello world" in await tools["grep"].execute({"pattern": "hello"}, ctx)
+    assert (await env.read_bytes("/work/notes.txt")) == b"hello world\n"  # container paths work host-side too

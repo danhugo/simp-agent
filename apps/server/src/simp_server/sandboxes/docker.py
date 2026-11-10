@@ -32,6 +32,18 @@ class DockerEnv(LocalEnv):
         super().__init__(root)
         self.container = container
 
+    def _path(self, path: str) -> Path:
+        # the agent sees container paths in command output: accept /work/... for host-side file ops too
+        if path == "/work" or str(path).startswith("/work/"):
+            path = str(path)[len("/work"):].lstrip("/") or "."
+        return super()._path(path)
+
+    def _to_container(self, command: str) -> str:
+        """Tools pass host paths (the workspace root) inside commands; inside the container that dir is /work."""
+        for host in {str(Path(self.root).resolve()), str(self.root)}:
+            command = command.replace(host, "/work")
+        return command
+
     def _cwd(self, cwd: str) -> str:
         rel = self._path(cwd).relative_to(Path(self.root).resolve())  # host path (or relative) -> /work/...
         return str(Path("/work") / rel)
@@ -41,7 +53,7 @@ class DockerEnv(LocalEnv):
         # 2>&1 inside the container: docker sends stderr as its own stream, which could overtake the pid line.
         proc = await asyncio.create_subprocess_exec(
             "docker", "exec", "-w", self._cwd(cwd), self.container,
-            "setsid", "-w", "sh", "-c", 'echo $$; exec sh -c "$0" 2>&1', command,
+            "setsid", "-w", "sh", "-c", 'echo $$; exec sh -c "$0" 2>&1', self._to_container(command),
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
         )
         pid = (await proc.stdout.readline()).strip().decode()
