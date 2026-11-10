@@ -168,7 +168,7 @@ def make_tools(bash_max_timeout_s: float | None = None) -> list:
         AgentTool("write", "Create or overwrite a file. Makes parent dirs.",
                   _obj({"path": _p("string", "File path, relative to cwd or absolute"),
                         "content": _p("string", "Full new file content")}, ["path", "content"]), write),
-        AgentTool("edit", "Replace exact text in a file. Each old_text must match the original file exactly once. "
+        AgentTool("edit", "Replace exact text in a file. Read the file first: each old_text must match the original file exactly once. "
                           "Use edits for several non-overlapping changes in one call.",
                   _obj({"path": _p("string", "File path, relative to cwd or absolute"),
                         "old_text": _p("string", "Exact text to replace; must match exactly once"),

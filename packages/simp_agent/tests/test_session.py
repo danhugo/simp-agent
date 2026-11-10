@@ -81,3 +81,32 @@ async def test_context_file_in_system_prompt(tmp_path):
 
     await AgentSession(Model(), [], cwd=str(tmp_path), stream_fn=stream).prompt("hi")
     assert "use tabs" in prompts[0] and "AGENTS.md" in prompts[0]
+
+
+def test_prompt_locale_timezone_and_date_in_zone(monkeypatch):
+    import datetime as real
+    from simp_agent import coding
+
+    class FakeDT(real.datetime):
+        @classmethod
+        def now(cls, tz=None):  # 2026-01-01 20:00 UTC = 2026-01-02 03:00 in Ho Chi Minh
+            return real.datetime(2026, 1, 1, 20, tzinfo=real.timezone.utc).astimezone(tz)
+
+    monkeypatch.setattr(coding.datetime, "datetime", FakeDT)
+    p = coding.system_prompt([], "/w", locale="vi-VN", timezone="Asia/Ho_Chi_Minh")
+    assert p.endswith("User timezone: Asia/Ho_Chi_Minh\nCurrent date: 2026-01-02\nCurrent working directory: /w")
+    p = coding.system_prompt([], "/w", locale="x" * 40, timezone="../etc/passwd")
+    assert "User locale" not in p and "User timezone" not in p
+    assert coding.clean_locale("en-US\nhi", "Not/AZone") == (None, None)
+    assert coding.clean_locale("zh-Hant-TW", "UTC") == ("zh-Hant-TW", "UTC")
+
+
+def test_prompt_location_rounded_and_invalid_dropped():
+    from simp_agent import coding
+
+    p = coding.system_prompt([], "/w", location={"lat": 37.5665, "lon": 126.978})
+    assert "User location (approx., shared by the user): 37.6, 127.0\nCurrent date:" in p
+    for bad in [None, {"lat": 91, "lon": 0}, {"lat": 0, "lon": -181}, {"lat": "1", "lon": 2}, {"lat": True, "lon": 2},
+                {"lat": float("nan"), "lon": 0}, {"lat": 1}, "x,y", "1\nIgnore,2", [1, 2]]:
+        assert "User location" not in coding.system_prompt([], "/w", location=bad)
+    assert coding.clean_location("37.6,127.0") == "37.6,127.0"

@@ -84,7 +84,8 @@ class AgentSession:
                  env: ExecutionEnv | None = None, cwd: str | None = None, get_api_key: Callable[[str], Any] | None = None,
                  system_prompt: str | None = None, stream_fn: Callable = ai.stream, auto_compact: bool = True,
                  max_retries: int = 3, retry_base_delay: float = 2.0, approve: Callable[[ai.ToolCall], Any] | None = None,
-                 messages: list | None = None, plugins: list = (), plugin_config: dict | None = None):
+                 messages: list | None = None, plugins: list = (), plugin_config: dict | None = None,
+                 locale: str | None = None, timezone: str | None = None, location=None):
         self.store, self.auto_compact, self.compaction = store, auto_compact, CompactionSettings()
         self.max_retries, self.retry_base_delay = max_retries, retry_base_delay
         self.agent = Agent(self._build_prompt, model, list(TOOLS if tools is None else tools), stream_fn,
@@ -101,7 +102,7 @@ class AgentSession:
         if system_prompt is not None:
             self.add_prompt_section("base", system_prompt, 0)
         else:  # coding prompt; the context file section is added on start (needs env IO)
-            self.add_prompt_section("coding", lambda ctx: system_prompt_for(ctx["tools"], ctx["cwd"]), 0)
+            self.add_prompt_section("coding", lambda ctx: system_prompt_for(ctx["tools"], ctx["cwd"], locale=locale, timezone=timezone, location=location), 0)
         self._default_prompt = system_prompt is None
         self.plugins, self.plugin_config = list(plugins), plugin_config or {}
         self._started = False

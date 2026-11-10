@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import datetime
 import os
+import re
+import zoneinfo
 
 from .tools import TOOLS, make_tools
 
@@ -22,17 +24,49 @@ async def load_context_file(env, cwd: str) -> tuple[str, str] | None:
     return None
 
 
-def system_prompt(tools: list, cwd: str, context: tuple[str, str] | None = None) -> str:
-    tool_list = "\n".join(f"- {t.name}: {t.description}" for t in tools)
+def clean_locale(locale, timezone) -> tuple[str | None, str | None]:
+    """Client-supplied values go into the prompt: keep only a BCP-47-ish tag and a real zoneinfo name."""
+    if not (isinstance(locale, str) and len(locale) <= 35 and re.fullmatch(r"[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*", locale)):
+        locale = None
+    try:
+        zoneinfo.ZoneInfo(timezone) if isinstance(timezone, str) and 0 < len(timezone) <= 64 else 1 / 0
+    except Exception:
+        timezone = None
+    return locale, timezone
+
+
+def clean_location(location) -> str | None:
+    """Client-supplied {lat, lon} (or a stored "lat,lon" string) -> "lat,lon" rounded to 1 decimal (~10 km), else None."""
+    try:
+        if isinstance(location, str):
+            lat, lon = (float(x) for x in location.split(","))
+        else:
+            lat, lon = location["lat"], location["lon"]
+            if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (lat, lon)):
+                return None
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):  # NaN fails these too
+            return None
+        return f"{round(lat, 1)},{round(lon, 1)}"
+    except Exception:
+        return None
+
+
+def system_prompt(tools: list, cwd: str, context: tuple[str, str] | None = None,
+                  locale: str | None = None, timezone: str | None = None, location=None) -> str:
+    # tools are described to the model in the request's tool schemas, so they are not repeated here
     out = (
-        "You are an expert coding assistant. You help the user by reading files, running commands, "
-        "editing code, and writing new files.\n\n"
-        f"Available tools:\n{tool_list}\n\n"
-        "Be concise. Use read before edit. Paths are relative to the working directory.\n\n"
+        "You are Simp, a friendly and helpful agent that helps the user get anything done.\n\n"
+        "Be concise.\n\n"
     )
     if context:
         out += f"# Project Context\n\n## {context[0]}\n\n{context[1]}\n\n"
-    return out + f"Current date: {datetime.date.today()}\nCurrent working directory: {cwd}"
+    locale, timezone = clean_locale(locale, timezone)
+    if timezone:
+        out += f"User timezone: {timezone}\n"
+    if location := clean_location(location):
+        out += f"User location (approx., shared by the user): {location.replace(',', ', ')}\n"
+    today = datetime.datetime.now(zoneinfo.ZoneInfo(timezone)).date() if timezone else datetime.date.today()
+    return out + f"Current date: {today}\nCurrent working directory: {cwd}"
 
 
-__all__ = ["TOOLS", "make_tools", "CONTEXT_FILES", "load_context_file", "system_prompt"]
+__all__ = ["TOOLS", "make_tools", "CONTEXT_FILES", "load_context_file", "system_prompt", "clean_locale", "clean_location"]
