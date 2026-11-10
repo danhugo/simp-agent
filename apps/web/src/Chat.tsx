@@ -32,10 +32,25 @@ export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = fal
   const [cmdError, setCmdError] = useState<string>();
   useEffect(() => setCmdError(undefined), [sid]);
   // onError still sees every failure (AuthError logs out); non-auth ones are also shown above the composer.
-  const send = (c: Parameters<typeof api.command>[1]) => api.command(sid, c).then(
-    () => setCmdError(undefined),
-    (e) => { onError(e); if (!(e instanceof AuthError)) setCmdError(errorText(e)); },
-  );
+  const fail = (e: unknown) => { onError(e); if (!(e instanceof AuthError)) setCmdError(errorText(e)); };
+  const send = (c: Parameters<typeof api.command>[1]) => api.command(sid, c).then(() => setCmdError(undefined), fail);
+  // Steer messages only reach state.items at the next turn boundary, so show them at once as pending bubbles.
+  // A pending bubble hides once the server has echoed that text `n` times; leftovers are dropped when the run ends.
+  const [steers, setSteers] = useState<{ id: number; text: string; n: number; failed?: boolean }[]>([]);
+  const steerId = useRef(0);
+  useEffect(() => setSteers([]), [sid]);
+  useEffect(() => { if (!busy) setSteers((s) => s.filter((p) => p.failed)); }, [busy]);
+  const echoed = (t: string) => state.items.filter((i) => i.kind === "user" && i.text === t).length;
+  const pendingSteers = steers.filter((p) => p.failed || echoed(p.text) < p.n);
+  const composerSend: Send = (c) => {
+    if (c.type !== "steer") return void send(c);
+    const id = ++steerId.current;
+    setSteers((s) => [...s, { id, text: c.text, n: echoed(c.text) + s.filter((p) => p.text === c.text && !p.failed).length + 1 }]);
+    api.command(sid, c).then(() => setCmdError(undefined), (e) => {
+      fail(e);
+      setSteers((s) => s.map((p) => (p.id === id ? { ...p, failed: true } : p)));
+    });
+  };
   const { inFlight: f } = state;
   const [spend, setSpend] = useState<Awaited<ReturnType<typeof api.usage>>>();
   useEffect(() => {  // on every run end, and every 30s so an admin pause/resume shows up while idle
@@ -58,7 +73,7 @@ export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = fal
     if (n > seen.current && state.items[n - 1]?.kind === "user") stick.current = true;  // the user just sent something
     seen.current = n;
     if (stick.current) el.scrollTop = el.scrollHeight;
-  }, [sid, state.items, f.text, f.thinking, state.toolOutputs, state.results, state.pending]);
+  }, [sid, state.items, f.text, f.thinking, state.toolOutputs, state.results, state.pending, steers]);
   const onScroll = () => {
     const el = log.current!;
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
@@ -113,6 +128,11 @@ export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = fal
                 {f.text && <Md text={f.text} />}
               </div>
             )}
+            {pendingSteers.map((p) => (
+              <div key={`steer-${p.id}`} className={`msg user pending ${p.failed ? "failed" : ""}`}>
+                {p.text}<span className="msg-status">{p.failed ? "Not sent" : "Pending"}</span>
+              </div>
+            ))}
             {state.pending && !pendingShown && <Approval p={state.pending} send={send} />}
             {canContinue(state) && (
               <div className="row"><button className="primary" onClick={() => send({ type: "continue" })}>Continue</button></div>
@@ -126,7 +146,7 @@ export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = fal
         )}
       </div>
       {cmdError && <div className="notice error cmd-error" role="alert">{cmdError}</div>}
-      <Composer busy={busy} send={send} sid={sid} onError={onError} planMode={state.planMode}
+      <Composer busy={busy} send={composerSend} sid={sid} onError={onError} planMode={state.planMode}
         onTogglePlan={() => send({ type: "set_plan_mode", enabled: !state.planMode })} />
     </main>
   );
@@ -338,7 +358,6 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, p
   sid?: string; onError?: (e: unknown) => void;
 }) {
   const [text, setText] = useState("");
-  const [queue, setQueue] = useState(false);
   const [attached, setAttached] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
@@ -354,7 +373,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, p
   const submit = () => {
     const t = text.trim();
     if (!t || disabled) return;
-    send(!busy ? { type: "prompt", text: t } : queue ? { type: "follow_up", text: t } : { type: "steer", text: t });
+    send(!busy ? { type: "prompt", text: t } : { type: "steer", text: t });
     setText("");
     setAttached([]);
   };
@@ -383,7 +402,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, p
         )}
         <textarea
           ref={area} value={text} rows={1} autoFocus aria-label="Message" disabled={disabled}
-          placeholder={busy ? (queue ? "Queue a follow-up…" : "Steer the running agent…") : "Message simp-agent…"}
+          placeholder={busy ? "Steer the running agent…" : "Message simp-agent…"}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
@@ -398,12 +417,6 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, p
               <input ref={picker} type="file" multiple hidden onChange={(e) => upload(e.target.files)} />
             </>
           )}
-          {busy && (
-            <button type="button" className={`chip ${queue ? "on" : ""}`} aria-pressed={queue} onClick={() => setQueue(!queue)}
-              title="Queue the message to run after the current run instead of steering it">
-              Queue as follow-up
-            </button>
-          )}
           <span className="spacer" />
           {onTogglePlan && (
             <button type="button" className={`chip plan ${planMode ? "on" : ""}`} aria-pressed={!!planMode} onClick={onTogglePlan}
@@ -415,8 +428,8 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, p
           {busy && empty ? (
             <button type="button" className="round stop" aria-label="Stop" title="Stop (Esc)" onClick={stop}><IconStop size={16} /></button>
           ) : (
-            <button type="button" className="round send" aria-label={busy ? (queue ? "Queue" : "Steer") : "Send"}
-              title={busy ? (queue ? "Queue follow-up" : "Steer") : "Send"} disabled={empty || disabled} onClick={submit}>
+            <button type="button" className="round send" aria-label={busy ? "Steer" : "Send"}
+              title={busy ? "Steer" : "Send"} disabled={empty || disabled} onClick={submit}>
               <IconArrowUp size={16} />
             </button>
           )}
