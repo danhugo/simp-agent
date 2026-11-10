@@ -603,3 +603,26 @@ async def test_plan_mode(env, tmp_path):
     assert run2.subscribe(0)[0][-1]["plan_mode"] is True
     await run2.command(p.SetPlanMode(enabled=False))
     assert run2.subscribe(0)[0][-1]["plan_mode"] is False and run2.log[-1]["text"] == "plan mode off"
+
+
+async def test_all_queued_steers_reach_next_llm_call(env):
+    g = Gated(["x"])
+    seen = []
+    orig = g.__call__
+
+    async def stream(model, ctx, api_key=None):
+        seen.append([m.content for m in ctx.messages if m.role == "user"])
+        async for e in orig(model, ctx, api_key):
+            yield e
+
+    _, _, _, _, run = await env(stream)
+    await run.command(p.Prompt(text="one"))
+    await wait_for(lambda: g.calls == 1)
+    for t in ("a", "b", "c"):
+        await run.command(p.Steer(text=t))
+    g.go.set()
+    await wait_for(lambda: g.calls == 2)
+    g.go.set()
+    await wait_for(lambda: run.state == "idle" and run.task.done())
+    assert len(seen) == 2 and len(seen[1]) == 4  # all 3 steers sent in the 2nd LLM call
+    assert [e["text"] for e in run.log if e["type"] == "user_message"] == ["one", "a", "b", "c"]
