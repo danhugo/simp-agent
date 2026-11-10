@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field, ValidationError
 from simp_agent import ai
 from simp_agent.agent import api_key_opts
 from simp_agent.agent.env import ExecutionEnv, LocalEnv
+from simp_agent.coding import clean_locale, clean_location
 from simp_agent.ai import (Context, CustomEntry, Model, ThinkingContent, ToolResultMessage, UserMessage, from_dict,
                            to_dict)
 from simp_agent.plugins import PlanMode, build_plugins
@@ -199,9 +200,10 @@ class Run:
             self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=self.guarded_stream,
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
-            plugins=build_plugins(["redact_secrets", "plan_mode",
-                                   *[n for n in self.profile.get("plugins", []) if n not in ("redact_secrets", "plan_mode")]]),
-            plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}})
+            plugins=build_plugins(["redact_secrets", "plan_mode", "web",
+                                   *[n for n in self.profile.get("plugins", []) if n not in ("redact_secrets", "plan_mode", "web")]]),
+            plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
+            locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.agent.steering_mode = "all"  # all queued steers reach the next turn
         self.session.subscribe(self.on_event)
 
@@ -634,6 +636,10 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def profiles(u=Depends(user)) -> list[str]:
         return list(settings["profiles"])
 
+    @app.get("/api/models")
+    async def models(u=Depends(user)) -> dict[str, str]:  # profile name -> model id, for display
+        return {name: pr.get("model", name) for name, pr in settings["profiles"].items()}
+
     @app.get("/api/usage")
     async def usage(u=Depends(user)):
         return {"today_usd": round(await store.spent(u["id"], budget.day_start()), 4),
@@ -649,7 +655,9 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         profile = body.get("profile") or settings["default_profile"]
         if profile not in settings["profiles"]:
             raise HTTPException(400, f"unknown profile {profile!r}; have {sorted(settings['profiles'])}")
-        return mgr.info(await store.add_session(u["id"], profile, body.get("title", "")))
+        locale, timezone = clean_locale(body.get("locale"), body.get("timezone"))
+        return mgr.info(await store.add_session(u["id"], profile, body.get("title", ""), locale, timezone,
+                                                 clean_location(body.get("location"))))
 
     @app.delete("/api/sessions/{sid}")
     async def delete_session(sid: str, u=Depends(user)):

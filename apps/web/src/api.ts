@@ -1,5 +1,6 @@
 import type { Protocol, SessionInfo } from "./protocol.gen";
 import type { ServerEvent } from "./state";
+import { sharedLocation } from "./location";
 
 export type Command = Protocol["command"];
 export interface FileEntry { name: string; is_dir: boolean; size: number }
@@ -43,8 +44,12 @@ export const api = {
   logout: () => call("/api/logout", { method: "POST" }),
   hello: () => call("/api/hello", json({ type: "hello", protocol_version: 1 })),
   sessions: async (): Promise<SessionInfo[]> => (await call("/api/sessions")).json(),
-  newSession: async (profile: string): Promise<SessionInfo> => (await call("/api/sessions", json({ profile }))).json(),
+  newSession: async (profile: string): Promise<SessionInfo> => (await call("/api/sessions", json({
+    profile, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    ...(sharedLocation() ? { location: sharedLocation() } : {}),  // opt-in only (account menu: Share location)
+  }))).json(),
   profiles: async (): Promise<string[]> => (await call("/api/profiles")).json(),
+  models: async (): Promise<Record<string, string>> => (await call("/api/models")).json(),
   deleteSession: (sid: string) => call(`/api/sessions/${sid}`, { method: "DELETE" }),
   usage: async (): Promise<{ today_usd: number; day_limit_usd: number; paused: boolean }> => (await call("/api/usage")).json(),
   command: (sid: string, c: Command) => call(`/api/sessions/${sid}/commands`, json(c)),

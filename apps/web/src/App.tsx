@@ -3,6 +3,7 @@ import { api, AuthError, type ConnStatus, type SignupMode, getToken, setToken, s
 import { Chat, Composer, errorText, type Send } from "./Chat";
 import { IconCheck, IconCompose, IconEye, IconFile, IconFolder, IconEyeOff, IconLogout, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
+import { requestLocation, saveLocation, sharedLocation } from "./location";
 import { Files } from "./Files";
 import type { SessionInfo } from "./protocol.gen";
 import { initialState, reduce, type ServerEvent } from "./state";
@@ -93,7 +94,7 @@ function Login({ onLogin }: { onLogin: (t: string) => void }) {
     <div className="login-page">
     <form className="login" onSubmit={submit} aria-busy={busy} noValidate>
       <PixelAgent size={56} className="logo" />
-      <h1>simp-agent</h1>
+      <h1>Simp</h1>
       <p className="muted sub">{!signup ? "Welcome." : invite ? "Join with an invite code." : "Pick a username and a password."}</p>
       {withToken ? field("token", "Token", (p) =>
         <input {...p} autoFocus type="password" value={value} aria-label="Token" autoComplete="off"
@@ -149,6 +150,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   const [drawer, setDrawer] = useState(false);  // mobile sidebar open
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem("simp.sidebar") === "0"; } catch { return false; } });
   const [profiles, setProfiles] = useState<string[]>([]);
+  const [models, setModels] = useState<Record<string, string>>({});
   const [profile, setProfile] = useState("");
   const [sid, setSid] = useState(() => location.hash.slice(1));
   const [state, setState] = useState(initialState);
@@ -192,6 +194,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   useEffect(() => {
     refresh();
     api.profiles().then((p) => { setProfiles(p); setProfile(p[0] ?? ""); }).catch(() => {});
+    api.models().then(setModels).catch(() => {});
   }, [refresh]);
 
   useEffect(() => {
@@ -256,7 +259,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
       )}
       <aside className="sidebar" id="sidebar">
         <div className="side-top">
-          <span className="brand"><PixelAgent size={22} />simp-agent</span>
+          <span className="brand"><PixelAgent size={22} />Simp</span>
           <button className="ghost icon only-desktop" aria-label="Collapse sidebar" title="Collapse sidebar"
             onClick={toggleCollapsed}><IconSidebar /></button>
         </div>
@@ -292,13 +295,13 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
         </>
       ) : (
         <main className="home">
-          <header className="home-head">{menu}<span className="brand only-mobile"><PixelAgent size={22} />simp-agent</span></header>
+          <header className="home-head">{menu}<span className="brand only-mobile"><PixelAgent size={22} />Simp</span></header>
           <div className="home-hero">
             <h1>What should we build?</h1>
             <Composer busy={false} send={start} variant="hero" disabled={creating} tools={profiles.length > 0 && (
               <select className="profile-pick" value={profile} onChange={(e) => setProfile(e.target.value)} aria-label="Profile"
                 title="Profile">
-                {profiles.map((p) => <option key={p}>{p}</option>)}
+                {profiles.map((p) => <option key={p} value={p}>{models[p] ?? p}</option>)}
               </select>
             )} />
             <ul className="suggestions" aria-label="Suggestions">
@@ -323,8 +326,17 @@ function AccountMenu({ theme, onTheme, onLogout }: { theme: string; onTheme: () 
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const [shareLoc, setShareLoc] = useState(() => sharedLocation() !== null);
+  const [locNote, setLocNote] = useState("");
   useEffect(() => { api.me().then((m) => setName(m.name)).catch(() => {}); }, []);
-  const items = () => [...(root.current?.querySelectorAll<HTMLButtonElement>("[role=menuitem]") ?? [])];
+  const toggleLocation = () => {
+    setLocNote("");
+    if (shareLoc) { saveLocation(null); setShareLoc(false); return; }
+    setShareLoc(true);
+    requestLocation().then(saveLocation)
+      .catch((e: Error) => { saveLocation(null); setShareLoc(false); setLocNote(e.message); });
+  };
+  const items = () => [...(root.current?.querySelectorAll<HTMLButtonElement>("[role^=menuitem]") ?? [])];
   useEffect(() => {
     if (!open) return;
     items()[0]?.focus();
@@ -351,6 +363,12 @@ function AccountMenu({ theme, onTheme, onLogout }: { theme: string; onTheme: () 
           <button role="menuitem" tabIndex={-1} onClick={() => { onTheme(); close(); }}>
             {theme === "dark" ? <IconSun size={16} /> : <IconMoon size={16} />}<span>{theme === "dark" ? "Light" : "Dark"} theme</span>
           </button>
+          <button role="menuitemcheckbox" aria-checked={shareLoc} tabIndex={-1} onClick={toggleLocation}
+            title="Sends an approximate location (~10 km) with new sessions only, so the agent knows roughly where you are">
+            <span aria-hidden="true">{shareLoc ? <IconCheck size={16} /> : <span style={{ width: 16, display: "inline-block" }} />}</span>
+            <span>Share location <small>(approx. ~10 km, new sessions)</small></span>
+          </button>
+          {locNote && <div className="menu-note" role="status">{locNote}</div>}
           <button role="menuitem" tabIndex={-1} onClick={() => api.logout().catch(() => {}).finally(onLogout)}>
             <IconLogout size={16} /><span>Sign out</span>
           </button>

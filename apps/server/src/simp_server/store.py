@@ -66,6 +66,12 @@ class SqliteStore:
             await self._do("ALTER TABLE users ADD COLUMN password TEXT")
             await self._do("ALTER TABLE users ADD COLUMN disabled INTEGER DEFAULT 0")
             await self._do("UPDATE users SET disabled=1 WHERE token_sha256 IS NULL")  # Stage 2 revoke = NULL token
+        cols = [r["name"] for r in await self._all("PRAGMA table_info(sessions)")]
+        if "locale" not in cols:  # db from before the user's locale/timezone was kept
+            await self._do("ALTER TABLE sessions ADD COLUMN locale TEXT")
+            await self._do("ALTER TABLE sessions ADD COLUMN timezone TEXT")
+        if "location" not in cols:  # db from before the opt-in approx. location ("lat,lon") was kept
+            await self._do("ALTER TABLE sessions ADD COLUMN location TEXT")
 
     async def close(self) -> None:
         await self.db.close()
@@ -138,9 +144,11 @@ class SqliteStore:
         return cur.rowcount > 0
 
     # sessions
-    async def add_session(self, user_id: str, profile: str, title: str = "") -> dict:
+    async def add_session(self, user_id: str, profile: str, title: str = "", locale: str | None = None,
+                          timezone: str | None = None, location: str | None = None) -> dict:
         sid, now = uuid.uuid4().hex[:12], time.time()
-        await self._do("INSERT INTO sessions VALUES(?,?,?,?,?,?,?)", sid, user_id, title, profile, sid, now, now)
+        await self._do("INSERT INTO sessions(id, user_id, title, profile, sandbox_ref, created, updated, locale, timezone, location) "
+                       "VALUES(?,?,?,?,?,?,?,?,?,?)", sid, user_id, title, profile, sid, now, now, locale, timezone, location)
         return (await self.get_session(user_id, sid))
 
     async def get_session(self, user_id: str, sid: str) -> dict | None:

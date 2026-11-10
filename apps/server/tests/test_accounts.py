@@ -215,3 +215,16 @@ async def test_me_returns_name(tmp_path):
             assert r.status_code == 200 and r.json() == {"name": "ann"}
     finally:
         await mgr.store.close()
+
+
+async def test_models_maps_profile_to_model(tmp_path):
+    app, mgr = await accounts_app(tmp_path)
+    try:
+        await mgr.store.add_user("ann", password="password1")
+        async with client(app) as c:
+            assert (await c.get("/api/models")).status_code == 401
+            t = (await c.post("/api/login", json={"name": "ann", "password": "password1"})).json()["token"]
+            r = await c.get("/api/models", headers={"Authorization": f"Bearer {t}"})
+            assert r.status_code == 200 and r.json() == {"test": "m"}
+    finally:
+        await mgr.store.close()
