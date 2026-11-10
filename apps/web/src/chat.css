@@ -124,18 +124,21 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .composer { width: 100%; max-width: 768px; margin: 0 auto; padding: 0 var(--sp-5) var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-1); }
 .cmd-error { margin: 0 auto var(--sp-2); }
 .composer-card {
-  display: flex; flex-direction: column; gap: var(--sp-1);
-  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3); cursor: text;
+  /* one row: attach | textarea | controls + send, all vertically centered */
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-2); cursor: text;
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
 }
 /* subtle focus: a darker neutral border (>= 3:1 against --bg in both themes) and a slightly deeper shadow, no accent ring */
 .composer-card:focus-within { border-color: color-mix(in srgb, var(--text) 50%, var(--border)); box-shadow: var(--shadow-md), 0 1px 3px rgb(0 0 0 / .06); }
 .composer textarea {
-  resize: none; width: 100%; max-height: 200px; overflow-y: auto;
+  flex: 1; min-width: 8em; resize: none; max-height: 200px; overflow-y: auto;
   border: 0; padding: 6px var(--sp-1); background: transparent; line-height: 1.5; font-size: var(--fs-md);
 }
 .composer textarea:focus-visible { outline: none; }  /* the card border shows focus */
-.composer-bar { display: flex; align-items: center; gap: var(--sp-1); }
+.composer-bar { display: contents; }
+.composer-bar .spacer { display: none; }
+.composer .attach { order: -1; }
 .composer .round {
   flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border-radius: 50%; border: 0;
 }
@@ -152,13 +155,13 @@ details[open] > summary .chev { transform: rotate(90deg); }
 }
 .composer .chip.on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
 .composer .chip.plan { display: inline-flex; align-items: center; gap: 4px; margin-right: var(--sp-1); }
-.attached { list-style: none; margin: 0; padding: var(--sp-1) var(--sp-1) 0; display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.attached { flex-basis: 100%; list-style: none; margin: 0; padding: var(--sp-1) var(--sp-1) 0; display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 .attached li {
   max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs);
   padding: 2px var(--sp-2); border-radius: 99px; background: var(--code); border: 1px solid var(--border);
 }
 .composer.hero { max-width: 720px; padding: 0 var(--sp-4); }
-.composer.hero .composer-card { padding: var(--sp-3) var(--sp-3) var(--sp-2) var(--sp-4); }
+.composer.hero .composer-card { padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3); }
 .composer.hero textarea { font-size: var(--fs-lg); }
 
 /* ---- file card under a write/edit tool ---- */
