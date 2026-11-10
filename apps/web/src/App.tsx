@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, AuthError, type ConnStatus, type SignupMode, getToken, setToken, subscribe } from "./api";
 import { Chat, Composer, errorText, type Send } from "./Chat";
-import { IconCheck, IconCompose, IconEye, IconFile, IconFolder, IconEyeOff, IconLogout, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
+import { IconCheck, IconCompose, IconEye, IconFile, IconEyeOff, IconLogout, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
 import { requestLocation, saveLocation, sharedLocation } from "./location";
 import { Files } from "./Files";
@@ -139,9 +139,9 @@ function Login({ onLogin }: { onLogin: (t: string) => void }) {
 }
 
 const SUGGESTIONS = [
-  { text: "Explain this repo", icon: <IconFolder size={16} /> },
-  { text: "Write a script", icon: <IconFile size={16} /> },
-  { text: "Fix a failing test", icon: <IconCheck size={16} /> },
+  { text: "What's the weather tomorrow?", icon: <IconSun size={16} /> },
+  { text: "Summarize a file for me", icon: <IconFile size={16} /> },
+  { text: "Help me plan my week", icon: <IconCheck size={16} /> },
 ];
 
 function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () => void; theme: string }) {
@@ -149,6 +149,13 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   const [loaded, setLoaded] = useState(false);  // first sessions fetch finished (ok or not)
   const [drawer, setDrawer] = useState(false);  // mobile sidebar open
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem("simp.sidebar") === "0"; } catch { return false; } });
+  const [desktop, setDesktop] = useState(() => matchMedia("(min-width: 768px)").matches);
+  useEffect(() => {
+    const m = matchMedia("(min-width: 768px)"), on = () => setDesktop(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  const rail = collapsed && desktop;  // the collapsed rail only exists on desktop; mobile always uses the drawer
   const [profiles, setProfiles] = useState<string[]>([]);
   const [models, setModels] = useState<Record<string, string>>({});
   const [profile, setProfile] = useState("");
@@ -181,7 +188,12 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   };
 
   const guard = useCallback((e: unknown) => { if (e instanceof AuthError) onLogout(); else console.error(e); }, [onLogout]);
-  const refresh = useCallback(() => api.sessions().then(setSessions).catch(guard).finally(() => setLoaded(true)), [guard]);
+  // Overlapping refreshes (event-driven + after create/delete) can resolve out of order; keep only the newest.
+  const refreshSeq = useRef(0);
+  const refresh = useCallback(() => {
+    const n = ++refreshSeq.current;
+    return api.sessions().then((l) => { if (n === refreshSeq.current) setSessions(l); }).catch(guard).finally(() => setLoaded(true));
+  }, [guard]);
 
   useEffect(() => {
     if (!drawer) return;
@@ -197,8 +209,15 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
     api.models().then(setModels).catch(() => {});
   }, [refresh]);
 
+  // Follow hash changes (pasted deep link, back/forward, same-document navigation to /#id).
   useEffect(() => {
-    location.hash = sid;
+    const onHash = () => setSid(location.hash.slice(1));
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  useEffect(() => {
+    if (location.hash.slice(1) !== sid) location.hash = sid;
     ref.current = initialState();
     setState(ref.current);
     if (!sid) return;
@@ -226,10 +245,13 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   };
 
   /** Hero composer / suggestion chips: start a session with the chosen profile, then send the first command. */
+  const [first, setFirst] = useState<{ sid: string; text: string } | null>(null);
   const start: Send = async (c) => {
     try {
       const id = await create();
-      if (id) await api.command(id, c);
+      if (!id) return;
+      if (c.type === "prompt") setFirst({ sid: id, text: c.text });  // show it at once, before the server echoes it
+      await api.command(id, c);
     } catch (e) { guard(e); }
   };
 
@@ -253,17 +275,21 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
       {(drawer || (sid && showFiles)) && (
         <div className="backdrop" aria-hidden="true" onClick={() => (drawer ? setDrawer(false) : setShowFiles(false))} />
       )}
-      {collapsed && (
-        <button className="ghost icon reopen only-desktop" aria-label="Expand sidebar" title="Expand sidebar"
-          onClick={toggleCollapsed}><IconSidebar /></button>
-      )}
       <aside className="sidebar" id="sidebar">
         <div className="side-top">
-          <span className="brand"><PixelAgent size={22} />Simp</span>
-          <button className="ghost icon only-desktop" aria-label="Collapse sidebar" title="Collapse sidebar"
+          <span className="brand">
+            {rail ? (
+              <button className="brand-mark expand" aria-label="Expand sidebar" title="Expand sidebar" onClick={toggleCollapsed}>
+                <span className="face"><PixelAgent size={22} /></span><span className="toggle"><IconSidebar /></span>
+              </button>
+            ) : <span className="brand-mark"><PixelAgent size={22} /></span>}
+            <span className="brand-name">Simp</span>
+          </span>
+          <button className="ghost icon only-desktop collapse" aria-label="Collapse sidebar" title="Collapse sidebar"
             onClick={toggleCollapsed}><IconSidebar /></button>
         </div>
-        <button className={`ghost item new ${sid ? "" : "active"}`} onClick={() => pick("")} aria-current={sid ? undefined : "page"}><IconCompose /><span>New session</span></button>
+        <button className={`ghost item new ${sid ? "" : "active"}`} onClick={() => pick("")} aria-current={sid ? undefined : "page"}
+          aria-label={rail ? "New session" : undefined} title={rail ? "New session" : undefined}><IconCompose /><span className="label">New session</span></button>
         <nav aria-label="Sessions">
           <h2 className="section-label">Recent</h2>
           {sessions.map((s) => (
@@ -290,14 +316,16 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
         <>
           <Chat sid={sid} state={state} conn={conn} onError={guard} onToggleFiles={() => { setFilesFocus(undefined); setShowFiles(!showFiles); }} filesOpen={showFiles}
             onOpenFile={(p) => { setFilesFocus(p); setShowFiles(true); }}
-            notify={notify} onToggleNotify={toggleNotify} menuButton={menu} />
+            notify={notify} onToggleNotify={toggleNotify} menuButton={menu}
+            firstPrompt={first?.sid === sid ? first.text : undefined} />
           {showFiles && <Files sid={sid} onError={guard} focus={filesFocus} onClose={() => setShowFiles(false)} />}
         </>
       ) : (
         <main className="home">
           <header className="home-head">{menu}<span className="brand only-mobile"><PixelAgent size={22} />Simp</span></header>
           <div className="home-hero">
-            <h1>What should we build?</h1>
+            <PixelAgent size={64} className="hero-face" />
+            <h1>How can I help today?</h1>
             <Composer busy={false} send={start} variant="hero" disabled={creating} tools={profiles.length > 0 && (
               <select className="profile-pick" value={profile} onChange={(e) => setProfile(e.target.value)} aria-label="Profile"
                 title="Profile">
@@ -366,7 +394,7 @@ function AccountMenu({ theme, onTheme, onLogout }: { theme: string; onTheme: () 
           <button role="menuitemcheckbox" aria-checked={shareLoc} tabIndex={-1} onClick={toggleLocation}
             title="Sends an approximate location (~10 km) with new sessions only, so the agent knows roughly where you are">
             <span aria-hidden="true">{shareLoc ? <IconCheck size={16} /> : <span style={{ width: 16, display: "inline-block" }} />}</span>
-            <span>Share location <small>(approx. ~10 km, new sessions)</small></span>
+            <span>Share location</span>
           </button>
           {locNote && <div className="menu-note" role="status">{locNote}</div>}
           <button role="menuitem" tabIndex={-1} onClick={() => api.logout().catch(() => {}).finally(onLogout)}>

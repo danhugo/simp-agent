@@ -129,8 +129,9 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .composer-card {
   /* one row: attach | textarea | controls + send, all vertically centered */
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1);
-  padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-2); cursor: text;
-  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+  /* same padding on every side so the round buttons sit concentric with the card corners: radius = 18 + pad + 1 */
+  padding: var(--sp-1); cursor: text;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 23px; box-shadow: var(--shadow-md);
 }
 /* subtle focus: a darker neutral border (>= 3:1 against --bg in both themes) and a slightly deeper shadow, no accent ring */
 .composer-card:focus-within { border-color: color-mix(in srgb, var(--text) 50%, var(--border)); box-shadow: var(--shadow-md), 0 1px 3px rgb(0 0 0 / .06); }
@@ -151,12 +152,14 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .composer .send:disabled { background: color-mix(in srgb, var(--accent) 22%, var(--bg)); color: var(--bg); opacity: 1; cursor: not-allowed; }
 .composer .stop { background: var(--text); color: var(--bg); }
 .composer .stop:hover { background: var(--text); filter: brightness(1.2); }
-.composer .attach { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.composer .attach { background: transparent; color: var(--muted); border: 0; }
 .composer .attach:hover:not(:disabled) { color: var(--text); background: var(--hover); }
 .composer .chip {
   font-size: var(--fs-xs); padding: 2px var(--sp-3); border-radius: 99px; color: var(--muted);
+  border: 0; background: transparent;
 }
-.composer .chip.on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+.composer .chip:hover { background: var(--hover); color: var(--text); }
+.composer .chip.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
 .composer .chip.plan { display: inline-flex; align-items: center; gap: 4px; margin-right: var(--sp-1); }
 .attached { flex-basis: 100%; list-style: none; margin: 0; padding: var(--sp-1) var(--sp-1) 0; display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 .attached li {
@@ -164,7 +167,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
   padding: 2px var(--sp-2); border-radius: 99px; background: var(--code); border: 1px solid var(--border);
 }
 .composer.hero { max-width: 720px; padding: 0 var(--sp-4); }
-.composer.hero .composer-card { padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3); }
+.composer.hero .composer-card { padding: var(--sp-2); border-radius: 27px; }
 .composer.hero textarea { font-size: var(--fs-lg); }
 
 /* ---- file card under a write/edit tool ---- */
@@ -217,3 +220,5 @@ details[open] > summary .chev { transform: rotate(90deg); }
   .streaming .md > :last-child::after, .dot.running { animation: none; }
   .chev, .msg-actions { transition: none; }
 }
+
+.composer-modes { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); padding: 0 var(--sp-2); }

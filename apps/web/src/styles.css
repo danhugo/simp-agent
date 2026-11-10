@@ -8,6 +8,7 @@
   --radius-sm: 8px; --radius: 12px; --radius-lg: 24px;
   --shadow-sm: 0 1px 2px rgb(0 0 0 / .06); --shadow-md: 0 4px 16px rgb(0 0 0 / .08);
   --sidebar-w: 260px;
+  --rail-w: 56px;
   font: var(--fs-md)/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   color: var(--text); background: var(--bg); color-scheme: light;
 }
@@ -98,13 +99,34 @@ pre { background: var(--code); border-radius: var(--radius-sm); padding: 10px va
 .app { display: flex; height: 100vh; height: 100dvh; }
 .backdrop { display: none; }
 .sidebar {
-  width: var(--sidebar-w); flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--border);
+  width: var(--sidebar-w); flex-shrink: 0; background: var(--bg); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; padding: var(--sp-3); gap: var(--sp-1);
 }
-.app.collapsed .sidebar { display: none; }
-.reopen { position: fixed; top: var(--sp-2); left: var(--sp-2); z-index: 10; background: var(--bg) !important; box-shadow: var(--shadow-sm); border-color: var(--border) !important; }
-.app.collapsed .chat > header { padding-left: 56px; }
-.side-top { display: flex; align-items: center; justify-content: space-between; padding: 0 0 var(--sp-2) 10px; }
+.side-top { display: flex; align-items: center; justify-content: space-between; padding: 0 0 var(--sp-2) 0; }
+.brand-mark { display: inline-grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: var(--radius-sm); }
+button.brand-mark { padding: 0; border: none; background: transparent; box-shadow: none; }
+button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hover); }
+.brand-mark .face, .brand-mark .toggle { display: inline-grid; place-items: center; }
+.brand-mark .toggle, .brand-mark:hover .face, .brand-mark:focus-visible .face { display: none; }
+.brand-mark:hover .toggle, .brand-mark:focus-visible .toggle { display: inline-grid; }
+/* desktop rail: the sidebar slides (width) between --sidebar-w and --rail-w; inner rows keep a fixed width so text clips, never rewraps */
+@media (min-width: 768px) {
+  .sidebar { transition: width .25s ease; overflow: hidden; }
+  .sidebar > * { width: calc(var(--sidebar-w) - 2 * var(--sp-3)); flex-shrink: 0; }
+  .sidebar > nav { flex-shrink: 1; }
+  .sidebar .brand-name, .sidebar .collapse, .sidebar .new .label, .sidebar nav, .sidebar .account-name {
+    transition: opacity .15s ease, visibility .25s; }
+  .app.collapsed .sidebar { width: var(--rail-w); }
+  .app.collapsed .sidebar :is(.brand-name, .collapse, .new .label, nav, .account-name) { opacity: 0; visibility: hidden; }
+  .sidebar .new, .sidebar .account-btn { white-space: nowrap; overflow: hidden; transition: width .25s ease, padding .25s ease; }
+  .app.collapsed .sidebar .new { width: 32px; height: 32px; padding: 0; gap: 0; justify-content: center; }
+  .app.collapsed .sidebar .new .label { display: none; }
+  .app.collapsed .sidebar .account-btn { width: 32px; height: 32px; padding: 0; gap: 0; justify-content: center; border-radius: 50%; }
+  .app.collapsed .sidebar .account-name { display: none; }
+  .app.collapsed .sidebar .foot { border-top-color: transparent; }
+  /* the rail clips overflow, so the account menu escapes it as a fixed popover */
+  .app.collapsed .account .menu.up { position: fixed; left: var(--sp-2); right: auto; bottom: 56px; top: auto; min-width: 220px; z-index: 40; }
+}
 .brand { font-weight: 700; font-size: var(--fs-md); display: inline-flex; align-items: center; gap: var(--sp-2); }
 .sidebar .item {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: var(--sp-2) 10px;
@@ -146,6 +168,7 @@ pre { background: var(--code); border-radius: var(--radius-sm); padding: 10px va
   flex: 1; display: flex; flex-direction: column; justify-content: center; gap: var(--sp-4);
   width: 100%; max-width: 760px; margin: 0 auto; padding: 0 var(--sp-5) 12vh;
 }
+.home-hero .hero-face { align-self: center; margin-bottom: var(--sp-1); }
 .home-hero h1 { margin: 0 0 var(--sp-2); font-size: 27px; font-weight: 450; text-align: center; letter-spacing: -.01em; }
 /* compact profile picker inside the hero composer, next to send */
 .composer select.profile-pick {
@@ -178,8 +201,6 @@ pre { background: var(--code); border-radius: var(--radius-sm); padding: 10px va
   .only-mobile { display: revert !important; }
   button.icon.only-mobile { display: inline-grid !important; }
   .only-desktop { display: none !important; }
-  .app.collapsed .sidebar { display: flex; }
-  .app.collapsed .chat > header { padding-left: revert; }
   .sidebar {
     position: fixed; inset: 0 auto 0 0; z-index: 30; width: min(var(--sidebar-w), 85vw);
     transform: translateX(-100%); visibility: hidden; transition: transform .2s ease, visibility .2s;

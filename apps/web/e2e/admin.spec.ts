@@ -19,7 +19,7 @@ test("delete session: first click asks, second deletes", async ({ page }) => {
   await login(page, cli("seed", "--name", `del-${Date.now()}`));
   const rows = page.locator(".session-row");
   await page.click("text=New session");
-  await expect(page.locator("text=What should we build?")).toBeVisible();
+  await expect(page.locator("text=How can I help today?")).toBeVisible();
   await page.screenshot({ path: "test-results/new-session-hero.png" });
   await expect(rows).toHaveCount(0);  // New session only opens the hero; the session is created on first send
   for (const n of [1, 2]) {

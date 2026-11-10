@@ -23,11 +23,13 @@ interface Props {
   notify: boolean;
   onToggleNotify: () => void;
   menuButton?: ReactNode;
+  /** The first prompt sent from the home screen: shown at once until the server echoes it. */
+  firstPrompt?: string;
 }
 
 interface Action { key: string; label: string; icon: ReactNode; title: string; onClick: () => void; pressed?: boolean; disabled?: boolean }
 
-export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = false, onOpenFile, notify, onToggleNotify, menuButton }: Props) {
+export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = false, onOpenFile, notify, onToggleNotify, menuButton, firstPrompt }: Props) {
   const busy = state.runState !== "idle" && state.runState !== "error";
   const [cmdError, setCmdError] = useState<string>();
   useEffect(() => setCmdError(undefined), [sid]);
@@ -122,6 +124,7 @@ export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = fal
                 </div>
               ))}
             {/* aria-live off + aria-busy: don't announce every streamed token; the finished message is announced once */}
+            {firstPrompt && !state.items.some((i) => i.kind === "user") && <div className="msg user">{firstPrompt}</div>}
             {(f.text || f.thinking) && (
               <div className="msg assistant streaming" aria-live="off" aria-busy="true">
                 {f.thinking && <Thinking text={f.thinking} open />}
@@ -410,6 +413,8 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, p
           }}
         />
         <div className="composer-bar">
+          <span className="spacer" />
+          {tools}
           {sid && (
             <>
               <button type="button" className="round attach" aria-label="Attach files" title="Attach files"
@@ -417,14 +422,6 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, p
               <input ref={picker} type="file" multiple hidden onChange={(e) => upload(e.target.files)} />
             </>
           )}
-          <span className="spacer" />
-          {onTogglePlan && (
-            <button type="button" className={`chip plan ${planMode ? "on" : ""}`} aria-pressed={!!planMode} onClick={onTogglePlan}
-              title="Plan mode: read-only, the agent plans but does not edit or run commands">
-              <IconPlan size={14} /><span>Plan</span>
-            </button>
-          )}
-          {tools}
           {busy && empty ? (
             <button type="button" className="round stop" aria-label="Stop" title="Stop (Esc)" onClick={stop}><IconStop size={16} /></button>
           ) : (
@@ -435,6 +432,14 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, p
           )}
         </div>
       </div>
+      {onTogglePlan && (
+        <div className="composer-modes" role="group" aria-label="Modes">
+          <button type="button" className={`chip plan ${planMode ? "on" : ""}`} aria-pressed={!!planMode} onClick={onTogglePlan}
+            title="Plan mode: read-only, the agent plans but does not edit or run commands">
+            <IconPlan size={14} /><span>Plan</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
