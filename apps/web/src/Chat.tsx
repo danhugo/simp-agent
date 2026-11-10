@@ -402,7 +402,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, p
         )}
         <textarea
           ref={area} value={text} rows={1} autoFocus aria-label="Message" disabled={disabled}
-          placeholder={busy ? "Steer the running agent…" : "Message simp-agent…"}
+          placeholder={busy ? "Steer the running agent…" : "Message Simp…"}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }

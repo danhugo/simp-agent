@@ -1,8 +1,8 @@
 :root {
-  --bg: #ffffff; --panel: #f7f7f8; --border: #e4e4e7; --text: #18181b; --muted: #66666e;
-  --accent: #4338ca; --accent-text: #fff; --user: #eef2ff; --code: #f4f4f5;
-  --ok: #16a34a; --warn: #92400e; --err: #a61b1b;
-  --hover: #ececef; --active: #e8e8ec;  /* muted text stays >= 4.5:1 on both */
+  --bg: #fbf8f2; --panel: #f3eee5; --border: #e4dccf; --text: #2b2420; --muted: #6b5f55;
+  --accent: #3b2f2a; --accent-text: #fbf8f2; --user: #efe6d8; --code: #f1ebe1;
+  --ok: #3f6a2e; --warn: #774c0c; --err: #a3392b;
+  --hover: #ece5d9; --active: #e6ddcf;  /* muted text stays >= 4.5:1 on both */
   --fs-xs: 12px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 18px; --fs-xl: 28px;
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
   --radius-sm: 8px; --radius: 12px; --radius-lg: 24px;
@@ -12,10 +12,10 @@
   color: var(--text); background: var(--bg); color-scheme: light;
 }
 :root[data-theme="dark"] {
-  --bg: #0f0f12; --panel: #17171b; --border: #2a2a31; --text: #ececf1; --muted: #9a9aa5;
-  --accent: #818cf8; --accent-text: #0f0f12; --user: #23233a; --code: #1d1d22;
-  --warn: #f59e0b; --err: #f87171;
-  --hover: #222228; --active: #26262c;
+  --bg: #1b1815; --panel: #221e1a; --border: #352f29; --text: #efe7da; --muted: #a89c8e;
+  --accent: #efe7da; --accent-text: #1b1815; --user: #2e2822; --code: #26211c;
+  --ok: #8fb878; --warn: #e0a957; --err: #ec8a7a;
+  --hover: #2b2621; --active: #312b25;
   --shadow-sm: 0 1px 2px rgb(0 0 0 / .4); --shadow-md: 0 4px 16px rgb(0 0 0 / .5);
   color-scheme: dark;
 }
@@ -60,8 +60,8 @@ pre { background: var(--code); border-radius: var(--radius-sm); padding: 10px va
 }
 .login h1 { margin: 0; font-size: var(--fs-xl); text-align: center; letter-spacing: -.01em; }
 /* input borders >= 3:1 against the card (the global --border is decorative only) */
-.login { --field-border: #8a8a94; }
-:root[data-theme="dark"] .login { --field-border: #70707c; }
+.login { --field-border: #8f8579; }
+:root[data-theme="dark"] .login { --field-border: #7d7266; }
 .login .logo { align-self: center; margin-bottom: calc(-1 * var(--sp-1)); }
 .login .sub { margin: 0 0 var(--sp-2); text-align: center; }
 .login .field { display: flex; flex-direction: column; gap: 6px; }
@@ -211,3 +211,4 @@ pre { background: var(--code); border-radius: var(--radius-sm); padding: 10px va
 }
 
 .login code { white-space: nowrap; }
+.menu-note { padding: 4px 10px; font-size: 12px; color: var(--muted, inherit); }
