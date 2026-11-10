@@ -18,7 +18,7 @@ def client(app):
 
 
 async def test_signup_gated_by_code(tmp_path):
-    app, mgr = await accounts_app(tmp_path)
+    app, mgr = await accounts_app(tmp_path, 'signup = "closed"\n')
     try:
         async with client(app) as c:
             r = await c.post("/api/signup", json={"name": "ann", "password": "password1", "code": "x"})
@@ -30,7 +30,7 @@ async def test_signup_gated_by_code(tmp_path):
         async with client(app) as c:
             body = {"name": "ann", "password": "password1", "code": "nope"}
             assert (await c.post("/api/signup", json=body)).status_code == 403
-            assert (await c.post("/api/signup", json={**body, "code": "sesame", "password": "short"})).status_code == 400
+            assert (await c.post("/api/signup", json={**body, "code": "sesame", "password": ""})).status_code == 400
             assert (await c.post("/api/signup", json={**body, "code": "sesame", "name": "Bad Name"})).status_code == 400
             r = await c.post("/api/signup", json={**body, "code": "sesame"})
             assert r.status_code == 200
@@ -117,7 +117,101 @@ async def test_password_length_capped(tmp_path):
     app, mgr = await accounts_app(tmp_path, 'signup_code = "c"\n')
     async with client(app) as c:
         r = await c.post("/api/signup", json={"name": "big", "password": "x" * 5000, "code": "c"})
-        assert r.status_code in (400, 422)
+        assert r.status_code == 400
         r = await c.post("/api/login", json={"name": "big", "password": "x" * 5000})
-        assert r.status_code in (401, 422)
+        assert r.status_code in (400, 401)
     await mgr.store.close()
+
+
+async def test_password_too_long_never_echoed(tmp_path):
+    app, mgr = await accounts_app(tmp_path, 'signup = "open"\n')
+    try:
+        async with client(app) as c:
+            secret = "hunter2-" * 200
+            for path in ("/api/signup", "/api/login"):
+                r = await c.post(path, json={"name": "big", "password": secret})
+                assert r.status_code == 400 and "hunter2" not in r.text
+    finally:
+        await mgr.store.close()
+
+
+async def signup_mode_of(tmp_path, extra):
+    app, mgr = await accounts_app(tmp_path, extra)
+    try:
+        async with client(app) as c:
+            return (await c.get("/api/signup-mode")).json()["mode"]
+    finally:
+        await mgr.store.close()
+
+
+async def test_signup_mode_setting_and_default(tmp_path):
+    assert await signup_mode_of(tmp_path, "") == "open"  # unset everything: open (temporary default)
+    assert await signup_mode_of(tmp_path, 'signup_code = "c"\n') == "invite"  # unset signup + code: invite, as before
+    assert await signup_mode_of(tmp_path, 'signup = "open"\n') == "open"
+    assert await signup_mode_of(tmp_path, 'signup = "closed"\nsignup_code = "c"\n') == "closed"
+
+
+async def test_open_signup_any_password_unique_name_hashed(tmp_path):
+    app, mgr = await accounts_app(tmp_path, 'signup = "open"\nallow_local_sandbox = true\n')
+    try:
+        async with client(app) as c:
+            r = await c.post("/api/signup", json={"name": "  Hung ", "password": "a"})  # no code, 1-char password
+            assert r.status_code == 200
+            h = {"Authorization": f"Bearer {r.json()['token']}"}
+            assert (await c.get("/api/sessions", headers=h)).status_code == 200
+            for dup in ("hung", "HUNG"):
+                r = await c.post("/api/signup", json={"name": dup, "password": "b"})
+                assert r.status_code == 409 and r.json()["detail"] == "That username is taken."
+            r = await c.post("/api/signup", json={"name": "bad name", "password": "a"})
+            assert r.status_code == 400 and "2-32" in r.json()["detail"]
+            assert (await c.post("/api/signup", json={"name": "x", "password": "a"})).status_code == 400
+            assert (await c.post("/api/signup", json={"name": "ann", "password": ""})).status_code == 400
+            assert (await c.post("/api/login", json={"name": "HUNG", "password": "a"})).status_code == 200
+            assert (await c.post("/api/login", json={"name": "hung", "password": "b"})).status_code == 401
+        rows = await mgr.store._all("SELECT name, password FROM users")
+        assert [r["name"] for r in rows] == ["hung"]
+        assert rows[0]["password"].startswith("scrypt$") and rows[0]["password"] != "a"
+    finally:
+        await mgr.store.close()
+
+
+async def test_open_signup_name_taken_by_capitalised_cli_user(tmp_path):
+    app, mgr = await accounts_app(tmp_path, 'signup = "open"\nallow_local_sandbox = true\n')
+    try:
+        await mgr.store.add_user("Ann", password="pw")  # CLI seed keeps the case it was given
+        async with client(app) as c:
+            assert (await c.post("/api/signup", json={"name": "ann", "password": "x"})).status_code == 409
+            assert (await c.post("/api/login", json={"name": "ann", "password": "pw"})).status_code == 200
+            assert (await c.post("/api/login", json={"name": "Ann", "password": "pw"})).status_code == 200
+    finally:
+        await mgr.store.close()
+
+
+async def test_invite_and_closed_modes(tmp_path):
+    app, mgr = await accounts_app(tmp_path, 'signup = "invite"\nsignup_code = "sesame"\nallow_local_sandbox = true\n')
+    try:
+        async with client(app) as c:
+            assert (await c.post("/api/signup", json={"name": "ann", "password": "a"})).status_code == 403
+            assert (await c.post("/api/signup", json={"name": "ann", "password": "a", "code": "sesame"})).status_code == 200
+    finally:
+        await mgr.store.close()
+    app, mgr = await accounts_app(tmp_path, 'signup = "closed"\nsignup_code = "sesame"\n')
+    try:
+        async with client(app) as c:
+            r = await c.post("/api/signup", json={"name": "bob", "password": "a", "code": "sesame"})
+            assert r.status_code == 403
+    finally:
+        await mgr.store.close()
+
+
+async def test_me_returns_name(tmp_path):
+    app, mgr = await accounts_app(tmp_path)
+    try:
+        await mgr.store.add_user("ann", password="password1")
+        async with client(app) as c:
+            assert (await c.get("/api/me")).status_code == 401
+            t = (await c.post("/api/login", json={"name": "ann", "password": "password1"})).json()["token"]
+            r = await c.get("/api/me", headers={"Authorization": f"Bearer {t}"})
+            assert r.status_code == 200 and r.json() == {"name": "ann"}
+    finally:
+        await mgr.store.close()

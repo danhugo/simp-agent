@@ -63,8 +63,12 @@ uv run simp-server rotate --name bob  # prints a new token once; the old one and
 uv run simp-server seed --name ann --password  # also asks for a password (web "Sign in" with username + password)
 uv run simp-server passwd --name ann  # set or change a password
 ```
-Accounts: set `signup_code = "..."` in `settings.toml` to let people "Create account" on the web login page with that
-invite code (unset = sign-up closed). Each password sign-in gets its own token; "Sign out" ends only that one. `revoke`
+Accounts: `signup = "open" | "invite" | "closed"` in `settings.toml` controls "Create account" on the web login page.
+`"open"`: anyone picks a unique username (2-32 of a-z 0-9 _ -, stored lowercase, so "Ann" and "ann" are one account)
+and any non-empty password; `"invite"`: also needs `signup_code = "..."`; `"closed"`: no sign-up. Unset = `"invite"` if
+`signup_code` is set, else `"open"` (a temporary default: anyone who can reach the server can then create accounts that
+spend real API budget, up to the per-user daily limit each; set `signup = "invite"` or `"closed"` before exposing the
+server beyond localhost, e.g. through a tunnel). Only a salted scrypt hash of a password is stored. Each password sign-in gets its own token; "Sign out" ends only that one. `revoke`
 disables the user (token, password logins and password sign-in); `rotate` re-enables a revoked user.
 There is no rate limit on `/api/login` and `/api/signup`: before exposing the server through a tunnel, put one in
 front (the tunnel's or a reverse proxy's). Passwords are capped at 1024 characters and hashed off the event loop.

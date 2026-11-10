@@ -95,8 +95,13 @@ class SqliteStore:
         await self.db.commit()
         return cur.rowcount > 0
 
+    async def name_taken(self, name: str) -> bool:  # case-insensitive: older CLI-seeded names may have capitals
+        return bool(await self._all("SELECT 1 FROM users WHERE lower(name)=lower(?)", name))
+
     async def login(self, name: str, password: str) -> str | None:
-        rows = await self._all("SELECT id, password FROM users WHERE name=? AND disabled=0", name)
+        """Name matches case-insensitively; an exact-case match wins (older CLI-seeded names may have capitals)."""
+        rows = await self._all("SELECT id, password FROM users WHERE lower(name)=lower(?) AND disabled=0 "
+                               "ORDER BY name=? DESC LIMIT 1", name, name)
         if not await asyncio.to_thread(check_password, password, rows[0]["password"] if rows else None):
             return None
         token = secrets.token_urlsafe(32)
