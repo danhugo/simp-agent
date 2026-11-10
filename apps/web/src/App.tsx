@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, AuthError, type ConnStatus, type SignupMode, getToken, setToken, subscribe } from "./api";
 import { Chat, Composer, errorText, type Send } from "./Chat";
-import { IconCheck, IconCompose, IconEye, IconFile, IconEyeOff, IconLogout, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
+import { IconCheck, IconChevron, IconCompose, IconEye, IconFile, IconEyeOff, IconLogout, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
 import { requestLocation, saveLocation, sharedLocation } from "./location";
 import { Files } from "./Files";
@@ -213,11 +213,15 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   useEffect(() => {
     const onHash = () => setSid(location.hash.slice(1));
     window.addEventListener("hashchange", onHash);
+    onHash();  // the hash may have changed between the first render and this listener
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
+  const lastSid = useRef(sid);
   useEffect(() => {
-    if (location.hash.slice(1) !== sid) location.hash = sid;
+    // write the hash only when the app itself changed sid, never with a stale value on mount
+    if (sid !== lastSid.current && location.hash.slice(1) !== sid) location.hash = sid;
+    lastSid.current = sid;
     ref.current = initialState();
     setState(ref.current);
     if (!sid) return;
@@ -246,11 +250,14 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
 
   /** Hero composer / suggestion chips: start a session with the chosen profile, then send the first command. */
   const [first, setFirst] = useState<{ sid: string; text: string } | null>(null);
+  const queued = useRef<File[]>([]);
   const start: Send = async (c) => {
     try {
       const id = await create();
       if (!id) return;
       if (c.type === "prompt") setFirst({ sid: id, text: c.text });  // show it at once, before the server echoes it
+      const files = queued.current.splice(0);  // files picked on the home screen go up before the prompt
+      for (const f of files) await api.upload(id, f.name, f);
       await api.command(id, c);
     } catch (e) { guard(e); }
   };
@@ -326,11 +333,8 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
           <div className="home-hero">
             <PixelAgent size={64} className="hero-face" />
             <h1>How can I help today?</h1>
-            <Composer busy={false} send={start} variant="hero" disabled={creating} tools={profiles.length > 0 && (
-              <select className="profile-pick" value={profile} onChange={(e) => setProfile(e.target.value)} aria-label="Profile"
-                title="Profile">
-                {profiles.map((p) => <option key={p} value={p}>{models[p] ?? p}</option>)}
-              </select>
+            <Composer busy={false} send={start} variant="hero" onQueueFiles={(fs) => queued.current.push(...fs)} disabled={creating} tools={profiles.length > 0 && (
+              <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} />
             )} />
             <ul className="suggestions" aria-label="Suggestions">
               {SUGGESTIONS.map(({ text, icon }) => (
@@ -420,4 +424,47 @@ function alertUser(title: string, state: string, on: boolean) {
   if (!on || !document.hidden || typeof Notification === "undefined" || Notification.permission !== "granted") return;
   const body = state === "waiting_approval" ? "needs your approval" : state === "error" ? "run failed" : "run finished";
   try { new Notification(title, { body, tag: title }); } catch { /* some browsers only allow it from a service worker */ }
+}
+
+/** Model picker: a themed popover listbox instead of the native <select> (whose menu follows the OS look). */
+function ModelPicker({ value, options, labels, onChange }: {
+  value: string; options: string[]; labels: Record<string, string>; onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const label = (p: string) => labels[p] ?? p;
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", away);
+    (box.current?.querySelector('[aria-selected="true"]') as HTMLElement | null)?.focus();
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+  const pick = (p: string) => { onChange(p); setOpen(false); btn.current?.focus(); };
+  const keys = (e: React.KeyboardEvent) => {
+    const items = [...(box.current?.querySelectorAll<HTMLElement>("[role=option]") ?? [])];
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    if (e.key === "Escape") { e.preventDefault(); setOpen(false); btn.current?.focus(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+  };
+  return (
+    <div className="model-pick" ref={box} onKeyDown={keys}>
+      <button ref={btn} type="button" className="model-btn" aria-haspopup="listbox" aria-expanded={open} aria-label={`Model: ${label(value)}`}
+        onClick={() => setOpen(!open)}>
+        <span>{label(value)}</span><IconChevron size={14} className="chev" />
+      </button>
+      {open && (
+        <ul className="model-menu" role="listbox" aria-label="Model">
+          {options.map((p) => (
+            <li key={p} role="option" aria-selected={p === value} tabIndex={-1}
+              onClick={() => pick(p)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(p); } }}>
+              <span>{label(p)}</span>{p === value && <IconCheck size={16} />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }

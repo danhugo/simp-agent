@@ -10,6 +10,7 @@ import {
 } from "./icons";
 import type { PendingApproval, ToolCall } from "./protocol.gen";
 import { canContinue, type ChatState } from "./state";
+import { PixelAgent } from "./PixelAgent";
 
 interface Props {
   sid: string;
@@ -125,6 +126,15 @@ export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = fal
               ))}
             {/* aria-live off + aria-busy: don't announce every streamed token; the finished message is announced once */}
             {firstPrompt && !state.items.some((i) => i.kind === "user") && <div className="msg user">{firstPrompt}</div>}
+            {(() => {  // "working" indicator: from send until the first token, tool call or answer shows up
+              const showFirst = !!firstPrompt && !state.items.some((i) => i.kind === "user");
+              const lastUser = state.items[state.items.length - 1]?.kind === "user";
+              return (busy || showFirst) && (lastUser || showFirst) && !f.text && !f.thinking && (
+                <div className="msg assistant typing" role="status" aria-label="Simp is working">
+                  <PixelAgent size={20} /><span className="dots" aria-hidden="true"><i /><i /><i /></span>
+                </div>
+              );
+            })()}
             {(f.text || f.thinking) && (
               <div className="msg assistant streaming" aria-live="off" aria-busy="true">
                 {f.thinking && <Thinking text={f.thinking} open />}
@@ -353,12 +363,14 @@ function Approval({ p, send, inline }: { p: PendingApproval; send: Send; inline?
   );
 }
 
-export function Composer({ busy, send, variant, disabled, tools, sid, onError, planMode, onTogglePlan }: {
+export function Composer({ busy, send, variant, disabled, tools, sid, onError, planMode, onTogglePlan, onQueueFiles }: {
   busy: boolean; send: Send; variant?: "hero"; disabled?: boolean; tools?: ReactNode;
   /** In a session: the Plan toggle chip. */
   planMode?: boolean; onTogglePlan?: () => void;
   /** With a session: show the attach button; files go to the workspace root (same as the Files panel). */
   sid?: string; onError?: (e: unknown) => void;
+  /** No session yet (home): keep picked files; the caller uploads them once the session exists. */
+  onQueueFiles?: (files: File[]) => void;
 }) {
   const [text, setText] = useState("");
   const [attached, setAttached] = useState<string[]>([]);
@@ -376,13 +388,21 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, p
   const submit = () => {
     const t = text.trim();
     if (!t || disabled) return;
-    send(!busy ? { type: "prompt", text: t } : { type: "steer", text: t });
+    const note = attached.length ? `\n\n[Attached files in the workspace: ${attached.join(", ")}]` : "";  // so the agent knows
+    send(!busy ? { type: "prompt", text: t + note } : { type: "steer", text: t + note });
     setText("");
     setAttached([]);
   };
   const stop = () => send({ type: "abort" });
   const upload = async (files: FileList | null) => {
-    if (!sid || !files?.length) return;
+    if (!files?.length) return;
+    if (!sid) {  // home: nothing to upload to yet
+      const list = [...files];
+      onQueueFiles?.(list);
+      setAttached((a) => [...a, ...list.map((f) => f.name).filter((n) => !a.includes(n))]);
+      if (picker.current) picker.current.value = "";
+      return;
+    }
     setUploading(true);
     try {
       for (const f of files) {
@@ -415,7 +435,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, p
         <div className="composer-bar">
           <span className="spacer" />
           {tools}
-          {sid && (
+          {(sid || onQueueFiles) && (
             <>
               <button type="button" className="round attach" aria-label="Attach files" title="Attach files"
                 disabled={uploading} onClick={() => picker.current?.click()}><IconPlus size={16} /></button>

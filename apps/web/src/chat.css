@@ -134,7 +134,8 @@ details[open] > summary .chev { transform: rotate(90deg); }
   background: var(--bg); border: 1px solid var(--border); border-radius: 23px; box-shadow: var(--shadow-md);
 }
 /* subtle focus: a darker neutral border (>= 3:1 against --bg in both themes) and a slightly deeper shadow, no accent ring */
-.composer-card:focus-within { border-color: color-mix(in srgb, var(--text) 50%, var(--border)); box-shadow: var(--shadow-md), 0 1px 3px rgb(0 0 0 / .06); }
+/* no border change on focus: the caret and the softly deeper shadow are enough */
+.composer-card:focus-within { box-shadow: var(--shadow-md), 0 1px 3px rgb(0 0 0 / .06); }
 .composer textarea {
   flex: 1; min-width: 8em; resize: none; max-height: 200px; overflow-y: auto;
   border: 0; padding: 6px var(--sp-1); background: transparent; line-height: 1.5; font-size: var(--fs-md);
@@ -222,3 +223,25 @@ details[open] > summary .chev { transform: rotate(90deg); }
 }
 
 .composer-modes { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); padding: 0 var(--sp-2); }
+
+/* ---- working indicator (send -> first token) ---- */
+.msg.typing { flex-direction: row; align-items: center; gap: var(--sp-2); color: var(--muted); }
+.typing .dots { display: inline-flex; gap: 4px; }
+.typing .dots i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .35; animation: typing-dot 1.2s infinite ease-in-out; }
+.typing .dots i:nth-child(2) { animation-delay: .15s; }
+.typing .dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes typing-dot { 0%, 60%, 100% { opacity: .35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .typing .dots i { animation: none; opacity: .7; } }
+
+/* ---- model picker (themed, replaces native select) ---- */
+.model-pick { position: relative; }
+.model-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px var(--sp-2); border: 0; background: transparent;
+  color: var(--muted); font-size: var(--fs-sm); border-radius: var(--radius-sm); white-space: nowrap; }
+.model-btn:hover, .model-btn[aria-expanded="true"] { background: var(--hover); color: var(--text); }
+.model-btn .chev { transform: rotate(90deg); }
+.model-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 240px; margin: 0; padding: 4px; list-style: none;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-md); }
+.model-menu li { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: 8px var(--sp-3);
+  border-radius: var(--radius-sm); font-size: var(--fs-sm); color: var(--text); cursor: pointer; }
+.model-menu li:hover, .model-menu li:focus-visible { background: var(--hover); outline: none; }
+.model-menu li[aria-selected="true"] { font-weight: 500; }
