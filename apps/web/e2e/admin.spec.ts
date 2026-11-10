@@ -9,6 +9,7 @@ const cli = (...args: string[]) =>
 
 async function login(p: Page, token: string) {
   await p.goto("/");
+  await p.click("text=Use an access token instead");
   await p.fill("input[aria-label=Token]", token);
   await p.click("text=Sign in");
   await expect(p.locator("text=New session")).toBeVisible();
@@ -16,9 +17,10 @@ async function login(p: Page, token: string) {
 
 test("delete session: first click asks, second deletes", async ({ page }) => {
   await login(page, cli("seed", "--name", `del-${Date.now()}`));
-  await page.click("text=New session");
-  await page.click("text=New session");
   const rows = page.locator(".session-row");
+  await page.click("text=New session");
+  await expect(rows).toHaveCount(1);  // the app ignores New session while a create is in flight (no double-click dupes)
+  await page.click("text=New session");
   await expect(rows).toHaveCount(2);
   const del = rows.first().locator("button[aria-label='Delete session']");
   await del.click();
@@ -36,11 +38,11 @@ test("rotate then revoke: old token logged out, new one works until revoked", as
   await login(page, old);
   const fresh = cli("rotate", "--name", name);
   await page.reload();  // next API call with the old token -> 401 -> back to login
-  await expect(page.locator("input[aria-label=Token]")).toBeVisible();
+  await expect(page.locator("input[aria-label=Username]")).toBeVisible();
   await login(page, fresh);
   expect(cli("users")).toContain(`${name}\tactive`);
   cli("revoke", "--name", name);
   expect(cli("users")).toContain(`${name}\trevoked`);
   await page.reload();
-  await expect(page.locator("input[aria-label=Token]")).toBeVisible();
+  await expect(page.locator("input[aria-label=Username]")).toBeVisible();
 });

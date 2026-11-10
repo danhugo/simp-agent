@@ -4,6 +4,8 @@ import type { ServerEvent } from "./state";
 export type Command = Protocol["command"];
 export interface FileEntry { name: string; is_dir: boolean; size: number }
 
+export type SignupMode = "open" | "invite" | "closed";
+
 export class AuthError extends Error {}
 
 export const getToken = () => localStorage.getItem("simp.token") ?? "";
@@ -31,6 +33,13 @@ async function account(path: string, body: { name: string; password: string; cod
 export const api = {
   login: (name: string, password: string) => account("/api/login", { name, password }),
   signup: (name: string, password: string, code: string) => account("/api/signup", { name, password, code }),
+  /** No token needed. "invite" if the server is too old to say (it then gated sign-up on a code). */
+  signupMode: async (): Promise<SignupMode> => {
+    const r = await fetch("/api/signup-mode").catch(() => null);
+    const m = r?.ok ? (await r.json().catch(() => ({}))).mode : undefined;
+    return m === "open" || m === "closed" ? m : "invite";
+  },
+  me: async (): Promise<{ name: string }> => (await call("/api/me")).json(),
   logout: () => call("/api/logout", { method: "POST" }),
   hello: () => call("/api/hello", json({ type: "hello", protocol_version: 1 })),
   sessions: async (): Promise<SessionInfo[]> => (await call("/api/sessions")).json(),
@@ -43,6 +52,7 @@ export const api = {
     (await call(`/api/sessions/${sid}/files?path=${encodeURIComponent(path)}`)).json(),
   download: async (sid: string, path: string): Promise<Blob> =>
     (await call(`/api/sessions/${sid}/files/raw?path=${encodeURIComponent(path)}`)).blob(),
+  /** path is relative to the workspace root. */
   upload: (sid: string, path: string, data: Blob) =>
     call(`/api/sessions/${sid}/files/raw?path=${encodeURIComponent(path)}`, { method: "PUT", body: data }),
 };

@@ -7,9 +7,14 @@ const badge = (p: Page) => p.locator(".chat header .badge");
 
 async function login(p: Page) {
   await p.goto("/");
+  await p.click("text=Use an access token instead");
   await p.fill("input[aria-label=Token]", token());
   await p.click("text=Sign in");
   await p.click("text=New session");
+}
+async function openMenuItem(p: Page, name: string) {
+  await p.locator(".chat header").getByRole("button", { name: "More" }).click();
+  await p.getByRole("menu", { name: "Session actions" }).getByRole(/^Files$/.test(name) ? "menuitemcheckbox" : "menuitem", { name }).click();
 }
 async function say(p: Page, text: string) {
   await p.fill("textarea", text);
@@ -18,6 +23,7 @@ async function say(p: Page, text: string) {
 
 test("wrong token is rejected", async ({ page }) => {
   await page.goto("/");
+  await page.click("text=Use an access token instead");
   await page.fill("input[aria-label=Token]", "nope");
   await page.click("text=Sign in");
   await expect(page.locator(".login .error")).toHaveText("That token was not accepted.");
@@ -33,11 +39,11 @@ test("streaming answer", async ({ page }) => {
 test("tool call: Allow shows the result, Deny is reported", async ({ page }) => {
   await login(page);
   await say(page, "tool please");
-  await page.click(".approval-card button:text('Allow')");
+  await page.locator(".approval-card").getByRole("button", { name: "Allow" }).click();
   await expect(last(page)).toContainText("Tool said: hi-from-tool");
   await expect(page.locator(".tool.done")).toHaveCount(1);
   await say(page, "tool again");
-  await page.click(".approval-card button:text('Deny')");
+  await page.locator(".approval-card").getByRole("button", { name: "Deny" }).click();
   await expect(badge(page)).toHaveText("idle");
   await expect(page.locator(".tool").last()).toContainText("Decision: deny");
 });
@@ -51,7 +57,7 @@ test("reload mid-stream continues with no gaps or dups; pending approval restore
   await say(page, "tool");
   await expect(page.locator(".approval-card")).toBeVisible();
   await page.reload();
-  await page.click(".approval-card button:text('Allow')");
+  await page.locator(".approval-card").getByRole("button", { name: "Allow" }).click();
   await expect(last(page)).toContainText("Tool said: hi-from-tool");
 });
 
@@ -59,7 +65,7 @@ test("Stop aborts", async ({ page }) => {
   await login(page);
   await say(page, "slow");
   await expect(page.locator(".streaming .md")).toContainText("w2 ");
-  await page.click("button:text('Stop')");
+  await page.getByRole("button", { name: "Stop" }).click();
   await expect(badge(page)).toHaveText("idle");
   await expect(page.locator(".notice.warning")).toHaveText("run aborted");
 });
@@ -85,11 +91,11 @@ test("a second tab sees the same events", async ({ page, context }) => {
 
 test("file upload, list, download", async ({ page }) => {
   await login(page);
-  await page.click("text=Files");
-  await page.setInputFiles("input[type=file]", { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
+  await openMenuItem(page, "Files");
+  await page.setInputFiles(".files input[type=file]", { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
   await expect(page.locator(".files")).toContainText("notes.txt");
   const dl = page.waitForEvent("download");
-  await page.click(".files >> text=notes.txt");
+  await page.locator(".files").getByRole("button", { name: "notes.txt" }).click();
   expect(readFileSync(await (await dl).path()!, "utf8")).toBe("hello");
 });
 
@@ -102,7 +108,7 @@ test("budget: header shows spend", async ({ page }) => {
 
 test("plan mode: toggle shows a notice and a tool call is blocked", async ({ page }) => {
   await login(page);
-  const plan = page.locator(".chat header button:text('Plan')");
+  const plan = page.locator(".composer").getByRole("button", { name: "Plan" });
   await plan.click();
   await expect(page.locator(".notice").last()).toHaveText("plan mode on");
   await expect(plan).toHaveAttribute("aria-pressed", "true");
@@ -120,7 +126,7 @@ test("compact produces a compaction item", async ({ page }) => {
   await expect(last(page)).toHaveText("Echo: hello one");
   await say(page, "hello two");
   await expect(last(page)).toHaveText("Echo: hello two");
-  await page.click(".chat header button:text('Compact')");
+  await openMenuItem(page, "Compact");
   await expect(page.locator(".notice").last()).toContainText("Context compacted");
   await expect(badge(page)).toHaveText("idle");
 });
@@ -130,4 +136,23 @@ test("a new session gets a title in the sidebar", async ({ page }) => {
   await say(page, "hello title");
   await expect(page.locator(".session.active")).toContainText("Fake title");
   await expect(page.locator(".chat header strong")).toHaveText("Fake title");
+});
+
+test("composer attach uploads to the workspace", async ({ page }) => {
+  await login(page);
+  await page.setInputFiles(".composer input[type=file]", { name: "att.txt", mimeType: "text/plain", buffer: Buffer.from("x") });
+  await expect(page.locator(".attached")).toContainText("att.txt");
+  await openMenuItem(page, "Files");
+  await expect(page.locator(".files")).toContainText("att.txt");
+});
+
+test("header keeps only status; actions live in More", async ({ page }) => {
+  await login(page);
+  const header = page.locator(".chat header");
+  for (const name of ["Plan", "Compact", "Files"]) await expect(header.getByRole("button", { name, exact: true })).toHaveCount(0);
+  await header.getByRole("button", { name: "More" }).click();
+  const menu = page.getByRole("menu", { name: "Session actions" });
+  await expect(menu.getByRole("menuitemcheckbox", { name: "Notify when hidden" })).toHaveAttribute("aria-checked", "false");
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
 });

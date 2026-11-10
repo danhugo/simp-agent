@@ -11,6 +11,7 @@ test("create account, sign out, sign in with password", async ({ page }) => {
   await page.click("button:text('Create account')");
   await expect(page.locator("text=New session")).toBeVisible();
 
+  await page.click("button[aria-haspopup=menu][aria-label^=Account]");
   await page.click("text=Sign out");
   await expect(page.locator("input[aria-label=Username]")).toBeVisible();
   await page.fill("input[aria-label=Username]", name);
