@@ -19,9 +19,15 @@ test("delete session: first click asks, second deletes", async ({ page }) => {
   await login(page, cli("seed", "--name", `del-${Date.now()}`));
   const rows = page.locator(".session-row");
   await page.click("text=New session");
-  await expect(rows).toHaveCount(1);  // the app ignores New session while a create is in flight (no double-click dupes)
-  await page.click("text=New session");
-  await expect(rows).toHaveCount(2);
+  await expect(page.locator("text=What should we build?")).toBeVisible();
+  await page.screenshot({ path: "test-results/new-session-hero.png" });
+  await expect(rows).toHaveCount(0);  // New session only opens the hero; the session is created on first send
+  for (const n of [1, 2]) {
+    await page.click("text=New session");
+    await page.fill("textarea", `hi ${n}`);
+    await page.keyboard.press("Enter");
+    await expect(rows).toHaveCount(n);
+  }
   const del = rows.first().locator("button[aria-label='Delete session']");
   await del.click();
   await expect(del).toHaveText("Delete?");

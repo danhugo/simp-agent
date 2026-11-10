@@ -156,7 +156,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   const [showFiles, setShowFiles] = useState(false);
   const [filesFocus, setFilesFocus] = useState<string>();
   const [confirm, setConfirm] = useState("");  // session id whose delete button was clicked once
-  // A session is being created (New session button or hero composer). The hero composer is disabled meanwhile:
+  // A session is being created (hero composer). The hero composer is disabled meanwhile:
   // text typed into it would be lost when the chat replaces it, and Enter would create a second session.
   const [creating, setCreating] = useState(false);
   const creatingRef = useRef(false);
@@ -260,7 +260,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
           <button className="ghost icon only-desktop" aria-label="Collapse sidebar" title="Collapse sidebar"
             onClick={toggleCollapsed}><IconSidebar /></button>
         </div>
-        <button className={`ghost item new ${sid ? "" : "active"}`} onClick={create} aria-current={sid ? undefined : "page"}><IconCompose /><span>New session</span></button>
+        <button className={`ghost item new ${sid ? "" : "active"}`} onClick={() => pick("")} aria-current={sid ? undefined : "page"}><IconCompose /><span>New session</span></button>
         <nav aria-label="Sessions">
           <h2 className="section-label">Recent</h2>
           {sessions.map((s) => (

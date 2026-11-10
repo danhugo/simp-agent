@@ -10,7 +10,11 @@ async function login(p: Page) {
   await p.click("text=Use an access token instead");
   await p.fill("input[aria-label=Token]", token());
   await p.click("text=Sign in");
-  await p.click("text=New session");
+  // New session only opens the hero now; tests that need a session before the first send get one via the API.
+  const headers = { Authorization: `Bearer ${token()}` };
+  const [profile] = await (await p.request.get("/api/profiles", { headers })).json();
+  const s = await (await p.request.post("/api/sessions", { headers, data: { profile } })).json();
+  await p.goto(`/#${s.id}`);
 }
 async function openMenuItem(p: Page, name: string) {
   await p.locator(".chat header").getByRole("button", { name: "More" }).click();
