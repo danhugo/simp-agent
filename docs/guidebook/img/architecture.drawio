@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="agent" name="2 · Agent block">
-        <mxGraphModel dx="3200" dy="2300" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="2573" dy="4141" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -113,7 +113,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="loop" name="2a · Agent loop (flowchart)">
-        <mxGraphModel dx="3743" dy="3339" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -386,7 +386,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="ai-detail" name="1 · AI block (detail)">
-        <mxGraphModel dx="2674" dy="2751" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -486,7 +486,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="ai-flow" name="1a · ai.stream (flowchart)">
-        <mxGraphModel dx="2629" dy="2360" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -601,7 +601,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="session" name="4 · Session block">
-        <mxGraphModel dx="2836" dy="2894" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -703,7 +703,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="session-flow" name="4a · Session run (flowchart)">
-        <mxGraphModel dx="2750" dy="2115" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -922,7 +922,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="server" name="5 · Server: sessions for many users">
-        <mxGraphModel dx="2221" dy="1353" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="3230" dy="4515" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -1071,11 +1071,14 @@
                         </Array>
                     </mxGeometry>
                 </mxCell>
+                <mxCell id="p5ep" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:24px&quot;&gt;session endpoints · what each request does&lt;/b&gt;&lt;div style=&quot;font-size:19px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;&lt;b&gt;POST /api/sessions&lt;/b&gt; → one row in &lt;i&gt;sessions&lt;/i&gt; (profile, sandbox ref). &lt;b&gt;No Run yet.&lt;/b&gt;&lt;br&gt;&lt;b&gt;GET /events · POST /commands&lt;/b&gt; → mgr.get(): owner check, then load or reuse the Run&lt;br&gt;&lt;b&gt;GET /files · GET/PUT /files/raw&lt;/b&gt; → mgr.get(), then list / read / write in its sandbox (upload ≤ 50 MB)&lt;br&gt;&lt;b&gt;DELETE /api/sessions/{id}&lt;/b&gt; → mgr.drop(): cancel the title call, abort the run,&lt;br&gt;&amp;nbsp;&amp;nbsp;close the sandbox, delete its files, then delete the rows&lt;br&gt;every request: host name check (DNS rebinding), then token → user&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="330" width="820" x="1780" y="-150" as="geometry"/>
+                </mxCell>
             </root>
         </mxGraphModel>
     </diagram>
     <diagram id="run" name="5a · Run (detail)">
-        <mxGraphModel dx="10000" dy="5427" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="5545" dy="7882" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -1451,6 +1454,114 @@
                         <mxPoint x="1480" y="4721" as="sourcePoint"/>
                         <mxPoint x="640" y="4721" as="targetPoint"/>
                     </mxGeometry>
+                </mxCell>
+                <mxCell id="f4title" parent="1" style="whiteSpace=wrap;html=1;fillColor=none;strokeColor=none;align=left;verticalAlign=top;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:28px&quot;&gt;Figure 4 · the Run cache (SessionManager): who stays, who is evicted&lt;/b&gt;&lt;div style=&quot;font-size:19px;line-height:1.4;margin-top:4px&quot;&gt;N = max_open_sessions (8 by default). A Run is kept while it is busy, a tab listens, or a task runs; otherwise it can be evicted (server.py:456-496). evict() frees RAM and the container, never data (not drop(): that is DELETE, it removes files and rows).&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="100" width="2200" y="4850" as="geometry"/>
+                </mxCell>
+                <mxCell id="f4s0" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#f0fdf4;strokeColor=#15803d;strokeWidth=3;fontColor=#14532d;" value="&lt;b style=&quot;font-size:20px&quot;&gt;1 · Run A1&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;running&lt;br&gt;1 tab&lt;br&gt;busy → kept&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="190" width="250" y="5000" as="geometry"/>
+                </mxCell>
+                <mxCell id="f4s1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#fdf2f8;strokeColor=#db2777;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;2 · Run A2&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;idle&lt;br&gt;2 tabs open&lt;br&gt;a tab listens → kept&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="190" width="250" x="275" y="5000" as="geometry"/>
+                </mxCell>
+                <mxCell id="f4s2" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;dashed=1;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;3 · Run B1&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;idle&lt;br&gt;0 tabs · used 2 min ago&lt;br&gt;can be evicted&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="190" width="250" x="550" y="5000" as="geometry"/>
+                </mxCell>
+                <mxCell id="f4s3" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#f0fdf4;strokeColor=#15803d;strokeWidth=3;fontColor=#14532d;" value="&lt;b style=&quot;font-size:20px&quot;&gt;4 · Run B2&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;waiting_approval&lt;br&gt;0 tabs&lt;br&gt;busy → kept&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="190" width="250" x="825" y="5000" as="geometry"/>
+                </mxCell>
+                <mxCell id="f4s4" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#fee2e2;strokeColor=#dc2626;strokeWidth=4;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;5 · Run C1&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;idle&lt;br&gt;0 tabs · used 9 min ago&lt;br&gt;oldest evictable → &lt;b&gt;evicted&lt;/b&gt;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="190" width="250" x="1100" y="5000" as="geometry"/>
+                </mxCell>
+                <mxCell id="f4s5" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#fef3c7;strokeColor=#d97706;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;6 · Run D1&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;idle&lt;br&gt;title call running&lt;br&gt;a task runs → kept&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="190" width="250" x="1375" y="5000" as="geometry"/>
+                </mxCell>
+                <mxCell id="f4s6" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;dashed=1;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;7 · Run E1&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;error&lt;br&gt;0 tabs · used 4 min ago&lt;br&gt;can be evicted&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="190" width="250" x="1650" y="5000" as="geometry"/>
+                </mxCell>
+                <mxCell id="f4s7" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#fdf2f8;strokeColor=#db2777;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;8 · Run F1&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;idle&lt;br&gt;1 tab&lt;br&gt;a tab listens → kept&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="190" width="250" x="1925" y="5000" as="geometry"/>
+                </mxCell>
+                <mxCell id="f4req" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:22px&quot;&gt;① cache full (8/8), a request for session G1 arrives&lt;/b&gt;&lt;div style=&quot;font-size:18px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;G1 is not loaded → pick among the evictable Runs (B1, C1, E1)&lt;br&gt;the one used longest ago = &lt;b&gt;C1&lt;/b&gt; → evict it: sandbox.close(),&lt;br&gt;&amp;nbsp;&amp;nbsp;its rows and files stay → C1 loads again later with no loss&lt;br&gt;load G1 into the free slot: sandbox.open, read rows, recover()&lt;br&gt;no evictable Run at all (busy, listened or a task runs) → &lt;b&gt;503&lt;/b&gt; &quot;try again later&quot;&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="270" width="1070" y="5280" as="geometry"/>
+                </mxCell>
+                <mxCell id="f4sweep" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:22px&quot;&gt;② the idle sweep · every 60 s&lt;/b&gt;&lt;div style=&quot;font-size:18px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;every evictable Run not used for ≥ 15 min → evicted, even if the cache is not full&lt;br&gt;&quot;used&quot; = the last request for it (mgr.get) or the end of its last run&lt;br&gt;a tab left open keeps its Run forever: the tab is a listener&lt;br&gt;get() and the sweep share one lock, so one Run is never loaded twice&lt;br&gt;(DELETE's drop() does not take that lock)&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="270" width="1070" x="1130" y="5280" as="geometry"/>
+                </mxCell>
+                <mxCell id="f4e1" edge="1" parent="1" source="f4req" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;fontSize=18;labelBackgroundColor=#ffffff;strokeWidth=3;strokeColor=#dc2626;" target="f4s4" value="evict C1, load G1 here">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5title" parent="1" style="whiteSpace=wrap;html=1;fillColor=none;strokeColor=none;align=left;verticalAlign=top;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:28px&quot;&gt;Figure 5 · events out: one log per Run, one queue per tab&lt;/b&gt;&lt;div style=&quot;font-size:19px;line-height:1.4;margin-top:4px&quot;&gt;pink = live only (lost on reconnect, rebuilt by the snapshot) · grey arrows = saved with a seq (replayed on reconnect). Run.on_event / durable / _send / subscribe, server.py:208-306.&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="100" width="2200" y="5650" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5sess" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#e2e8f0;strokeColor=#475569;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:22px&quot;&gt;AgentSession&lt;/b&gt;&lt;div style=&quot;font-size:18px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;emits events while it runs:&lt;br&gt;text / thinking deltas,&lt;br&gt;tool output, message_end,&lt;br&gt;compaction, retries…&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="220" width="330" y="5850" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5on" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#f0fdf4;strokeColor=#15803d;strokeWidth=3;fontColor=#14532d;" value="&lt;b style=&quot;font-size:22px&quot;&gt;Run.on_event(e)&lt;/b&gt;&lt;div style=&quot;font-size:18px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;delta → add to the in-flight buffer,&lt;br&gt;&amp;nbsp;&amp;nbsp;then _send (live only)&lt;br&gt;user / assistant message, tool result,&lt;br&gt;&amp;nbsp;&amp;nbsp;compaction, notices → durable()&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="220" width="400" x="430" y="5850" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5dur" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#f0fdf4;strokeColor=#15803d;strokeWidth=3;fontColor=#14532d;" value="&lt;b style=&quot;font-size:22px&quot;&gt;durable(ev)&lt;/b&gt;&lt;div style=&quot;font-size:18px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;also called by set_state() and approve()&lt;br&gt;seq + 1, append to Run.log (memory)&lt;br&gt;① _send to every queue&lt;br&gt;② then save the row (a tab can see it first)&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="220" width="400" x="430" y="6170" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5db" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:22px&quot;&gt;SQLite · entries&lt;/b&gt;&lt;div style=&quot;font-size:18px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;(session_id, user_id, seq, type, json)&lt;br&gt;messages and events share one seq&lt;br&gt;Run.log is rebuilt from it on load&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="170" width="400" x="430" y="6490" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5send" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#fdf2f8;strokeColor=#db2777;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:22px&quot;&gt;_send(ev)&lt;/b&gt;&lt;div style=&quot;font-size:18px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;put_nowait into each tab&#39;s queue&lt;br&gt;never waits for a tab&lt;br&gt;a full queue → that tab is removed&lt;br&gt;&amp;nbsp;&amp;nbsp;from run.subs (cut off)&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="220" width="400" x="930" y="5850" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5q0" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#fdf2f8;strokeColor=#db2777;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;tab 1 · queue&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;12 / 1000 waiting&lt;br&gt;SSE: sends each event&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="200" width="420" x="1430" y="5810" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5t0" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;browser tab 1&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;GET /events&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="100" width="250" x="1950" y="5860" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5q1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#fdf2f8;strokeColor=#db2777;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;tab 2 · queue&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;0 / 1000 · nothing for 15 s&lt;br&gt;→ &quot;: ping&quot;, re-check token&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="200" width="420" x="1430" y="6040" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5t1" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;browser tab 2&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;GET /events&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="100" width="250" x="1950" y="6090" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5q2" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#fee2e2;strokeColor=#dc2626;strokeWidth=4;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;tab 3 · queue&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;1000 / 1000 → full&lt;br&gt;cut off: sends what it has,&lt;br&gt;then the stream ends → the tab reconnects&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="200" width="420" x="1430" y="6270" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5t2" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;" value="&lt;b style=&quot;font-size:20px&quot;&gt;browser tab 3&lt;/b&gt;&lt;div style=&quot;font-size:17px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;GET /events&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="100" width="250" x="1950" y="6320" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5re" parent="1" style="whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=14;spacingTop=8;rounded=1;arcSize=6;fillColor=#fffbeb;strokeColor=#94a3b8;dashed=1;strokeWidth=2;fontColor=#334155;" value="&lt;b style=&quot;font-size:22px&quot;&gt;reconnect · GET /events?after=38 (or the Last-Event-ID header)&lt;/b&gt;&lt;div style=&quot;font-size:18px;line-height:1.45;margin-top:4px;padding-left:10px&quot;&gt;subscribe(after=38): add a new queue, then in one step (no await, so nothing slips in between):&lt;br&gt;&amp;nbsp;&amp;nbsp;① every saved event with seq &amp;gt; 38 from Run.log&lt;br&gt;&amp;nbsp;&amp;nbsp;② a snapshot: run state, in-flight text / thinking / tool output, pending approval, title, plan mode&lt;br&gt;&amp;nbsp;&amp;nbsp;③ then live events from the new queue&lt;br&gt;a closed tab removes its queue → no queue left, not busy, no task running → figure 4 can evict the Run&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="260" width="1270" x="930" y="6510" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5e1" edge="1" parent="1" source="f5sess" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;fontSize=18;labelBackgroundColor=#ffffff;strokeWidth=3;strokeColor=#db2777;" target="f5on" value="events">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5e2" edge="1" parent="1" source="f5on" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;fontSize=18;labelBackgroundColor=#ffffff;strokeWidth=3;strokeColor=#db2777;" target="f5send" value="deltas">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5e3" edge="1" parent="1" source="f5on" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;fontSize=18;labelBackgroundColor=#ffffff;strokeWidth=3;strokeColor=#475569;" target="f5dur" value="messages, tool results">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5e4" edge="1" parent="1" source="f5dur" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;fontSize=18;labelBackgroundColor=#ffffff;strokeWidth=3;strokeColor=#475569;" target="f5db" value="② save">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5e5" edge="1" parent="1" source="f5dur" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;fontSize=18;labelBackgroundColor=#ffffff;strokeWidth=3;strokeColor=#475569;" target="f5send" value="① send">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5eq0" edge="1" parent="1" source="f5send" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;fontSize=18;labelBackgroundColor=#ffffff;strokeWidth=3;strokeColor=#db2777;" target="f5q0" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5et0" edge="1" parent="1" source="f5q0" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;fontSize=18;labelBackgroundColor=#ffffff;strokeWidth=3;strokeColor=#db2777;" target="f5t0" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5eq1" edge="1" parent="1" source="f5send" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;fontSize=18;labelBackgroundColor=#ffffff;strokeWidth=3;strokeColor=#db2777;" target="f5q1" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5et1" edge="1" parent="1" source="f5q1" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;fontSize=18;labelBackgroundColor=#ffffff;strokeWidth=3;strokeColor=#db2777;" target="f5t1" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5eq2" edge="1" parent="1" source="f5send" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;fontSize=18;labelBackgroundColor=#ffffff;strokeWidth=3;strokeColor=#db2777;" target="f5q2" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="f5et2" edge="1" parent="1" source="f5q2" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;fontSize=18;labelBackgroundColor=#ffffff;strokeWidth=3;strokeColor=#db2777;dashed=1;" target="f5t2" value="">
+                    <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>
