@@ -56,7 +56,7 @@ def system_prompt(tools: list, cwd: str, context: tuple[str, str] | None = None,
     # tools are described to the model in the request's tool schemas, so they are not repeated here
     out = (
         "You are Simp, a friendly and helpful agent that helps the user get anything done.\n\n"
-        "Be concise.\n\n"
+        "Be concise. Use tools that interact with the environment (files, shell) only when the request needs them.\n\n"
     )
     if context:
         out += f"# Project Context\n\n## {context[0]}\n\n{context[1]}\n\n"
