@@ -202,6 +202,7 @@ class Run:
             plugins=build_plugins(["redact_secrets", "plan_mode",
                                    *[n for n in self.profile.get("plugins", []) if n not in ("redact_secrets", "plan_mode")]]),
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}})
+        self.session.agent.steering_mode = "all"  # all queued steers reach the next turn
         self.session.subscribe(self.on_event)
 
     @property
