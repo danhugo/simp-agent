@@ -62,16 +62,15 @@ describe("snapshot apply", () => {
   });
 });
 
-describe("title, plan mode, continue", () => {
+describe("title, continue", () => {
   const snap = (title: string, plan_mode: boolean): ServerEvent => ({ type: "snapshot", last_seq: 0, run_state: "idle",
     pending_approval: null, title, plan_mode, in_flight: { msg_id: null, thinking: "", text: "", tool_outputs: {} } });
 
-  it("takes title and plan mode from the snapshot, then live events", () => {
-    let s = run([snap("Old", true)]);
-    expect(s).toMatchObject({ title: "Old", planMode: true });
-    s = run([{ type: "session_title", seq: 1, title: "New" }, { type: "notice", seq: 2, level: "info", text: "plan mode off" }], s);
-    expect(s).toMatchObject({ title: "New", planMode: false });
-    expect(run([{ type: "notice", seq: 3, level: "info", text: "plan mode on" }], s).planMode).toBe(true);
+  it("takes title from the snapshot, then live events", () => {
+    let s = run([snap("Old", false)]);
+    expect(s).toMatchObject({ title: "Old" });
+    s = run([{ type: "session_title", seq: 1, title: "New" }], s);
+    expect(s).toMatchObject({ title: "New" });
   });
 
   it("offers Continue after an interrupted notice or an error, not after a later event", () => {
