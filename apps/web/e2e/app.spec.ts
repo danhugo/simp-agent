@@ -173,3 +173,19 @@ test("header keeps only status; actions live in More", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
 });
+
+test("model picker: pill opens a listbox, keyboard picks, Esc closes", async ({ page }) => {
+  await login(page);
+  await page.goto("/");
+  const btn = page.locator(".model-btn");
+  await btn.click();
+  const list = page.getByRole("listbox", { name: "Model" });
+  await expect(list).toBeVisible();
+  await expect(list.locator('[aria-selected="true"]')).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(list).toBeHidden();
+  await expect(btn).toHaveAttribute("aria-expanded", "false");
+  await btn.click();
+  await page.mouse.click(5, 5);
+  await expect(list).toBeHidden();
+});
