@@ -303,20 +303,19 @@ function Tool({ call, state, send, sid, onOpenFile, onError }: {
   const status = result ? (result.is_error ? "error" : "done") : state.pending?.call_id === call.id ? "approval" : "running";
   return (
     <>
-    <details className={`tool ${status}`} open={status !== "done"}>
+    <details className={`tool ${status}`} open={status === "approval"}>
       <summary>
         <span className={`dot ${status}`} title={dotLabel[status]} role="img" aria-label={dotLabel[status]} />
-        <span className="tool-name">{call.name}</span>
-        <code className="tool-args">{summarize(call.arguments)}</code>
+        <span className="tool-label">{toolLabel(call, status !== "running" && status !== "approval")}</span>
         <IconChevron size={16} className="chev" />
       </summary>
       <div className="tool-body">
-        <pre className="args">{JSON.stringify(call.arguments, null, 2)}</pre>
-        {state.pending?.call_id === call.id && <Approval p={state.pending} send={send} inline />}
+        {state.pending?.call_id === call.id && <Approval p={state.pending} send={send} />}
         {decision && decision !== "allow" && <p className="small muted">Decision: {decision}</p>}
         {output && <pre className={`output ${result?.is_error ? "err" : ""}`}>{output}</pre>}
       </div>
     </details>
+    {result?.is_error && output && <p className="tool-err small">{oneLine(output)}</p>}
     {file && <FileCard path={file} sid={sid} onOpen={onOpenFile} onError={onError} />}
     </>
   );
@@ -335,12 +334,33 @@ export function errorText(e: unknown): string {
   return m;
 }
 
-function summarize(args: Record<string, unknown>): string {
-  const v = Object.values(args)[0];
-  return typeof v === "string" ? v.split("\n")[0] : JSON.stringify(args);
+const oneLine = (s: string, max = 80) => {
+  const l = s.trim().split("\n")[0];
+  return l.length > max ? l.slice(0, max - 1) + "…" : l;
+};
+
+/** One plain line for a tool call, e.g. "Read src/app.py" or "Ran `npm test`"; never the raw arguments. */
+export function toolLabel(call: ToolCall, finished: boolean): string {
+  const a = call.arguments;
+  const str = (k: string) => (typeof a[k] === "string" ? oneLine(a[k] as string) : "");
+  const verb = (done: string, ing: string) => (finished ? done : ing);
+  switch (call.name) {
+    case "read": return `${verb("Read", "Reading")} ${str("path")}`;
+    case "write": return `${verb("Wrote", "Writing")} ${str("path")}`;
+    case "edit": return `${verb("Edited", "Editing")} ${str("path")}`;
+    case "bash": return `${verb("Ran", "Running")} \`${str("command")}\``;
+    case "grep": return `${verb("Searched", "Searching")} for ${str("pattern")}`;
+    case "find": return `${verb("Found", "Finding")} files ${str("pattern")}`;
+    case "ls": return `${verb("Listed", "Listing")} ${str("path") || "files"}`;
+    case "web_search": return `${verb("Searched", "Searching")} the web: ${str("query") || str("q")}`;
+    case "web_fetch": {
+      try { return `${verb("Opened", "Opening")} ${new URL(str("url")).hostname}`; } catch { return verb("Opened a page", "Opening a page"); }
+    }
+    default: { const n = call.name.replace(/[_-]+/g, " "); return n.charAt(0).toUpperCase() + n.slice(1); }
+  }
 }
 
-function Approval({ p, send, inline }: { p: PendingApproval; send: Send; inline?: boolean }) {
+function Approval({ p, send }: { p: PendingApproval; send: Send }) {
   const answer = (decision: "allow" | "deny" | "always") => send({ type: "approve", call_id: p.call_id, decision });
   // No autoFocus on Allow: an Enter meant for the composer would approve the tool. We focus the card itself (a
   // non-actionable element, so a stray Enter does nothing) and only when the user isn't typing somewhere.
@@ -352,7 +372,7 @@ function Approval({ p, send, inline }: { p: PendingApproval; send: Send; inline?
   return (
     <div ref={card} tabIndex={-1} className="approval-card" role="alertdialog" aria-label="Approval needed">
       <p><strong>Allow {p.tool}?</strong></p>
-      {!inline && <pre className="args">{JSON.stringify(p.args, null, 2)}</pre>}
+      <pre className="args">{JSON.stringify(p.args, null, 2)}</pre>
       <div className="row">
         <button className="primary" onClick={() => answer("allow")}>Allow</button>
         <button onClick={() => answer("always")}>Always</button>

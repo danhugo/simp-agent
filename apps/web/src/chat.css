@@ -112,8 +112,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
   padding: var(--sp-1) var(--sp-2); margin: 0 calc(-1 * var(--sp-2)); border-radius: var(--radius-sm);
 }
 .tool summary:hover { background: var(--hover); }
-.tool-name { font-weight: 600; flex: none; }
-.tool-args { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); }
+.tool-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); }
 .tool .chev { color: var(--muted); }
 .tool-body { margin: var(--sp-1) 0 0 7px; padding-left: var(--sp-4); border-left: 2px solid var(--border); }
 .tool-body pre { margin: var(--sp-2) 0; font-size: var(--fs-xs); }
@@ -255,3 +254,4 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .model-menu li[aria-selected="true"] { font-weight: 500; }
 .model-menu li span { overflow-wrap: anywhere; }
 @media (max-width: 767px) { .model-menu { position: fixed; top: auto; left: 4vw; right: 4vw; width: auto; max-width: none; margin-top: 6px; } }
+.tool-err { margin: 2px 0 6px 18px; color: var(--err); }
