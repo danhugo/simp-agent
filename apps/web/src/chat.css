@@ -170,13 +170,6 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .composer .stop:hover { background: var(--text); filter: brightness(1.2); }
 .composer .attach { background: transparent; color: var(--muted); border: 0; }
 .composer .attach:hover:not(:disabled) { color: var(--text); background: var(--hover); }
-.composer .chip {
-  font-size: var(--fs-xs); padding: 2px var(--sp-3); border-radius: 99px; color: var(--muted);
-  border: 0; background: transparent;
-}
-.composer .chip:hover { background: var(--hover); color: var(--text); }
-.composer .chip.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
-.composer .chip.plan { display: inline-flex; align-items: center; gap: 4px; margin-right: var(--sp-1); }
 .attached { flex-basis: 100%; list-style: none; margin: 0; padding: var(--sp-1) var(--sp-1) 0; display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 .attached li {
   max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs);
@@ -229,7 +222,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
   .tool summary, .thinking summary { min-height: 44px; }
   .msg-actions { opacity: 1; }
   .icon-btn, .hbtn, .composer .round, .to-bottom { min-width: 44px; min-height: 44px; }
-  .menu button, .composer .chip.plan, .model-btn, .model-menu li { min-height: 44px; }
+  .menu button, .model-btn, .model-menu li { min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -237,7 +230,6 @@ details[open] > summary .chev { transform: rotate(90deg); }
   .chev, .msg-actions { transition: none; }
 }
 
-.composer-modes { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); padding: 0 var(--sp-2); }
 
 /* ---- working indicator (send -> first token) ---- */
 .msg.typing { flex-direction: row; align-items: center; gap: var(--sp-2); color: var(--muted); }

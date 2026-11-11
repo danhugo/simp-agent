@@ -20,7 +20,7 @@ export interface Protocol {
     | ThinkingDelta
     | ToolOutput
     | Snapshot;
-  command: Prompt | Steer | FollowUp | Abort | Approve | Compact | Continue | SetPlanMode;
+  command: Prompt | Steer | FollowUp | Abort | Approve | Compact | Continue;
   session: SessionInfo;
 }
 /**
@@ -198,7 +198,6 @@ export interface Snapshot {
   in_flight: InFlight;
   pending_approval: PendingApproval | null;
   title: string;
-  plan_mode: boolean;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -279,19 +278,10 @@ export interface Continue {
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
- * via the `definition` "SetPlanMode".
- */
-export interface SetPlanMode {
-  type: "set_plan_mode";
-  enabled: boolean;
-}
-/**
- * This interface was referenced by `Protocol`'s JSON-Schema
  * via the `definition` "SessionInfo".
  */
 export interface SessionInfo {
   id: string;
   title: string;
   run_state: "idle" | "running" | "waiting_approval" | "aborting" | "error";
-  plan_mode: boolean;
 }

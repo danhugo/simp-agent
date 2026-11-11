@@ -26,7 +26,7 @@ def test_round_trip_every_event_and_command():
     for e in evs:
         assert p.server_event.validate_json(e.model_dump_json()) == e
     for c in [p.Prompt(text="a"), p.Steer(text="a"), p.FollowUp(text="a"), p.Abort(), p.Approve(call_id="c", decision="always"),
-              p.Compact(), p.Continue(), p.SetPlanMode(enabled=True)]:
+              p.Compact(), p.Continue()]:
         assert p.command.validate_json(c.model_dump_json()) == c
     with pytest.raises(ValueError):
         p.command.validate_python({"type": "approve", "call_id": "c", "decision": "maybe"})
