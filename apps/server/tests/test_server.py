@@ -125,6 +125,13 @@ async def test_approve_then_abort(env):
     assert run.pending is None
 
 
+async def test_server_session_has_web_tools(env):
+    run = (await env(Gated([])))[-1]
+    await run.session.start()  # plugin setup runs here (first prompt)
+    names = [t.name for t in run.session.agent.tools]
+    assert "web_search" in names and "web_fetch" in names
+
+
 async def test_closed_tabs_run_finishes_and_is_persisted(env):
     g = Gated(["a", "b"])
     _, mgr, user, _, run = await env(g)

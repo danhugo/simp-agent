@@ -4,8 +4,8 @@ import urllib.error
 
 import pytest
 
-from simp_agent.plugins import web
-from simp_agent.plugins.web import WebError, check_url, do_fetch, do_search, html_to_text, http_get, parse_ddg
+from simp_server import web_tools as web
+from simp_server.web_tools import WebError, check_url, do_fetch, do_search, html_to_text, http_get, parse_ddg
 
 PUBLIC = lambda host: ["93.184.216.34"]
 
@@ -105,8 +105,6 @@ def test_size_cap():
 
 
 def test_plugin_registers_tools():
-    from simp_agent.plugins import build_plugins
-
     class Api:
         tools = []
 
@@ -114,7 +112,7 @@ def test_plugin_registers_tools():
             self.tools.append(t.name)
 
     api = Api()
-    build_plugins(["web"])[0].setup(api, {})
+    web.Web().setup(api, {})
     assert api.tools == ["web_search", "web_fetch"]
     with pytest.raises(ValueError):
-        build_plugins(["web"])[0].setup(api, {"search": "bing"})
+        web.Web().setup(api, {"search": "bing"})

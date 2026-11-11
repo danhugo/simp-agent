@@ -43,6 +43,7 @@ from simp_agent.session.profile import build_model
 from . import budget, ops
 from . import protocol as p
 from .fake import sse
+from .web_tools import Web
 
 log = logging.getLogger("simp_server")
 
@@ -181,6 +182,11 @@ def take_keys(settings: dict) -> dict:
 log = logging.getLogger("simp_server")
 
 
+def core_plugins(profile: dict) -> list[str]:
+    """Profile plugin names minus the always-on ones (web lives in the server, redact_secrets is added first)."""
+    return [n for n in profile.get("plugins", []) if n not in ("redact_secrets", "web")]
+
+
 class Run:
     """AgentSession + durable protocol log + in-flight buffers. Subscribers only get per-connection queues."""
 
@@ -200,8 +206,7 @@ class Run:
             self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=self.guarded_stream,
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
-            plugins=build_plugins(["redact_secrets", "web",
-                                   *[n for n in self.profile.get("plugins", []) if n not in ("redact_secrets", "web")]]),
+            plugins=[*build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web()],
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.agent.steering_mode = "all"  # all queued steers reach the next turn
@@ -530,7 +535,7 @@ class SessionManager:
 def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     pl = settings["plugins"]
     for pr in settings["profiles"].values():
-        build_plugins(pr.get("plugins", []))  # a typo fails at boot, not on first chat
+        build_plugins(core_plugins(pr))  # a typo fails at boot, not on first chat
     store = load_plugin(pl["store"])(settings)
     sandbox = load_plugin(pl["sandbox"])(settings)
     auth = load_plugin(pl["auth"])(store)
