@@ -123,20 +123,6 @@ test("budget: header shows spend", async ({ page }) => {
   await expect(page.locator(".chat header .spend")).toHaveText(/^\$0\.(0[1-9]|[1-9]\d) \/ \$1$/);
 });
 
-test("plan mode: toggle shows a notice and a tool call is blocked", async ({ page }) => {
-  await login(page);
-  const plan = page.locator(".composer").getByRole("button", { name: "Plan" });
-  await plan.click();
-  await expect(page.locator(".notice").last()).toHaveText("plan mode on");
-  await expect(plan).toHaveAttribute("aria-pressed", "true");
-  await say(page, "tool please");
-  await expect(page.locator(".tool.error")).toContainText("plan mode is on");
-  await expect(badge(page)).toHaveText("idle");
-  await plan.click();
-  await expect(page.locator(".notice").last()).toHaveText("plan mode off");
-  await expect(plan).toHaveAttribute("aria-pressed", "false");
-});
-
 test("compact produces a compaction item", async ({ page }) => {
   await login(page);
   await say(page, "hello one");

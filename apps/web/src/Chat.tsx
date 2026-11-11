@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import { api, AuthError, type ConnStatus } from "./api";
 import { Badge } from "./App";
 import {
-  IconArrowDown, IconArrowUp, IconBell, IconCheck, IconChevron, IconCompact, IconCopy, IconDownload, IconFile, IconFolder, IconMore, IconPlan, IconPlus,
+  IconArrowDown, IconArrowUp, IconBell, IconCheck, IconChevron, IconCompact, IconCopy, IconDownload, IconFile, IconFolder, IconMore, IconPlus,
   IconStop,
 } from "./icons";
 import type { PendingApproval, ToolCall } from "./protocol.gen";
@@ -159,8 +159,7 @@ export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = fal
         )}
       </div>
       {cmdError && <div className="notice error cmd-error" role="alert">{cmdError}</div>}
-      <Composer busy={busy} send={composerSend} sid={sid} onError={onError} planMode={state.planMode}
-        onTogglePlan={() => send({ type: "set_plan_mode", enabled: !state.planMode })} />
+      <Composer busy={busy} send={composerSend} sid={sid} onError={onError} />
     </main>
   );
 }
@@ -363,10 +362,8 @@ function Approval({ p, send, inline }: { p: PendingApproval; send: Send; inline?
   );
 }
 
-export function Composer({ busy, send, variant, disabled, tools, sid, onError, planMode, onTogglePlan, onQueueFiles }: {
+export function Composer({ busy, send, variant, disabled, tools, sid, onError, onQueueFiles }: {
   busy: boolean; send: Send; variant?: "hero"; disabled?: boolean; tools?: ReactNode;
-  /** In a session: the Plan toggle chip. */
-  planMode?: boolean; onTogglePlan?: () => void;
   /** With a session: show the attach button; files go to the workspace root (same as the Files panel). */
   sid?: string; onError?: (e: unknown) => void;
   /** No session yet (home): keep picked files; the caller uploads them once the session exists. */
@@ -452,14 +449,6 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, p
           )}
         </div>
       </div>
-      {onTogglePlan && (
-        <div className="composer-modes" role="group" aria-label="Modes">
-          <button type="button" className={`chip plan ${planMode ? "on" : ""}`} aria-pressed={!!planMode} onClick={onTogglePlan}
-            title="Plan mode: read-only, the agent plans but does not edit or run commands">
-            <IconPlan size={14} /><span>Plan</span>
-          </button>
-        </div>
-      )}
     </div>
   );
 }

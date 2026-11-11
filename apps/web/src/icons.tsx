@@ -3,7 +3,7 @@
 import type { LucideIcon, LucideProps } from "lucide-react";
 import {
   ArrowDown, ArrowUp, Bell, Check, ChevronRight, Copy, Download, Ellipsis, Eye, EyeOff, FileText, Folder, LogOut, Menu, Moon,
-  PanelLeft, Plus, RefreshCw, Shrink, Square, SquareCheckBig, SquarePen, Sun, Trash, Upload, X,
+  PanelLeft, Plus, RefreshCw, Shrink, Square, SquarePen, Sun, Trash, Upload, X,
 } from "lucide-react";
 
 type P = LucideProps & { size?: number };
@@ -33,7 +33,6 @@ export const IconRefresh = wrap(RefreshCw);
 export const IconBell = wrap(Bell);
 export const IconClose = wrap(X);
 export const IconChevron = wrap(ChevronRight);
-export const IconPlan = wrap(SquareCheckBig);
 export const IconCompact = wrap(Shrink);
 export const IconEye = wrap(Eye);
 export const IconEyeOff = wrap(EyeOff);
