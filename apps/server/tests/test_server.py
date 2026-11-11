@@ -485,7 +485,7 @@ async def test_count_users_ignores_revoked(env):
     assert await mgr.store.count_users() == 1
 
 
-# ---- Stage 3 task C: commands, plan mode, titles
+# ---- Stage 3 task C: commands, titles
 
 def titled(text):
     return lambda ctx: reply(text) if ctx.system_prompt.startswith("Name this coding session") else reply("nope")
@@ -582,27 +582,6 @@ async def test_continue_busy_409(env):
     assert e.value.status_code == 409
     g.go.set()
     await wait_for(lambda: run.task.done())
-
-
-async def test_plan_mode(env, tmp_path):
-    fp = FakeProvider(bash("c1", "echo hi"), reply("planned"))
-    _, mgr, user, _, run = await env(fp)
-    assert run.subscribe(0)[0][-1]["plan_mode"] is False
-    await run.command(p.SetPlanMode(enabled=True))
-    assert [e["text"] for e in run.log if e["type"] == "notice"] == ["plan mode on"]
-    assert run.subscribe(0)[0][-1]["plan_mode"] is True
-    assert mgr.info(await mgr.store.get_session(user["id"], run.sid)).plan_mode is True
-    await run.command(p.Prompt(text="do it"))
-    await wait_for(lambda: run.task.done())
-    tr = [e for e in run.log if e["type"] == "tool_result"]
-    assert tr and tr[0]["is_error"] and "plan mode" in tr[0]["content"]
-    assert "PLAN MODE" in fp.ctxs[0].system_prompt
-    # survives a reload
-    mgr.runs.clear()
-    run2 = await mgr.get(user, run.sid)
-    assert run2.subscribe(0)[0][-1]["plan_mode"] is True
-    await run2.command(p.SetPlanMode(enabled=False))
-    assert run2.subscribe(0)[0][-1]["plan_mode"] is False and run2.log[-1]["text"] == "plan mode off"
 
 
 async def test_all_queued_steers_reach_next_llm_call(env):

@@ -164,7 +164,6 @@ class Snapshot(_M):
     in_flight: InFlight
     pending_approval: PendingApproval | None = None
     title: str = ""
-    plan_mode: bool = False
 
 
 DURABLE = (UserMessage, AssistantMessage, ToolResult, ApprovalRequest, ApprovalResolved, RunState, Compaction, Notice, SessionTitle)
@@ -209,19 +208,13 @@ class Continue(_M):
     type: Literal["continue"] = "continue"
 
 
-class SetPlanMode(_M):
-    type: Literal["set_plan_mode"] = "set_plan_mode"
-    enabled: bool
-
-
-Command = Annotated[Union[Prompt, Steer, FollowUp, Abort, Approve, Compact, Continue, SetPlanMode], Field(discriminator="type")]
+Command = Annotated[Union[Prompt, Steer, FollowUp, Abort, Approve, Compact, Continue], Field(discriminator="type")]
 
 
 class SessionInfo(_M):
     id: str
     title: str = ""
     run_state: RunStateName = "idle"
-    plan_mode: bool = False
 
 
 class Protocol(_M):

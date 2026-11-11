@@ -34,9 +34,9 @@ from simp_agent import ai
 from simp_agent.agent import api_key_opts
 from simp_agent.agent.env import ExecutionEnv, LocalEnv
 from simp_agent.coding import clean_locale, clean_location
-from simp_agent.ai import (Context, CustomEntry, Model, ThinkingContent, ToolResultMessage, UserMessage, from_dict,
+from simp_agent.ai import (Context, Model, ThinkingContent, ToolResultMessage, UserMessage, from_dict,
                            to_dict)
-from simp_agent.plugins import PlanMode, build_plugins
+from simp_agent.plugins import build_plugins
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
 
@@ -200,8 +200,8 @@ class Run:
             self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=self.guarded_stream,
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
-            plugins=build_plugins(["redact_secrets", "plan_mode", "web",
-                                   *[n for n in self.profile.get("plugins", []) if n not in ("redact_secrets", "plan_mode", "web")]]),
+            plugins=build_plugins(["redact_secrets", "web",
+                                   *[n for n in self.profile.get("plugins", []) if n not in ("redact_secrets", "web")]]),
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.agent.steering_mode = "all"  # all queued steers reach the next turn
@@ -210,11 +210,6 @@ class Run:
     @property
     def guarded_stream(self):
         return budget.guard(self.mgr.stream_fn, self.over_budget)
-
-    @property
-    def plan_mode(self) -> bool:
-        last = next((m for m in reversed(self.session.messages) if isinstance(m, CustomEntry) and m.type == "plan_mode"), None)
-        return bool(last and last.data["enabled"])
 
     @property
     def state(self) -> str:
@@ -275,7 +270,7 @@ class Run:
         q = asyncio.Queue(QUEUE_MAX)
         self.subs.add(q)
         snap = p.Snapshot(last_seq=self.seq, run_state=self.state, in_flight=self.inflight, pending_approval=self.pending,
-                          title=self.info.title, plan_mode=self.plan_mode)
+                          title=self.info.title)
         return [*(e for e in self.log if e["seq"] > after), snap.model_dump()], q
 
     async def on_event(self, e: dict) -> None:
@@ -449,10 +444,6 @@ class Run:
             if self.busy:
                 raise HTTPException(409, f"cannot {c.type} while the session is {self.state}")
             await self.start(self.session.compact if isinstance(c, p.Compact) else self.session.continue_)
-        elif isinstance(c, p.SetPlanMode):
-            await self.session.start()  # plugin setup runs here (first prompt otherwise)
-            await next(pl for pl in self.session.plugins if isinstance(pl, PlanMode)).set_enabled(c.enabled)
-            await self.durable(p.Notice, text=f"plan mode {'on' if c.enabled else 'off'}")
 
 
 class SessionManager:
@@ -531,8 +522,7 @@ class SessionManager:
 
     def info(self, row: dict) -> p.SessionInfo:
         r = self.runs.get(row["id"])
-        return p.SessionInfo(id=row["id"], title=row["title"] or "", run_state=r.state if r else "idle",
-                             plan_mode=r.plan_mode if r else False)
+        return p.SessionInfo(id=row["id"], title=row["title"] or "", run_state=r.state if r else "idle")
 
 
 # ---- app ------------------------------------------------------------------------------------------------------------
