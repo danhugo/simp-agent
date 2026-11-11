@@ -213,8 +213,8 @@ details[open] > summary .chev { transform: rotate(90deg); }
 @media (pointer: coarse) {
   .tool summary, .thinking summary { min-height: 44px; }
   .msg-actions { opacity: 1; }
-  .icon-btn, .hbtn, .composer .round, .composer select, .to-bottom { min-width: 44px; min-height: 44px; }
-  .menu button, .composer .chip.plan { min-height: 44px; }
+  .icon-btn, .hbtn, .composer .round, .to-bottom { min-width: 44px; min-height: 44px; }
+  .menu button, .composer .chip.plan, .model-btn, .model-menu li { min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -236,12 +236,15 @@ details[open] > summary .chev { transform: rotate(90deg); }
 /* ---- model picker (themed, replaces native select) ---- */
 .model-pick { position: relative; }
 .model-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px var(--sp-2); border: 0; background: transparent;
-  color: var(--muted); font-size: var(--fs-sm); border-radius: var(--radius-sm); white-space: nowrap; }
+  color: var(--muted); font-size: var(--fs-sm); border-radius: var(--radius-sm); white-space: nowrap; max-width: 50vw; }
+.model-btn span { overflow: hidden; text-overflow: ellipsis; }
 .model-btn:hover, .model-btn[aria-expanded="true"] { background: var(--hover); color: var(--text); }
 .model-btn .chev { transform: rotate(90deg); }
-.model-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 240px; margin: 0; padding: 4px; list-style: none;
+.model-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 240px; width: max-content; max-width: min(480px, 92vw); max-height: 60vh; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-md); }
 .model-menu li { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: 8px var(--sp-3);
   border-radius: var(--radius-sm); font-size: var(--fs-sm); color: var(--text); cursor: pointer; }
 .model-menu li:hover, .model-menu li:focus-visible { background: var(--hover); outline: none; }
 .model-menu li[aria-selected="true"] { font-weight: 500; }
+.model-menu li span { overflow-wrap: anywhere; }
+@media (max-width: 767px) { .model-menu { position: fixed; top: auto; left: 4vw; right: 4vw; width: auto; max-width: none; margin-top: 6px; } }
