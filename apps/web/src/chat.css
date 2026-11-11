@@ -49,10 +49,25 @@
 .md { overflow-wrap: anywhere; }
 .md > :first-child { margin-top: 0; }
 .md > :last-child { margin-bottom: 0; }
-.md code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
-.md pre code { background: none; padding: 0; }
-.md table { border-collapse: collapse; display: block; overflow-x: auto; }
-.md th, .md td { border: 1px solid var(--border); padding: var(--sp-1) var(--sp-2); }
+.md p, .md ul, .md ol, .md blockquote, .md table { margin: 0 0 var(--sp-3); }
+.md h1, .md h2, .md h3, .md h4 { margin: var(--sp-5) 0 var(--sp-2); line-height: 1.3; font-weight: 650; }
+.md h1 { font-size: 1.6em; } .md h2 { font-size: 1.35em; } .md h3 { font-size: 1.15em; } .md h4 { font-size: 1em; }
+.md ul, .md ol { padding-left: 1.6em; }
+.md li { margin: var(--sp-1) 0; }
+.md li > ul, .md li > ol { margin: var(--sp-1) 0 0; }
+.md li::marker { color: var(--muted); }
+.md a { color: inherit; text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 2px; }
+.md a:hover { text-decoration-color: currentColor; }
+.md code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: .88em; }
+.md pre { margin: 0 0 var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--radius); border: 1px solid var(--border); line-height: 1.5; }
+.md pre code { background: none; padding: 0; font-size: var(--fs-sm); }
+.md blockquote { padding: 0 var(--sp-3); border-left: 3px solid var(--border); color: var(--muted); }
+.md hr { border: 0; border-top: 1px solid var(--border); margin: var(--sp-5) 0; }
+.md table { border-collapse: collapse; display: block; max-width: 100%; width: max-content; overflow-x: auto; font-size: var(--fs-sm); }
+.md th, .md td { border: 1px solid var(--border); padding: 6px var(--sp-3); text-align: left; }
+.md th { background: var(--code); font-weight: 600; }
+.md tr:nth-child(even) td { background: color-mix(in srgb, var(--code) 50%, transparent); }
+.md img { max-width: 100%; height: auto; }
 .streaming .md > :last-child::after { content: "▍"; color: var(--accent); animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 
