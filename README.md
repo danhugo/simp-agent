@@ -23,7 +23,7 @@ The agent saves with the `memory_save` tool (no auto-extraction), finds with `me
 Each turn the prompt gets short rules (including "never save secrets") plus `store.load()`.
 
 Enable: `build_plugins(["memory"])` with `plugin_config={"memory": {"dir": "~/.simp_agent/memory", "max_chars": 2000}}`
-(the default `FileMemoryStore` writes one JSONL file per scope). On the server, keep memory OFF for now: one shared dir means all users see each other's memory (wait for a per-user dir).
+(the default `FileMemoryStore` writes one JSONL file per scope). On the server, memory is always on and per user (see Server > Memory); a `"memory"` entry in a profile is ignored.
 
 Own store: pass any object with `load() -> str`, `search(query, scope=None, limit=10) -> list[dict]`,
 `save(content, scope) -> id`, `delete(id) -> bool` (the `MemoryStore` Protocol), e.g. `AgentSession(..., plugins=[Memory(MyStore())])`.
@@ -140,6 +140,14 @@ done
 `com.simp.server` keeps the server up on :8766 with `SIMP_SANDBOX=docker` (log: `~/.simp-server/server.log`);
 `com.simp.backup` runs a backup every day at 03:00 into `~/.simp-server/backups`, keeping the newest 14 (`--keep`).
 `server.log` is not rotated by launchd; rotate it with `newsyslog` or truncate it now and then.
+
+### Memory
+Every chat has memory, stored in the `memories` table of `simp.db` (so `simp-server backup` covers it). Each user has one
+default agent (`agents` table); sessions point at it. `global` memories are about the user and shared by all their agents;
+`agent` memories are lessons of one agent. Saved text is masked like tool output (keys, tokens) and capped at 500 chars;
+the prompt tells the model memories are notes, not instructions. The web reads them with `GET /api/memories`, edits with
+`PATCH /api/memories/{id}` (`{"content": ...}`), removes with `DELETE /api/memories/{id}`, and downloads
+`GET /api/memories/export` (JSON). Only the owner's rows are visible.
 
 ### Backups and restore
 

@@ -37,12 +37,15 @@ from simp_agent.coding import clean_locale, clean_location
 from simp_agent.ai import (Context, Model, ThinkingContent, ToolResultMessage, UserMessage, from_dict,
                            to_dict)
 from simp_agent.plugins import build_plugins
+from simp_agent.plugins.memory import Memory
+from simp_agent.plugins.redact_secrets import RedactSecrets
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
 
 from . import budget, ops
 from . import protocol as p
 from .fake import sse
+from .store import MEM_ITEM_MAX, DbMemoryStore
 from .web_tools import Web
 
 log = logging.getLogger("simp_server")
@@ -104,6 +107,10 @@ class StaticTokenAuth:
     async def authenticate(self, request: Request) -> dict | None:
         h = request.headers.get("authorization", "")
         return await self.store.user_by_token(h[7:]) if h.startswith("Bearer ") else None
+
+
+class MemoryEdit(BaseModel):
+    content: str = Field(min_length=1, max_length=MEM_ITEM_MAX)
 
 
 class Account(BaseModel):  # caps keep scrypt and the db cheap whatever a client sends
@@ -183,8 +190,9 @@ log = logging.getLogger("simp_server")
 
 
 def core_plugins(profile: dict) -> list[str]:
-    """Profile plugin names minus the always-on ones (web lives in the server, redact_secrets is added first)."""
-    return [n for n in profile.get("plugins", []) if n not in ("redact_secrets", "web")]
+    """Profile plugin names minus the always-on ones (web lives in the server, redact_secrets is added first,
+    memory is always on with a per-user DbMemoryStore; plain "memory" would share one file dir across users)."""
+    return [n for n in profile.get("plugins", []) if n not in ("redact_secrets", "web", "memory")]
 
 
 class Run:
@@ -206,7 +214,8 @@ class Run:
             self.model, store=self, env=env, cwd=getattr(env, "root", None) or "/", stream_fn=self.guarded_stream,
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
-            plugins=[*build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web()],
+            plugins=[*build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(), Memory(store=DbMemoryStore(
+                mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask))],
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.agent.steering_mode = "all"  # all queued steers reach the next turn
@@ -456,6 +465,8 @@ class SessionManager:
         self.settings, self.store, self.sandbox, self.stream_fn = settings, store, sandbox, stream_fn
         self.keys = take_keys(settings)
         self.limits = budget.limits(settings)
+        self.redact = RedactSecrets()  # same mask for memory_save content (RedactSecrets never sees tool args)
+        self.redact.setup(None, {"secrets": list(self.keys.values())})
         self.runs: dict[str, Run] = dict()
         self.last_used: dict[str, float] = dict()
         self.idle_s = settings.get("idle_minutes", 15) * 60
@@ -639,6 +650,27 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def usage(u=Depends(user)):
         return {"today_usd": round(await store.spent(u["id"], budget.day_start()), 4),
                 "day_limit_usd": mgr.limits.user_day_usd, "paused": mgr.paused()}
+
+    @app.get("/api/memories")
+    async def list_memories(u=Depends(user)):
+        return await store.memories(u["id"])
+
+    @app.get("/api/memories/export")
+    async def export_memories(u=Depends(user)):
+        return JSONResponse(await store.memories(u["id"]),
+                            headers={"content-disposition": 'attachment; filename="memories.json"'})
+
+    @app.patch("/api/memories/{mid}")
+    async def edit_memory(mid: str, m: MemoryEdit, u=Depends(user)):
+        if not await store.update_memory(u["id"], mid, mgr.redact.mask(m.content)):
+            raise HTTPException(404, "no such memory")
+        return {"ok": True}
+
+    @app.delete("/api/memories/{mid}")
+    async def delete_memory(mid: str, u=Depends(user)):
+        if not await store.delete_memory(u["id"], mid):
+            raise HTTPException(404, "no such memory")
+        return {"ok": True}
 
     @app.get("/api/sessions")
     async def list_sessions(u=Depends(user)) -> list[p.SessionInfo]:
