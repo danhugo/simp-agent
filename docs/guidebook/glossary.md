@@ -245,6 +245,12 @@ Built-in plugin that replaces secrets with `[REDACTED]`. Home: [22](22-profiles-
 ## Plan mode
 Built-in plugin (`PlanMode`) that makes the agent read-only and asks it for a plan. Home: [22](22-profiles-plugins.md).
 
+## Memory
+Built-in plugin (`Memory`) that lets the agent save short notes with tools and puts them in the system prompt of every later session. Off by default. Home: [22](22-profiles-plugins.md#memory-remember-across-sessions).
+
+## Scope
+The kind of a [memory](#memory) item: `"global"` = facts about the user, `"agent"` = lessons from tasks. One file per scope. Home: [22](22-profiles-plugins.md#memory-remember-across-sessions).
+
 ## Print mode
 The CLI mode for one task (`simp-agent "task"` or `-p`): it runs once, prints full lines, and exits with 0 or 1. Home: [24](24-cli.md#two-modes-print-mode-and-the-repl).
 
