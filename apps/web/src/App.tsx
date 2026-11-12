@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, AuthError, type ConnStatus, type SignupMode, getToken, setToken, subscribe } from "./api";
 import { Chat, Composer, errorText, type Send } from "./Chat";
-import { IconCheck, IconChevron, IconCompose, IconEye, IconFile, IconEyeOff, IconLogout, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
+import { IconCheck, IconChevron, IconCompose, IconEye, IconFile, IconEyeOff, IconLogout, IconMemory, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
 import { requestLocation, saveLocation, sharedLocation } from "./location";
 import { Files } from "./Files";
+import { Memory } from "./Memory";
 import type { SessionInfo } from "./protocol.gen";
 import { initialState, reduce, type ServerEvent } from "./state";
 
@@ -201,7 +202,8 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [drawer]);
-  const pick = (id: string) => { setSid(id); setDrawer(false); };
+  const [memory, setMemory] = useState(false);  // Memory page open (only when no session is picked)
+  const pick = (id: string) => { setSid(id); setMemory(false); setDrawer(false); };
 
   useEffect(() => {
     refresh();
@@ -295,8 +297,11 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
           <button className="ghost icon only-desktop collapse" aria-label="Collapse sidebar" title="Collapse sidebar"
             onClick={toggleCollapsed}><IconSidebar /></button>
         </div>
-        <button className={`ghost item new ${sid ? "" : "active"}`} onClick={() => pick("")} aria-current={sid ? undefined : "page"}
+        <button className={`ghost item new ${sid || memory ? "" : "active"}`} onClick={() => pick("")} aria-current={sid || memory ? undefined : "page"}
           aria-label={rail ? "New session" : undefined} title={rail ? "New session" : undefined}><IconCompose /><span className="label">New session</span></button>
+        <button className={`ghost item new ${memory && !sid ? "active" : ""}`} onClick={() => { pick(""); setMemory(true); }}
+          aria-current={memory && !sid ? "page" : undefined} aria-label={rail ? "Memory" : undefined} title={rail ? "Memory" : undefined}>
+          <IconMemory /><span className="label">Memory</span></button>
         <nav aria-label="Sessions">
           <h2 className="section-label">Recent</h2>
           {sessions.map((s) => (
@@ -327,7 +332,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
             firstPrompt={first?.sid === sid ? first.text : undefined} />
           {showFiles && <Files sid={sid} onError={guard} focus={filesFocus} onClose={() => setShowFiles(false)} />}
         </>
-      ) : (
+      ) : memory ? <Memory onError={guard} menuButton={menu} /> : (
         <main className="home">
           <header className="home-head">{menu}<span className="brand only-mobile"><PixelAgent size={22} />Simp</span></header>
           <div className="home-hero">
