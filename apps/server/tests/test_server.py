@@ -454,14 +454,14 @@ def test_check_sandbox(tmp_path):
     assert check_sandbox(s, 5) is None
 
 
-async def test_delete_removes_workspace_files(env):
+async def test_delete_keeps_user_workspace_files(env):
     app, mgr, user, token, run = await env(FakeProvider(reply("a")))
     await run.env.write_bytes("a.txt", b"secret")
     root = Path(run.env.root)
     assert root.exists()
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
         assert (await c.delete(f"/api/sessions/{run.sid}", headers={"Authorization": f"Bearer {token}"})).status_code == 200
-    assert not root.exists()
+    assert (root / "a.txt").read_bytes() == b"secret"  # files are the user's, not the session's
 
 
 async def test_revoked_user_cannot_spend(env):

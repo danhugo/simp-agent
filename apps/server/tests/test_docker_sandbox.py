@@ -32,12 +32,12 @@ class TestDockerEnvConformance(EnvConformance):
     def make_env(self, sandbox, tmp_path):
         async def make(root):
             sandbox.workspaces_dir = root.parent
-            return await sandbox.open(root.name)
+            return await sandbox.open(f"s-{uuid.uuid4().hex[:8]}", root.name)
         return make
 
 
 async def test_hardening(sandbox, tmp_path):
-    env = await sandbox.open(f"s1-{uuid.uuid4().hex[:8]}")
+    env = await sandbox.open(f"s1-{uuid.uuid4().hex[:8]}", "u1")
     run = lambda cmd: env.exec(cmd, ".", 30, asyncio.Event())
     assert (await run("id -u"))[1].strip() == "1000"
     code, out = await run("python -c 'import socket; socket.create_connection((\"1.1.1.1\", 53), timeout=3)'")
@@ -51,10 +51,10 @@ async def test_hardening(sandbox, tmp_path):
 
 async def test_open_close(sandbox):
     sid = f"s2-{uuid.uuid4().hex[:8]}"
-    env = await sandbox.open(sid)
-    assert await sandbox.open(sid) is env
+    env = await sandbox.open(sid, "u1")
+    assert await sandbox.open(sid, "u1") is env
     with pytest.raises(ValueError):
-        await sandbox.open("../x")
+        await sandbox.open("../x", "u1")
     await sandbox.close(sid)
     assert subprocess.run(["docker", "inspect", env.container], capture_output=True).returncode != 0
 
@@ -62,7 +62,7 @@ async def test_open_close(sandbox):
 async def test_coding_tools_with_host_paths(sandbox):
     """ls/grep get the host workspace path from the tools; inside the container that is /work."""
     from simp_agent.coding import make_tools
-    env = await sandbox.open("s-paths")
+    env = await sandbox.open("s-paths", "u1")
     await env.write_bytes("notes.txt", b"hello world\n")
 
     from simp_agent.agent import ToolContext
@@ -73,3 +73,12 @@ async def test_coding_tools_with_host_paths(sandbox):
     assert "notes.txt" in await tools["ls"].execute({}, ctx)
     assert "hello world" in await tools["grep"].execute({"pattern": "hello"}, ctx)
     assert (await env.read_bytes("/work/notes.txt")) == b"hello world\n"  # container paths work host-side too
+
+
+async def test_user_sessions_share_files_not_containers(sandbox):
+    a, b = f"sa-{uuid.uuid4().hex[:8]}", f"sb-{uuid.uuid4().hex[:8]}"
+    ea, eb = await sandbox.open(a, "u2"), await sandbox.open(b, "u2")
+    assert ea.container != eb.container and ea.root == eb.root
+    await ea.write_bytes("shared.txt", b"hi")
+    await sandbox.close(a)
+    assert (await eb.exec("cat shared.txt", ".", 30, asyncio.Event()))[1] == "hi"

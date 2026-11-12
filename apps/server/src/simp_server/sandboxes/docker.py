@@ -4,12 +4,11 @@ containment) on a dir bind-mounted at /work; only exec goes through `docker exec
 from __future__ import annotations
 
 import asyncio
-import re
-import shutil
 import subprocess
 from pathlib import Path
 
 from simp_agent.agent.env import LocalEnv
+from simp_server.sandboxes import user_root
 
 IMAGE = "simp-sandbox:latest"
 DOCKERFILE_DIR = Path(__file__).resolve().parents[3] / "sandboxes"
@@ -82,8 +81,10 @@ class DockerEnv(LocalEnv):
 
 
 class DockerSandbox:
-    """Server Sandbox slot: open(session_id) -> DockerEnv, close(session_id), close_all() on shutdown.
-    Built from the server settings dict; options in its [sandbox] table. Workspaces: workspaces_dir/<session_id>."""
+    """Server Sandbox slot: open(session_id, user_id) -> DockerEnv, close(session_id), close_all() on shutdown.
+    Built from the server settings dict; options in its [sandbox] table. One container per session, but the mounted
+    workspace is per user (workspaces_dir/<user_id>): all of a user's sessions see, and may overwrite, the same files.
+    All containers run as 1000:1000, so sharing the dir is safe."""
 
     def __init__(self, settings: dict):
         s = settings.get("sandbox", dict())
@@ -93,16 +94,10 @@ class DockerSandbox:
         self.envs: dict[str, DockerEnv] = dict()
         self.legacy_dir = Path(settings["data_dir"]) / "sandboxes"
 
-    async def open(self, session_id: str) -> DockerEnv:
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", session_id):
-            raise ValueError(f"bad session id: {session_id!r}")
+    async def open(self, session_id: str, user_id: str) -> DockerEnv:
+        root = user_root(self.workspaces_dir, self.legacy_dir, user_id, session_id)  # validates both ids
         if session_id in self.envs:
             return self.envs[session_id]
-        root, old = self.workspaces_dir / session_id, self.legacy_dir / session_id
-        if old.exists() and not root.exists():  # Stage 2 LocalSandbox layout
-            self.workspaces_dir.mkdir(parents=True, exist_ok=True)
-            shutil.move(old, root)
-        root.mkdir(parents=True, exist_ok=True)
         name = f"simp-{session_id}"
         await _docker("rm", "-f", name)  # leftover from a crash
         code, out = await _docker(
@@ -121,11 +116,6 @@ class DockerSandbox:
         env = self.envs.pop(session_id, None)
         if env:
             await _docker("rm", "-f", env.container)
-
-    async def remove(self, session_id: str) -> None:
-        if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", session_id):
-            for d in (self.workspaces_dir / session_id, self.legacy_dir / session_id):
-                shutil.rmtree(d, ignore_errors=True)
 
     async def close_all(self) -> None:
         await asyncio.gather(*(self.close(s) for s in list(self.envs)))

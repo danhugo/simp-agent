@@ -12,7 +12,6 @@ import functools
 import hmac
 import re
 import sqlite3
-import shutil
 import sys
 import logging
 import os
@@ -38,6 +37,7 @@ from simp_agent.ai import (Context, Model, ThinkingContent, ToolResultMessage, U
                            to_dict)
 from simp_agent.plugins import build_plugins
 from simp_agent.plugins.memory import Memory
+from simp_server.sandboxes import user_root
 from simp_agent.plugins.redact_secrets import RedactSecrets
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
@@ -63,11 +63,9 @@ DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_
 # ---- plugin slots ---------------------------------------------------------------------------------------------------
 
 class Sandbox(Protocol):
-    async def open(self, session_id: str) -> ExecutionEnv: ...
+    async def open(self, session_id: str, user_id: str) -> ExecutionEnv: ...  # rooted at the user's workspace
 
-    async def close(self, session_id: str) -> None: ...
-
-    async def remove(self, session_id: str) -> None: ...  # delete the workspace files (session deleted)
+    async def close(self, session_id: str) -> None: ...  # never deletes files: they belong to the user
 
 
 class Store(Protocol):  # see store.SqliteStore for the full method list
@@ -79,25 +77,16 @@ class Auth(Protocol):
 
 
 class LocalSandbox:
-    """A per-session dir under the data dir; LocalEnv rooted there. Not isolation: DockerSandbox replaces it."""
+    """A per-user dir under the data dir; LocalEnv rooted there. Not isolation: DockerSandbox replaces it."""
 
     def __init__(self, settings: dict):
         self.root = Path(settings["data_dir"]) / "workspaces"
 
-    async def open(self, session_id: str) -> LocalEnv:
-        d, old = self.root / session_id, self.root.parent / "sandboxes" / session_id
-        if old.exists() and not d.exists():  # Stage 2 layout: keep old sessions' files
-            self.root.mkdir(parents=True, exist_ok=True)
-            shutil.move(old, d)
-        d.mkdir(parents=True, exist_ok=True)
-        return LocalEnv(str(d.resolve()))
+    async def open(self, session_id: str, user_id: str) -> LocalEnv:
+        return LocalEnv(str(user_root(self.root, self.root.parent / "sandboxes", user_id, session_id).resolve()))
 
     async def close(self, session_id: str) -> None:
         pass
-
-    async def remove(self, session_id: str) -> None:
-        for d in (self.root / session_id, self.root.parent / "sandboxes" / session_id):  # + Stage 2 layout, never opened
-            shutil.rmtree(d, ignore_errors=True)
 
 
 class StaticTokenAuth:
@@ -491,7 +480,7 @@ class SessionManager:
                     if lru is None:
                         raise HTTPException(503, "too many active sessions, try again later")
                     await self.evict(lru)
-                env = await self.sandbox.open(row["sandbox_ref"])
+                env = await self.sandbox.open(row["sandbox_ref"], row["user_id"])
                 self.runs[sid] = Run(self, row, env, await self.store.entries(user["id"], sid))
                 await self.runs[sid].recover()
             self.last_used[sid] = time.monotonic()
@@ -523,7 +512,7 @@ class SessionManager:
                 log.exception("idle eviction failed")
 
     async def drop(self, sid: str, ref: str) -> None:
-        """Stop the run (if loaded), close its sandbox, and delete its workspace files."""
+        """Stop the run (if loaded) and close its sandbox. Files stay: the workspace is the user's, not the session's."""
         run = self.runs.pop(sid, None)
         self.last_used.pop(sid, None)
         if run and run.title_task and not run.title_task.done():  # deleted: no title call, no write to a gone session
@@ -534,7 +523,6 @@ class SessionManager:
             run.task.cancel()
             await asyncio.gather(run.task, return_exceptions=True)
         await self.sandbox.close(ref)
-        await self.sandbox.remove(ref)
 
     def info(self, row: dict) -> p.SessionInfo:
         r = self.runs.get(row["id"])

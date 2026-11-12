@@ -85,8 +85,8 @@ server beyond localhost, e.g. through a tunnel). Only a salted scrypt hash of a 
 disables the user (token, password logins and password sign-in); `rotate` re-enables a revoked user.
 There is no rate limit on `/api/login` and `/api/signup`: before exposing the server through a tunnel, put one in
 front (the tunnel's or a reverse proxy's). Passwords are capped at 1024 characters and hashed off the event loop.
-Sessions are deleted from the web sidebar (`×`, click again to confirm); a running session is aborted first and its
-workspace files are deleted. `seed` warns when a second user would need DockerSandbox (the server refuses to start
+Sessions are deleted from the web sidebar (`×`, click again to confirm); a running session is aborted first; its
+files stay (they belong to the user's workspace). `seed` warns when a second user would need DockerSandbox (the server refuses to start
 with LocalSandbox and several active users unless `allow_local_sandbox = true`).
 
 ### Budgets
@@ -119,8 +119,10 @@ idle_minutes = 15       # top level; unload sessions idle this long (not running
 max_open_sessions = 8   # loaded at once; the least recently used idle one is unloaded first, else 503
 ```
 
-Every session's files live in `<data_dir>/workspaces/<session_id>` for both sandboxes (older `sandboxes/<id>` dirs
-move there on first open).
+Files live per user in `<data_dir>/workspaces/<user_id>`, for both sandboxes: all sessions of a user see the same
+files (and the web Files panel shows that dir). Each session still gets its own container. There is no lock: two chats
+running at once can overwrite each other's files. Old per-session dirs (`sandboxes/<sid>` or `workspaces/<sid>`) move
+to `workspaces/<user_id>/<sid>/` on first open. Backups still copy all of `workspaces/`.
 
 ### Session commands, titles
 

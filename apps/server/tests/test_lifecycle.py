@@ -29,15 +29,38 @@ async def make(tmp_path, stream_fn, extra=""):
     return app, mgr, user, closed
 
 
-async def test_local_sandbox_uses_workspaces_and_migrates(tmp_path):
+async def test_local_sandbox_per_user_and_migrates_once(tmp_path):
     sb = LocalSandbox({"data_dir": str(tmp_path)})
-    env = await sb.open("s1")
-    assert Path(env.root) == (tmp_path / "workspaces" / "s1").resolve()
-    old = tmp_path / "sandboxes" / "s2"
-    old.mkdir(parents=True)
-    (old / "a.txt").write_text("keep")
-    env = await sb.open("s2")
-    assert (Path(env.root) / "a.txt").read_text() == "keep" and not old.exists()
+    ws = tmp_path / "workspaces"
+    a1, a2, b1 = await sb.open("s1", "ua"), await sb.open("s2", "ua"), await sb.open("s3", "ub")
+    assert Path(a1.root) == Path(a2.root) == (ws / "ua").resolve()
+    await a1.write_bytes("f.txt", b"x")
+    assert await a2.read_bytes("f.txt") == b"x"
+    with pytest.raises(FileNotFoundError):
+        await b1.read_bytes("f.txt")
+    for old in (tmp_path / "sandboxes" / "s4", ws / "s5"):  # Stage 2 layout, per-session layout
+        old.mkdir(parents=True)
+        (old / "a.txt").write_text("keep")
+    env = await sb.open("s4", "ua")
+    env = await sb.open("s5", "ua")
+    assert (ws / "ua" / "s4" / "a.txt").read_text() == (ws / "ua" / "s5" / "a.txt").read_text() == "keep"
+    (ws / "s5").mkdir()  # already moved: a new dir with that name is left alone
+    await sb.open("s5", "ua")
+    assert (ws / "s5").exists() and (ws / "ua" / "s5" / "a.txt").exists()
+    with pytest.raises(ValueError):
+        await sb.open("s1", "../x")
+
+
+async def test_drop_keeps_files_and_evict_keeps_sibling(tmp_path):
+    _, mgr, user, closed = await make(tmp_path, FakeProvider(reply("a")))
+    a, b = [await mgr.store.add_session(user["id"], "test", "t") for _ in range(2)]
+    ra, rb = await mgr.get(user, a["id"]), await mgr.get(user, b["id"])
+    await ra.env.write_bytes("f.txt", b"x")
+    await mgr.evict(a["id"])
+    assert closed == [a["sandbox_ref"]] and b["id"] in mgr.runs
+    await mgr.drop(a["id"], a["sandbox_ref"])
+    assert await rb.env.read_bytes("f.txt") == b"x"
+    await mgr.store.close()
 
 
 async def test_idle_run_evicted_and_reloaded(tmp_path):
@@ -121,12 +144,3 @@ async def test_title_task_blocks_eviction_and_drop_cancels_it(tmp_path):
     await asyncio.sleep(0.05)
     assert not [e for e in await mgr.store.entries(user["id"], row["id"]) if e["type"] == "session_title"]
     await mgr.store.close()
-
-
-async def test_remove_deletes_legacy_sandbox_dir(tmp_path):
-    sb = LocalSandbox({"data_dir": str(tmp_path)})
-    old = tmp_path / "sandboxes" / "s9"
-    old.mkdir(parents=True)
-    (old / "a.txt").write_text("x")
-    await sb.remove("s9")  # session deleted before it was ever opened after the upgrade
-    assert not old.exists()
