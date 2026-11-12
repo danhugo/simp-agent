@@ -11,7 +11,7 @@ flowchart LR
     ai --> agent --> coding --> session["session ★ plugin sockets (this chapter)"] --> plugins --> testing
 ```
 
-This chapter adds plugin support inside the `session` layer. The `plugins` folder, with two real plugins, comes in [22](22-profiles-plugins.md). Big picture of Part 4: [part-4-session](16-part-4-session.md).
+This chapter adds plugin support inside the `session` layer. The `plugins` folder, with three real plugins, comes in [22](22-profiles-plugins.md). Big picture of Part 4: [part-4-session](16-part-4-session.md).
 
 All code here is in [session/\_\_init\_\_.py](../../packages/simp_agent/src/simp_agent/session/__init__.py).
 
@@ -142,7 +142,7 @@ before_agent_start(info):       // later: this hook gets no api
 
 Plan mode does exactly this: it keeps `api` in `setup`, and much later, when the user turns plan mode on in the web page, it uses the same `api` to add its "PLAN MODE is on" line to the prompt and to save "on" in the history.
 
-The main actions, in plain words: **add a tool** (`register_tool`; a tool with the same name replaces the old one), **add a section to the system prompt** (`add_prompt_section`, see [17](17-session.md#prompt-sections)), and **save its own data in the history** (`append_entry`). Saved data comes back when the session is reopened but is never sent to the model; this is how plan mode remembers whether it was on. The full list is in [Reference · objects](ref-objects.md#pluginapi-methods).
+The main actions, in plain words: **add a tool** (`register_tool`; a tool with the same name replaces the old one), **add a section to the system prompt** (`add_prompt_section`, see [17](17-session.md#prompt-sections)), and **save its own data in the history** (`append_entry`). Saved data comes back when the session is reopened but is never sent to the model; this is how plan mode remembers whether it was on. The [memory](22-profiles-plugins.md#memory-remember-across-sessions) plugin in 22 is built from just `register_tool` and `add_prompt_section`. The full list is in [Reference · objects](ref-objects.md#pluginapi-methods).
 
 Each plugin also gets its own settings in `setup`. The session keeps one settings table for all plugins (`plugin_config`), and each plugin receives only the part under its own name (its `name` field, or its class name).
 

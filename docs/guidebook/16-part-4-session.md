@@ -30,7 +30,7 @@ The second idea is that history is only ever added to, never changed. Each finis
 
 **[21 Context overflow](21-overflow.md): recover when it is too late.** If the model still says "prompt is too long", the session compacts once and continues, instead of stopping.
 
-**[22 Profiles and built-in plugins](22-profiles-plugins.md): make it usable.** A [profile](glossary.md#profile) is a plain dict from the settings file; `build_model()` turns it into a `Model`. `build_plugins()` turns plugin names into objects, and two real plugins ship: `RedactSecrets` and `PlanMode`.
+**[22 Profiles and built-in plugins](22-profiles-plugins.md): make it usable.** A [profile](glossary.md#profile) is a plain dict from the settings file; `build_model()` turns it into a `Model`. `build_plugins()` turns plugin names into objects, and three real plugins ship: `RedactSecrets`, `PlanMode` and `Memory`.
 
 ## The map
 
@@ -59,7 +59,7 @@ Not numbered: the agent loop (call the model, run tools, repeat) is Part 2, [07]
 
 `AgentSession` is the whole Part. It holds one `Agent` and gives it three hooks: `prepare_next_turn=_prepare` (block 4), and `before_tool_call` and `after_tool_call` (block 6). The system prompt (5) is also a function the agent calls each turn. `prompt()` is Start (2) + Input hooks (3) + `_run()`; `continue_()` is the same without the Input hooks. `_run()` runs the start function once (`agent.prompt` or `agent.continue_`), then Recover (8) loops while the last message is an error. One agent turn is Prepare view (4) + Build prompt (5) + the model call + Tool hooks (6). Save (7) happens on every `message_end` event.
 
-Compaction is used in two places: in Prepare view (4) when the history is near the window, and in Recover (8) after an overflow error. Both call the same `AgentSession.compact()`. Build (1) is outside the session: the app (CLI or server) calls `build_model` and `build_plugins`, then makes the `AgentSession`. The two plugins from [22](22-profiles-plugins.md) use these hooks: `RedactSecrets` uses `tool_result`, `tool_update` and `context`; `PlanMode` uses `tool_call`, a prompt section and a custom entry.
+Compaction is used in two places: in Prepare view (4) when the history is near the window, and in Recover (8) after an overflow error. Both call the same `AgentSession.compact()`. Build (1) is outside the session: the app (CLI or server) calls `build_model` and `build_plugins`, then makes the `AgentSession`. The plugins from [22](22-profiles-plugins.md) use these hooks: `RedactSecrets` uses `tool_result`, `tool_update` and `context`; `PlanMode` uses `tool_call`, a prompt section and a custom entry; `Memory` needs no hook, only tools and a prompt section.
 
 The small chart below shows only the nesting:
 

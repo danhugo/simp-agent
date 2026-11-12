@@ -1,6 +1,6 @@
 # 22 Part 4 · Profiles and built-in plugins
 
-**Goal:** Pick models by profile and ship two real plugins.
+**Goal:** Pick models by profile and ship three real plugins.
 
 **Builds on:** [21 Context overflow](21-overflow.md) · **Next:** [23 Part 5 big picture](23-part-5-system.md)
 
@@ -31,9 +31,9 @@ Code in this chapter (commit `2fc2776`):
 Part 4 built a session that saves, retries, compacts and runs plugins. But so far you choose the model and the plugins in Python code. Two needs are left:
 
 - **Pick a model without code.** Someone wants the agent to use a small local model (`qwen`) on their own machine instead of Claude. They should only edit a settings file.
-- **Ready-made plugins.** [18](18-plugins.md) built the plugin hooks, but no real plugin yet. Two are worth shipping: one keeps secrets (API keys) away from the screen and the model, and one makes the agent plan first without touching files.
+- **Ready-made plugins.** [18](18-plugins.md) built the plugin hooks, but no real plugin yet. Three are worth shipping: one keeps secrets (API keys) away from the screen and the model, one makes the agent plan first without touching files, and one lets the agent remember things between sessions.
 
-This chapter does both. Part A turns a few lines of settings into a `Model`. Part B builds the two plugins.
+This chapter does both. Part A turns a few lines of settings into a `Model`. Part B builds the three plugins.
 
 ## Part A: Profiles
 
@@ -71,14 +71,14 @@ Real code: [session/profile.py](../../packages/simp_agent/src/simp_agent/session
 
 Not in the profile. A profile holds only the **name** of an environment variable (`api_key_env = "LOCAL_KEY"`). The app looks up the key by that name: the CLI reads the environment variable when it calls the model ([24](24-cli.md)), and the server collects all keys once at start ([below](#from-settings-file-to-running-agent)). So a settings file can be shared or committed without leaking a key.
 
-## Part B: Two built-in plugins
+## Part B: Three built-in plugins
 
 ### Who uses them
 
-- The **server** turns both plugins on for every session. Plan mode starts off; the user switches it on from the web page.
+- The **server** always turns `RedactSecrets` on. Other plugins, like `plan_mode` and `memory`, come from the profile's list. Plan mode starts off; the user switches it on from the web page.
 - The **CLI** uses no plugins.
 
-A profile may also list plugins by name (`plugins = ["plan_mode"]`). The server turns names into plugin objects (`build_plugins`), and checks every profile's list when it starts, so a typo like `"plan_mod"` stops the server with a clear message instead of failing in the first chat. The server always turns both built-ins on, so listing them in a profile changes nothing. The list will only matter once a third plugin exists.
+A profile may also list plugins by name (`plugins = ["plan_mode"]`). The server turns names into plugin objects (`build_plugins`), and checks every profile's list when it starts, so a typo like `"plan_mod"` stops the server with a clear message instead of failing in the first chat. The server always turns `redact_secrets` on, so listing it changes nothing. The list matters for `plan_mode` and for the third plugin, [memory](#memory-remember-across-sessions), which is off unless a profile names it.
 
 Each session gets **new** plugin objects, because a plugin keeps state (like plan mode's on/off) and two sessions must not share it.
 
@@ -133,13 +133,64 @@ The app does the switching (`set_enabled`). In the server, the web page sends a 
 
 Real code: [plugins/plan_mode.py](../../packages/simp_agent/src/simp_agent/plugins/plan_mode.py) — `PlanMode`
 
+### Memory: remember across sessions
+
+**The story.** On Monday the user tells the agent "I use uv, never pip". The agent follows it, the session ends. On Tuesday a new session starts with an empty history ([17](17-session.md)), and the agent runs `pip install` again. Nothing from Monday is left. **[Memory](glossary.md#memory)** fixes this: the agent writes short notes into a store that lives outside any session, and every new session sees them.
+
+**Who decides what to keep?** The model, not our code. Our code cannot tell a lasting preference ("I use uv") from a one-time request ("use pip just this once"). So the plugin gives the model three tools and some rules, and the model chooses. This uses only the plugin actions from [18](18-plugins.md#how-does-a-plugin-change-the-session): `register_tool` and `add_prompt_section`. No new hook is needed.
+
+**Two scopes.** Notes are of two kinds, so each item has a **[scope](glossary.md#scope)**: `"global"` holds facts about the user ("uses uv"), and `"agent"` holds lessons the agent learned doing tasks ("tests in this repo run with `uv run pytest`"). The scope is a plain string, so more kinds can come later without code changes.
+
+**The store.** First we say what a store must do, then we write one. The plugin only talks to this small protocol, so a database store can replace the file store later:
+
+```python
+class MemoryStore(Protocol):
+    def load(self) -> str: ...                     # core text for the prompt
+    def search(self, query, scope=None, limit=10) -> list[dict]: ...
+    def save(self, content, scope) -> str: ...     # returns the new id
+    def delete(self, id) -> bool: ...
+```
+
+`FileMemoryStore` keeps one JSONL file per scope, `global.jsonl` and `agent.jsonl`, in one folder. Each line is one item: `{"id", "scope", "content", "created"}`. `save` appends a line. The scope becomes the file name. So `save` refuses an empty scope, or one with `/`, `\` or a leading `.`: the model must not be able to write `../something`. Any other name is allowed; `"global"` and `"agent"` are only what the rules suggest. `search` returns items that contain every word of the query (upper or lower case does not matter), newest first, at most 10. This is a simple keyword match; a real index can come when memory gets big. `delete` looks through the files until it finds the id, then rewrites that file without it.
+
+**Into the prompt.** `load` walks the items, newest first, and stops at `max_chars` (2000 by default), so memory can never fill the context window ([21](21-overflow.md)). In `setup`, the plugin adds a prompt section with order 500, so it comes after the coding prompt and `AGENTS.md`. Its value is a **function**, not a string:
+
+```python
+def prompt(self, ctx=None) -> str:
+    core = self.store.load()
+    return f"{RULES}\n\n## Remembered\n{core}" if core else RULES
+```
+
+The session calls this function before every model call ([17](17-session.md#prompt-sections), [14](14-system-prompt.md#why-is-the-prompt-a-function-not-a-fixed-string)). So a note saved in turn 3 is in the prompt of turn 4, and of every later session. The `RULES` text tells the model what each scope is for, to search before asking the user again, and to **never save secrets** unless the user asks. A saved note goes into every future prompt and to the provider, so a key there would leak far more than one `cat .env`.
+
+**The tools.** `memory_search(query, scope?)` returns matching items as JSON, `memory_save(content, scope)` returns `saved <id>`, and `memory_delete(id)` returns `deleted` or `not found`. The newest notes are already in the prompt. Older notes that do not fit in `max_chars` drop out of the prompt, and search is how the model finds them.
+
+Here is Monday and Tuesday again:
+
+```mermaid
+sequenceDiagram
+    participant M as Model
+    participant P as Memory plugin
+    participant F as global.jsonl
+    Note over M,F: Monday
+    M->>P: memory_save("user uses uv, never pip", "global")
+    P->>F: append one line
+    Note over M,F: Tuesday, new session
+    P->>F: load() before the model call
+    P-->>M: prompt: "## Remembered - [global] user uses uv, never pip"
+```
+
+**Turn it on.** Memory is off by default. A profile turns it on with `plugins = ["memory"]`, and `build_plugins` makes a `Memory` object. Settings come from `plugin_config["memory"]` at setup: `dir` (default `~/.simp_agent/memory`) and `max_chars`. The server gives no memory settings today, so it uses the defaults. Be careful: this means every session on that server shares one memory folder, so one user's notes reach every user's prompt. Give each user their own `dir` before you turn memory on for many users. You can also pass your own store: `Memory(store=my_store)`.
+
+Real code: [plugins/memory.py](../../packages/simp_agent/src/simp_agent/plugins/memory.py) — `MemoryStore`, `FileMemoryStore`, `Memory`
+
 ## From settings file to running agent
 
 Here is the whole path for the `local` profile in the server:
 
 1. **At start**, the server reads `settings.toml` and checks each profile's plugin names. Then it collects the model keys (every `api_key_env`, plus `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`) from `.env` and the environment, and removes them from the environment, so a command the agent runs can never read them.
 2. **New chat:** the web page asks for a session with profile `local`. The server saves the profile **name** with the session.
-3. **Open the session:** the server turns the profile into a `Model` (`build_model`), makes new `RedactSecrets` and `PlanMode` objects, gives `RedactSecrets` the keys it holds, and builds the `AgentSession` ([17](17-session.md)).
+3. **Open the session:** the server turns the profile into a `Model` (`build_model`), makes a new `RedactSecrets` plus new objects for the plugins the profile lists (for example `PlanMode`), gives `RedactSecrets` the keys it holds, and builds the `AgentSession` ([17](17-session.md)).
 4. **The user types "write fizzbuzz.py":** the model call goes to `http://localhost:8000/v1` with the `LOCAL_KEY` key and asks for token usage. Every tool result passes through `RedactSecrets`, and if plan mode is on, `write` is blocked.
 
 The server code for these steps is in [25](25-server-run.md) and [27](27-store-auth.md).
