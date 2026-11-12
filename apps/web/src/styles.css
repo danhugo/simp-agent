@@ -1,4 +1,6 @@
 :root {
+  /* 3D pixel mascot (Mascot3D): 4 tones + outline, eyes, blush */
+  --m3-hi:#ffffff; --m3-base:#fbf8f2; --m3-mid:#e9e2d7; --m3-low:#d3c9ba; --m3-out:#a39a8e; --m3-eye:#3b2f2a; --m3-blush:#f4a6a6; --m3-sweat:#9fd0ec; --m3-hot:#e86f6f;
   /* mascot (PixelAgent): light head with outline */
   --m-w:#fbf8f2; --m-o:#a39a8e; --m-s:#e9e2d7; --m-h:#ffffff; --m-b:#3b2f2a; --m-p:#f4a6a6;
   --bg: #fbf8f2; --panel: #f3eee5; --border: #e4dccf; --text: #2b2420; --muted: #6b5f55;
@@ -15,6 +17,7 @@
   color: var(--text); background: var(--bg); color-scheme: light;
 }
 :root[data-theme="dark"] {
+  --m3-hi:#f6f1e8; --m3-base:#e8e0d2; --m3-mid:#d6ccbb; --m3-low:#b9ad9b; --m3-out:none; --m3-eye:#2b2420; --m3-blush:#e39a9a; --m3-sweat:#8fc3df; --m3-hot:#e07a7a;
   /* mascot: softer ivory, no outline (it blended into the dark background) */
   --m-w:#e8e0d2; --m-o:#e8e0d2; --m-s:#d6ccbb; --m-h:#f6f1e8; --m-b:#2b2420; --m-p:#e39a9a;
   --bg: #1b1815; --panel: #221e1a; --border: #352f29; --text: #efe7da; --muted: #a89c8e;
@@ -245,3 +248,23 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 
 .login code { white-space: nowrap; }
 .menu-note { padding: 4px 10px; font-size: 12px; color: var(--muted, inherit); }
+
+/* ---- 3D pixel mascot on the home screen ---- */
+.mascot3d { position: relative; display: inline-flex; flex-direction: column; align-items: center; }
+.mascot3d canvas { image-rendering: pixelated; display: block; }
+.mascot3d-shadow { width: 62%; height: 12px; margin-top: 2px; border-radius: 50%; background: rgb(59 47 42 / .18); filter: blur(6px); }
+:root[data-theme="dark"] .mascot3d-shadow { background: rgb(0 0 0 / .45); }
+.mascot3d.working canvas { animation: mascot-bob 1.1s steps(6) infinite; }
+@keyframes mascot-bob { 50% { transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .mascot3d.working canvas { animation: none; } }
+
+/* overloaded (5 min of work): two pixel steam puffs rising from the top of the head */
+.mascot3d-steam { position: absolute; top: -22%; left: 50%; width: 70%; height: 34%; transform: translateX(-50%); pointer-events: none; display: none; z-index: 1; }
+.mascot3d-steam.on { display: block; }
+.mascot3d-steam i { position: absolute; bottom: 0; width: 30%; aspect-ratio: 1; background: var(--m3-low); opacity: 0; image-rendering: pixelated;
+  clip-path: polygon(25% 0, 75% 0, 75% 25%, 100% 25%, 100% 75%, 75% 75%, 75% 100%, 25% 100%, 25% 75%, 0 75%, 0 25%, 25% 25%);
+  animation: steam 1.6s steps(8) infinite; }
+.mascot3d-steam i:first-child { left: 15%; }
+.mascot3d-steam i:last-child { right: 15%; animation-delay: .8s; }
+@keyframes steam { 0% { transform: translateY(40%) scale(.6); opacity: 0; } 30% { opacity: .9; } 100% { transform: translateY(-60%) scale(1.15); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .mascot3d-steam i { animation: none; opacity: .35; } }

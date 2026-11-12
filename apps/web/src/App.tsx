@@ -3,6 +3,7 @@ import { api, AuthError, type ConnStatus, type SignupMode, getToken, setToken, s
 import { Chat, Composer, errorText, type Send } from "./Chat";
 import { IconCheck, IconChevron, IconCompose, IconEye, IconFile, IconEyeOff, IconLogout, IconMemory, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
+import { Mascot3D } from "./Mascot3D";
 import { requestLocation, saveLocation, sharedLocation } from "./location";
 import { Files } from "./Files";
 import { Memory } from "./Memory";
@@ -336,7 +337,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
         <main className="home">
           <header className="home-head">{menu}<span className="brand only-mobile"><PixelAgent size={22} />Simp</span></header>
           <div className="home-hero">
-            <PixelAgent size={64} className="hero-face" />
+            <Mascot3D size={112} className="hero-face" working={creating} />
             <h1>How can I help today?</h1>
             <Composer busy={false} send={start} variant="hero" onQueueFiles={(fs) => queued.current.push(...fs)} disabled={creating} tools={profiles.length > 0 && (
               <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} />
