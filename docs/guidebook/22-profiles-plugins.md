@@ -24,7 +24,8 @@ Code in this chapter (commit `2fc2776`):
 - `packages/simp_agent/src/simp_agent/plugins/__init__.py` — `build_plugins`
 - `packages/simp_agent/src/simp_agent/plugins/redact_secrets.py` — `RedactSecrets`
 - `packages/simp_agent/src/simp_agent/plugins/plan_mode.py` — `PlanMode`
-- `packages/simp_agent/tests/test_profile.py`, `apps/cli/tests/test_sockets.py` — the profile and plugin tests
+- `packages/simp_agent/src/simp_agent/plugins/memory.py` — `MemoryStore`, `FileMemoryStore`, `Memory` (commit `ffc7cd6`)
+- `packages/simp_agent/tests/test_profile.py`, `apps/cli/tests/test_sockets.py`, `packages/simp_agent/tests/test_memory.py` — the profile and plugin tests
 
 ## Problem
 
