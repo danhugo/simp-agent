@@ -13,8 +13,21 @@ the apps import only the library (checked by `packages/simp_agent/tests/test_lay
 - `agent/` — generic loop, `Agent` (queues, prepare hook), tools, `ExecutionEnv` + `LocalEnv`, compaction helpers.
 - `coding/` — read/write/edit/bash tools, system prompt, AGENTS.md / CLAUDE.md loader.
 - `session/` — `AgentSession`: owns an Agent; auto-compaction, overflow recovery, auto-retry with backoff, `SessionStore` persistence. No terminal or file assumptions.
-- `plugins/` — `RedactSecrets`, `PlanMode`. `testing/` — `FakeProvider`, `EnvConformance`.
+- `plugins/` — `RedactSecrets`, `PlanMode`, `Memory` (see below). `testing/` — `FakeProvider`, `EnvConformance`.
 - `apps/cli` (`simp_cli/__init__.py`) — argparse, settings profiles (`~/.simp-agent/settings.json`), `JsonlStore` (`~/.simp-agent/sessions/<cwd-slug>/<id>.jsonl`), print mode, and `repl.py` + `components.py` (prompt_toolkit + rich, extra `cli`: `uv sync --extra cli`). Uses only `AgentSession`. Tool approval: `AgentSession(approve=...)`; `--yes` skips it.
+
+### Memory plugin (off by default)
+
+`Memory` gives the agent long-term memory. Scope is a plain string: `global` = facts about the user, `agent` = lessons from tasks.
+The agent saves with the `memory_save` tool (no auto-extraction), finds with `memory_search`, removes with `memory_delete`.
+Each turn the prompt gets short rules (including "never save secrets") plus `store.load()`.
+
+Enable: `build_plugins(["memory"])` with `plugin_config={"memory": {"dir": "~/.simp_agent/memory", "max_chars": 2000}}`
+(the default `FileMemoryStore` writes one JSONL file per scope). On the server, add `"memory"` to a profile's `plugins` list.
+
+Own store: pass any object with `load() -> str`, `search(query, scope=None, limit=10) -> list[dict]`,
+`save(content, scope) -> id`, `delete(id) -> bool` (the `MemoryStore` Protocol), e.g. `AgentSession(..., plugins=[Memory(MyStore())])`.
+Items are `{"id", "scope", "content", "created", "source"?}`. The store decides how much `load()` returns.
 
 ## Server (`apps/server`)
 
