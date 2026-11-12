@@ -11,6 +11,7 @@ import {
 import type { PendingApproval, ToolCall } from "./protocol.gen";
 import { canContinue, type ChatState } from "./state";
 import { PixelAgent } from "./PixelAgent";
+import { Mascot3D } from "./Mascot3D";
 
 interface Props {
   sid: string;
@@ -111,6 +112,7 @@ export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = fal
       </header>
       <div className="chat-body">
         <div className="messages" ref={log} onScroll={onScroll} role="log" aria-live="polite" aria-label="Conversation">
+          <div className="chat-mascot"><Mascot3D size={48} pixels={48} working={busy} /></div>
           <div className="thread">
             {state.items.map((it) =>
               it.kind === "user" ? <div key={it.seq} className="msg user">{it.text}</div>
@@ -126,21 +128,13 @@ export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = fal
               ))}
             {/* aria-live off + aria-busy: don't announce every streamed token; the finished message is announced once */}
             {firstPrompt && !state.items.some((i) => i.kind === "user") && <div className="msg user">{firstPrompt}</div>}
-            {(() => {  // "working" indicator: from send until the first token, tool call or answer shows up
-              const showFirst = !!firstPrompt && !state.items.some((i) => i.kind === "user");
-              const lastUser = state.items[state.items.length - 1]?.kind === "user";
-              return (busy || showFirst) && (lastUser || showFirst) && !f.text && !f.thinking && (
-                <div className="msg assistant typing" role="status" aria-label="Simp is working">
-                  <PixelAgent size={20} /><span className="dots" aria-hidden="true"><i /><i /><i /></span>
-                </div>
-              );
-            })()}
             {(f.text || f.thinking) && (
               <div className="msg assistant streaming" aria-live="off" aria-busy="true">
                 {f.thinking && <Thinking text={f.thinking} open />}
                 {f.text && <Md text={f.text} />}
               </div>
             )}
+            {(busy || (!!firstPrompt && !state.items.some((i) => i.kind === "user"))) && <RunStatus sid={sid} />}
             {pendingSteers.map((p) => (
               <div key={`steer-${p.id}`} className={`msg user pending ${p.failed ? "failed" : ""}`}>
                 {p.text}<span className="msg-status">{p.failed ? "Not sent" : "Pending"}</span>
@@ -301,12 +295,14 @@ function Tool({ call, state, send, sid, onOpenFile, onError }: {
   const decision = state.decisions[call.id];
   const file = writtenFile(call, result);
   const status = result ? (result.is_error ? "error" : "done") : state.pending?.call_id === call.id ? "approval" : "running";
+  const ms = useToolTimer(call.id, !result);
   return (
     <>
     <details className={`tool ${status}`} open={status === "approval"}>
       <summary>
         <span className={`dot ${status}`} title={dotLabel[status]} role="img" aria-label={dotLabel[status]} />
         <span className="tool-label">{toolLabel(call, status !== "running" && status !== "approval")}</span>
+        {ms !== null && ms >= 2000 && <span className="tool-time" aria-label={`ran for ${fmtDuration(ms)}`}>{fmtDuration(ms)}</span>}
         <IconChevron size={16} className="chev" />
       </summary>
       <div className="tool-body">
@@ -401,11 +397,12 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [text]);
-  const empty = !text.trim();
+  const empty = !text.trim() && !attached.length;  // files alone can be sent, with no text
   const submit = () => {
     const t = text.trim();
-    if (!t || disabled) return;
-    const note = attached.length ? `\n\n[Attached files in the workspace: ${attached.join(", ")}]` : "";  // so the agent knows
+    if ((!t && !attached.length) || disabled) return;
+    const files = `[Attached files in the workspace: ${attached.join(", ")}]`;  // so the agent knows
+    const note = !attached.length ? "" : t ? `\n\n${files}` : files;
     send(!busy ? { type: "prompt", text: t + note } : { type: "steer", text: t + note });
     setText("");
     setAttached([]);
@@ -433,10 +430,11 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
   };
   return (
     <div className={`composer ${variant ?? ""}`}>
-      <div className="composer-card" onClick={(e) => { if (e.target === e.currentTarget) area.current?.focus(); }}>
+      <div className={`composer-card ${attached.length || uploading || text.includes("\n") ? "expanded" : ""}`}
+        onClick={(e) => { if (e.target === e.currentTarget) area.current?.focus(); }}>
         {(attached.length > 0 || uploading) && (
           <ul className="attached" aria-label="Attached files" aria-live="polite">
-            {attached.map((n) => <li key={n} title={`Uploaded to the workspace: ${n}`}>{n}</li>)}
+            {attached.map((n) => <li key={n} title={`Uploaded to the workspace: ${n}`}><IconFile size={16} /><span>{n}</span></li>)}
             {uploading && <li className="muted">Uploading…</li>}
           </ul>
         )}
@@ -469,6 +467,53 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** "20s", "1m 20s", "1h 2m": compact elapsed time. */
+export function fmtDuration(ms: number): string {
+  const t = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+  return h ? `${h}h ${m}m` : m ? `${m}m ${sec}s` : `${sec}s`;
+}
+
+/** Re-render every second while `on`, and return Date.now(). */
+function useNow(on: boolean): number {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!on) return;
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [on]);
+  return Date.now();
+}
+
+// When each tool call was first seen running and when its result arrived (client clock; survives re-renders).
+const toolTimes = new Map<string, { start: number; end?: number }>();
+/** Elapsed ms for a tool call: live while running, frozen when done; null if it was already done when first seen. */
+function useToolTimer(id: string, running: boolean): number | null {
+  const now = useNow(running);
+  let t = toolTimes.get(id);
+  if (!t) { t = running ? { start: now } : { start: now, end: now }; toolTimes.set(id, t); if (!running) return null; }
+  if (!running && t.end === undefined) t.end = now;
+  if (t.end !== undefined && t.end === t.start) return null;
+  return (t.end ?? now) - t.start;
+}
+
+// Simp's made-up working words: one is picked at random when a run starts and kept for that run.
+const SIMP_WORDS = ["Simping", "Mumbling", "Bumbling", "Noodling", "Pondering", "Fiddling", "Tinkering", "Puttering",
+  "Whirring", "Scribbling", "Doodling", "Wobbling", "Murmuring", "Rummaging", "Simmering", "Bonking"];
+const runStarts = new Map<string, { start: number; word: string }>();  // one random word per run
+/** "Simping… 1m 20s" under the conversation for the whole run (client clock from when the run was first seen). */
+function RunStatus({ sid }: { sid: string }) {
+  const now = useNow(true);
+  useEffect(() => () => { runStarts.delete(sid); }, [sid]);
+  if (!runStarts.has(sid)) runStarts.set(sid, { start: now, word: SIMP_WORDS[Math.floor(Math.random() * SIMP_WORDS.length)] });
+  const { start, word } = runStarts.get(sid)!;
+  const ms = now - start;
+  return (
+    <div className="msg assistant typing run-status" role="status" aria-label={`Simp is working, ${fmtDuration(ms)}`}>
+      <PixelAgent size={20} /><span className="run-word">{word}…</span><span className="run-time">{fmtDuration(ms)}</span>
     </div>
   );
 }

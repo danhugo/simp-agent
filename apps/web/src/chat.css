@@ -255,3 +255,30 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .model-menu li span { overflow-wrap: anywhere; }
 @media (max-width: 767px) { .model-menu { position: fixed; top: auto; left: 4vw; right: 4vw; width: auto; max-width: none; margin-top: 6px; } }
 .tool-err { margin: 2px 0 6px 18px; color: var(--err); }
+
+/* small 3D Simp at the top of the conversation, centered and sticky while scrolling;
+   same look-at-cursor, blink and working bob as on the home screen */
+.chat-mascot { position: sticky; top: 0; z-index: 2; display: flex; justify-content: center; padding: var(--sp-5) 0 var(--sp-1);
+  pointer-events: none; background: linear-gradient(var(--bg) 70%, transparent); }
+.chat-mascot .mascot3d-shadow { width: 44%; height: 6px; filter: blur(3px); }
+
+/* ---- elapsed times ---- */
+.tool-time { margin-left: auto; padding-left: var(--sp-2); font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.run-status { gap: var(--sp-2); font-size: var(--fs-sm); }
+.run-status .run-word { color: var(--text); animation: run-pulse 1.6s ease-in-out infinite; }
+.run-status .run-time { color: var(--muted); font-variant-numeric: tabular-nums; }
+@keyframes run-pulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .run-status .run-word { animation: none; } }
+
+/* expanded composer (attachments or several lines): files on top, text, then a tool bar (+ left, model/send right),
+   with roomier padding so nothing is pressed against the rounded corners */
+.composer-card.expanded { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--sp-2);
+  padding: var(--sp-3); border-radius: 24px; }
+.composer-card.expanded textarea { flex: none; width: 100%; padding: 2px var(--sp-1); }
+.composer-card.expanded .composer-bar { display: flex; align-items: center; gap: var(--sp-1); }
+.composer-card.expanded .composer-bar .spacer { display: block; flex: 1; }
+.composer-card.expanded .attached { padding: 0; gap: var(--sp-2); }
+.composer-card.expanded .attached li { display: inline-flex; align-items: center; gap: var(--sp-2); max-width: 260px;
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--radius); background: var(--panel); font-size: var(--fs-sm); }
+.composer-card.expanded .attached li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-card.expanded .attached li svg { flex: none; color: var(--muted); }
