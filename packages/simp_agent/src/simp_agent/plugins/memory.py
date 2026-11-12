@@ -43,11 +43,12 @@ class FileMemoryStore:
             item = json.loads(line)
         except ValueError:
             return None
-        return item if isinstance(item, dict) and {"id", "scope", "content", "created"} <= item.keys() else None
+        ok = isinstance(item, dict) and all(isinstance(item.get(k), str) for k in ("id", "scope", "content"))
+        return item if ok and isinstance(item.get("created"), (int, float)) else None
 
     def _items(self, scope: str | None = None) -> list[dict]:
         files = [self._file(scope)] if scope else sorted(self.dir.glob("*.jsonl"))
-        items = [i for f in files if f.exists() for line in f.read_text().splitlines() if (i := self._parse(line))]
+        items = [i for f in files if f.exists() for line in f.read_text(errors="replace").splitlines() if (i := self._parse(line))]
         return sorted(items, key=lambda i: i["created"], reverse=True)  # newest first
 
     def load(self) -> str:
@@ -74,7 +75,7 @@ class FileMemoryStore:
 
     def delete(self, id: str) -> bool:
         for f in self.dir.glob("*.jsonl"):
-            lines = f.read_text().splitlines()
+            lines = f.read_text(errors="replace").splitlines()
             keep = [l for l in lines if l.strip() and (self._parse(l) or {}).get("id") != id]
             if len(keep) != len([l for l in lines if l.strip()]):
                 f.write_text("".join(l + "\n" for l in keep))

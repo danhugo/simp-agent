@@ -79,7 +79,9 @@ def test_bad_lines_skipped(tmp_path):
     store = FileMemoryStore(tmp_path)
     good = store.save("likes tea", "global")
     with open(tmp_path / "global.jsonl", "a") as f:
-        f.write("\n{not json\n[1, 2]\n{\"id\": \"y\"}\n")
+        f.write('\n{not json\n[1, 2]\n{"id": "y"}\n{"id": "z", "scope": "global", "content": 5, "created": "x"}\n')
+    with open(tmp_path / "global.jsonl", "ab") as f:
+        f.write(b"\xff\xfe bad bytes\n")
     assert "likes tea" in store.load()
     assert [i["id"] for i in store.search("tea")] == [good]
     assert store.delete(good) and not store.delete("nope")
