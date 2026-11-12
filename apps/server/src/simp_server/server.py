@@ -55,7 +55,7 @@ HEARTBEAT = 15  # seconds between SSE ": ping" comments
 QUEUE_MAX = 1000  # events buffered per SSE client; a client that falls this far behind is dropped and reconnects
 MAX_QUEUED = 20  # steer + follow-up messages waiting per session
 HOME = Path(os.environ.get("SIMP_SERVER_HOME", Path.home() / ".simp-server"))
-TITLE_PROMPT = "Name this coding session in 3 to 6 words. Reply with the title only."
+TITLE_PROMPT = "Name this conversation in 3 to 6 words, in the user's language. Reply with the title only."
 DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_server.store:SqliteStore",
                    "auth": "simp_server.server:StaticTokenAuth"}
 

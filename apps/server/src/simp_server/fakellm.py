@@ -1,6 +1,6 @@
 """Deterministic stream_fn for e2e (`simp-server run --fake-llm`). Reacts to the last message:
 "slow ..." -> 40 slow chunks; "tool ..." -> a bash call (needs approval); a tool result -> "Tool said: ..."; else echo.
-A title request (system prompt "Name this coding session...") -> "Fake title"."""
+A title request (system prompt "Name this conversation...") -> "Fake title"."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ ids = itertools.count(1)
 
 async def stream(model, ctx, api_key=None):
     last = ctx.messages[-1]
-    if ctx.system_prompt.startswith("Name this coding session"):
+    if ctx.system_prompt.startswith("Name this conversation"):
         chunks, calls = ["Fake title"], []
     elif last.role == "tool_result":
         chunks, calls = [f"Tool said: {last.content.strip()}"], []

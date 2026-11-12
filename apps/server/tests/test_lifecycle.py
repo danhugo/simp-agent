@@ -128,7 +128,7 @@ async def test_title_task_blocks_eviction_and_drop_cancels_it(tmp_path):
     gate = asyncio.Event()
 
     async def slow_title(model, ctx, api_key=None):
-        if ctx.system_prompt.startswith("Name this coding session"):
+        if ctx.system_prompt.startswith("Name this conversation"):
             await gate.wait()
         async for ev in FakeProvider(reply("a"))(model, ctx, api_key=api_key):
             yield ev

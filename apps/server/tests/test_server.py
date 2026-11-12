@@ -495,7 +495,7 @@ async def test_count_users_ignores_revoked(env):
 # ---- Stage 3 task C: commands, titles
 
 def titled(text):
-    return lambda ctx: reply(text) if ctx.system_prompt.startswith("Name this coding session") else reply("nope")
+    return lambda ctx: reply(text) if ctx.system_prompt.startswith("Name this conversation") else reply("nope")
 
 
 async def settle(run):
