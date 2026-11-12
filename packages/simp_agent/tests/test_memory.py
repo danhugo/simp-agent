@@ -1,3 +1,4 @@
+import pytest
 import asyncio
 
 from simp_agent.ai import Model
@@ -61,3 +62,27 @@ def test_works_with_fake_store():
     run_tool(s, "memory_save", content="lesson", scope="agent")
     assert store.saved == [("lesson", "agent")]
     assert "CORE" in asyncio.run(s._build_prompt())
+
+
+def test_scope_traversal_rejected_in_search_and_save(tmp_path):
+    (tmp_path / "secret.jsonl").write_text('{"id": "x", "scope": "s", "content": "leak", "created": 1}\n')
+    store = FileMemoryStore(tmp_path / "mem")
+    for bad in ["../secret", "..\\secret", ".hidden", ""]:
+        with pytest.raises(ValueError):
+            store.save("hi", bad)
+    for bad in ["../secret", "..\\secret", ".hidden"]:
+        with pytest.raises(ValueError):
+            store.search("leak", bad)
+
+
+def test_bad_lines_skipped(tmp_path):
+    store = FileMemoryStore(tmp_path)
+    good = store.save("likes tea", "global")
+    with open(tmp_path / "global.jsonl", "a") as f:
+        f.write('\n{not json\n[1, 2]\n{"id": "y"}\n{"id": "z", "scope": "global", "content": 5, "created": "x"}\n')
+    with open(tmp_path / "global.jsonl", "ab") as f:
+        f.write(b"\xff\xfe bad bytes\n")
+    assert "likes tea" in store.load()
+    assert [i["id"] for i in store.search("tea")] == [good]
+    assert store.delete(good) and not store.delete("nope")
+    assert "{not json" in (tmp_path / "global.jsonl").read_text()  # bad lines kept, not lost

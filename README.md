@@ -23,7 +23,7 @@ The agent saves with the `memory_save` tool (no auto-extraction), finds with `me
 Each turn the prompt gets short rules (including "never save secrets") plus `store.load()`.
 
 Enable: `build_plugins(["memory"])` with `plugin_config={"memory": {"dir": "~/.simp_agent/memory", "max_chars": 2000}}`
-(the default `FileMemoryStore` writes one JSONL file per scope). On the server, add `"memory"` to a profile's `plugins` list.
+(the default `FileMemoryStore` writes one JSONL file per scope). On the server, keep memory OFF for now: one shared dir means all users see each other's memory (wait for a per-user dir).
 
 Own store: pass any object with `load() -> str`, `search(query, scope=None, limit=10) -> list[dict]`,
 `save(content, scope) -> id`, `delete(id) -> bool` (the `MemoryStore` Protocol), e.g. `AgentSession(..., plugins=[Memory(MyStore())])`.

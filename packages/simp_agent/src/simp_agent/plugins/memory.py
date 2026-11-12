@@ -18,7 +18,7 @@ You have long-term memory. Scopes: "global" = facts and preferences about the US
 
 
 class MemoryStore(Protocol):
-    """Item = {"id", "scope", "content", "created", "source"?}. scope is a plain string ("global", "agent", ...)."""
+    """Item = {"id", "scope", "content", "created"}. scope is a plain string ("global", "agent", ...)."""
 
     def load(self) -> str: ...
     def search(self, query: str, scope: str | None = None, limit: int = 10) -> list[dict]: ...
@@ -32,9 +32,23 @@ class FileMemoryStore:
     def __init__(self, dir: str | Path, max_chars: int = 2000):
         self.dir, self.max_chars = Path(dir).expanduser(), max_chars
 
+    def _file(self, scope: str) -> Path:
+        if not scope or "/" in scope or "\\" in scope or scope.startswith("."):
+            raise ValueError(f"bad scope {scope!r}")
+        return self.dir / f"{scope}.jsonl"
+
+    @staticmethod
+    def _parse(line: str) -> dict | None:
+        try:
+            item = json.loads(line)
+        except ValueError:
+            return None
+        ok = isinstance(item, dict) and all(isinstance(item.get(k), str) for k in ("id", "scope", "content"))
+        return item if ok and isinstance(item.get("created"), (int, float)) else None
+
     def _items(self, scope: str | None = None) -> list[dict]:
-        files = [self.dir / f"{scope}.jsonl"] if scope else sorted(self.dir.glob("*.jsonl"))
-        items = [json.loads(line) for f in files if f.exists() for line in f.read_text().splitlines() if line.strip()]
+        files = [self._file(scope)] if scope else sorted(self.dir.glob("*.jsonl"))
+        items = [i for f in files if f.exists() for line in f.read_text(errors="replace").splitlines() if (i := self._parse(line))]
         return sorted(items, key=lambda i: i["created"], reverse=True)  # newest first
 
     def load(self) -> str:
@@ -52,18 +66,17 @@ class FileMemoryStore:
         return [i for i in self._items(scope) if all(w in i["content"].lower() for w in words)][:limit]
 
     def save(self, content: str, scope: str) -> str:
-        if not scope or "/" in scope or "\\" in scope or scope.startswith("."):
-            raise ValueError(f"bad scope {scope!r}")
+        path = self._file(scope)
         item = {"id": uuid.uuid4().hex[:12], "scope": scope, "content": content, "created": time.time()}
         self.dir.mkdir(parents=True, exist_ok=True)
-        with open(self.dir / f"{scope}.jsonl", "a") as f:
+        with open(path, "a") as f:
             f.write(json.dumps(item) + "\n")
         return item["id"]
 
     def delete(self, id: str) -> bool:
         for f in self.dir.glob("*.jsonl"):
-            lines = f.read_text().splitlines()
-            keep = [l for l in lines if l.strip() and json.loads(l)["id"] != id]
+            lines = f.read_text(errors="replace").splitlines()
+            keep = [l for l in lines if l.strip() and (self._parse(l) or {}).get("id") != id]
             if len(keep) != len([l for l in lines if l.strip()]):
                 f.write_text("".join(l + "\n" for l in keep))
                 return True
