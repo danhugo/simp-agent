@@ -24,7 +24,8 @@ Code in this chapter (commit `2fc2776`):
 - `packages/simp_agent/src/simp_agent/plugins/__init__.py` — `build_plugins`
 - `packages/simp_agent/src/simp_agent/plugins/redact_secrets.py` — `RedactSecrets`
 - `packages/simp_agent/src/simp_agent/plugins/plan_mode.py` — `PlanMode`
-- `packages/simp_agent/tests/test_profile.py`, `apps/cli/tests/test_sockets.py` — the profile and plugin tests
+- `packages/simp_agent/src/simp_agent/plugins/memory.py` — `MemoryStore`, `FileMemoryStore`, `Memory` (commit `ffc7cd6`)
+- `packages/simp_agent/tests/test_profile.py`, `apps/cli/tests/test_sockets.py`, `packages/simp_agent/tests/test_memory.py` — the profile and plugin tests
 
 ## Problem
 
@@ -151,9 +152,9 @@ class MemoryStore(Protocol):
     def delete(self, id) -> bool: ...
 ```
 
-`FileMemoryStore` keeps one JSONL file per scope, `global.jsonl` and `agent.jsonl`, in one folder. Each line is one item: `{"id", "scope", "content", "created"}`. `save` appends a line. The scope becomes the file name. So `save` refuses an empty scope, or one with `/`, `\` or a leading `.`: the model must not be able to write `../something`. Any other name is allowed; `"global"` and `"agent"` are only what the rules suggest. `search` returns items that contain every word of the query (upper or lower case does not matter), newest first, at most 10. This is a simple keyword match; a real index can come when memory gets big. `delete` looks through the files until it finds the id, then rewrites that file without it.
+`FileMemoryStore` keeps one JSONL file per scope, `global.jsonl` and `agent.jsonl`, in one folder. Each line is one item: `{"id", "scope", "content", "created"}`. `save` appends a line. The scope becomes the file name. So `save` refuses an empty scope, or one with `/`, `\` or a leading `.`: the model must not be able to write `../something`. Any other name is allowed; `"global"` and `"agent"` are only what the rules suggest. `search` returns items whose text contains every word of the query, even as part of a longer word (so `use` also finds `user`; upper or lower case does not matter), newest first, at most 10. This is a simple keyword match; a real index can come when memory gets big. `delete` looks through the files until it finds the id, then rewrites that file without it.
 
-**Into the prompt.** `load` walks the items, newest first, and stops at `max_chars` (2000 by default), so memory can never fill the context window ([21](21-overflow.md)). In `setup`, the plugin adds a prompt section with order 500, so it comes after the coding prompt and `AGENTS.md`. Its value is a **function**, not a string:
+**Into the prompt.** `load` goes through the items, newest first, and stops at `max_chars` (2000 by default), so the saved notes stay small and cannot fill the context window ([21](21-overflow.md)). In `setup`, the plugin adds a prompt section with order 500, so it comes after the coding prompt and `AGENTS.md`. Its value is a **function**, not a string:
 
 ```python
 def prompt(self, ctx=None) -> str:
