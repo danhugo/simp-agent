@@ -59,7 +59,7 @@ Read the arrow as "is used by". `ai` is used by `agent`, `agent` by `coding`, an
 | `agent` | `agent_loop()`, the `Agent` class, `AgentTool`, the `ExecutionEnv` protocol and `LocalEnv` (`agent/env.py`), compaction helpers. |
 | `coding` | The coding tools (`make_tools()` in `coding/tools.py`), `system_prompt()`, `load_context_file()`. |
 | `session` | `AgentSession`: owns an `Agent` and adds retry, compaction, overflow recovery, saving (`SessionStore`) and plugins (`PluginAPI`). |
-| `plugins` | Two built-in plugins, `RedactSecrets` and `PlanMode`, and `build_plugins()`. |
+| `plugins` | Three built-in plugins, `RedactSecrets`, `PlanMode` and `Memory`, and `build_plugins()`. |
 | `testing` | `FakeProvider`, `FakeEnv` and `EnvConformance`: helpers for tests. |
 
 ### The one rule: import only downward
