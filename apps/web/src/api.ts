@@ -4,6 +4,8 @@ import { sharedLocation } from "./location";
 
 export type Command = Protocol["command"];
 export interface FileEntry { name: string; is_dir: boolean; size: number }
+/** REST-only (GET /api/memories), not in the protocol schema. */
+export interface MemoryItem { id: string; scope: "global" | "agent"; agent_id: string | null; content: string; created: number; source_run_id: string | null }
 
 export type SignupMode = "open" | "invite" | "closed";
 
@@ -60,6 +62,10 @@ export const api = {
   /** path is relative to the workspace root. */
   upload: (sid: string, path: string, data: Blob) =>
     call(`/api/sessions/${sid}/files/raw?path=${encodeURIComponent(path)}`, { method: "PUT", body: data }),
+  memories: async (): Promise<MemoryItem[]> => (await call("/api/memories")).json(),
+  editMemory: (id: string, content: string) => call(`/api/memories/${id}`, { ...json({ content }), method: "PATCH" }),
+  deleteMemory: (id: string) => call(`/api/memories/${id}`, { method: "DELETE" }),
+  exportMemories: async (): Promise<Blob> => (await call("/api/memories/export")).blob(),
 };
 
 export type ConnStatus = "connecting" | "live" | "reconnecting";
