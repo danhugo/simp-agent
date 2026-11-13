@@ -59,7 +59,7 @@ Read the arrow as "is used by". `ai` is used by `agent`, `agent` by `coding`, an
 | `agent` | `agent_loop()`, the `Agent` class, `AgentTool`, the `ExecutionEnv` protocol and `LocalEnv` (`agent/env.py`), compaction helpers. |
 | `coding` | The coding tools (`make_tools()` in `coding/tools.py`), `system_prompt()`, `load_context_file()`. |
 | `session` | `AgentSession`: owns an `Agent` and adds retry, compaction, overflow recovery, saving (`SessionStore`) and plugins (`PluginAPI`). |
-| `plugins` | Three built-in plugins, `RedactSecrets`, `PlanMode` and `Memory`, and `build_plugins()`. |
+| `plugins` | Four built-in plugins, `RedactSecrets`, `PlanMode`, `Memory` and `McpPlugin` ([22a](22a-mcp.md)), and `build_plugins()`. |
 | `testing` | `FakeProvider`, `FakeEnv` and `EnvConformance`: helpers for tests. |
 
 ### The one rule: import only downward
@@ -138,7 +138,7 @@ We build in the same order as the layers: bottom first. Each chapter adds one ca
 | 1 · Talk to a model (`ai`) | [02](02-pick-clean.md)–[05](05-label-test.md) | Pick + Clean (with the message types), Translate + Send, Parse, Label + a fake model for tests. |
 | 2 · The loop (`agent`) | [07](07-agent-loop.md)–[10](10-hooks-approval.md) | A loop that runs tools, sends events, can be stopped, steered and checked. |
 | 3 · Coding (`coding`) | [12](12-exec-env.md)–[15](15-evals.md) | A safe place to touch files, real coding tools, a system prompt, evals. |
-| 4 · Sessions (`session`, `plugins`) | [17](17-session.md)–[22](22-profiles-plugins.md) | Saved conversations, plugins, retry, compaction, overflow recovery, profiles. |
+| 4 · Sessions (`session`, `plugins`) | [17](17-session.md)–[22a](22a-mcp.md) | Saved conversations, plugins, retry, compaction, overflow recovery, profiles. |
 | 5 · Apps | [24](24-cli.md)–[31](31-system-tests-deploy.md) | CLI, server, transport, store, limits, Docker sandbox, web client, deploy. |
 | Wrap-up | [32](32-limits-choices-extend.md) | Why it is built this way, where it stops, how to extend it. |
 
@@ -168,6 +168,7 @@ Which chapter adds which feature, and in which layer it lives:
 | Compaction | 20 | `agent/compaction.py`, `session` |
 | Context overflow | 21 | `session` |
 | Profiles, built-in plugins | 22 | `session/profile.py`, `plugins` |
+| MCP client | 22a | `plugins/mcp.py` |
 | CLI | 24 | `apps/cli` |
 | Server run, transport, store, limits | 25–28 | `apps/server` |
 | Docker sandbox | 29 | `apps/server/sandboxes` |

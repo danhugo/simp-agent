@@ -2,7 +2,7 @@
 
 **In one sentence:** Part 4 builds `AgentSession`, one object that owns an `Agent` for a whole conversation: it saves every message, lets plugins join in, and fixes errors, so a chat can last for days.
 
-Read this page before [17](17-session.md). Come back to it any time you get lost in [17](17-session.md)–[22](22-profiles-plugins.md). It adds no new facts. The plain walk-through comes first; the map (picture and tables) is at the end.
+Read this page before [17](17-session.md). Come back to it any time you get lost in [17](17-session.md)–[22a](22a-mcp.md). It adds no new facts. The plain walk-through comes first; the map (picture and tables) is at the end.
 
 ## Example: the user comes back the next day
 
@@ -31,6 +31,8 @@ The second idea is that history is only ever added to, never changed. Each finis
 **[21 Context overflow](21-overflow.md): recover when it is too late.** If the model still says "prompt is too long", the session compacts once and continues, instead of stopping.
 
 **[22 Profiles and built-in plugins](22-profiles-plugins.md): make it usable.** A [profile](glossary.md#profile) is a plain dict from the settings file; `build_model()` turns it into a `Model`. `build_plugins()` turns plugin names into objects, and three real plugins ship: `RedactSecrets`, `PlanMode` and `Memory`.
+
+**[22a The MCP client plugin](22a-mcp.md): tools from other programs.** `McpPlugin` connects to MCP servers, lists their tools and registers each one as `<server>__<tool>`, so the agent gets new tools without new Python code.
 
 ## The map
 
@@ -111,5 +113,5 @@ The same "now add tests" story, now with block numbers. The history is in a JSON
 ## Builds on / Next
 
 - Builds on: [Part 3 big picture](11-part-3-coding.md), [Part 3 · 14 The system prompt](14-system-prompt.md) and [15 Evals](15-evals.md); the agent loop from [07](07-agent-loop.md)–[10](10-hooks-approval.md).
-- Chapters: [17 Sessions](17-session.md) · [18 Plugins](18-plugins.md) · [19 Retry](19-retry.md) · [20 Compaction](20-compaction.md) · [21 Context overflow](21-overflow.md) · [22 Profiles and built-in plugins](22-profiles-plugins.md).
+- Chapters: [17 Sessions](17-session.md) · [18 Plugins](18-plugins.md) · [19 Retry](19-retry.md) · [20 Compaction](20-compaction.md) · [21 Context overflow](21-overflow.md) · [22 Profiles and built-in plugins](22-profiles-plugins.md) · [22a The MCP client plugin](22a-mcp.md).
 - Next: [17 Sessions](17-session.md).
