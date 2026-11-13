@@ -163,7 +163,7 @@ FUNCTION subscribe(after):
     q = a new queue that holds at most QUEUE_MAX events
     ADD q to subs
     snap = Snapshot(last_seq = seq, run_state, in_flight,
-                    pending_approval, title, plan_mode)
+                    pending_approval, title)
     RETURN ( every e in log with e["seq"] > after, then snap ),  q
 ```
 
