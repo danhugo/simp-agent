@@ -54,6 +54,30 @@ test("apps: connect state, toggle drive off/on, disconnect (mocked API)", async 
   expect(calls).toEqual(["POST /api/connections/google/start", "POST /api/apps/drive/disable", "POST /api/apps/drive/enable", "DELETE /api/connections/google"]);
 });
 
+test("no-auth app: switch only, toggles on and off without a login", async ({ page }) => {
+  let on = false;
+  const calls: string[] = [];
+  await page.route("**/api/apps", (r) => r.fulfill({ json: [...apps(false), {
+    app: "deepwiki", label: "DeepWiki", description: "Ask about any public GitHub repo", icon: "deepwiki",
+    provider: null, connected: true, enabled: on, email: null, status: null,
+  }] }));
+  await page.route(/\/api\/apps\/deepwiki\/(enable|disable)$/, (r) => {
+    calls.push(new URL(r.request().url()).pathname);
+    on = r.request().url().endsWith("enable");
+    return r.fulfill({ json: { ok: true } });
+  });
+  await login(page, "#apps");
+  const card = page.getByRole("region", { name: "Available" }).getByRole("listitem", { name: "DeepWiki" });
+  await expect(card.getByRole("button", { name: /Connect/ })).toHaveCount(0);
+  await card.getByRole("switch", { name: "Use DeepWiki" }).click();
+  const onCard = page.getByRole("region", { name: "Connected" }).getByRole("listitem", { name: "DeepWiki" });
+  await expect(onCard.getByRole("switch")).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator(".account-line")).toHaveCount(0);
+  await onCard.getByRole("switch").click();
+  await expect(page.getByRole("region", { name: "Available" }).getByRole("switch", { name: "Use DeepWiki" })).toHaveAttribute("aria-checked", "false");
+  expect(calls).toEqual(["/api/apps/deepwiki/enable", "/api/apps/deepwiki/disable"]);
+});
+
 test("approval card for an MCP tool shows app + action and readable args", async ({ page }) => {
   const headers = { Authorization: `Bearer ${token()}` };
   const [profile] = await (await page.request.get("/api/profiles", { headers })).json();
