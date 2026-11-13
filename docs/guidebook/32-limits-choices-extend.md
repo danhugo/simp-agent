@@ -161,9 +161,9 @@ The other six limits are at the edges, in the server and in how it is run.
 
 **8. No lock on the user workspace.** All of Ana's sessions share one folder, `workspaces/<user_id>/` ([29](29-docker-sandbox.md#close-close_all)). Each session has its own container, but there is no per-user lock. So if two of her sessions edit `notes.md` at the same time, the last write wins and the other change is lost. Deleting a session keeps its files, so the folder only grows until she cleans it up herself.
 
-**9. Missing tools and features.** No web fetch or search tool, no MCP, no skills, no sub-agents. (Simple memory exists as a plugin, [22](22-profiles-plugins.md#memory-remember-across-sessions).) All of these are on the roadmap as later work: "capabilities via plugins".
+**9. Missing tools and features.** No skills, no sub-agents. (Simple memory exists as a plugin, [22](22-profiles-plugins.md#memory-remember-across-sessions); the server has web search and fetch tools, [22](22-profiles-plugins.md#who-uses-them); and an MCP client exists as a plugin, [22a](22a-mcp.md).) All of these are on the roadmap as later work: "capabilities via plugins".
 
-Notice the pattern. Only three limits are in the core, and each is a shortcut with a known fix. Most are at the edges or on the "later" list, and most later features (web fetch, MCP, sub-agents) would be new plugins, not changes to the loop. That is the point of a small core: its limits are easy to see and easy to fix in one place.
+Notice the pattern. Only three limits are in the core, and each is a shortcut with a known fix. Most are at the edges or on the "later" list, and most later features (skills, sub-agents) would be new plugins, as web tools and MCP already are, not changes to the loop. That is the point of a small core: its limits are easy to see and easy to fix in one place.
 
 ### Extend it yourself
 

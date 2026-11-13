@@ -74,7 +74,7 @@ There are two paths into the grey box (`AgentSession`, Part 4). Path A (top) is 
 | 9 | Stream out | When a client connects: send the durable events after `N`, then one snapshot, then live events from a queue. Send a ping when idle; drop a client that is too slow. | `after=N` or `Last-Event-ID` | `text/event-stream` | `apps/server/src/simp_server/server.py` · `Run.subscribe()`, `events()` and `gen()` in `create_app()`; `apps/server/src/simp_server/fake.py` · `sse()` | [26](26-transport.md) |
 | 10 | Test + run | A fake model and a fake server make the whole system run with no API key. Playwright tests click the real web UI. JSON logs, a database backup, and two launchd services run it on one Mac. | the whole system | passing tests, a running service | `apps/server/src/simp_server/fakellm.py` · `stream()`; `apps/server/src/simp_server/fake.py` · `Hub`; `apps/server/src/simp_server/ops.py` · `JsonFormatter`, `backup()`; `deploy/launchd/` | [31](31-system-tests-deploy.md) |
 
-Not numbered: `AgentSession` (the agent loop, tools, plugins, retry and compaction) is Part 4, [17](17-session.md)–[22](22-profiles-plugins.md). The server entry point `apps/server/src/simp_server/__main__.py` · `main()` only picks a mode ([25](25-server-run.md)).
+Not numbered: `AgentSession` (the agent loop, tools, plugins, retry and compaction) is Part 4, [17](17-session.md)–[22a](22a-mcp.md). The server entry point `apps/server/src/simp_server/__main__.py` · `main()` only picks a mode ([25](25-server-run.md)).
 
 ### Which block is inside which
 
@@ -123,6 +123,6 @@ In the Playwright tests (10) the same flow runs against FakeLLM, so the answer i
 
 ## Builds on / Next
 
-- Builds on: [Part 4 big picture](16-part-4-session.md) and [17 Sessions](17-session.md)–[22 Profiles and built-in plugins](22-profiles-plugins.md).
+- Builds on: [Part 4 big picture](16-part-4-session.md) and [17 Sessions](17-session.md)–[22a The MCP client plugin](22a-mcp.md).
 - Chapters: [24 The CLI](24-cli.md) · [25 The server run](25-server-run.md) · [26 Transport](26-transport.md) · [27 Store and auth](27-store-auth.md) · [28 Limits](28-limits.md) · [29 Docker sandbox](29-docker-sandbox.md) · [30 Web client](30-web-client.md) · [31 System tests and deploy](31-system-tests-deploy.md).
 - Next: [24 The CLI](24-cli.md).
