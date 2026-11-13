@@ -18,7 +18,7 @@ const ICONS: Record<string, React.ReactNode> = {
   calendar: <><rect x="4" y="5" width="16" height="15" rx="2" fill="#fff" stroke="#4285f4" strokeWidth="1.5" /><rect x="4" y="5" width="16" height="4" fill="#4285f4" /><text x="12" y="18" fontSize="8" textAnchor="middle" fill="#4285f4" fontFamily="sans-serif" fontWeight="700">31</text></>,
 };
 const AppIcon = ({ name }: { name: string }) => (
-  <svg className="app-icon" viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">{ICONS[name] ?? <circle cx="12" cy="12" r="8" fill="var(--muted)" />}</svg>
+  <svg className="app-icon" viewBox="0 0 24 24" width="52" height="52" aria-hidden="true">{ICONS[name] ?? <circle cx="12" cy="12" r="8" fill="var(--muted)" />}</svg>
 );
 
 /** Apps the agent can use for you: connect a provider once (Google), then turn each app on or off. */
