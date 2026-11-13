@@ -100,9 +100,8 @@ FUNCTION is_retryable(error, kind) -> yes/no
 ```python
 # ---- plugin slots ----
 class Sandbox(Protocol):
-    async def open(self, session_id: str) -> ExecutionEnv: ...
-    async def close(self, session_id: str) -> None: ...
-    async def remove(self, session_id: str) -> None: ...  # delete the workspace files (session deleted)
+    async def open(self, session_id: str, user_id: str) -> ExecutionEnv: ...  # rooted at the user's workspace
+    async def close(self, session_id: str) -> None: ...  # never deletes files: they belong to the user
 
 class Store(Protocol):  # see store.SqliteStore for the full method list
     async def open(self) -> None: ...
@@ -150,7 +149,7 @@ The cut ([20](20-compaction.md)) only lands on a user or assistant message. So i
 
 **3. Three provider APIs.** `_PROVIDERS` holds `anthropic-messages`, `openai-completions` and `openai-responses`. Others need `register_provider`, the provider socket from [02](02-pick-clean.md#1-pick-_providers-register_provider).
 
-The other five limits are at the edges, in the server and in how it is run.
+The other six limits are at the edges, in the server and in how it is run.
 
 **4. One machine.** The server uses SQLite and runs on one machine with launchd ([31](31-system-tests-deploy.md)). The roadmap says Postgres, replicas and session leases are "dropped while on one machine".
 
@@ -160,7 +159,9 @@ The other five limits are at the edges, in the server and in how it is run.
 
 **7. `LocalSandbox` is not isolation.** Its docstring says: *"Not isolation: DockerSandbox replaces it."* The server refuses to start with `LocalSandbox` when there is more than one user in the store (`check_sandbox`), unless `allow_local_sandbox = true` is set ([29](29-docker-sandbox.md)).
 
-**8. Missing tools and features.** No web fetch or search tool, no MCP, no skills, no sub-agents. (Simple memory exists as a plugin, [22](22-profiles-plugins.md#memory-remember-across-sessions).) All of these are on the roadmap as later work: "capabilities via plugins".
+**8. No lock on the user workspace.** All of Ana's sessions share one folder, `workspaces/<user_id>/` ([29](29-docker-sandbox.md#close-close_all)). Each session has its own container, but there is no per-user lock. So if two of her sessions edit `notes.md` at the same time, the last write wins and the other change is lost. Deleting a session keeps its files, so the folder only grows until she cleans it up herself.
+
+**9. Missing tools and features.** No web fetch or search tool, no MCP, no skills, no sub-agents. (Simple memory exists as a plugin, [22](22-profiles-plugins.md#memory-remember-across-sessions).) All of these are on the roadmap as later work: "capabilities via plugins".
 
 Notice the pattern. Only three limits are in the core, and each is a shortcut with a known fix. Most are at the edges or on the "later" list, and most later features (web fetch, MCP, sub-agents) would be new plugins, not changes to the loop. That is the point of a small core: its limits are easy to see and easy to fix in one place.
 
