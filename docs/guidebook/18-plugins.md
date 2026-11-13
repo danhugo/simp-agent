@@ -140,7 +140,7 @@ before_agent_start(info):       // later: this hook gets no api
     self.api.set_model(...)     // but the kept one still works
 ```
 
-Plan mode does exactly this: it keeps `api` in `setup`, and much later, when the user turns plan mode on in the web page, it uses the same `api` to add its "PLAN MODE is on" line to the prompt and to save "on" in the history.
+Plan mode does exactly this: it keeps `api` in `setup`, and much later, when the app calls `set_enabled(True)` to turn plan mode on, it uses the same `api` to add its "PLAN MODE is on" line to the prompt and to save "on" in the history.
 
 The main actions, in plain words: **add a tool** (`register_tool`; a tool with the same name replaces the old one), **add a section to the system prompt** (`add_prompt_section`, see [17](17-session.md#prompt-sections)), and **save its own data in the history** (`append_entry`). Saved data comes back when the session is reopened but is never sent to the model; this is how plan mode remembers whether it was on. The [memory](22-profiles-plugins.md#memory-remember-across-sessions) plugin in 22 is built from just `register_tool` and `add_prompt_section`. The [MCP client](22a-mcp.md) in 22a uses `register_tool` to add tools it only learns about at start, from another program. The full list is in [Reference · objects](ref-objects.md#pluginapi-methods).
 
