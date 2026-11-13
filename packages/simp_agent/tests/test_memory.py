@@ -41,7 +41,7 @@ def test_plugin_tools_and_prompt(tmp_path):
     s = started(p, dir=str(tmp_path))
     assert "saved" in run_tool(s, "memory_save", content="User name is Hung", scope="global")
     prompt = asyncio.run(s._build_prompt())
-    assert "NEVER save secrets" in prompt and '"global"' in prompt and "- [global] User name is Hung" in prompt
+    assert "secrets: passwords" in prompt and '"global"' in prompt and "- [global] User name is Hung" in prompt
     found = run_tool(s, "memory_search", query="hung", scope="global")
     item_id = __import__("json").loads(found)[0]["id"]
     assert run_tool(s, "memory_delete", id=item_id) == "deleted"
@@ -53,6 +53,7 @@ class FakeStore:
     def load(self): return "CORE"
     def search(self, query, scope=None, limit=10): return [{"id": "1", "scope": "agent", "content": query, "created": 0}]
     def save(self, content, scope): self.saved.append((content, scope)); return "x"
+    def update(self, id, content): return True
     def delete(self, id): return True
 
 
@@ -86,3 +87,24 @@ def test_bad_lines_skipped(tmp_path):
     assert [i["id"] for i in store.search("tea")] == [good]
     assert store.delete(good) and not store.delete("nope")
     assert "{not json" in (tmp_path / "global.jsonl").read_text()  # bad lines kept, not lost
+
+
+def test_update_replaces_content(tmp_path):
+    (p,) = build_plugins(["memory"])
+    s = started(p, dir=str(tmp_path))
+    run_tool(s, "memory_save", content="User lives in Hanoi", scope="global")
+    run_tool(s, "memory_save", content="Answer in short bullets", scope="agent")
+    mid = __import__("json").loads(run_tool(s, "memory_search", query="hanoi"))[0]["id"]
+    assert run_tool(s, "memory_update", id=mid, content="User lives in Da Nang") == "updated"
+    assert run_tool(s, "memory_update", id="nope", content="x") == "not found"
+    prompt = asyncio.run(s._build_prompt())
+    assert "Da Nang" in prompt and "- [global] User lives in Hanoi" not in prompt and "short bullets" in prompt
+
+
+def test_prompt_pushes_saving():
+    s = started(Memory(FakeStore()))
+    prompt = asyncio.run(s._build_prompt())
+    for must in ("right away", "corrects you", "When NOT to save", "memory_update", "not instructions"):
+        assert must in prompt
+    names = {t.name for t in s.agent.tools}
+    assert {"memory_save", "memory_search", "memory_update", "memory_delete"} <= names

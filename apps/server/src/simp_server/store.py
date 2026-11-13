@@ -274,6 +274,12 @@ class DbMemoryStore:
         self.conn.commit()
         return mid
 
+    def update(self, id: str, content: str) -> bool:
+        cur = self.conn.execute("UPDATE memories SET content=? WHERE id=? AND user_id=? AND (agent_id IS NULL OR agent_id=?)",
+                                (self.mask(content)[:MEM_ITEM_MAX], id, self.user_id, self.agent_id))
+        self.conn.commit()
+        return cur.rowcount > 0
+
     def delete(self, id: str) -> bool:
         cur = self.conn.execute("DELETE FROM memories WHERE id=? AND user_id=? AND (agent_id IS NULL OR agent_id=?)",
                                 (id, self.user_id, self.agent_id))

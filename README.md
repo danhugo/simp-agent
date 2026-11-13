@@ -19,7 +19,7 @@ the apps import only the library (checked by `packages/simp_agent/tests/test_lay
 ### Memory plugin (off by default)
 
 `Memory` gives the agent long-term memory. Scope is a plain string: `global` = facts about the user, `agent` = lessons from tasks.
-The agent saves with the `memory_save` tool (no auto-extraction), finds with `memory_search`, removes with `memory_delete`.
+The agent saves with the `memory_save` tool (no auto-extraction), finds with `memory_search`, fixes with `memory_update`, removes with `memory_delete`.
 Each turn the prompt gets short rules (including "never save secrets") plus `store.load()`.
 
 Enable: `build_plugins(["memory"])` with `plugin_config={"memory": {"dir": "~/.simp_agent/memory", "max_chars": 2000}}`

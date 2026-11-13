@@ -73,6 +73,15 @@ async def test_memory_shared_across_chats_not_users_and_masked(tmp_path):
     assert SECRET not in fp.ctxs[2].system_prompt and "[REDACTED]" in fp.ctxs[2].system_prompt
     await _chat(mgr, b, "other user")
     assert "likes tea" not in fp.ctxs[3].system_prompt
+    from simp_server.store import DbMemoryStore
+    hide = lambda t: t.replace(SECRET, "[REDACTED]")
+    mine = DbMemoryStore(s.mem, a["id"], await s.default_agent(a["id"]), "r", mask=hide)
+    other = DbMemoryStore(s.mem, b["id"], await s.default_agent(b["id"]), "r")
+    mid = mine.search("tea")[0]["id"]
+    assert not other.update(mid, "hacked")  # owner only
+    assert other.save("note", "global") and mine.search("hacked") == []
+    assert mine.update(mid, f"likes coffee {SECRET}")
+    assert "coffee" in mine.load() and SECRET not in mine.load()  # update is masked like save
     await s.close()
 
 
