@@ -148,7 +148,7 @@ async def test_apps_one_login_toggle_disconnect(tmp_path):
     assert (await c.post("/api/apps/nope/disable", headers=h)).status_code == 404
     await connect(c, ta)
     apps = (await c.get("/api/apps", headers=h)).json()
-    assert [a["app"] for a in apps] == ["gmail", "drive", "calendar"]
+    assert [a["app"] for a in apps][:3] == ["gmail", "drive", "calendar"]
     assert apps[1] == {"app": "drive", "label": "Google Drive", "description": apps[1]["description"], "icon": "drive",
                        "provider": "google", "connected": True, "enabled": True, "email": "me@example.com",
                        "status": "ok"}
@@ -157,7 +157,25 @@ async def test_apps_one_login_toggle_disconnect(tmp_path):
     assert (await c.post("/api/apps/drive/enable", headers=h)).status_code == 200
     await c.post("/api/apps/drive/disable", headers=h)
     await c.delete("/api/connections/google", headers=h)
-    assert not any(a["enabled"] or a["connected"] for a in (await c.get("/api/apps", headers=h)).json())
+    google = lambda r: [a for a in r.json() if a["provider"] == "google"]
+    assert not any(a["enabled"] or a["connected"] for a in google(await c.get("/api/apps", headers=h)))
     await connect(c, ta)  # a new login turns all three on again
-    assert all(a["enabled"] for a in (await c.get("/api/apps", headers=h)).json())
+    assert all(a["enabled"] for a in google(await c.get("/api/apps", headers=h)))
+    await mgr.store.close()
+
+
+async def test_no_login_apps_off_by_default_toggle(tmp_path):
+    _, mgr, _, [(ta, ua), (tb, ub)], c = await make(tmp_path)
+    h = {"Authorization": f"Bearer {ta}"}
+    dw = next(a for a in (await c.get("/api/apps", headers=h)).json() if a["app"] == "deepwiki")
+    assert dw == {"app": "deepwiki", "label": "DeepWiki", "description": dw["description"], "icon": "deepwiki",
+                  "provider": None, "connected": True, "enabled": False, "email": None, "status": None}
+    assert await mgr.conns.servers(ua["id"]) == ([], [])
+    assert (await c.post("/api/apps/deepwiki/enable", headers=h)).json() == {"ok": True}  # no login needed
+    assert (await mgr.conns.servers(ua["id"]))[0] == [{"name": "deepwiki", "url": "https://mcp.deepwiki.com/mcp"}]
+    assert await mgr.conns.servers(ub["id"]) == ([], [])  # per user
+    await connect(c, ta)  # Google unchanged: its three apps on, deepwiki still on
+    assert {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]} == {"deepwiki", "gmail", "drive", "calendar"}
+    await c.post("/api/apps/deepwiki/disable", headers=h)
+    assert "deepwiki" not in {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]}
     await mgr.store.close()

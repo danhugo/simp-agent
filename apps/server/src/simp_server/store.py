@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS connections(user_id TEXT NOT NULL, app TEXT NOT NULL,
     access_token_enc TEXT, refresh_token_enc TEXT, expires_at REAL, status TEXT, created REAL, updated REAL,
     PRIMARY KEY(user_id, app));
 CREATE TABLE IF NOT EXISTS app_off(user_id TEXT NOT NULL, app TEXT NOT NULL, PRIMARY KEY(user_id, app));
+CREATE TABLE IF NOT EXISTS app_on(user_id TEXT NOT NULL, app TEXT NOT NULL, PRIMARY KEY(user_id, app));
 CREATE TABLE IF NOT EXISTS mcp_audit(user_id TEXT, session_id TEXT, server TEXT, tool TEXT, decision TEXT, ok INTEGER,
     at REAL);
 """
@@ -124,6 +125,14 @@ class SqliteStore:
 
     async def set_app_disabled(self, user_id: str, app: str, off: bool) -> None:
         sql = "INSERT OR IGNORE INTO app_off VALUES(?,?)" if off else "DELETE FROM app_off WHERE user_id=? AND app=?"
+        await self._do(sql, user_id, app)
+
+    # no-login apps the user turned on (no row = off)
+    async def enabled_apps(self, user_id: str) -> set[str]:
+        return {r["app"] for r in await self._all("SELECT app FROM app_on WHERE user_id=?", user_id)}
+
+    async def set_app_on(self, user_id: str, app: str, on: bool) -> None:
+        sql = "INSERT OR IGNORE INTO app_on VALUES(?,?)" if on else "DELETE FROM app_on WHERE user_id=? AND app=?"
         await self._do(sql, user_id, app)
 
     async def clear_app_flags(self, user_id: str, apps: list[str]) -> None:
