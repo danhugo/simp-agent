@@ -108,7 +108,7 @@ Ana may now open her own session. Problem 3: every message and event of her conv
 entries(session_id, user_id, seq, type, json)     // one row per message or event
 ```
 
-A row is one of two kinds, sharing that one `seq`. A **message** (`type = "msg"`) is part of the history the model sees ([17](17-session.md)). A **durable event** is a saved event for the browser, with a `type` like `run_state` or `tool_result` ([25](25-server-run.md)). Both sit in one table, in one order. So one read later gives back the whole conversation. Besides `users`, the store has four more tables: `tokens` (device tokens), `sessions` (one row per conversation), `entries`, and `usage` (tokens and cost of each model call, read by [28 Limits](28-limits.md)).
+A row is one of two kinds, sharing that one `seq`. A **message** (`type = "msg"`) is part of the history the model sees ([17](17-session.md)). A **durable event** is a saved event for the browser, with a `type` like `run_state` or `tool_result` ([25](25-server-run.md)). Both sit in one table, in one order. So one read later gives back the whole conversation. Besides `users`, the store has four more tables: `tokens` (device tokens), `sessions` (one row per conversation), `entries`, and `usage` (tokens and cost of each model call, read by [28 Limits](28-limits.md)). Two more, `agents` and `memories`, hold what the agent remembers; they come below.
 
 <a id="opening-the-store"></a>
 
@@ -120,6 +120,27 @@ Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteSto
 > - `open()` turns on SQLite's **[WAL](glossary.md#wal)** mode: readers do not wait for a writer, and a crash does not leave a half-written file.
 > - `aiosqlite` wraps the standard `sqlite3` so calls are `async` and do not block the server.
 > - A `simp.db` from an older version lacks some columns (`cost`, `password`, `disabled`); `open()` adds them with `ALTER TABLE`, so an update keeps the same file. All columns: [ref-objects · Server store tables](ref-objects.md#server-store-tables).
+
+<a id="agents-and-memories"></a>
+
+### Agents and memories
+
+Ana told her agent last week that she writes Python 3.12. Today she opens a new session and expects it to still know. In [22 · Memory](22-profiles-plugins.md#memory-remember-across-sessions) the notes lived in files; on the server they live in `simp.db`, so they follow Ana, not the machine.
+
+Each user has at least one **agent** (a row in `agents`: name and persona), and each session row has an `agent_id` that says which agent runs it. The `memories` table holds the notes: one row per note, with `user_id`, `scope` and `content`. A `"global"` note (a fact about Ana) has `agent_id` NULL, so all her agents see it; an `"agent"` note (a lesson from a task) belongs to one agent. Every query has `user_id=?`, so Bob never reads Ana's notes. The `Run` reads and writes them through `DbMemoryStore` ([25](25-server-run.md#how-does-the-server-plug-into-the-agentsession)); how a memory store works is in [22](22-profiles-plugins.md#memory-remember-across-sessions), not repeated here.
+
+Ana can also see and fix her notes herself, through REST:
+
+| Route | Does |
+|---|---|
+| `GET /api/memories` | list her notes, newest first |
+| `GET /api/memories/export` | the same list as a `memories.json` download |
+| `PATCH /api/memories/{id}` | change a note's text (secrets are masked first) |
+| `DELETE /api/memories/{id}` | delete a note |
+
+A wrong id, or someone else's id, gets `404`.
+
+Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.memories`, `DbMemoryStore`; [server.py](../../apps/server/src/simp_server/server.py) — the `/api/memories` routes.
 
 <a id="recover"></a>
 

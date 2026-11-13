@@ -220,7 +220,6 @@ The full text of live events is saved later: text and thinking in `AssistantMess
 | `in_flight` | `InFlight`: `msg_id`, `thinking`, `text`, `tool_outputs` streamed so far |
 | `pending_approval` | `PendingApproval` (`call_id`, `tool`, `args`) or none |
 | `title` | the session title |
-| `plan_mode` | true if plan mode is on |
 
 ## Web client `ChatState`
 
@@ -237,7 +236,6 @@ The whole chat state of the browser client, from `apps/web/src/state.ts`. Chapte
 | `decisions` | `Record<string, ApprovalResolved["decision"]>` | approval decision per `call_id` |
 | `pending` | `PendingApproval \| null` | approval the user must answer |
 | `title` | `string` | session title |
-| `planMode` | `boolean` | true if plan mode is on |
 
 ## Server store tables
 
@@ -253,7 +251,12 @@ CREATE TABLE IF NOT EXISTS entries(session_id TEXT, user_id TEXT, seq INTEGER, t
     PRIMARY KEY(session_id, seq));
 CREATE TABLE IF NOT EXISTS usage(user_id TEXT, session_id TEXT, model TEXT, input INTEGER, output INTEGER, at REAL,
     cost REAL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS agents(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT, persona TEXT, created REAL);
+CREATE TABLE IF NOT EXISTS memories(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT, scope TEXT, content TEXT,
+    created REAL, source_run_id TEXT);
 ```
+
+`sessions` also gets an `agent_id` column (added by `open()`); old sessions get the user's first agent. In `memories`, a `"global"` row has `agent_id` NULL; an `"agent"` row has its agent's id ([27](27-store-auth.md#agents-and-memories)).
 
 `sessions.profile` names the model profile ([22](22-profiles-plugins.md)); `sessions.sandbox_ref` names the sandbox to open again ([29](29-docker-sandbox.md)).
 
