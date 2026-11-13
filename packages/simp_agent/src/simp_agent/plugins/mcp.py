@@ -38,12 +38,14 @@ class McpPlugin:
 
         async def one(spec):
             try:
-                client = await self._connect(spec)
-                await self._register(api, spec, client)
+                return await self._tools(spec, await self._connect(spec))
             except Exception as e:  # one bad server must not stop the others
                 log.warning("mcp server %s failed: %s", spec.get("name"), e)
                 await api.emit("plugin_error", {"hook": "setup", "error": f"mcp server {spec.get('name')!r}: {e}"})
-        await asyncio.gather(*(one(s) for s in servers))
+                return list()
+        tools = [t for ts in await asyncio.gather(*(one(s) for s in servers)) for t in ts]
+        for t in sorted(tools, key=lambda t: t.name):  # same order every time: keeps the prompt cache warm
+            api.register_tool(t)
 
     async def _connect(self, spec: dict):
         """Each connection lives in its own task until shutdown (anyio scopes must exit in the task that opened them)."""
@@ -81,8 +83,8 @@ class McpPlugin:
             await asyncio.gather(task, return_exceptions=True)
             raise
 
-    async def _register(self, api, spec: dict, client) -> None:
-        tools, cursor = list(), None
+    async def _tools(self, spec: dict, client) -> list[AgentTool]:
+        out, tools, cursor = list(), list(), None
         while True:
             r = await asyncio.wait_for(client.list_tools(cursor=cursor), self.connect_timeout)
             tools += r.tools
@@ -98,7 +100,8 @@ class McpPlugin:
             a = t.annotations
             tool.read_only_hint = a.read_only_hint if a else None  # for a later approval step
             tool.destructive_hint = a.destructive_hint if a else None
-            api.register_tool(tool)
+            out.append(tool)
+        return out
 
     def _executor(self, client, remote: str, name: str):
         async def execute(args, ctx) -> str:

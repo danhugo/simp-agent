@@ -347,3 +347,28 @@ async def test_forgotten_app_stays_off_and_bad_key_row_is_isolated(tmp_path):
     assert [s["name"] for s in servers] == ["deepwiki"] and problems  # no-auth portal still works
     assert (await mgr.store.connections(ua["id"]))[0]["status"] == "needs_reconnect"
     await mgr.store.close()
+
+
+async def test_mcp_tools_register_sorted():
+    import asyncio
+
+    from simp_agent.agent import AgentTool
+    from simp_agent.plugins.mcp import McpPlugin
+
+    names = list()
+
+    class Api:
+        def register_tool(self, t):
+            names.append(t.name)
+
+    plug = McpPlugin(servers=[{"name": "b", "delay": 0}, {"name": "a", "delay": 0.05}])
+
+    async def connect(spec):
+        await asyncio.sleep(spec["delay"])
+        return spec
+
+    async def tools(spec, _):
+        return [AgentTool(f"{spec['name']}__{n}", "", {}, None) for n in ("z", "y")]
+    plug._connect, plug._tools = connect, tools
+    await plug.setup(Api(), dict())
+    assert names == ["a__y", "a__z", "b__y", "b__z"]  # not the order servers answered in
