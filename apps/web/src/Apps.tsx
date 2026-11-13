@@ -27,7 +27,7 @@ const AppIcon = ({ name }: { name: string }) => (
   <svg className="app-icon" viewBox="0 0 24 24" width="52" height="52" aria-hidden="true">{ICONS[name] ?? <><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="var(--muted)" strokeWidth="1.5" /><circle cx="12" cy="12" r="2.5" fill="var(--muted)" /></>}</svg>
 );
 
-/** Apps the agent can use for you: connect a provider once (Google), then turn each app on or off. */
+/** Crafts page, Portals tab: apps the agent can use for you: connect a provider once (Google), then turn each app on or off. */
 export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; menuButton: React.ReactNode }) {
   const [items, setItems] = useState<AppItem[] | null>(null);
   const [note, setNote] = useState(oauthResult);
@@ -123,11 +123,11 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
 
   return (
     <main className="memory">
-      <header className="home-head">{menuButton}<h1>Apps</h1></header>
+      <header className="home-head">{menuButton}<h1>Crafts</h1></header>
       <div className="memory-body">
-        <p className="muted">Apps the agent can use for you. It asks before it changes anything.</p>
+        <div className="tabs" role="tablist"><button role="tab" aria-selected="true" className="tab active">Portals</button></div>
         {note && <p className={note.ok ? "ok" : "error"} role="status">{note.text}</p>}
-        {items === null ? <p className="muted">Loading…</p> : items.length === 0 ? <p className="muted">No apps are set up on this server.</p> : <>
+        {items === null ? <p className="muted">Loading…</p> : items.length === 0 ? <p className="muted">No portals are set up on this server.</p> : <>
           {section("Connected", items.filter((a) => a.enabled))}
           {section("Available", items.filter((a) => !a.enabled))}
           {accounts.map((a) => (

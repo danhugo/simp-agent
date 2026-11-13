@@ -175,6 +175,9 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .memory .home-head h1 { flex: 1; margin: 0; font-size: var(--fs-lg); }
 .memory .export { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: 44px; }
 .memory-body { max-width: 760px; margin: 0 auto; padding: 0 var(--sp-5) var(--sp-8); }
+.tabs { display: flex; gap: var(--sp-1); border-bottom: 1px solid var(--border); margin-top: var(--sp-2); }
+.tab { background: none; border: 0; border-bottom: 2px solid transparent; padding: var(--sp-2) var(--sp-3); color: var(--muted); font: inherit; cursor: pointer; }
+.tab.active { color: inherit; border-bottom-color: currentColor; font-weight: 600; }
 .memory-body h2 { font-size: var(--fs-md); margin: var(--sp-6) 0 var(--sp-2); }
 .memory-body ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
 .mem { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-2) var(--sp-3); background: var(--panel); }

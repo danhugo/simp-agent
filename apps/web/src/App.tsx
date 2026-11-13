@@ -147,7 +147,7 @@ const SUGGESTIONS = [
   { text: "Help me plan my week", icon: <IconCheck size={16} /> },
 ];
 
-const isConnHash = () => /^#(apps|connections)\b/.test(location.hash);  // #connections: older OAuth return
+const isConnHash = () => /^#(crafts|apps|connections)\b/.test(location.hash);  // #connections: older OAuth return
 const hashSid = () => (isConnHash() ? "" : location.hash.slice(1));
 
 function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () => void; theme: string }) {
@@ -310,8 +310,8 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
           aria-current={page === "memory" && !sid ? "page" : undefined} aria-label={rail ? "Memory" : undefined} title={rail ? "Memory" : undefined}>
           <IconMemory /><span className="label">Memory</span></button>
         <button className={`ghost item new ${page === "apps" && !sid ? "active" : ""}`} onClick={() => open("apps")}
-          aria-current={page === "apps" && !sid ? "page" : undefined} aria-label={rail ? "Apps" : undefined} title={rail ? "Apps" : undefined}>
-          <IconApps /><span className="label">Apps</span></button>
+          aria-current={page === "apps" && !sid ? "page" : undefined} aria-label={rail ? "Crafts" : undefined} title={rail ? "Crafts" : undefined}>
+          <IconApps /><span className="label">Crafts</span></button>
         <nav aria-label="Sessions">
           <h2 className="section-label">Recent</h2>
           {sessions.map((s) => (

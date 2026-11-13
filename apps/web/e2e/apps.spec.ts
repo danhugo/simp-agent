@@ -28,7 +28,10 @@ test("apps: connect state, toggle drive off/on, disconnect (mocked API)", async 
     if (r.request().method() === "DELETE") connected = false;
     return r.fulfill({ json: { ok: true } });
   });
-  await login(page, "#apps");
+  await login(page, "#crafts");
+  await expect(page.getByRole("heading", { level: 1, name: "Crafts" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Portals", selected: true })).toBeVisible();
+  await expect(page.getByText("Apps the agent can use")).toHaveCount(0);
   const available = page.getByRole("region", { name: "Available" });
   await expect(available.getByRole("listitem")).toHaveCount(3);
   await expect(page.getByRole("region", { name: "Connected" })).toHaveCount(0);
@@ -39,6 +42,7 @@ test("apps: connect state, toggle drive off/on, disconnect (mocked API)", async 
   const on = page.getByRole("region", { name: "Connected" });
   await expect(on.getByRole("listitem")).toHaveCount(3);
   await expect(page.locator(".account-line")).toContainText("Google account: me@example.com");
+  await page.screenshot({ path: "test-results/crafts-portals.png" });
 
   await on.getByRole("switch", { name: "Use Google Drive" }).click();
   const drive = available.getByRole("switch", { name: "Use Google Drive" });
