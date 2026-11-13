@@ -43,6 +43,12 @@ test("apps: connect state, toggle drive off/on, disconnect (mocked API)", async 
   await expect(on.getByRole("listitem")).toHaveCount(3);
   await expect(page.locator(".account-line")).toContainText("Google account: me@example.com");
   await page.screenshot({ path: "test-results/crafts-portals.png" });
+  await page.getByRole("tab", { name: "Skills" }).click();
+  await expect(page.getByRole("tab", { name: "Skills", selected: true })).toBeVisible();
+  await expect(page.getByText("Skills are coming soon.")).toBeVisible();
+  await page.screenshot({ path: "test-results/crafts-skills.png" });
+  await page.getByRole("tab", { name: "Portals" }).click();
+  await expect(page.getByRole("region", { name: "Connected" })).toBeVisible();
 
   await on.getByRole("switch", { name: "Use Google Drive" }).click();
   const drive = available.getByRole("switch", { name: "Use Google Drive" });

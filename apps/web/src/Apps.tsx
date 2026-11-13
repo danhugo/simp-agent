@@ -32,6 +32,7 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
   const [note, setNote] = useState(oauthResult);
   const [confirm, setConfirm] = useState("");  // provider whose Disconnect was clicked once
   const [tokenFor, setTokenFor] = useState("");  // app whose "paste a token" form is open
+  const [tab, setTab] = useState<"Portals" | "Skills">("Portals");
   const [tokenErr, setTokenErr] = useState("");
   const fail = useCallback((e: unknown) => { onError(e); if (!(e instanceof AuthError)) setNote({ ok: false, text: errorText(e) }); }, [onError]);
   const load = useCallback(() => api.apps().then(setItems, fail), [fail]);
@@ -124,7 +125,12 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
     <main className="memory">
       <header className="home-head">{menuButton}<h1>Crafts</h1></header>
       <div className="memory-body">
-        <div className="tabs" role="tablist"><button role="tab" aria-selected="true" className="tab active">Portals</button></div>
+        <div className="tabs" role="tablist">
+          {(["Portals", "Skills"] as const).map((t) => (
+            <button key={t} role="tab" aria-selected={tab === t} className="tab" onClick={() => setTab(t)}>{t}</button>
+          ))}
+        </div>
+        {tab === "Skills" ? <p className="muted">Skills are coming soon.</p> : <>
         {note && <p className={note.ok ? "ok" : "error"} role="status">{note.text}</p>}
         {items === null ? <p className="muted">Loading…</p> : items.length === 0 ? <p className="muted">No portals are set up on this server.</p> : <>
           {section("Connected", items.filter((a) => a.enabled))}
@@ -136,6 +142,7 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
                 onBlur={() => setConfirm("")}>{confirm === a.provider ? "Disconnect?" : "Disconnect"}</button>
             </p>
           ))}
+        </>}
         </>}
       </div>
     </main>
