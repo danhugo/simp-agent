@@ -1,6 +1,7 @@
 """Connections: a user links an app (Google) with OAuth; its remote MCP servers join every run of that user.
 
-Only apps in settings (APPS + [apps.<name>] overrides) can be connected, and only over HTTP: an MCP stdio server
+A provider (Google) is one OAuth login; apps (Gmail, Drive, Calendar) are its MCP servers, each on/off per user.
+Only providers/apps in settings (PROVIDERS/APPS + [providers.<name>] / [apps.<name>] overrides) exist, and only over HTTP: an MCP stdio server
 would run on the host, outside the sandbox. Tokens are encrypted at rest (Fernet, SIMP_SECRET_KEY in <data_dir>/.env)
 and only ever sent to the app's own token/MCP URLs: never logged, never in prompts, events or the sandbox."""
 
@@ -25,7 +26,7 @@ from . import protocol as p
 
 log = logging.getLogger("simp_server")
 
-APPS = {"google": {
+PROVIDERS = {"google": {
     "label": "Google",
     "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
     "token_url": "https://oauth2.googleapis.com/token",
@@ -34,15 +35,25 @@ APPS = {"google": {
                "https://www.googleapis.com/auth/gmail.send", "https://www.googleapis.com/auth/calendar.events",
                "https://www.googleapis.com/auth/drive"],
     "client_id_env": "GOOGLE_CLIENT_ID", "client_secret_env": "GOOGLE_CLIENT_SECRET",
-    "servers": {"gmail": "https://gmailmcp.googleapis.com/mcp/v1", "drive": "https://drivemcp.googleapis.com/mcp/v1",
-                "calendar": "https://calendarmcp.googleapis.com/mcp/v1"},
 }}
+APPS = {  # the app name is also the MCP server name, so its tools are "<app>__<tool>"
+    "gmail": {"label": "Gmail", "description": "Search, read, label and draft email.", "icon": "gmail",
+              "provider": "google", "url": "https://gmailmcp.googleapis.com/mcp/v1"},
+    "drive": {"label": "Google Drive", "description": "Find, read and create files in Drive.", "icon": "drive",
+              "provider": "google", "url": "https://drivemcp.googleapis.com/mcp/v1"},
+    "calendar": {"label": "Google Calendar", "description": "See and manage calendar events.", "icon": "calendar",
+                 "provider": "google", "url": "https://calendarmcp.googleapis.com/mcp/v1"},
+}
 STATE_TTL = 600  # s: an OAuth start must finish within 10 minutes
 REFRESH_EARLY = 300  # s: refresh tokens that expire within 5 minutes
 
 
-def apps(settings: dict) -> dict:
-    return {n: {**APPS.get(n, dict()), **a} for n, a in {**APPS, **settings.get("apps", dict())}.items()}
+def _merged(defaults: dict, overrides: dict) -> dict:
+    return {n: {**defaults.get(n, dict()), **a} for n, a in {**defaults, **overrides}.items()}
+
+
+def providers(settings: dict) -> dict:
+    return _merged(PROVIDERS, settings.get("providers", dict()))
 
 
 def secret_key(keys: dict, data_dir: str) -> bytes:
@@ -71,7 +82,8 @@ def _email(id_token: str | None) -> str | None:
 class Connections:
     def __init__(self, settings: dict, store, keys: dict):
         self.settings, self.store, self.keys = settings, store, keys
-        self.apps = apps(settings)
+        self.apps = providers(settings)  # OAuth providers; the user-facing apps are self.app_list
+        self.app_list = _merged(APPS, settings.get("apps", dict()))
         self.fernet = Fernet(secret_key(keys, settings["data_dir"]))
         self.pending: dict[str, tuple] = dict()  # ponytail: in memory, a restart drops OAuth starts in flight
         self.http = httpx.AsyncClient(timeout=20)
@@ -138,6 +150,29 @@ class Connections:
             except Exception as e:
                 log.warning("revoke %s failed: %s", name, type(e).__name__)
         await self.store.delete_connection(user_id, name)
+        await self.store.clear_app_flags(user_id, [n for n, a in self.app_list.items() if a["provider"] == name])
+
+    async def list_apps(self, user_id: str) -> list[dict]:
+        """Every app; enabled = provider connected and not turned off (default on: a login enables all its apps)."""
+        rows = {r["app"]: r for r in await self.store.connections(user_id)}
+        off = await self.store.disabled_apps(user_id)
+        out = list()
+        for n, a in self.app_list.items():
+            row = rows.get(a["provider"])
+            out.append({"app": n, "label": a.get("label", n), "description": a.get("description", ""),
+                        "icon": a.get("icon", n), "provider": a["provider"], "connected": row is not None,
+                        "enabled": row is not None and n not in off, "email": row and row["account_email"],
+                        "status": row and row["status"]})
+        return out
+
+    async def set_enabled(self, user_id: str, name: str, on: bool) -> None:
+        """LookupError: unknown app; PermissionError: enabling an app whose provider is not connected."""
+        if name not in self.app_list:
+            raise LookupError(f"unknown app {name!r}")
+        prov = self.app_list[name]["provider"]
+        if on and not any(r["app"] == prov for r in await self.store.connections(user_id)):
+            raise PermissionError(f"connect {prov} first")
+        await self.store.set_app_disabled(user_id, name, not on)
 
     async def _access(self, user_id: str, row: dict) -> str | None:
         """A valid access token, refreshed when it ends within REFRESH_EARLY; None (and needs_reconnect) on failure."""
@@ -161,9 +196,13 @@ class Connections:
         return t["access_token"]
 
     async def servers(self, user_id: str) -> tuple[list[dict], list[str]]:
-        """McpPlugin server specs for the user's connected apps, and notices for apps that need a reconnect."""
+        """McpPlugin server specs for the user's enabled apps, and notices for providers that need a reconnect."""
         out, problems = list(), list()
+        off = await self.store.disabled_apps(user_id)
         for row in await self.store.connections(user_id):
+            mine = {n: a for n, a in self.app_list.items() if a["provider"] == row["app"] and n not in off}
+            if not mine:
+                continue
             a = self.apps.get(row["app"])
             if a is None:  # app removed from settings
                 continue
@@ -171,8 +210,8 @@ class Connections:
             if token is None:
                 problems.append(f"{a.get('label', row['app'])} connection needs reconnect (Settings > Connections)")
                 continue
-            out += [{"name": s, "url": url, "headers": {"Authorization": f"Bearer {token}"}}
-                    for s, url in a["servers"].items()]
+            out += [{"name": n, "url": app["url"], "headers": {"Authorization": f"Bearer {token}"}}
+                    for n, app in mine.items()]
         return out, problems
 
 

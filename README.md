@@ -54,8 +54,12 @@ sandbox), so only add servers you trust. Tool annotations are kept as `tool.read
 
 ### Connections (Google via OAuth -> MCP tools)
 
-A user links Google once (web: Connections). From then on every chat of that user gets the Gmail, Drive and Calendar
-remote MCP tools (`gmail__*`, `drive__*`, `calendar__*`). Tools not marked read-only by the server (send, trash,
+A user logs in to Google once; that turns on three apps: Gmail, Google Drive, Google Calendar. Each app can be
+turned off or on per user, and every chat gets the remote MCP tools of the user's enabled apps (`gmail__*`,
+`drive__*`, `calendar__*`). Disconnecting Google turns all three off; a new login turns them all on again.
+API: `GET /api/apps` (app, label, description, icon, provider, connected, enabled, email, status),
+`POST /api/apps/{app}/enable|disable` (409 if the provider is not connected), `POST /api/connections/google/start`,
+`DELETE /api/connections/google`, `GET /api/connections` (providers only). Tools not marked read-only by the server (send, trash,
 create_event, ...) always ask for approval; "Always" is per chat. Every MCP call is written to the `mcp_audit` table
 (user, session, server, tool, decision auto/allow/always/deny/aborted, ok) — no arguments, no tokens.
 
@@ -69,8 +73,9 @@ GOOGLE_CLIENT_SECRET=...
 ```
 
 Settings (all optional): `public_url = "http://localhost:8766"` (builds the redirect URI), `web_url =
-"http://localhost:5173/"` (where the browser goes after Google), and `[apps.google]` to override any field of the
-built-in app (`scopes`, `servers`, `auth_url`, `token_url`, ...). Only apps listed there can be connected, and only
+"http://localhost:5173/"` (where the browser goes after Google), `[providers.google]` to override any OAuth field
+(`scopes`, `auth_url`, `token_url`, ...) and `[apps.<name>]` for an app (`label`, `description`, `icon`, `provider`,
+`url`). Only providers and apps listed there exist, and only
 over HTTP: users can never add their own URL or a stdio server.
 
 Security: tokens are encrypted in `simp.db` with `SIMP_SECRET_KEY` from `.env` (made on first start if missing;

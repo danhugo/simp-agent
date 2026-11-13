@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS memories(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, 
 CREATE TABLE IF NOT EXISTS connections(user_id TEXT NOT NULL, app TEXT NOT NULL, account_email TEXT,
     access_token_enc TEXT, refresh_token_enc TEXT, expires_at REAL, status TEXT, created REAL, updated REAL,
     PRIMARY KEY(user_id, app));
+CREATE TABLE IF NOT EXISTS app_off(user_id TEXT NOT NULL, app TEXT NOT NULL, PRIMARY KEY(user_id, app));
 CREATE TABLE IF NOT EXISTS mcp_audit(user_id TEXT, session_id TEXT, server TEXT, tool TEXT, decision TEXT, ok INTEGER,
     at REAL);
 """
@@ -116,6 +117,17 @@ class SqliteStore:
 
     async def delete_connection(self, user_id: str, app: str) -> None:
         await self._do("DELETE FROM connections WHERE user_id=? AND app=?", user_id, app)
+
+    # apps the user turned off (no row = on): old connections need no migration, a new login turns all on
+    async def disabled_apps(self, user_id: str) -> set[str]:
+        return {r["app"] for r in await self._all("SELECT app FROM app_off WHERE user_id=?", user_id)}
+
+    async def set_app_disabled(self, user_id: str, app: str, off: bool) -> None:
+        sql = "INSERT OR IGNORE INTO app_off VALUES(?,?)" if off else "DELETE FROM app_off WHERE user_id=? AND app=?"
+        await self._do(sql, user_id, app)
+
+    async def clear_app_flags(self, user_id: str, apps: list[str]) -> None:
+        await self._do(f"DELETE FROM app_off WHERE user_id=? AND app IN ({','.join('?' * len(apps))})", user_id, *apps)
 
     async def add_audit(self, user_id: str, sid: str, server: str, tool: str, decision: str, ok: bool) -> None:
         await self._do("INSERT INTO mcp_audit VALUES(?,?,?,?,?,?,?)", user_id, sid, server, tool, decision, int(ok),

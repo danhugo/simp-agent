@@ -46,7 +46,7 @@ from simp_agent.session.profile import build_model
 
 from . import budget, ops
 from . import protocol as p
-from .connections import Connections, UserMcp, apps
+from .connections import Connections, UserMcp, providers
 from .fake import sse
 from .store import MEM_ITEM_MAX, DbMemoryStore
 from .web_tools import Web
@@ -163,7 +163,7 @@ def load_settings(home: Path = HOME) -> dict:
 def take_keys(settings: dict) -> dict:
     """Model keys from <data_dir>/.env and the process env. Removed from os.environ so sandboxed commands never see them."""
     names = ({pr.get("api_key_env") for pr in settings["profiles"].values()} | {"OPENAI_API_KEY", "ANTHROPIC_API_KEY",
-             "SIMP_SECRET_KEY"} | {a.get(k) for a in apps(settings).values() for k in ("client_id_env", "client_secret_env")})
+             "SIMP_SECRET_KEY"} | {a.get(k) for a in providers(settings).values() for k in ("client_id_env", "client_secret_env")})
     keys = dict()
     f = Path(settings["data_dir"]) / ".env"
     if f.exists():
@@ -684,6 +684,22 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     @app.get("/api/connections")
     async def list_connections(u=Depends(user)):
         return await mgr.conns.list(u["id"])
+
+    @app.get("/api/apps")
+    async def list_apps(u=Depends(user)):
+        return await mgr.conns.list_apps(u["id"])
+
+    @app.post("/api/apps/{app_name}/{action}")
+    async def toggle_app(app_name: str, action: str, u=Depends(user)):
+        if action not in ("enable", "disable"):
+            raise HTTPException(404, "no such action")
+        try:
+            await mgr.conns.set_enabled(u["id"], app_name, action == "enable")
+        except LookupError as e:
+            raise HTTPException(404, str(e)) from None
+        except PermissionError as e:
+            raise HTTPException(409, str(e)) from None
+        return {"ok": True}
 
     @app.post("/api/connections/{app_name}/start")
     async def start_connection(app_name: str, u=Depends(user)):

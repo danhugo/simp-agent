@@ -139,3 +139,25 @@ async def test_write_tool_needs_approval_and_audit(tmp_path):
                      {"server": "gmail", "tool": "send", "decision": "allow", "ok": 1}]
     await run.session.shutdown()
     await mgr.store.close()
+
+
+async def test_apps_one_login_toggle_disconnect(tmp_path):
+    _, mgr, _, [(ta, ua), _], c = await make(tmp_path)
+    h = {"Authorization": f"Bearer {ta}"}
+    assert (await c.post("/api/apps/gmail/enable", headers=h)).status_code == 409  # google not connected
+    assert (await c.post("/api/apps/nope/disable", headers=h)).status_code == 404
+    await connect(c, ta)
+    apps = (await c.get("/api/apps", headers=h)).json()
+    assert [a["app"] for a in apps] == ["gmail", "drive", "calendar"]
+    assert apps[1] == {"app": "drive", "label": "Google Drive", "description": apps[1]["description"], "icon": "drive",
+                       "provider": "google", "connected": True, "enabled": True, "email": "me@example.com",
+                       "status": "ok"}
+    assert (await c.post("/api/apps/drive/disable", headers=h)).json() == {"ok": True}
+    assert {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]} == {"gmail", "calendar"}  # next run: no drive__
+    assert (await c.post("/api/apps/drive/enable", headers=h)).status_code == 200
+    await c.post("/api/apps/drive/disable", headers=h)
+    await c.delete("/api/connections/google", headers=h)
+    assert not any(a["enabled"] or a["connected"] for a in (await c.get("/api/apps", headers=h)).json())
+    await connect(c, ta)  # a new login turns all three on again
+    assert all(a["enabled"] for a in (await c.get("/api/apps", headers=h)).json())
+    await mgr.store.close()
