@@ -3,10 +3,9 @@ import { api, AuthError, type AppItem } from "./api";
 import { errorText } from "./Chat";
 import { IconPlus } from "./icons";
 
-/** "#apps?ok=google" (or older "#connections?...") / "?error=..." from the OAuth callback -> a short message. */
+/** "#crafts?error=..." (or older "#apps" / "#connections") from the OAuth callback -> an error message; success shows in the card. */
 function oauthResult(): { ok: boolean; text: string } | null {
   const q = new URLSearchParams(location.hash.split("?")[1] ?? "");
-  if (q.get("ok")) return { ok: true, text: "Your account is connected." };
   if (q.get("error")) return { ok: false, text: `Could not connect: ${q.get("error")}` };
   return null;
 }

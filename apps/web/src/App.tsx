@@ -207,7 +207,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [drawer]);
-  // Memory / Apps page (only when no session is picked); "#apps?..." / "#connections?..." is the OAuth return
+  // Memory / Apps page (only when no session is picked); "#crafts?..." (aliases "#apps", "#connections") is the OAuth return
   const [page, setPage] = useState<"" | "memory" | "apps">(() => (isConnHash() ? "apps" : ""));
   const pick = (id: string) => { setSid(id); setPage(""); setDrawer(false); };
   const open = (p: "memory" | "apps") => { pick(""); setPage(p); };

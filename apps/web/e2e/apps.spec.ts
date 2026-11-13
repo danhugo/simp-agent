@@ -38,7 +38,7 @@ test("apps: connect state, toggle drive off/on, disconnect (mocked API)", async 
 
   connected = true;  // the fake OAuth "start" url returns straight to #apps?ok=google
   await available.getByRole("button", { name: "Connect Gmail" }).click();
-  await expect(page.getByRole("status")).toHaveText("Your account is connected.");
+  await expect(page.getByRole("status")).toHaveCount(0);  // no success note; the card moves to Connected
   const on = page.getByRole("region", { name: "Connected" });
   await expect(on.getByRole("listitem")).toHaveCount(3);
   await expect(page.locator(".account-line")).toContainText("Google account: me@example.com");
