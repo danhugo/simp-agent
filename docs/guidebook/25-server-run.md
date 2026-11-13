@@ -73,12 +73,16 @@ CLASS Run:                                      // one per conversation
     CREATE:
         session = AgentSession(model,
                       store   = this Run,       // slot 1: each message is saved by Run.append
-                      approve = Run.approve)    // slot 2: ask the browser, not the terminal
+                      approve = Run.approve,    // slot 2: ask the browser, not the terminal
+                      plugins = profile plugins + Web() + Memory(DbMemoryStore(user, agent)))
+        session.agent.steering_mode = "all"     // every queued steer reaches the next turn
         session.subscribe(Run.on_event)         // slot 3: events become messages for the browser
         state = idle
 ```
 
 That is the whole link: the library does not know a server exists.
+
+Three more lines give every server session the same extras, whatever the profile says. `Web()` (from `web_tools.py`) adds the `web_search` and `web_fetch` tools; they run in the server process, not in the sandbox, and only reach public addresses. `Memory` is the plugin of [22 · Memory](22-profiles-plugins.md#memory-remember-across-sessions), always on here, but its notes live in the server database instead of files: `DbMemoryStore` is bound to Ana and to her session's agent, so Bob never sees her notes (tables in [27](27-store-auth.md#agents-and-memories)). Last, `steering_mode = "all"` means that if Ana sends three steers while a tool runs, all three reach the model at the next turn, not one per turn ([09](09-steering.md)).
 
 **Who finds the Run.** Every route for a session asks `SessionManager.get(user, sid)`. It checks that Ana owns the session, and returns her open `Run`, or opens it from the saved log. The `Run` lives on after the request that made it.
 
@@ -90,7 +94,7 @@ Real code: [server.py](../../apps/server/src/simp_server/server.py).
 
 Now follow Ana's prompt into this `Run`. It arrives as a JSON body in an HTTP request, so the server must first turn it into a command it can trust. If it just read the body as a dict, a typo would break it badly: `{"txt": "hi"}` instead of `{"text": "hi"}` gives a `KeyError` deep in the code and a 500 error, and the browser never learns what went wrong.
 
-The server keeps one **form** for each kind of message the browser may send. There are eight kinds, called **commands**: prompt, steer, follow-up, abort, approve, compact, continue and plan mode. Each form lists its fields, and every JSON body names its form in a `type` field.
+The server keeps one **form** for each kind of message the browser may send. There are seven kinds, called **commands**: prompt, steer, follow-up, abort, approve, compact and continue. Each form lists its fields, and every JSON body names its form in a `type` field.
 
 Ana's body is checked like this:
 

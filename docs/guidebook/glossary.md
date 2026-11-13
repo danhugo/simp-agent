@@ -243,7 +243,7 @@ Built-in plugin that replaces secrets with `[REDACTED]`. Home: [22](22-profiles-
 `Model.compat` flag; asks an OpenAI-style server to send token usage in the stream. `build_model` turns it on by default. Home: [22](22-profiles-plugins.md).
 
 ## Plan mode
-Built-in plugin (`PlanMode`) that makes the agent read-only and asks it for a plan. Home: [22](22-profiles-plugins.md).
+Built-in core plugin (`PlanMode`) that makes the agent read-only and asks it for a plan. Core only: simp-server and the web client do not use it. Home: [22](22-profiles-plugins.md).
 
 ## Memory
 Built-in plugin (`Memory`) that lets the agent save short notes with tools and puts them in the system prompt of every later session. Off by default. Home: [22](22-profiles-plugins.md#memory-remember-across-sessions).
