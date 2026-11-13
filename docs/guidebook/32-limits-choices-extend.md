@@ -160,9 +160,9 @@ The other five limits are at the edges, in the server and in how it is run.
 
 **7. `LocalSandbox` is not isolation.** Its docstring says: *"Not isolation: DockerSandbox replaces it."* The server refuses to start with `LocalSandbox` when there is more than one user in the store (`check_sandbox`), unless `allow_local_sandbox = true` is set ([29](29-docker-sandbox.md)).
 
-**8. Missing tools and features.** No web fetch or search tool, no MCP, no skills, no sub-agents. (Simple memory exists as a plugin, [22](22-profiles-plugins.md#memory-remember-across-sessions).) All of these are on the roadmap as later work: "capabilities via plugins".
+**8. Missing tools and features.** No skills, no sub-agents. (Simple memory exists as a plugin, [22](22-profiles-plugins.md#memory-remember-across-sessions); the server has web search and fetch tools, [22](22-profiles-plugins.md#who-uses-them); and an MCP client exists as a plugin, [22a](22a-mcp.md).) All of these are on the roadmap as later work: "capabilities via plugins".
 
-Notice the pattern. Only three limits are in the core, and each is a shortcut with a known fix. Most are at the edges or on the "later" list, and most later features (web fetch, MCP, sub-agents) would be new plugins, not changes to the loop. That is the point of a small core: its limits are easy to see and easy to fix in one place.
+Notice the pattern. Only three limits are in the core, and each is a shortcut with a known fix. Most are at the edges or on the "later" list, and most later features (skills, sub-agents) would be new plugins, as web tools and MCP already are, not changes to the loop. That is the point of a small core: its limits are easy to see and easy to fix in one place.
 
 ### Extend it yourself
 

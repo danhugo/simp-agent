@@ -36,7 +36,8 @@ The block numbers in the picture and the table are the same, in the order the st
 - [19 Part 4 · Retry](19-retry.md) — Retry failed model calls with backoff.
 - [20 Part 4 · Compaction](20-compaction.md) — Keep long conversations inside the context window.
 - [21 Part 4 · Context overflow](21-overflow.md) — Recover when the model says the context is too big.
-- [22 Part 4 · Profiles and built-in plugins](22-profiles-plugins.md) — Pick models by profile and ship three real plugins (secrets, plan mode, memory).
+- [22 Part 4 · Profiles and built-in plugins](22-profiles-plugins.md) — Pick models by profile and ship three real plugins (secrets, plan mode, memory); the server's memory store and web tools.
+- [22a Part 4 · The MCP client plugin](22a-mcp.md) — Use tools from other programs (MCP servers) as agent tools.
 - [23 Part 5 big picture: the system](23-part-5-system.md) — All blocks of Part 5, their IN and OUT, on one page.
 - [24 Part 5 · The CLI](24-cli.md) — Wrap the session in a terminal app.
 - [25 Part 5 · The server run](25-server-run.md) — Run a session on a server with a typed protocol.
