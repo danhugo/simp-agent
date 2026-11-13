@@ -240,7 +240,7 @@ One exception to "the page never adds Ana's message itself". A steer waits in th
 
 ### One friendly line per tool call
 
-A tool call is drawn as a closed `<details>` block. Its `<summary>` is one short line in plain words, made by `toolLabel(call, finished)`: "Reading notes.md" while it runs, "Read notes.md" when done, "Ran \`pytest\`", "Searched the web: …", and so on. A coloured dot shows the status (running, done, error, needs approval), and a timer shows if the call took 2 seconds or more. The arguments and output are inside the block, so Ana opens it only if she wants the details. The block opens by itself only when the call waits for her approval, so the **Allow** button is never hidden.
+A tool call is drawn as a closed `<details>` block. Its `<summary>` is one short line in plain words, made by `toolLabel(call, finished)`: "Reading notes.md" while it runs, "Read notes.md" when done, "Ran \`pytest\`", "Searched the web: …", and so on. A coloured dot shows the status (running, done, error, needs approval), and a timer shows if the call took 2 seconds or more. The output is inside the block, so Ana opens it only if she wants the details. The page never shows the raw arguments; the one line says what matters. The block opens by itself only when the call waits for her approval, so the **Allow** button is never hidden.
 
 ### The Memory page
 
