@@ -31,9 +31,7 @@ PROVIDERS = {"google": {
     "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
     "token_url": "https://oauth2.googleapis.com/token",
     "revoke_url": "https://oauth2.googleapis.com/revoke",
-    "scopes": ["openid", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/gmail.modify",
-               "https://www.googleapis.com/auth/gmail.send", "https://www.googleapis.com/auth/calendar.events",
-               "https://www.googleapis.com/auth/drive"],
+    "scopes": ["openid", "https://www.googleapis.com/auth/userinfo.email"],  # always; each app adds its own
     "client_id_env": "GOOGLE_CLIENT_ID", "client_secret_env": "GOOGLE_CLIENT_SECRET",
 }, "github": {  # kind "token": the user pastes a personal token; no OAuth app to register
     "kind": "token", "label": "GitHub",
@@ -45,11 +43,14 @@ PROVIDERS = {"google": {
 NO_EXPIRY = 1e18  # expires_at for pasted tokens: never refreshed
 APPS = {  # the app name is also the MCP server name, so its tools are "<app>__<tool>"
     "gmail": {"label": "Gmail", "description": "Search, read, label and draft email.", "icon": "gmail",
-              "provider": "google", "url": "https://gmailmcp.googleapis.com/mcp/v1"},
+              "provider": "google", "scopes": ["https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/gmail.send"],
+              "url": "https://gmailmcp.googleapis.com/mcp/v1"},
     "drive": {"label": "Google Drive", "description": "Find, read and create files in Drive.", "icon": "drive",
-              "provider": "google", "url": "https://drivemcp.googleapis.com/mcp/v1"},
+              "provider": "google", "scopes": ["https://www.googleapis.com/auth/drive"],
+              "url": "https://drivemcp.googleapis.com/mcp/v1"},
     "calendar": {"label": "Google Calendar", "description": "See and manage calendar events.", "icon": "calendar",
-                 "provider": "google", "url": "https://calendarmcp.googleapis.com/mcp/v1"},
+                 "provider": "google", "scopes": ["https://www.googleapis.com/auth/calendar.events"],
+                 "url": "https://calendarmcp.googleapis.com/mcp/v1"},
     # no login (provider None): off until the user turns them on, so new users don't get many extra tools
     "github": {"label": "GitHub", "description": "Issues, pull requests, code and CI", "icon": "github",
                "provider": "github", "url": "https://api.githubcopilot.com/mcp/"},
@@ -97,6 +98,10 @@ def _email(id_token: str | None) -> str | None:
         return json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))["email"]
     except Exception:
         return None
+
+
+def _granted(row: dict | None) -> set[str]:
+    return set((row and row.get("scopes") or "").split())
 
 
 class Connections:
@@ -148,7 +153,15 @@ class Connections:
     def redirect_uri(self, name: str) -> str:
         return f"{self.settings.get('public_url', 'http://localhost:8766').rstrip('/')}/api/connections/{name}/callback"
 
-    def start(self, user_id: str, name: str) -> str:
+    def authorized(self, app: dict, row: dict | None) -> bool:
+        """Provider connected and every scope of this app granted (apps without scopes: the login is enough)."""
+        return row is not None and set(app.get("scopes", ())) <= _granted(row)
+
+    def start(self, user_id: str, app_name: str) -> str:
+        """Auth URL for one app: only its scopes (+ the provider's base ones); Google adds them to earlier grants."""
+        if app_name not in self.app_list or not self.app_list[app_name].get("provider"):
+            raise LookupError(f"unknown app {app_name!r}")
+        name = self.app_list[app_name]["provider"]
         a = self.app(name)
         if a.get("kind") == "token":
             raise LookupError(f"{name!r} takes a pasted token, not OAuth")
@@ -156,10 +169,10 @@ class Connections:
         now = time.time()
         self.pending = {s: v for s, v in self.pending.items() if v[3] > now}
         state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(64)
-        self.pending[state] = (user_id, name, verifier, now + STATE_TTL)
+        self.pending[state] = (user_id, name, verifier, now + STATE_TTL, app_name)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
         q = {"client_id": cid, "redirect_uri": self.redirect_uri(name), "response_type": "code",
-             "scope": " ".join(a["scopes"]), "state": state, "code_challenge": challenge,
+             "scope": " ".join(a["scopes"] + self.app_list[app_name].get("scopes", [])), "state": state, "code_challenge": challenge,
              "code_challenge_method": "S256", "access_type": "offline", "prompt": "consent",
              "include_granted_scopes": "true"}
         return f"{a['auth_url']}?{urllib.parse.urlencode(q)}"
@@ -169,7 +182,7 @@ class Connections:
         v = self.pending.pop(state, None)
         if v is None or v[1] != name or v[3] < time.time():
             raise ValueError("bad or expired state")
-        user_id, _, verifier, _ = v
+        user_id, _, verifier, _, app_name = v
         a = self.app(name)
         cid, sec = self._client(a)
         r = await self.http.post(a["token_url"], data={
@@ -180,9 +193,30 @@ class Connections:
         t = r.json()
         if not t.get("refresh_token"):
             raise ValueError("no refresh token returned")
+        # Google's "scope" = everything granted so far (include_granted_scopes); missing -> what we asked for
+        old = next((r for r in await self.store.connections(user_id) if r["app"] == name), None)
+        scopes = t.get("scope") or " ".join(sorted(_granted(old) | set(a["scopes"]) |
+                                                  set(self.app_list[app_name].get("scopes", []))))
         await self.store.save_connection(user_id, name, _email(t.get("id_token")), self.fernet.encrypt(
             t["access_token"].encode()).decode(), self.fernet.encrypt(t["refresh_token"].encode()).decode(),
-            time.time() + float(t.get("expires_in", 3600)))
+            time.time() + float(t.get("expires_in", 3600)), scopes)
+        await self.store.set_app_disabled(user_id, app_name, False)  # only the app just connected turns on
+
+    async def forget_app(self, user_id: str, app_name: str) -> None:
+        """Per-app disconnect: drop its scopes locally (Google can't revoke one scope); the last app revokes the token.
+        ponytail: Google still holds the scope, so a later connect of another app may report it granted again."""
+        app = self.app_list.get(app_name)
+        if not app or not app.get("provider"):
+            raise LookupError(f"unknown app {app_name!r}")
+        prov = app["provider"]
+        row = next((r for r in await self.store.connections(user_id) if r["app"] == prov), None)
+        if row is None:
+            return
+        left = _granted(row) - set(app.get("scopes", ()))
+        others = [a for n, a in self.app_list.items() if a.get("provider") == prov and n != app_name]
+        if not app.get("scopes") or not any(set(a.get("scopes", ())) <= left for a in others if a.get("scopes")):
+            return await self.delete(user_id, prov)
+        await self.store.set_connection_scopes(user_id, prov, " ".join(sorted(left)))
 
     async def list(self, user_id: str) -> list[dict]:
         rows = {r["app"]: r for r in await self.store.connections(user_id)}
@@ -215,8 +249,8 @@ class Connections:
             out.append({"app": n, "label": a.get("label", n), "description": a.get("description", ""),
                         "icon": a.get("icon", n), "provider": a["provider"], "auth": prov.get("kind", "oauth"),
                         **({"token_help": prov.get("token_help", ""), "token_help_url": prov.get("token_help_url")}
-                           if prov.get("kind") == "token" else dict()), "connected": row is not None,
-                        "enabled": row is not None and n not in off, "email": row and row["account_email"],
+                           if prov.get("kind") == "token" else dict()), "connected": self.authorized(a, row),
+                        "enabled": self.authorized(a, row) and n not in off, "email": row and row["account_email"],
                         "status": row and row["status"]})
         return out
 
@@ -227,8 +261,9 @@ class Connections:
         prov = self.app_list[name].get("provider")
         if prov is None:
             return await self.store.set_app_on(user_id, name, on)
-        if on and not any(r["app"] == prov for r in await self.store.connections(user_id)):
-            raise PermissionError(f"connect {prov} first")
+        row = next((r for r in await self.store.connections(user_id) if r["app"] == prov), None)
+        if on and not self.authorized(self.app_list[name], row):
+            raise PermissionError(f"connect {name} first")
         await self.store.set_app_disabled(user_id, name, not on)
 
     async def _access(self, user_id: str, row: dict) -> str | None:
@@ -258,7 +293,8 @@ class Connections:
         off, on = await self.store.disabled_apps(user_id), await self.store.enabled_apps(user_id)
         out += [{"name": n, "url": a["url"]} for n, a in self.app_list.items() if a.get("provider") is None and n in on]
         for row in await self.store.connections(user_id):
-            mine = {n: a for n, a in self.app_list.items() if a.get("provider") == row["app"] and n not in off}
+            mine = {n: a for n, a in self.app_list.items() if a.get("provider") == row["app"] and n not in off
+                    and self.authorized(a, row)}
             if not mine:
                 continue
             a = self.apps.get(row["app"])

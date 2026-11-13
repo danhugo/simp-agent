@@ -24,7 +24,7 @@ test("apps: connect state, toggle drive off/on, disconnect (mocked API)", async 
     calls.push(r.request().method() + " " + path);
     const m = path.match(/apps\/(\w+)\/(enable|disable)/);
     if (m) off = m[2] === "disable" ? [...off, m[1]] : off.filter((a) => a !== m[1]);
-    if (path.endsWith("/start")) return r.fulfill({ json: { url: "/?oauth=1#apps?ok=google" } });
+    if (path.endsWith("/connect")) return r.fulfill({ json: { url: "/?oauth=1#apps?ok=google" } });
     if (r.request().method() === "DELETE") connected = false;
     return r.fulfill({ json: { ok: true } });
   });
@@ -51,7 +51,7 @@ test("apps: connect state, toggle drive off/on, disconnect (mocked API)", async 
   await expect(dis).toHaveText("Disconnect?");
   await dis.click();
   await expect(available.getByRole("button", { name: "Connect Gmail" })).toBeVisible();
-  expect(calls).toEqual(["POST /api/connections/google/start", "POST /api/apps/drive/disable", "POST /api/apps/drive/enable", "DELETE /api/connections/google"]);
+  expect(calls).toEqual(["POST /api/apps/gmail/connect", "POST /api/apps/drive/disable", "POST /api/apps/drive/enable", "DELETE /api/connections/google"]);
 });
 
 test("no-auth app: switch only, toggles on and off without a login", async ({ page }) => {

@@ -689,6 +689,23 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def list_apps(u=Depends(user)):
         return await mgr.conns.list_apps(u["id"])
 
+    @app.post("/api/apps/{app_name}/connect")  # OAuth for this one app only (incremental scopes)
+    async def connect_app(app_name: str, u=Depends(user)):
+        try:
+            return {"url": mgr.conns.start(u["id"], app_name)}
+        except LookupError as e:
+            raise HTTPException(404, str(e)) from None
+        except RuntimeError as e:
+            raise HTTPException(503, str(e)) from None
+
+    @app.post("/api/apps/{app_name}/disconnect")  # forget one app; the last one of a provider revokes the login
+    async def disconnect_app(app_name: str, u=Depends(user)):
+        try:
+            await mgr.conns.forget_app(u["id"], app_name)
+        except LookupError as e:
+            raise HTTPException(404, str(e)) from None
+        return {"ok": True}
+
     @app.post("/api/apps/{app_name}/{action}")
     async def toggle_app(app_name: str, action: str, u=Depends(user)):
         if action not in ("enable", "disable"):
@@ -700,15 +717,6 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         except PermissionError as e:
             raise HTTPException(409, str(e)) from None
         return {"ok": True}
-
-    @app.post("/api/connections/{app_name}/start")
-    async def start_connection(app_name: str, u=Depends(user)):
-        try:
-            return {"url": mgr.conns.start(u["id"], app_name)}
-        except LookupError as e:
-            raise HTTPException(404, str(e)) from None
-        except RuntimeError as e:
-            raise HTTPException(503, str(e)) from None
 
     @app.get("/api/connections/{app_name}/callback")  # no bearer: the browser comes back from Google; state proves who
     async def connection_callback(app_name: str, state: str = "", code: str = "", error: str = ""):

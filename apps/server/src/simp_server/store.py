@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS memories(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, 
     created REAL, source_run_id TEXT);
 CREATE TABLE IF NOT EXISTS connections(user_id TEXT NOT NULL, app TEXT NOT NULL, account_email TEXT,
     access_token_enc TEXT, refresh_token_enc TEXT, expires_at REAL, status TEXT, created REAL, updated REAL,
-    PRIMARY KEY(user_id, app));
+    scopes TEXT, PRIMARY KEY(user_id, app));
 CREATE TABLE IF NOT EXISTS app_off(user_id TEXT NOT NULL, app TEXT NOT NULL, PRIMARY KEY(user_id, app));
 CREATE TABLE IF NOT EXISTS app_on(user_id TEXT NOT NULL, app TEXT NOT NULL, PRIMARY KEY(user_id, app));
 CREATE TABLE IF NOT EXISTS mcp_audit(user_id TEXT, session_id TEXT, server TEXT, tool TEXT, decision TEXT, ok INTEGER,
@@ -79,6 +79,8 @@ class SqliteStore:
             await self._do("ALTER TABLE users ADD COLUMN password TEXT")
             await self._do("ALTER TABLE users ADD COLUMN disabled INTEGER DEFAULT 0")
             await self._do("UPDATE users SET disabled=1 WHERE token_sha256 IS NULL")  # Stage 2 revoke = NULL token
+        if "scopes" not in [r["name"] for r in await self._all("PRAGMA table_info(connections)")]:
+            await self._do("ALTER TABLE connections ADD COLUMN scopes TEXT")  # granted OAuth scopes, space-separated
         cols = [r["name"] for r in await self._all("PRAGMA table_info(sessions)")]
         if "locale" not in cols:  # db from before the user's locale/timezone was kept
             await self._do("ALTER TABLE sessions ADD COLUMN locale TEXT")
@@ -98,12 +100,17 @@ class SqliteStore:
 
     # connections: OAuth-linked apps; token columns hold Fernet ciphertext (see connections.py)
     async def save_connection(self, user_id: str, app: str, email: str | None, access: str, refresh: str,
-                              expires_at: float) -> None:
+                              expires_at: float, scopes: str = "") -> None:
         now = time.time()
-        await self._do("INSERT INTO connections VALUES(?,?,?,?,?,?,'ok',?,?) ON CONFLICT(user_id, app) DO UPDATE SET "
+        await self._do("INSERT INTO connections VALUES(?,?,?,?,?,?,'ok',?,?,?) ON CONFLICT(user_id, app) DO UPDATE SET "
                        "account_email=excluded.account_email, access_token_enc=excluded.access_token_enc, "
                        "refresh_token_enc=excluded.refresh_token_enc, expires_at=excluded.expires_at, status='ok', "
-                       "updated=excluded.updated", user_id, app, email, access, refresh, expires_at, now, now)
+                       "updated=excluded.updated, scopes=excluded.scopes",
+                       user_id, app, email, access, refresh, expires_at, now, now, scopes)
+
+    async def set_connection_scopes(self, user_id: str, app: str, scopes: str) -> None:
+        await self._do("UPDATE connections SET scopes=?, updated=? WHERE user_id=? AND app=?",
+                       scopes, time.time(), user_id, app)
 
     async def connections(self, user_id: str) -> list[dict]:
         return await self._all("SELECT * FROM connections WHERE user_id=? ORDER BY app", user_id)
