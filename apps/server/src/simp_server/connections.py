@@ -7,6 +7,7 @@ and only ever sent to the app's own token/MCP URLs: never logged, never in promp
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -18,7 +19,7 @@ import urllib.parse
 from pathlib import Path
 
 import httpx
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 
 from simp_agent.plugins.mcp import McpPlugin
 
@@ -85,8 +86,10 @@ def secret_key(keys: dict, data_dir: str) -> bytes:
     f = Path(data_dir) / ".env"
     f.parent.mkdir(parents=True, exist_ok=True)
     old = f.read_text() if f.exists() else ""
-    f.write_text(old + ("" if not old or old.endswith("\n") else "\n") + f"SIMP_SECRET_KEY={k}\n")
-    os.chmod(f, 0o600)
+    fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)  # never readable by others, not even briefly
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "a") as out:
+        out.write(("" if not old or old.endswith("\n") else "\n") + f"SIMP_SECRET_KEY={k}\n")
     log.warning("made a new SIMP_SECRET_KEY in %s: keep it, losing it means every user must reconnect", f)
     return k.encode()
 
@@ -98,6 +101,17 @@ def _email(id_token: str | None) -> str | None:
         return json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))["email"]
     except Exception:
         return None
+
+
+def _hash(s: str) -> str:
+    return hashlib.sha256(s.encode()).hexdigest()
+
+
+def _is_401(e: BaseException) -> bool:
+    if isinstance(e, BaseExceptionGroup):
+        return any(_is_401(x) for x in e.exceptions)
+    r = getattr(e, "response", None)  # httpx / httpx2 HTTPStatusError
+    return getattr(r, "status_code", None) == 401
 
 
 def _granted(row: dict | None) -> set[str]:
@@ -143,6 +157,9 @@ class Connections:
                     pass
         await self.store.save_connection(user_id, name, who, self.fernet.encrypt(token.encode()).decode(), "",
                                          NO_EXPIRY)
+        for n, app in self.app_list.items():  # a forgotten app turns on again with its new token
+            if app.get("provider") == name:
+                await self.store.set_app_disabled(user_id, n, False)
 
     def _client(self, a: dict) -> tuple[str, str]:
         cid, sec = self.keys.get(a["client_id_env"]), self.keys.get(a["client_secret_env"])
@@ -157,8 +174,9 @@ class Connections:
         """Provider connected and every scope of this app granted (apps without scopes: the login is enough)."""
         return row is not None and set(app.get("scopes", ())) <= _granted(row)
 
-    def start(self, user_id: str, app_name: str) -> str:
-        """Auth URL for one app: only its scopes (+ the provider's base ones); Google adds them to earlier grants."""
+    def start(self, user_id: str, app_name: str) -> tuple[str, str]:
+        """(auth URL, browser nonce) for one app: only its scopes (+ the provider's base ones); Google adds them to
+        earlier grants. The nonce goes in an HttpOnly cookie; the callback needs it, so a URL sent to someone else fails."""
         if app_name not in self.app_list or not self.app_list[app_name].get("provider"):
             raise LookupError(f"unknown app {app_name!r}")
         name = self.app_list[app_name]["provider"]
@@ -168,21 +186,21 @@ class Connections:
         cid, _ = self._client(a)
         now = time.time()
         self.pending = {s: v for s, v in self.pending.items() if v[3] > now}
-        state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(64)
-        self.pending[state] = (user_id, name, verifier, now + STATE_TTL, app_name)
+        state, verifier, nonce = secrets.token_urlsafe(32), secrets.token_urlsafe(64), secrets.token_urlsafe(32)
+        self.pending[state] = (user_id, name, verifier, now + STATE_TTL, app_name, _hash(nonce))
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
         q = {"client_id": cid, "redirect_uri": self.redirect_uri(name), "response_type": "code",
              "scope": " ".join(a["scopes"] + self.app_list[app_name].get("scopes", [])), "state": state, "code_challenge": challenge,
              "code_challenge_method": "S256", "access_type": "offline", "prompt": "consent",
              "include_granted_scopes": "true"}
-        return f"{a['auth_url']}?{urllib.parse.urlencode(q)}"
+        return f"{a['auth_url']}?{urllib.parse.urlencode(q)}", nonce
 
-    async def callback(self, name: str, code: str, state: str) -> None:
-        """Raises ValueError with a short, token-free reason."""
+    async def callback(self, name: str, code: str, state: str, nonce: str = "") -> str:
+        """The user id. Raises ValueError with a short, token-free reason."""
         v = self.pending.pop(state, None)
-        if v is None or v[1] != name or v[3] < time.time():
+        if v is None or v[1] != name or v[3] < time.time() or not secrets.compare_digest(v[5], _hash(nonce)):
             raise ValueError("bad or expired state")
-        user_id, _, verifier, _, app_name = v
+        user_id, _, verifier, _, app_name, _ = v
         a = self.app(name)
         cid, sec = self._client(a)
         r = await self.http.post(a["token_url"], data={
@@ -201,6 +219,7 @@ class Connections:
             t["access_token"].encode()).decode(), self.fernet.encrypt(t["refresh_token"].encode()).decode(),
             time.time() + float(t.get("expires_in", 3600)), scopes)
         await self.store.set_app_disabled(user_id, app_name, False)  # only the app just connected turns on
+        return user_id
 
     async def forget_app(self, user_id: str, app_name: str) -> None:
         """Per-app disconnect: drop its scopes locally (Google can't revoke one scope); the last app revokes the token.
@@ -212,6 +231,11 @@ class Connections:
         row = next((r for r in await self.store.connections(user_id) if r["app"] == prov), None)
         if row is None:
             return
+        await self._forget(user_id, app_name, row)
+        await self.store.set_app_disabled(user_id, app_name, True)  # stays off until this app is connected again
+
+    async def _forget(self, user_id: str, app_name: str, row: dict) -> None:
+        app, prov = self.app_list[app_name], self.app_list[app_name]["provider"]
         left = _granted(row) - set(app.get("scopes", ()))
         others = [a for n, a in self.app_list.items() if a.get("provider") == prov and n != app_name]
         if not app.get("scopes") or not any(set(a.get("scopes", ())) <= left for a in others if a.get("scopes")):
@@ -268,20 +292,27 @@ class Connections:
 
     async def _access(self, user_id: str, row: dict) -> str | None:
         """A valid access token, refreshed when it ends within REFRESH_EARLY; None (and needs_reconnect) on failure."""
-        if row["expires_at"] - time.time() > REFRESH_EARLY:
-            return self.fernet.decrypt(row["access_token_enc"]).decode()
+        try:
+            if row["expires_at"] - time.time() > REFRESH_EARLY:
+                return self.fernet.decrypt(row["access_token_enc"]).decode()
+            refresh = self.fernet.decrypt(row["refresh_token_enc"]).decode()
+        except InvalidToken:  # SIMP_SECRET_KEY changed: only this login is lost
+            await self.store.set_connection_status(user_id, row["app"], "needs_reconnect")
+            return None
         a = self.apps[row["app"]]
         try:
             cid, sec = self._client(a)
             r = await self.http.post(a["token_url"], data={
-                "grant_type": "refresh_token", "refresh_token": self.fernet.decrypt(row["refresh_token_enc"]).decode(),
-                "client_id": cid, "client_secret": sec})
-            t = r.json() if r.status_code == 200 else None
-        except Exception as e:
+                "grant_type": "refresh_token", "refresh_token": refresh, "client_id": cid, "client_secret": sec})
+        except Exception as e:  # network, config: try again next run, the login itself may be fine
             log.warning("refresh %s failed: %s", row["app"], type(e).__name__)
-            t = None
+            return None
+        t = r.json() if r.status_code == 200 else None
         if not t or not t.get("access_token"):
-            await self.store.set_connection_status(user_id, row["app"], "needs_reconnect")
+            if r.status_code in (400, 401):  # invalid_grant: revoked or expired for good
+                await self.store.set_connection_status(user_id, row["app"], "needs_reconnect")
+            else:
+                log.warning("refresh %s failed: HTTP %s", row["app"], r.status_code)
             return None
         await self.store.update_connection_token(user_id, row["app"], self.fernet.encrypt(
             t["access_token"].encode()).decode(), time.time() + float(t.get("expires_in", 3600)))
@@ -302,11 +333,16 @@ class Connections:
                 continue
             token = await self._access(user_id, row) if row["status"] == "ok" else None
             if token is None:
-                problems.append(f"{a.get('label', row['app'])} connection needs reconnect (Settings > Connections)")
+                gone = (await self._status(user_id, row["app"])) != "ok"
+                problems.append(f"{a.get('label', row['app'])} " + ("connection needs reconnect (Crafts > Portals)"
+                                if gone else "is not reachable right now, try again later"))
                 continue
             out += [{"name": n, "url": app["url"], "headers": self._header(row["app"], token), "provider": row["app"]}
                     for n, app in mine.items()]
         return out, problems
+
+    async def _status(self, user_id: str, prov: str) -> str | None:
+        return next((r["status"] for r in await self.store.connections(user_id) if r["app"] == prov), None)
 
 
 class UserMcp(McpPlugin):
@@ -317,8 +353,27 @@ class UserMcp(McpPlugin):
     def __init__(self, run, servers: list[dict] | None = None):
         super().__init__(servers=servers)
         self.run, self.names = run, set()
+        self.api, self.config, self.stale = None, dict(), False  # stale: the user changed portals; reload next turn
+
+    async def reload(self) -> None:
+        """Drop the old connections and tools, read the user's portals again. Only between turns."""
+        self.stale = False
+        if self.api is None:  # never set up: the first prompt reads fresh portals anyway
+            return
+        await self.session_shutdown()
+        for n in self.names:
+            self.api.unregister_tool(n)
+            self.run.session.needs_approval.discard(n)
+        self.names, self.servers, self.stop = set(), None, asyncio.Event()
+        await self.setup(self.api, self.config)
+
+    async def tool_call(self, call):
+        if self.stale and call.name in self.names:  # turned off or reconnected while this turn runs
+            return {"block": "portals changed; they apply from the next message"}
+        return None
 
     async def setup(self, api, config: dict) -> None:
+        self.api, self.config = api, config
         if self.servers is None:  # tests pass servers directly
             self.servers, problems = await self.run.mgr.conns.servers(self.run.user_id)
             for text in problems:
@@ -337,7 +392,7 @@ class UserMcp(McpPlugin):
         try:
             return await super()._connect(spec)
         except Exception as e:  # revoked/expired token: ask the user to reconnect instead of failing every run
-            if spec.get("provider") and "401" in f"{e!r} {getattr(e, 'exceptions', '')}":
+            if spec.get("provider") and _is_401(e):
                 await self.run.mgr.store.set_connection_status(self.run.user_id, spec["provider"], "needs_reconnect")
             raise
 

@@ -76,7 +76,7 @@ async def test_oauth_flow_list_delete(tmp_path):
     assert bad.status_code == 302 and "error=" in bad.headers["location"] and not g.calls
     q, r = await connect(c, ta)
     assert q["access_type"] == "offline" and q["code_challenge_method"] == "S256" and q["client_id"] == "cid"
-    assert r.status_code == 302 and r.headers["location"].endswith("#connections?ok=google")
+    assert r.status_code == 302 and r.headers["location"].endswith("#crafts?ok=google")
     form = g.calls[0][1]
     assert form["code_verifier"] and form["client_secret"] == "csecret"  # PKCE verifier sent
     again = await c.get("/api/connections/google/callback", params={"code": "C", "state": q["state"]})
@@ -224,13 +224,14 @@ async def test_token_401_at_run_marks_reconnect(tmp_path):
     plug = UserMcp(Run(), servers=[])
 
     async def boom(self, spec):
-        raise RuntimeError("HTTP 401 Unauthorized")
+        req = httpx.Request("GET", "https://x")
+        raise BaseExceptionGroup("tg", [httpx.HTTPStatusError("401", request=req, response=httpx.Response(401, request=req))])
     import simp_agent.plugins.mcp as m
     orig, m.McpPlugin._connect = m.McpPlugin._connect, boom
     try:
         try:
             await plug._connect({"name": "github", "url": "u", "provider": "github"})
-        except RuntimeError:
+        except BaseExceptionGroup:
             pass
     finally:
         m.McpPlugin._connect = orig
@@ -263,4 +264,86 @@ async def test_google_apps_authorize_one_at_a_time(tmp_path):
     assert not any(p.endswith("/revoke") for p, _ in g.calls)
     await c.post("/api/apps/gmail/disconnect", headers=h)  # the last app revokes and deletes the login
     assert g.calls[-1] == ("/revoke", {"token": "RT-1"}) and not await mgr.store.connections(ua["id"])
+    await mgr.store.close()
+
+
+async def test_portal_change_reloads_open_run_and_evict_closes_mcp(tmp_path):
+    _, mgr, _, [(ta, ua), _], c = await make(tmp_path, FakeProvider(reply("a"), reply("b")))
+    row = await mgr.store.add_session(ua["id"], "test", "t")
+    run = await mgr.get(ua, row["id"])
+    run.mcp.servers = [{"name": "gmail", "server": fake_gmail()}]
+    await run.command(p.Prompt(text="hi"))
+    await wait_for(lambda: not run.busy and run.task.done())
+    assert "gmail__send" in run.mcp.names and run.mcp.tasks
+    await c.post("/api/apps/deepwiki/disable", headers={"Authorization": f"Bearer {ta}"})  # any portal change
+    assert run.mcp.stale
+    blocked = await run.mcp.tool_call(ToolCall("x", "gmail__send", {}))
+    assert "portals changed" in blocked["block"]  # a turn already running can't use the old portals
+    await run.command(p.Prompt(text="again"))
+    await wait_for(lambda: not run.busy and run.task.done())
+    assert not run.mcp.stale and not run.mcp.names and "gmail__send" not in run.session.needs_approval
+    assert not any(t.name.startswith("gmail__") for t in run.session.agent.tools)  # user has no gmail: gone
+    run.mcp.servers = [{"name": "gmail", "server": fake_gmail()}]
+    await run.mcp.setup(run.mcp.api, dict())
+    held = list(run.mcp.tasks)
+    await mgr.evict(row["id"])
+    assert all(t.done() for t in held) and not run.mcp.tasks  # connection closed, not leaked
+    await mgr.store.close()
+
+
+async def test_mcp_servers_connect_in_parallel():
+    import asyncio
+
+    from simp_agent.plugins.mcp import McpPlugin
+
+    class Api:
+        async def emit(self, *a):
+            pass
+
+    plug = McpPlugin(servers=[{"name": "a"}, {"name": "b"}, {"name": "c"}])
+
+    async def slow(spec):
+        await asyncio.sleep(0.2)
+        raise RuntimeError("down")
+    plug._connect = slow
+    t = time.monotonic()
+    await plug.setup(Api(), dict())
+    assert time.monotonic() - t < 0.4 and plug.connect_timeout == 10 and plug.timeout == 60
+
+
+async def test_oauth_callback_needs_same_browser(tmp_path):
+    _, mgr, g, [(ta, ua), _], c = await make(tmp_path)
+    r = await c.post("/api/apps/gmail/connect", headers={"Authorization": f"Bearer {ta}"})
+    state = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(r.json()["url"]).query))["state"]
+    victim = httpx.AsyncClient(transport=c._transport, base_url="http://localhost")  # no cookie
+    bad = await victim.get("/api/connections/google/callback", params={"code": "C", "state": state})
+    assert "error=" in bad.headers["location"] and not g.calls and not await mgr.store.connections(ua["id"])
+    await mgr.store.close()
+
+
+async def test_refresh_network_error_keeps_login(tmp_path):
+    _, mgr, g, [(ta, ua), _], c = await make(tmp_path)
+    await connect(c, ta)
+    await mgr.store.update_connection_token(ua["id"], "google", "x", time.time())
+    mgr.conns.http = httpx.AsyncClient(transport=httpx.MockTransport(lambda req: httpx.Response(503)))
+    servers, problems = await mgr.conns.servers(ua["id"])
+    assert servers == [] and "try again" in problems[0]
+    assert (await mgr.store.connections(ua["id"]))[0]["status"] == "ok"  # 5xx: not the user's fault
+    await mgr.store.close()
+
+
+async def test_forgotten_app_stays_off_and_bad_key_row_is_isolated(tmp_path):
+    _, mgr, _, [(ta, ua), _], c = await make(tmp_path)
+    h = {"Authorization": f"Bearer {ta}"}
+    await connect(c, ta, "gmail")
+    await c.post("/api/apps/gmail/disconnect", headers=h)
+    await connect(c, ta, "drive")  # Google reports gmail scopes granted again
+    await mgr.store.set_connection_scopes(ua["id"], "google", " ".join(
+        sum((a.get("scopes", []) for a in mgr.conns.app_list.values() if a.get("provider") == "google"), [])))
+    assert "gmail" not in {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]}  # does not come back
+    await c.post("/api/apps/deepwiki/enable", headers=h)
+    await mgr.store.update_connection_token(ua["id"], "google", "not-fernet", time.time() + 3600)
+    servers, problems = await mgr.conns.servers(ua["id"])
+    assert [s["name"] for s in servers] == ["deepwiki"] and problems  # no-auth portal still works
+    assert (await mgr.store.connections(ua["id"]))[0]["status"] == "needs_reconnect"
     await mgr.store.close()
