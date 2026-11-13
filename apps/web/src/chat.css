@@ -129,6 +129,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
   border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent); background: color-mix(in srgb, var(--warn) 8%, var(--bg));
   border-radius: var(--radius); padding: var(--sp-3) var(--sp-4);
 }
+.args-list { margin: 0 0 var(--sp-2); padding-left: var(--sp-5); overflow-wrap: anywhere; font-size: var(--fs-sm); }
 .approval-card p { margin: 0 0 var(--sp-2); }
 
 .to-bottom {

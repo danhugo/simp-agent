@@ -29,3 +29,10 @@ it("toolLabel: short plain line, no raw args", () => {
   expect(toolLabel(c("web_fetch", { url: "https://docs.python.org/3/" }), true)).toBe("Opened docs.python.org");
   expect(toolLabel(c("make_plan", { x: 1 }), true)).toBe("Make plan");
 });
+
+it("mcp tools: app + action, args as short lines", async () => {
+  const { mcpLabel, argLines } = await import("./Chat");
+  expect(toolLabel(call("gmail__search_messages", { q: "x" }), true)).toBe("Gmail · search messages");
+  expect(mcpLabel("read")).toBeUndefined();
+  expect(argLines({ to: "a@b.c", body: "x".repeat(200) })[1]).toHaveLength(126);
+});

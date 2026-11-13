@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, AuthError, type ConnStatus, type SignupMode, getToken, setToken, subscribe } from "./api";
 import { Chat, Composer, errorText, type Send } from "./Chat";
-import { IconCheck, IconChevron, IconCompose, IconEye, IconFile, IconEyeOff, IconLogout, IconMemory, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
+import { IconCheck, IconChevron, IconCompose, IconEye, IconFile, IconEyeOff, IconLink, IconLogout, IconMemory, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
 import { Mascot3D } from "./Mascot3D";
 import { requestLocation, saveLocation, sharedLocation } from "./location";
 import { Files } from "./Files";
 import { Memory } from "./Memory";
+import { Connections } from "./Connections";
 import type { SessionInfo } from "./protocol.gen";
 import { initialState, reduce, type ServerEvent } from "./state";
 
@@ -146,6 +147,9 @@ const SUGGESTIONS = [
   { text: "Help me plan my week", icon: <IconCheck size={16} /> },
 ];
 
+const isConnHash = () => location.hash.startsWith("#connections");
+const hashSid = () => (isConnHash() ? "" : location.hash.slice(1));
+
 function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () => void; theme: string }) {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loaded, setLoaded] = useState(false);  // first sessions fetch finished (ok or not)
@@ -161,7 +165,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   const [profiles, setProfiles] = useState<string[]>([]);
   const [models, setModels] = useState<Record<string, string>>({});
   const [profile, setProfile] = useState("");
-  const [sid, setSid] = useState(() => location.hash.slice(1));
+  const [sid, setSid] = useState(hashSid);
   const [state, setState] = useState(initialState);
   const [conn, setConn] = useState<ConnStatus>("connecting");
   const [showFiles, setShowFiles] = useState(false);
@@ -203,8 +207,10 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [drawer]);
-  const [memory, setMemory] = useState(false);  // Memory page open (only when no session is picked)
-  const pick = (id: string) => { setSid(id); setMemory(false); setDrawer(false); };
+  // Memory / Connections page (only when no session is picked); "#connections?..." is the OAuth return
+  const [page, setPage] = useState<"" | "memory" | "connections">(() => (isConnHash() ? "connections" : ""));
+  const pick = (id: string) => { setSid(id); setPage(""); setDrawer(false); };
+  const open = (p: "memory" | "connections") => { pick(""); setPage(p); };
 
   useEffect(() => {
     refresh();
@@ -214,7 +220,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
 
   // Follow hash changes (pasted deep link, back/forward, same-document navigation to /#id).
   useEffect(() => {
-    const onHash = () => setSid(location.hash.slice(1));
+    const onHash = () => { if (isConnHash()) setPage("connections"); setSid(hashSid()); };
     window.addEventListener("hashchange", onHash);
     onHash();  // the hash may have changed between the first render and this listener
     return () => window.removeEventListener("hashchange", onHash);
@@ -298,11 +304,14 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
           <button className="ghost icon only-desktop collapse" aria-label="Collapse sidebar" title="Collapse sidebar"
             onClick={toggleCollapsed}><IconSidebar /></button>
         </div>
-        <button className={`ghost item new ${sid || memory ? "" : "active"}`} onClick={() => pick("")} aria-current={sid || memory ? undefined : "page"}
+        <button className={`ghost item new ${sid || page ? "" : "active"}`} onClick={() => pick("")} aria-current={sid || page ? undefined : "page"}
           aria-label={rail ? "New session" : undefined} title={rail ? "New session" : undefined}><IconCompose /><span className="label">New session</span></button>
-        <button className={`ghost item new ${memory && !sid ? "active" : ""}`} onClick={() => { pick(""); setMemory(true); }}
-          aria-current={memory && !sid ? "page" : undefined} aria-label={rail ? "Memory" : undefined} title={rail ? "Memory" : undefined}>
+        <button className={`ghost item new ${page === "memory" && !sid ? "active" : ""}`} onClick={() => open("memory")}
+          aria-current={page === "memory" && !sid ? "page" : undefined} aria-label={rail ? "Memory" : undefined} title={rail ? "Memory" : undefined}>
           <IconMemory /><span className="label">Memory</span></button>
+        <button className={`ghost item new ${page === "connections" && !sid ? "active" : ""}`} onClick={() => open("connections")}
+          aria-current={page === "connections" && !sid ? "page" : undefined} aria-label={rail ? "Connections" : undefined} title={rail ? "Connections" : undefined}>
+          <IconLink /><span className="label">Connections</span></button>
         <nav aria-label="Sessions">
           <h2 className="section-label">Recent</h2>
           {sessions.map((s) => (
@@ -333,7 +342,8 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
             firstPrompt={first?.sid === sid ? first.text : undefined} />
           {showFiles && <Files sid={sid} onError={guard} focus={filesFocus} onClose={() => setShowFiles(false)} />}
         </>
-      ) : memory ? <Memory onError={guard} menuButton={menu} /> : (
+      ) : page === "memory" ? <Memory onError={guard} menuButton={menu} />
+        : page === "connections" ? <Connections onError={guard} menuButton={menu} /> : (
         <main className="home">
           <header className="home-head">{menu}<span className="brand only-mobile"><PixelAgent size={22} />Simp</span></header>
           <div className="home-hero">

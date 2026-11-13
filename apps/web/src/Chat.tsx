@@ -337,6 +337,7 @@ const oneLine = (s: string, max = 80) => {
 
 /** One plain line for a tool call, e.g. "Read src/app.py" or "Ran `npm test`"; never the raw arguments. */
 export function toolLabel(call: ToolCall, finished: boolean): string {
+  if (mcpLabel(call.name)) return mcpLabel(call.name)!;
   const a = call.arguments;
   const str = (k: string) => (typeof a[k] === "string" ? oneLine(a[k] as string) : "");
   const verb = (done: string, ing: string) => (finished ? done : ing);
@@ -356,6 +357,20 @@ export function toolLabel(call: ToolCall, finished: boolean): string {
   }
 }
 
+const APP_NAMES: Record<string, string> = { gmail: "Gmail", drive: "Drive", calendar: "Calendar", gcal: "Calendar", gdrive: "Drive" };
+const words = (s: string) => s.replace(/[_-]+/g, " ").trim();
+/** MCP tools are named "<server>__<tool>": "gmail__create_draft" -> "Gmail · create draft". Undefined for built-in tools. */
+export function mcpLabel(name: string): string | undefined {
+  const i = name.indexOf("__");
+  if (i <= 0) return;
+  const app = name.slice(0, i).toLowerCase();
+  const n = APP_NAMES[app] ?? words(app).replace(/^./, (c) => c.toUpperCase());
+  return `${n} · ${words(name.slice(i + 2))}`;
+}
+/** Args as short "key: value" lines (long values cut) instead of raw JSON. */
+export const argLines = (args: Record<string, unknown>) => Object.entries(args).map(([k, v]) =>
+  `${words(k)}: ${oneLine(typeof v === "string" ? v : JSON.stringify(v), 120)}`);
+
 function Approval({ p, send }: { p: PendingApproval; send: Send }) {
   const answer = (decision: "allow" | "deny" | "always") => send({ type: "approve", call_id: p.call_id, decision });
   // No autoFocus on Allow: an Enter meant for the composer would approve the tool. We focus the card itself (a
@@ -367,8 +382,13 @@ function Approval({ p, send }: { p: PendingApproval; send: Send }) {
   }, [p.call_id]);
   return (
     <div ref={card} tabIndex={-1} className="approval-card" role="alertdialog" aria-label="Approval needed">
-      <p><strong>Allow {p.tool}?</strong></p>
-      <pre className="args">{JSON.stringify(p.args, null, 2)}</pre>
+      {mcpLabel(p.tool) ? <>
+        <p><strong>Allow {mcpLabel(p.tool)}?</strong></p>
+        <ul className="args-list">{argLines(p.args).map((l, i) => <li key={i}>{l}</li>)}</ul>
+      </> : <>
+        <p><strong>Allow {p.tool}?</strong></p>
+        <pre className="args">{JSON.stringify(p.args, null, 2)}</pre>
+      </>}
       <div className="row">
         <button className="primary" onClick={() => answer("allow")}>Allow</button>
         <button onClick={() => answer("always")}>Always</button>

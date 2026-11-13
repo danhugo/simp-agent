@@ -2,7 +2,7 @@
 // Soft 1.5px strokes, currentColor, decorative by default (give the button an aria-label or text).
 import type { LucideIcon, LucideProps } from "lucide-react";
 import {
-  ArrowDown, ArrowUp, Bell, Brain, Check, ChevronRight, Copy, Download, Ellipsis, Eye, EyeOff, FileText, Folder, LogOut, Menu, Moon,
+  ArrowDown, ArrowUp, Bell, Brain, Check, ChevronRight, Copy, Download, Ellipsis, Eye, EyeOff, FileText, Folder, Link, LogOut, Menu, Moon,
   PanelLeft, Plus, RefreshCw, Shrink, Square, SquarePen, Sun, Trash, Upload, X,
 } from "lucide-react";
 
@@ -37,3 +37,4 @@ export const IconCompact = wrap(Shrink);
 export const IconEye = wrap(Eye);
 export const IconEyeOff = wrap(EyeOff);
 export const IconMemory = wrap(Brain);
+export const IconLink = wrap(Link);
