@@ -8,7 +8,7 @@ simp-server = { workspace = true }
 
 [dependency-groups]
 dev = [
-    "simp-agent",
+    "simp-agent[mcp]",
     "simp-cli",
     "simp-server",
     "pyte>=0.8.2",
