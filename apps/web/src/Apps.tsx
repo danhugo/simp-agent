@@ -18,7 +18,7 @@ const ICONS: Record<string, React.ReactNode> = {
   calendar: <><rect x="4" y="5" width="16" height="15" rx="2" fill="#fff" stroke="#4285f4" strokeWidth="1.5" /><rect x="4" y="5" width="16" height="4" fill="#4285f4" /><text x="12" y="18" fontSize="8" textAnchor="middle" fill="#4285f4" fontFamily="sans-serif" fontWeight="700">31</text></>,
 };
 const AppIcon = ({ name }: { name: string }) => (
-  <svg className="app-icon" viewBox="0 0 24 24" width="32" height="32" aria-hidden="true">{ICONS[name] ?? <circle cx="12" cy="12" r="8" fill="var(--muted)" />}</svg>
+  <svg className="app-icon" viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">{ICONS[name] ?? <circle cx="12" cy="12" r="8" fill="var(--muted)" />}</svg>
 );
 
 /** Apps the agent can use for you: connect a provider once (Google), then turn each app on or off. */
@@ -48,7 +48,7 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
       <AppIcon name={a.icon} />
       <div className="app-text">
         <strong>{a.label}</strong>
-        <div className="muted small">{a.description}</div>
+        <div className="muted small app-desc">{a.description}</div>
         {a.status === "needs_reconnect" && <div className="small warn">Access expired. Please reconnect.</div>}
       </div>
       {a.status === "needs_reconnect" ? <button className="primary" onClick={() => connect(a.provider)}>Reconnect</button>
@@ -61,7 +61,7 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
     </li>
   );
   const section = (title: string, list: AppItem[]) => list.length > 0 && (
-    <section aria-label={title}><h2>{title}</h2><ul>{list.map(card)}</ul></section>
+    <section aria-label={title}><h2>{title}</h2><ul className="app-grid">{list.map(card)}</ul></section>
   );
   // one account line per connected provider (only Google today)
   const accounts = [...new Map((items ?? []).filter((a) => a.connected).map((a) => [a.provider, a])).values()];
