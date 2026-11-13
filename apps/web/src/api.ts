@@ -6,7 +6,7 @@ export type Command = Protocol["command"];
 export interface FileEntry { name: string; is_dir: boolean; size: number }
 /** REST-only (GET /api/apps). */
 export interface AppItem {
-  app: string; label: string; description: string; icon: string; provider: string;
+  app: string; label: string; description: string; icon: string; provider: string | null;  // null: no login needed, connected is always true
   connected: boolean; enabled: boolean; email: string | null; status: "ok" | "needs_reconnect" | null;
 }
 /** REST-only (GET /api/memories), not in the protocol schema. */
