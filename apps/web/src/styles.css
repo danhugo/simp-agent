@@ -177,6 +177,7 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .memory-body { max-width: 760px; margin: 0 auto; padding: 0 var(--sp-5) var(--sp-8); }
 .tabs { display: flex; gap: var(--sp-1); margin-top: var(--sp-2); }
 .tab { background: none; border: 0; padding: var(--sp-2) var(--sp-3); color: var(--muted); font: inherit; cursor: pointer; }
+.tab:hover:not(:disabled), .tab:active { background: none; }
 .tab:hover { color: color-mix(in srgb, var(--muted), var(--text)); }
 .tab[aria-selected="true"] { color: var(--text); font-weight: 600; }
 .memory-body h2 { font-size: var(--fs-md); margin: var(--sp-6) 0 var(--sp-2); }
