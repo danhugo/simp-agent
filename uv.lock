@@ -916,18 +916,20 @@ version = "0.1.0"
 source = { editable = "apps/server" }
 dependencies = [
     { name = "aiosqlite" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
-    { name = "simp-agent" },
+    { name = "simp-agent", extra = ["mcp"] },
     { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
+    { name = "cryptography", specifier = ">=50.0.2" },
     { name = "fastapi" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "simp-agent", editable = "packages/simp_agent" },
+    { name = "simp-agent", extras = ["mcp"], editable = "packages/simp_agent" },
     { name = "uvicorn", specifier = ">=0.54.0" },
 ]
 

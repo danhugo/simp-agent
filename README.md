@@ -52,6 +52,32 @@ cut at `max_chars`. MCP tools run with the rights of the server (a stdio server 
 sandbox), so only add servers you trust. Tool annotations are kept as `tool.read_only_hint` / `tool.destructive_hint`
 (no approval prompt yet).
 
+### Connections (Google via OAuth -> MCP tools)
+
+A user links Google once (web: Connections). From then on every chat of that user gets the Gmail, Drive and Calendar
+remote MCP tools (`gmail__*`, `drive__*`, `calendar__*`). Tools not marked read-only by the server (send, trash,
+create_event, ...) always ask for approval; "Always" is per chat. Every MCP call is written to the `mcp_audit` table
+(user, session, server, tool, decision auto/allow/always/deny/aborted, ok) — no arguments, no tokens.
+
+Dev setup: in Google Cloud Console create an OAuth client of type "Web application", add the redirect URI
+`http://localhost:8766/api/connections/google/callback`, enable the Gmail/Drive/Calendar APIs and their MCP APIs, put
+your Google account under Test users (Testing mode), then add to `<data_dir>/.env`:
+
+```
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+```
+
+Settings (all optional): `public_url = "http://localhost:8766"` (builds the redirect URI), `web_url =
+"http://localhost:5173/"` (where the browser goes after Google), and `[apps.google]` to override any field of the
+built-in app (`scopes`, `servers`, `auth_url`, `token_url`, ...). Only apps listed there can be connected, and only
+over HTTP: users can never add their own URL or a stdio server.
+
+Security: tokens are encrypted in `simp.db` with `SIMP_SECRET_KEY` from `.env` (made on first start if missing;
+back it up with `.env` — losing it means every user must reconnect). Tokens never go into logs, prompts, events or
+the sandbox. Access tokens are refreshed when a chat loads its tools; if refresh fails the connection shows
+`needs_reconnect`, the chat gets a notice and runs without those tools. Tool output is marked untrusted.
+
 ## Server (`apps/server`)
 
 Home: `$SIMP_SERVER_HOME` or `~/.simp-server` (holds `settings.toml`, `.env` with model keys, `simp.db`).

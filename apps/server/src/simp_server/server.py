@@ -17,16 +17,18 @@ import logging
 import os
 import time
 import tomllib
+import urllib.parse
 import uuid
 from contextlib import asynccontextmanager
 from importlib import import_module
 from pathlib import Path
 from typing import Protocol
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from simp_agent import ai
@@ -44,6 +46,7 @@ from simp_agent.session.profile import build_model
 
 from . import budget, ops
 from . import protocol as p
+from .connections import Connections, UserMcp, apps
 from .fake import sse
 from .store import MEM_ITEM_MAX, DbMemoryStore
 from .web_tools import Web
@@ -159,7 +162,8 @@ def load_settings(home: Path = HOME) -> dict:
 
 def take_keys(settings: dict) -> dict:
     """Model keys from <data_dir>/.env and the process env. Removed from os.environ so sandboxed commands never see them."""
-    names = {pr.get("api_key_env") for pr in settings["profiles"].values()} | {"OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
+    names = ({pr.get("api_key_env") for pr in settings["profiles"].values()} | {"OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+             "SIMP_SECRET_KEY"} | {a.get(k) for a in apps(settings).values() for k in ("client_id_env", "client_secret_env")})
     keys = dict()
     f = Path(settings["data_dir"]) / ".env"
     if f.exists():
@@ -196,6 +200,7 @@ class Run:
         self.seq = entries[-1]["seq"] if entries else 0
         self.inflight, self.pending, self.answer = p.InFlight(), None, None
         self.subs, self.task, self.title_task = set(), None, None
+        self.decisions: dict[str, str] = dict()  # call_id -> approval decision, for the MCP audit log
         self.profile = mgr.settings["profiles"][row["profile"]]
         self.model = build_model(self.profile)
         self.run_start = time.time()
@@ -204,7 +209,7 @@ class Run:
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
             plugins=[*build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(), Memory(store=DbMemoryStore(
-                mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask))],
+                mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), UserMcp(self)],
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.agent.steering_mode = "all"  # all queued steers reach the next turn
@@ -333,10 +338,10 @@ class Run:
                 await self.set_state("waiting_approval")
             decision = await self.answer
         except asyncio.CancelledError:
-            self.pending = None
+            self.pending, self.decisions[call.id] = None, "aborted"
             await self.durable(p.ApprovalResolved, call_id=call.id, decision="aborted")
             raise
-        self.pending = None
+        self.pending, self.decisions[call.id] = None, decision
         await self.durable(p.ApprovalResolved, call_id=call.id, decision=decision)
         if self.state == "waiting_approval":
             await self.set_state("running")
@@ -453,6 +458,7 @@ class SessionManager:
     def __init__(self, settings: dict, store, sandbox, stream_fn):
         self.settings, self.store, self.sandbox, self.stream_fn = settings, store, sandbox, stream_fn
         self.keys = take_keys(settings)
+        self.conns = Connections(settings, store, self.keys)
         self.limits = budget.limits(settings)
         self.redact = RedactSecrets()  # same mask for memory_save content (RedactSecrets never sees tool args)
         self.redact.setup(None, {"secrets": list(self.keys.values())})
@@ -673,6 +679,38 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         locale, timezone = clean_locale(body.get("locale"), body.get("timezone"))
         return mgr.info(await store.add_session(u["id"], profile, body.get("title", ""), locale, timezone,
                                                  clean_location(body.get("location"))))
+
+    # ---- connections (OAuth apps -> MCP tools); the API never returns tokens ----
+    @app.get("/api/connections")
+    async def list_connections(u=Depends(user)):
+        return await mgr.conns.list(u["id"])
+
+    @app.post("/api/connections/{app_name}/start")
+    async def start_connection(app_name: str, u=Depends(user)):
+        try:
+            return {"url": mgr.conns.start(u["id"], app_name)}
+        except LookupError as e:
+            raise HTTPException(404, str(e)) from None
+        except RuntimeError as e:
+            raise HTTPException(503, str(e)) from None
+
+    @app.get("/api/connections/{app_name}/callback")  # no bearer: the browser comes back from Google; state proves who
+    async def connection_callback(app_name: str, state: str = "", code: str = "", error: str = ""):
+        web = settings.get("web_url", "http://localhost:5173/")
+        try:
+            if error or not code:
+                raise ValueError(error or "no code")
+            await mgr.conns.callback(app_name, code, state)
+            q = {"ok": app_name}
+        except (ValueError, LookupError, RuntimeError, httpx.HTTPError) as e:
+            log.warning("connect %s failed: %s", app_name, type(e).__name__ if isinstance(e, httpx.HTTPError) else e)
+            q = {"error": str(e)[:100] if not isinstance(e, httpx.HTTPError) else "network error"}
+        return RedirectResponse(f"{web}#connections?{urllib.parse.urlencode(q)}", 302)
+
+    @app.delete("/api/connections/{app_name}")
+    async def delete_connection(app_name: str, u=Depends(user)):
+        await mgr.conns.delete(u["id"], app_name)
+        return {"ok": True}
 
     @app.delete("/api/sessions/{sid}")
     async def delete_session(sid: str, u=Depends(user)):
