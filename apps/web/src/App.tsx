@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, AuthError, type ConnStatus, type SignupMode, getToken, setToken, subscribe } from "./api";
 import { Chat, Composer, errorText, type Send } from "./Chat";
-import { IconCheck, IconChevron, IconCompose, IconEye, IconFile, IconEyeOff, IconLink, IconLogout, IconMemory, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
+import { IconCheck, IconChevron, IconCompose, IconEye, IconFile, IconEyeOff, IconApps, IconLogout, IconMemory, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
 import { Mascot3D } from "./Mascot3D";
 import { requestLocation, saveLocation, sharedLocation } from "./location";
 import { Files } from "./Files";
 import { Memory } from "./Memory";
-import { Connections } from "./Connections";
+import { Apps } from "./Apps";
 import type { SessionInfo } from "./protocol.gen";
 import { initialState, reduce, type ServerEvent } from "./state";
 
@@ -147,7 +147,7 @@ const SUGGESTIONS = [
   { text: "Help me plan my week", icon: <IconCheck size={16} /> },
 ];
 
-const isConnHash = () => location.hash.startsWith("#connections");
+const isConnHash = () => /^#(apps|connections)\b/.test(location.hash);  // #connections: older OAuth return
 const hashSid = () => (isConnHash() ? "" : location.hash.slice(1));
 
 function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () => void; theme: string }) {
@@ -207,10 +207,10 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [drawer]);
-  // Memory / Connections page (only when no session is picked); "#connections?..." is the OAuth return
-  const [page, setPage] = useState<"" | "memory" | "connections">(() => (isConnHash() ? "connections" : ""));
+  // Memory / Apps page (only when no session is picked); "#apps?..." / "#connections?..." is the OAuth return
+  const [page, setPage] = useState<"" | "memory" | "apps">(() => (isConnHash() ? "apps" : ""));
   const pick = (id: string) => { setSid(id); setPage(""); setDrawer(false); };
-  const open = (p: "memory" | "connections") => { pick(""); setPage(p); };
+  const open = (p: "memory" | "apps") => { pick(""); setPage(p); };
 
   useEffect(() => {
     refresh();
@@ -220,7 +220,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
 
   // Follow hash changes (pasted deep link, back/forward, same-document navigation to /#id).
   useEffect(() => {
-    const onHash = () => { if (isConnHash()) setPage("connections"); setSid(hashSid()); };
+    const onHash = () => { if (isConnHash()) setPage("apps"); setSid(hashSid()); };
     window.addEventListener("hashchange", onHash);
     onHash();  // the hash may have changed between the first render and this listener
     return () => window.removeEventListener("hashchange", onHash);
@@ -309,9 +309,9 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
         <button className={`ghost item new ${page === "memory" && !sid ? "active" : ""}`} onClick={() => open("memory")}
           aria-current={page === "memory" && !sid ? "page" : undefined} aria-label={rail ? "Memory" : undefined} title={rail ? "Memory" : undefined}>
           <IconMemory /><span className="label">Memory</span></button>
-        <button className={`ghost item new ${page === "connections" && !sid ? "active" : ""}`} onClick={() => open("connections")}
-          aria-current={page === "connections" && !sid ? "page" : undefined} aria-label={rail ? "Connections" : undefined} title={rail ? "Connections" : undefined}>
-          <IconLink /><span className="label">Connections</span></button>
+        <button className={`ghost item new ${page === "apps" && !sid ? "active" : ""}`} onClick={() => open("apps")}
+          aria-current={page === "apps" && !sid ? "page" : undefined} aria-label={rail ? "Apps" : undefined} title={rail ? "Apps" : undefined}>
+          <IconApps /><span className="label">Apps</span></button>
         <nav aria-label="Sessions">
           <h2 className="section-label">Recent</h2>
           {sessions.map((s) => (
@@ -343,7 +343,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
           {showFiles && <Files sid={sid} onError={guard} focus={filesFocus} onClose={() => setShowFiles(false)} />}
         </>
       ) : page === "memory" ? <Memory onError={guard} menuButton={menu} />
-        : page === "connections" ? <Connections onError={guard} menuButton={menu} /> : (
+        : page === "apps" ? <Apps onError={guard} menuButton={menu} /> : (
         <main className="home">
           <header className="home-head">{menu}<span className="brand only-mobile"><PixelAgent size={22} />Simp</span></header>
           <div className="home-hero">

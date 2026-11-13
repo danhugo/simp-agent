@@ -182,8 +182,17 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .mem-meta { display: flex; align-items: center; gap: var(--sp-3); padding-left: var(--sp-2); }
 .mem-meta .del { margin-left: auto; width: 44px; height: 44px; }
 .mem-meta .del.confirm { width: auto; padding: 0 var(--sp-3); color: var(--err); }
-.app-conn { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
-.app-conn button { min-height: 44px; flex-shrink: 0; }
+.app-card { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
+.app-card .app-icon { flex-shrink: 0; }
+.app-card .app-text { flex: 1; min-width: 0; }
+.app-card > button { min-height: 44px; flex-shrink: 0; }
+.app-card .add { width: 44px; height: 44px; border: 1px solid var(--border); border-radius: 50%; }
+.switch { position: relative; width: 52px; padding: 0; border-radius: 22px; background: var(--border); border: none; }
+.switch span { position: absolute; top: 50%; left: 6px; width: 20px; height: 20px; margin-top: -10px; border-radius: 50%; background: var(--bg); transition: left .15s; box-shadow: var(--shadow-sm); }
+.switch.on, .switch.on:hover:not(:disabled) { background: var(--ok); }
+.switch.on span { left: 26px; }
+.account-line { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-4); }
+.account-line button { min-height: 44px; }
 .ok { color: var(--ok); } .warn { color: var(--warn); }
 .mem textarea { width: 100%; box-sizing: border-box; font: inherit; color: var(--text); background: var(--bg); margin-bottom: var(--sp-2); }
 .mem form button { min-height: 44px; }

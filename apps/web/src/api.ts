@@ -4,9 +4,12 @@ import { sharedLocation } from "./location";
 
 export type Command = Protocol["command"];
 export interface FileEntry { name: string; is_dir: boolean; size: number }
+/** REST-only (GET /api/apps). */
+export interface AppItem {
+  app: string; label: string; description: string; icon: string; provider: string;
+  connected: boolean; enabled: boolean; email: string | null; status: "ok" | "needs_reconnect" | null;
+}
 /** REST-only (GET /api/memories), not in the protocol schema. */
-/** REST-only (GET /api/connections). */
-export interface Connection { app: string; label: string; connected: boolean; email: string | null; status: "ok" | "needs_reconnect" | null }
 export interface MemoryItem { id: string; scope: "global" | "agent"; agent_id: string | null; content: string; created: number; source_run_id: string | null }
 
 export type SignupMode = "open" | "invite" | "closed";
@@ -64,7 +67,8 @@ export const api = {
   /** path is relative to the workspace root. */
   upload: (sid: string, path: string, data: Blob) =>
     call(`/api/sessions/${sid}/files/raw?path=${encodeURIComponent(path)}`, { method: "PUT", body: data }),
-  connections: async (): Promise<Connection[]> => (await call("/api/connections")).json(),
+  apps: async (): Promise<AppItem[]> => (await call("/api/apps")).json(),
+  setApp: (app: string, on: boolean) => call(`/api/apps/${app}/${on ? "enable" : "disable"}`, { method: "POST" }),
   connect: async (app: string): Promise<{ url: string }> => (await call(`/api/connections/${app}/start`, { method: "POST" })).json(),
   disconnect: (app: string) => call(`/api/connections/${app}`, { method: "DELETE" }),
   memories: async (): Promise<MemoryItem[]> => (await call("/api/memories")).json(),
