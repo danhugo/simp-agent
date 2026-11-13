@@ -6,7 +6,7 @@ export type Command = Protocol["command"];
 export interface FileEntry { name: string; is_dir: boolean; size: number }
 /** REST-only (GET /api/memories), not in the protocol schema. */
 /** REST-only (GET /api/connections). */
-export interface Connection { app: string; account_email: string | null; status: "connected" | "not_connected" | "needs_reconnect" }
+export interface Connection { app: string; label: string; connected: boolean; email: string | null; status: "ok" | "needs_reconnect" | null }
 export interface MemoryItem { id: string; scope: "global" | "agent"; agent_id: string | null; content: string; created: number; source_run_id: string | null }
 
 export type SignupMode = "open" | "invite" | "closed";

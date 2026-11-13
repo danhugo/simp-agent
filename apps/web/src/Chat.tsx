@@ -357,7 +357,7 @@ export function toolLabel(call: ToolCall, finished: boolean): string {
   }
 }
 
-const APP_NAMES: Record<string, string> = { gmail: "Gmail", drive: "Drive", calendar: "Calendar", gcal: "Calendar", gdrive: "Drive" };
+const APP_NAMES: Record<string, string> = { gmail: "Gmail", drive: "Drive", calendar: "Calendar" };
 const words = (s: string) => s.replace(/[_-]+/g, " ").trim();
 /** MCP tools are named "<server>__<tool>": "gmail__create_draft" -> "Gmail · create draft". Undefined for built-in tools. */
 export function mcpLabel(name: string): string | undefined {

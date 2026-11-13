@@ -10,16 +10,16 @@ async function login(p: Page, hash = "") {
 }
 
 test("connections: list (mocked API), disconnect, OAuth return message", async ({ page }) => {
-  let conns = [{ app: "google", account_email: "me@example.com", status: "connected" }];
+  let conns = [{ app: "google", label: "Google", connected: true, email: "me@example.com", status: "ok" }];
   const deleted: string[] = [];
   await page.route("**/api/connections", (r) => r.fulfill({ json: conns }));
   await page.route("**/api/connections/*", (r) => {
     deleted.push(r.request().method() + " " + new URL(r.request().url()).pathname);
-    conns = [{ app: "google", account_email: null, status: "not_connected" }];
+    conns = [{ app: "google", label: "Google", connected: false, email: null, status: null }];
     return r.fulfill({ json: { ok: true } });
   });
   await login(page, "#connections?ok=google");
-  await expect(page.getByRole("status")).toHaveText("Google is connected.");
+  await expect(page.getByRole("status")).toHaveText("Your account is connected.");
   const card = page.getByRole("listitem", { name: "Google" });
   await expect(card).toContainText("Connected as me@example.com");
 

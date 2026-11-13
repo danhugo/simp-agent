@@ -2,15 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { api, AuthError, type Connection } from "./api";
 import { errorText } from "./Chat";
 
-const APPS: Record<string, { name: string; about: string }> = {
-  google: { name: "Google", about: "Gmail, Drive and Calendar" },
-};
-const appName = (app: string) => APPS[app]?.name ?? app;
-
 /** "#connections?ok=google" / "?error=..." from the OAuth callback -> a short message (then the hash is cleared). */
 function oauthResult(): { ok: boolean; text: string } | null {
   const q = new URLSearchParams(location.hash.split("?")[1] ?? "");
-  if (q.get("ok")) return { ok: true, text: `${appName(q.get("ok")!)} is connected.` };
+  if (q.get("ok")) return { ok: true, text: "Your account is connected." };
   if (q.get("error")) return { ok: false, text: `Could not connect: ${q.get("error")}` };
   return null;
 }
@@ -28,10 +23,10 @@ export function Connections({ onError, menuButton }: { onError: (e: unknown) => 
   const connect = async (app: string) => {
     try { location.href = (await api.connect(app)).url; } catch (e) { fail(e); }
   };
-  const disconnect = async (app: string) => {
+  const disconnect = async (app: string, label: string) => {
     if (confirm !== app) return setConfirm(app);  // first click asks, second disconnects
     setConfirm("");
-    try { await api.disconnect(app); setNote({ ok: true, text: `${appName(app)} is disconnected.` }); await load(); } catch (e) { fail(e); }
+    try { await api.disconnect(app); setNote({ ok: true, text: `${label} is disconnected.` }); await load(); } catch (e) { fail(e); }
   };
 
   return (
@@ -43,15 +38,14 @@ export function Connections({ onError, menuButton }: { onError: (e: unknown) => 
         {items === null ? <p className="muted">Loading…</p> : items.length === 0 ? <p className="muted">No apps are set up on this server.</p> : (
           <ul>
             {items.map((c) => (
-              <li key={c.app} className="mem app-conn" aria-label={appName(c.app)}>
+              <li key={c.app} className="mem app-conn" aria-label={c.label}>
                 <div>
-                  <strong>{appName(c.app)}</strong>
-                  <div className="muted small">{APPS[c.app]?.about}</div>
-                  {c.status === "connected" && <div className="small">Connected as {c.account_email ?? "your account"}</div>}
+                  <strong>{c.label}</strong>
+                  {c.connected && <div className="small">Connected as {c.email ?? "your account"}</div>}
                   {c.status === "needs_reconnect" && <div className="small warn">Access expired. Please reconnect.</div>}
                 </div>
-                {c.status === "connected" ? (
-                  <button className={confirm === c.app ? "danger" : ""} onClick={() => disconnect(c.app)} onBlur={() => setConfirm("")}>
+                {c.connected && c.status !== "needs_reconnect" ? (
+                  <button className={confirm === c.app ? "danger" : ""} onClick={() => disconnect(c.app, c.label)} onBlur={() => setConfirm("")}>
                     {confirm === c.app ? "Disconnect?" : "Disconnect"}</button>
                 ) : (
                   <button className="primary" onClick={() => connect(c.app)}>{c.status === "needs_reconnect" ? "Reconnect" : "Connect"}</button>
