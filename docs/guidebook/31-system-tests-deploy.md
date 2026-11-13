@@ -108,7 +108,7 @@ The script deletes old data and writes a small `settings.toml`. The server still
 
 `reuseExistingServer: false` and `rm -rf` are on purpose. Old sessions or old budget use from a past run would change the results, so every run starts empty.
 
-The tests are in `apps/web/e2e/`: `app.spec.ts`, `accounts.spec.ts` and `admin.spec.ts`. `app.spec.ts` has small helpers. `login` reads the token from `/tmp/simp-e2e/token`, signs in and opens a new session. `say` types a message and presses Enter. `last` finds the newest assistant message.
+The tests are in `apps/web/e2e/`: `app.spec.ts`, `accounts.spec.ts`, `admin.spec.ts` and `memory.spec.ts`. `memory.spec.ts` writes two memories straight into `simp.db` with `sqlite3`, opens the Memory page ([30](30-web-client.md#the-memory-page)), then edits one and deletes the other, and checks the database at the end. On the server side, `apps/server/tests/test_memory.py` checks that memory is shared across a user's chats but not across users, and that only the owner can use `/api/memories` ([27](27-store-auth.md#agents-and-memories)). `app.spec.ts` has small helpers. `login` reads the token from `/tmp/simp-e2e/token`, signs in and opens a new session. `say` types a message and presses Enter. `last` finds the newest assistant message.
 
 The test that matters most for the web client is the reload test. It is the "Ana presses reload in the middle of an answer" case from [30](30-web-client.md):
 

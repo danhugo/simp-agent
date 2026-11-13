@@ -167,6 +167,8 @@ Real code: [packages/simp_agent/src/simp_agent/agent/__init__.py](../../packages
 
 The [queue mode](glossary.md#queue-mode) decides how many messages one read takes. Why have a choice? Say the user types three steers quickly while `read README.md` runs: "Also read CHANGELOG.md", "and LICENSE", "skip the tests folder". With `"one-at-a-time"` (the default), the read at the end of turn 1 takes only the first one. Turn 2 sees "Also read CHANGELOG.md"; the next read takes "and LICENSE" for turn 3, and so on. Each message gets its own turn, so the model handles each as its own task. With `"all"`, the read takes all three, and turn 2 sees them together. That is fewer model calls, and better when the messages are parts of one wish.
 
+The web server ([25](25-server-run.md)) sets `steering_mode = "all"`, so when Ana sends several steers during one long tool call, all of them reach the next turn together; the web page shows them as pending bubbles until then ([30](30-web-client.md#steers-show-at-once-as-pending-bubbles)).
+
 Higher layers only pass text down. The session ([17](17-session.md)) has its own `steer` and `follow_up` that call the `Agent` ones, and the CLI ([24](24-cli.md)) and the server ([25](25-server-run.md)) call the session.
 
 ### Errors and abort leave the queues alone
