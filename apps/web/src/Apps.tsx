@@ -39,8 +39,8 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (location.hash) history.replaceState(null, "", location.pathname + location.search); }, []);
 
-  const connect = async (provider: string) => {
-    try { location.href = (await api.connect(provider)).url; } catch (e) { fail(e); }
+  const connect = async (app: string) => {
+    try { location.href = (await api.connect(app)).url; } catch (e) { fail(e); }
   };
   const toggle = async (a: AppItem) => {
     try { await api.setApp(a.app, !a.enabled); await load(); } catch (e) { fail(e); }
@@ -106,12 +106,12 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
         <div className="muted small app-desc">{a.description}</div>
         {a.status === "needs_reconnect" && <div className="small warn">Access expired. Please reconnect.</div>}
       </div>
-      {a.status === "needs_reconnect" ? <button className="primary" onClick={() => connect(a.provider!)}>Reconnect</button>
+      {a.status === "needs_reconnect" ? <button className="primary" onClick={() => connect(a.app)}>Reconnect</button>
         : a.connected ? (
           <button className={`switch ${a.enabled ? "on" : ""}`} role="switch" aria-checked={a.enabled}
             aria-label={`Use ${a.label}`} onClick={() => toggle(a)}><span /></button>
         ) : (
-          <button className="ghost icon add" aria-label={`Connect ${a.label}`} title="Connect" onClick={() => connect(a.provider!)}><IconPlus /></button>
+          <button className="ghost icon add" aria-label={`Connect ${a.label}`} title="Connect" onClick={() => connect(a.app)}><IconPlus /></button>
         )}
     </li>
   );

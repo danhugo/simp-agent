@@ -61,8 +61,8 @@ async def make(tmp_path, stream_fn=None):
     return app, mgr, g, users, client
 
 
-async def connect(c, token):
-    r = await c.post("/api/connections/google/start", headers={"Authorization": f"Bearer {token}"})
+async def connect(c, token, app="gmail"):
+    r = await c.post(f"/api/apps/{app}/connect", headers={"Authorization": f"Bearer {token}"})
     q = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(r.json()["url"]).query))
     return q, await c.get("/api/connections/google/callback", params={"code": "C", "state": q["state"]})
 
@@ -70,7 +70,8 @@ async def connect(c, token):
 async def test_oauth_flow_list_delete(tmp_path):
     _, mgr, g, [(ta, ua), _], c = await make(tmp_path)
     h = {"Authorization": f"Bearer {ta}"}
-    assert (await c.post("/api/connections/nope/start", headers=h)).status_code == 404
+    assert (await c.post("/api/apps/nope/connect", headers=h)).status_code == 404
+    assert (await c.post("/api/apps/deepwiki/connect", headers=h)).status_code == 404  # no login
     bad = await c.get("/api/connections/google/callback", params={"code": "C", "state": "forged"})
     assert bad.status_code == 302 and "error=" in bad.headers["location"] and not g.calls
     q, r = await connect(c, ta)
@@ -92,7 +93,8 @@ async def test_oauth_flow_list_delete(tmp_path):
 
 async def test_servers_per_user_refresh_and_reconnect(tmp_path):
     _, mgr, g, [(ta, ua), (tb, ub)], c = await make(tmp_path)
-    await connect(c, ta)
+    for app in ("gmail", "drive", "calendar"):
+        await connect(c, ta, app)
     servers, problems = await mgr.conns.servers(ua["id"])
     assert {s["name"] for s in servers} == {"gmail", "drive", "calendar"} and not problems
     assert servers[0]["headers"] == {"Authorization": "Bearer AT-1"} and "command" not in servers[0]
@@ -149,7 +151,8 @@ async def test_apps_one_login_toggle_disconnect(tmp_path):
     h = {"Authorization": f"Bearer {ta}"}
     assert (await c.post("/api/apps/gmail/enable", headers=h)).status_code == 409  # google not connected
     assert (await c.post("/api/apps/nope/disable", headers=h)).status_code == 404
-    await connect(c, ta)
+    for app in ("gmail", "drive", "calendar"):
+        await connect(c, ta, app)
     apps = (await c.get("/api/apps", headers=h)).json()
     assert [a["app"] for a in apps][:3] == ["gmail", "drive", "calendar"]
     assert apps[1] == {"app": "drive", "label": "Google Drive", "description": apps[1]["description"], "icon": "drive",
@@ -162,8 +165,8 @@ async def test_apps_one_login_toggle_disconnect(tmp_path):
     await c.delete("/api/connections/google", headers=h)
     google = lambda r: [a for a in r.json() if a["provider"] == "google"]
     assert not any(a["enabled"] or a["connected"] for a in google(await c.get("/api/apps", headers=h)))
-    await connect(c, ta)  # a new login turns all three on again
-    assert all(a["enabled"] for a in google(await c.get("/api/apps", headers=h)))
+    await connect(c, ta, "drive")  # a new login turns on only that app
+    assert [a["app"] for a in google(await c.get("/api/apps", headers=h)) if a["enabled"]] == ["drive"]
     await mgr.store.close()
 
 
@@ -177,8 +180,8 @@ async def test_no_login_apps_off_by_default_toggle(tmp_path):
     assert (await c.post("/api/apps/deepwiki/enable", headers=h)).json() == {"ok": True}  # no login needed
     assert (await mgr.conns.servers(ua["id"]))[0] == [{"name": "deepwiki", "url": "https://mcp.deepwiki.com/mcp"}]
     assert await mgr.conns.servers(ub["id"]) == ([], [])  # per user
-    await connect(c, ta)  # Google unchanged: its three apps on, deepwiki still on
-    assert {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]} == {"deepwiki", "gmail", "drive", "calendar"}
+    await connect(c, ta)  # Google unchanged: gmail on, deepwiki still on
+    assert {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]} == {"deepwiki", "gmail"}
     await c.post("/api/apps/deepwiki/disable", headers=h)
     assert "deepwiki" not in {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]}
     await mgr.store.close()
@@ -234,4 +237,30 @@ async def test_token_401_at_run_marks_reconnect(tmp_path):
     assert (await mgr.store.connections(ua["id"]))[0]["status"] == "needs_reconnect"
     servers, problems = await mgr.conns.servers(ua["id"])
     assert servers == [] and "GitHub" in problems[0]
+    await mgr.store.close()
+
+
+async def test_google_apps_authorize_one_at_a_time(tmp_path):
+    _, mgr, g, [(ta, ua), _], c = await make(tmp_path)
+    h = {"Authorization": f"Bearer {ta}"}
+    G = "https://www.googleapis.com/auth/"
+    q, _ = await connect(c, ta, "gmail")
+    assert q["scope"].split() == ["openid", G + "userinfo.email", G + "gmail.modify", G + "gmail.send"]
+    assert q["include_granted_scopes"] == "true" and q["prompt"] == "consent" and q["access_type"] == "offline"
+    async def apps():
+        return {a["app"]: (a["connected"], a["enabled"]) for a in (await c.get("/api/apps", headers=h)).json()
+                if a["provider"] == "google"}
+    assert await apps() == {"gmail": (True, True), "drive": (False, False), "calendar": (False, False)}
+    assert (await c.post("/api/apps/drive/enable", headers=h)).status_code == 409  # not authorized yet
+    assert {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]} == {"gmail"}
+    q, _ = await connect(c, ta, "drive")
+    assert q["scope"].split() == ["openid", G + "userinfo.email", G + "drive"]
+    assert await apps() == {"gmail": (True, True), "drive": (True, True), "calendar": (False, False)}
+    await c.post("/api/apps/gmail/disable", headers=h)
+    assert {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]} == {"drive"}  # authorized AND enabled
+    assert (await c.post("/api/apps/drive/disconnect", headers=h)).json() == {"ok": True}  # gmail keeps the token
+    assert await apps() == {"gmail": (True, False), "drive": (False, False), "calendar": (False, False)}
+    assert not any(p.endswith("/revoke") for p, _ in g.calls)
+    await c.post("/api/apps/gmail/disconnect", headers=h)  # the last app revokes and deletes the login
+    assert g.calls[-1] == ("/revoke", {"token": "RT-1"}) and not await mgr.store.connections(ua["id"])
     await mgr.store.close()
