@@ -189,12 +189,15 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .app-card .app-icon { flex-shrink: 0; }
 .app-card .app-text { min-width: 0; width: 100%; }
 .app-desc { font-size: var(--fs-xs); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.app-card > button { min-height: 44px; flex-shrink: 0; }
-.app-card .add { width: 44px; height: 44px; border: 1px solid var(--border); border-radius: 50%; }
-.switch { position: relative; width: 52px; padding: 0; border-radius: 22px; background: var(--border); border: none; }
-.switch span { position: absolute; top: 50%; left: 6px; width: 20px; height: 20px; margin-top: -10px; border-radius: 50%; background: var(--bg); transition: left .15s; box-shadow: var(--shadow-sm); }
+.app-card > button { position: relative; flex-shrink: 0; }
+.app-card > button:not(.switch):not(.add) { padding: 2px var(--sp-2); font-size: var(--fs-xs); }
+.app-card > button.add { width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 50%; }
+.switch { width: 32px; height: 18px; padding: 0; border-radius: 9px; background: var(--border); border: none; }
+.switch span { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--bg); transition: left .15s; box-shadow: var(--shadow-sm); }
 .switch.on, .switch.on:hover:not(:disabled) { background: var(--ok); }
-.switch.on span { left: 26px; }
+.switch.on span { left: 16px; }
+/* small to see, 44px to tap on touch screens */
+@media (pointer: coarse) { .app-card > button { min-height: 0; min-width: 0; } .app-card > button::before { content: ""; position: absolute; inset: 50% auto auto 50%; width: 44px; height: 44px; min-width: 100%; translate: -50% -50%; } }
 .account-line { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-4); }
 .account-line button { min-height: 44px; }
 .ok { color: var(--ok); } .warn { color: var(--warn); }
