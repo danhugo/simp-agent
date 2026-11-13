@@ -380,6 +380,9 @@ The position in the full text where a delta starts. `appendAt()` uses it to drop
 ## Sandbox
 A closed place where a session's commands run, apart from the server and other users. Home: [29](29-docker-sandbox.md#the-sandbox-slot).
 
+## User workspace
+The folder `workspaces/<user_id>/` that all sessions of one user share. Each session has its own container, but they all mount this folder at `/work`. Deleting a session keeps the files. Home: [29](29-docker-sandbox.md#starting-point-28s-server-and-localsandbox).
+
 ## Sandbox slot
 The place in the server that answers "give me an env for this session". `LocalSandbox` gives a folder; `DockerSandbox` gives a container. Home: [29](29-docker-sandbox.md).
 
