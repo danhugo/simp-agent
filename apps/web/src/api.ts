@@ -8,6 +8,7 @@ export interface FileEntry { name: string; is_dir: boolean; size: number }
 export interface AppItem {
   app: string; label: string; description: string; icon: string; provider: string | null;  // null: no login needed, connected is always true
   connected: boolean; enabled: boolean; email: string | null; status: "ok" | "needs_reconnect" | null;
+  auth: "oauth" | "token" | null; token_help_url: string | null;  // auth "token": paste a token (POST .../token)
 }
 /** REST-only (GET /api/memories), not in the protocol schema. */
 export interface MemoryItem { id: string; scope: "global" | "agent"; agent_id: string | null; content: string; created: number; source_run_id: string | null }
@@ -70,6 +71,7 @@ export const api = {
   apps: async (): Promise<AppItem[]> => (await call("/api/apps")).json(),
   setApp: (app: string, on: boolean) => call(`/api/apps/${app}/${on ? "enable" : "disable"}`, { method: "POST" }),
   connect: async (app: string): Promise<{ url: string }> => (await call(`/api/connections/${app}/start`, { method: "POST" })).json(),
+  saveToken: (provider: string, token: string) => call(`/api/connections/${provider}/token`, json({ token })),
   disconnect: (app: string) => call(`/api/connections/${app}`, { method: "DELETE" }),
   memories: async (): Promise<MemoryItem[]> => (await call("/api/memories")).json(),
   editMemory: (id: string, content: string) => call(`/api/memories/${id}`, { ...json({ content }), method: "PATCH" }),
