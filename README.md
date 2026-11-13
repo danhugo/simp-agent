@@ -57,6 +57,9 @@ sandbox), so only add servers you trust. Tool annotations are kept as `tool.read
 A user logs in to Google once; that turns on three apps: Gmail, Google Drive, Google Calendar. Each app can be
 turned off or on per user, and every chat gets the remote MCP tools of the user's enabled apps (`gmail__*`,
 `drive__*`, `calendar__*`). Disconnecting Google turns all three off; a new login turns them all on again.
+Apps that need no login (off until the user turns them on; `provider` is null): DeepWiki (public GitHub repos),
+Context7 (library docs), Microsoft Learn, Cloudflare Docs, AWS Knowledge. Their tools are `deepwiki__*`,
+`context7__*`, `mslearn__*`, `cfdocs__*`, `awsknowledge__*`; nothing is sent to them but the tool calls.
 API: `GET /api/apps` (app, label, description, icon, provider, connected, enabled, email, status),
 `POST /api/apps/{app}/enable|disable` (409 if the provider is not connected), `POST /api/connections/google/start`,
 `DELETE /api/connections/google`, `GET /api/connections` (providers only). Tools not marked read-only by the server (send, trash,

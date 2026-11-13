@@ -43,6 +43,17 @@ APPS = {  # the app name is also the MCP server name, so its tools are "<app>__<
               "provider": "google", "url": "https://drivemcp.googleapis.com/mcp/v1"},
     "calendar": {"label": "Google Calendar", "description": "See and manage calendar events.", "icon": "calendar",
                  "provider": "google", "url": "https://calendarmcp.googleapis.com/mcp/v1"},
+    # no login (provider None): off until the user turns them on, so new users don't get many extra tools
+    "deepwiki": {"label": "DeepWiki", "description": "Ask about any public GitHub repo.", "icon": "deepwiki",
+                 "provider": None, "url": "https://mcp.deepwiki.com/mcp"},
+    "context7": {"label": "Context7", "description": "Up-to-date library docs and code examples.", "icon": "context7",
+                 "provider": None, "url": "https://mcp.context7.com/mcp"},
+    "mslearn": {"label": "Microsoft Learn", "description": "Search Microsoft Learn docs and code samples.",
+                "icon": "mslearn", "provider": None, "url": "https://learn.microsoft.com/api/mcp"},
+    "cfdocs": {"label": "Cloudflare Docs", "description": "Search Cloudflare documentation.", "icon": "cloudflare",
+               "provider": None, "url": "https://docs.mcp.cloudflare.com/mcp"},
+    "awsknowledge": {"label": "AWS Knowledge", "description": "Search AWS documentation.", "icon": "aws",
+                     "provider": None, "url": "https://knowledge-mcp.global.api.aws"},
 }
 STATE_TTL = 600  # s: an OAuth start must finish within 10 minutes
 REFRESH_EARLY = 300  # s: refresh tokens that expire within 5 minutes
@@ -150,14 +161,19 @@ class Connections:
             except Exception as e:
                 log.warning("revoke %s failed: %s", name, type(e).__name__)
         await self.store.delete_connection(user_id, name)
-        await self.store.clear_app_flags(user_id, [n for n, a in self.app_list.items() if a["provider"] == name])
+        await self.store.clear_app_flags(user_id, [n for n, a in self.app_list.items() if a.get("provider") == name])
 
     async def list_apps(self, user_id: str) -> list[dict]:
         """Every app; enabled = provider connected and not turned off (default on: a login enables all its apps)."""
         rows = {r["app"]: r for r in await self.store.connections(user_id)}
-        off = await self.store.disabled_apps(user_id)
+        off, on = await self.store.disabled_apps(user_id), await self.store.enabled_apps(user_id)
         out = list()
         for n, a in self.app_list.items():
+            if a.get("provider") is None:
+                out.append({"app": n, "label": a.get("label", n), "description": a.get("description", ""),
+                            "icon": a.get("icon", n), "provider": None, "connected": True, "enabled": n in on,
+                            "email": None, "status": None})
+                continue
             row = rows.get(a["provider"])
             out.append({"app": n, "label": a.get("label", n), "description": a.get("description", ""),
                         "icon": a.get("icon", n), "provider": a["provider"], "connected": row is not None,
@@ -169,7 +185,9 @@ class Connections:
         """LookupError: unknown app; PermissionError: enabling an app whose provider is not connected."""
         if name not in self.app_list:
             raise LookupError(f"unknown app {name!r}")
-        prov = self.app_list[name]["provider"]
+        prov = self.app_list[name].get("provider")
+        if prov is None:
+            return await self.store.set_app_on(user_id, name, on)
         if on and not any(r["app"] == prov for r in await self.store.connections(user_id)):
             raise PermissionError(f"connect {prov} first")
         await self.store.set_app_disabled(user_id, name, not on)
@@ -198,9 +216,10 @@ class Connections:
     async def servers(self, user_id: str) -> tuple[list[dict], list[str]]:
         """McpPlugin server specs for the user's enabled apps, and notices for providers that need a reconnect."""
         out, problems = list(), list()
-        off = await self.store.disabled_apps(user_id)
+        off, on = await self.store.disabled_apps(user_id), await self.store.enabled_apps(user_id)
+        out += [{"name": n, "url": a["url"]} for n, a in self.app_list.items() if a.get("provider") is None and n in on]
         for row in await self.store.connections(user_id):
-            mine = {n: a for n, a in self.app_list.items() if a["provider"] == row["app"] and n not in off}
+            mine = {n: a for n, a in self.app_list.items() if a.get("provider") == row["app"] and n not in off}
             if not mine:
                 continue
             a = self.apps.get(row["app"])
