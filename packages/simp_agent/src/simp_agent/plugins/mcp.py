@@ -19,12 +19,14 @@ def _expand(d: dict | None) -> dict | None:  # "${GITHUB_TOKEN}" -> its value; u
 
 class McpPlugin:
     """servers: [{name, url, headers?} (streamable HTTP) | {name, command: [...], env?} (stdio)], each with optional
-    tools (allow list) / exclude. config (via build_plugins): {"servers": {name: spec}}, timeout (s), max_chars."""
+    tools (allow list) / exclude. config (via build_plugins): {"servers": {name: spec}}, timeout (s, tool calls),
+    connect_timeout (s, connect + list tools; servers connect in parallel), max_chars."""
 
     name = "mcp"
 
-    def __init__(self, servers: list[dict] | None = None, timeout: float = 60, max_chars: int = 20000):
-        self.servers, self.timeout, self.max_chars = servers, timeout, max_chars
+    def __init__(self, servers: list[dict] | None = None, timeout: float = 60, max_chars: int = 20000,
+                 connect_timeout: float = 10):
+        self.servers, self.timeout, self.max_chars, self.connect_timeout = servers, timeout, max_chars, connect_timeout
         self.stop, self.tasks = asyncio.Event(), list()
 
     async def setup(self, api, config: dict) -> None:
@@ -32,13 +34,16 @@ class McpPlugin:
         if servers is None:
             servers = [{"name": n, **s} for n, s in config.get("servers", dict()).items()]
         self.timeout, self.max_chars = config.get("timeout", self.timeout), config.get("max_chars", self.max_chars)
-        for spec in servers:
+        self.connect_timeout = config.get("connect_timeout", self.connect_timeout)
+
+        async def one(spec):
             try:
                 client = await self._connect(spec)
                 await self._register(api, spec, client)
             except Exception as e:  # one bad server must not stop the others
                 log.warning("mcp server %s failed: %s", spec.get("name"), e)
                 await api.emit("plugin_error", {"hook": "setup", "error": f"mcp server {spec.get('name')!r}: {e}"})
+        await asyncio.gather(*(one(s) for s in servers))
 
     async def _connect(self, spec: dict):
         """Each connection lives in its own task until shutdown (anyio scopes must exit in the task that opened them)."""
@@ -70,7 +75,7 @@ class McpPlugin:
         task = asyncio.ensure_future(hold())
         self.tasks.append(task)
         try:
-            return await asyncio.wait_for(asyncio.shield(ready), self.timeout)
+            return await asyncio.wait_for(asyncio.shield(ready), self.connect_timeout)
         except BaseException:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
@@ -79,7 +84,7 @@ class McpPlugin:
     async def _register(self, api, spec: dict, client) -> None:
         tools, cursor = list(), None
         while True:
-            r = await asyncio.wait_for(client.list_tools(cursor=cursor), self.timeout)
+            r = await asyncio.wait_for(client.list_tools(cursor=cursor), self.connect_timeout)
             tools += r.tools
             if not (cursor := r.next_cursor):
                 break

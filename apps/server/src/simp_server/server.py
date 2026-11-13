@@ -46,7 +46,7 @@ from simp_agent.session.profile import build_model
 
 from . import budget, ops
 from . import protocol as p
-from .connections import Connections, UserMcp, providers
+from .connections import STATE_TTL, Connections, UserMcp, providers
 from .fake import sse
 from .store import MEM_ITEM_MAX, DbMemoryStore
 from .web_tools import Web
@@ -57,6 +57,7 @@ SHUTDOWN_GRACE = 2  # seconds
 HEARTBEAT = 15  # seconds between SSE ": ping" comments
 QUEUE_MAX = 1000  # events buffered per SSE client; a client that falls this far behind is dropped and reconnects
 MAX_QUEUED = 20  # steer + follow-up messages waiting per session
+OAUTH_COOKIE = "simp_oauth"  # browser nonce that binds an OAuth start to the callback
 HOME = Path(os.environ.get("SIMP_SERVER_HOME", Path.home() / ".simp-server"))
 TITLE_PROMPT = "Name this conversation in 3 to 6 words, in the user's language. Reply with the title only."
 DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_server.store:SqliteStore",
@@ -202,6 +203,7 @@ class Run:
         self.subs, self.task, self.title_task = set(), None, None
         self.decisions: dict[str, str] = dict()  # call_id -> approval decision, for the MCP audit log
         self.profile = mgr.settings["profiles"][row["profile"]]
+        self.mcp = UserMcp(self)
         self.model = build_model(self.profile)
         self.run_start = time.time()
         self.session = AgentSession(
@@ -209,7 +211,7 @@ class Run:
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
             plugins=[*build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(), Memory(store=DbMemoryStore(
-                mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), UserMcp(self)],
+                mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), self.mcp],
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.agent.steering_mode = "all"  # all queued steers reach the next turn
@@ -338,14 +340,20 @@ class Run:
                 await self.set_state("waiting_approval")
             decision = await self.answer
         except asyncio.CancelledError:
-            self.pending, self.decisions[call.id] = None, "aborted"
+            self.pending = None
+            self._decided(call, "aborted")
             await self.durable(p.ApprovalResolved, call_id=call.id, decision="aborted")
             raise
-        self.pending, self.decisions[call.id] = None, decision
+        self.pending = None
+        self._decided(call, decision)
         await self.durable(p.ApprovalResolved, call_id=call.id, decision=decision)
         if self.state == "waiting_approval":
             await self.set_state("running")
         return decision
+
+    def _decided(self, call, decision: str) -> None:
+        if call.name in self.mcp.names:  # only MCP calls are audited (and pop it), so the dict stays small
+            self.decisions[call.id] = decision
 
     async def _title(self) -> None:
         """One extra small LLM call to name the session. Any failure leaves the title empty."""
@@ -399,6 +407,8 @@ class Run:
 
     async def _run(self, fn) -> None:
         try:
+            if self.mcp.stale:
+                await self.mcp.reload()
             await self._turn(fn)
         finally:  # never leave the session stuck busy, whatever failed (even a store write or a cancel)
             self.mgr.last_used[self.sid] = time.monotonic()
@@ -500,7 +510,21 @@ class SessionManager:
         """Free RAM and the container; files and log stay, the next get reloads from the store."""
         run = self.runs.pop(sid)
         self.last_used.pop(sid, None)
-        await self.sandbox.close(run.ref)
+        await self.close_run(run)
+
+    async def close_run(self, run: Run, ref: str | None = None) -> None:
+        """Close MCP connections (they hold tokens and HTTP streams), then the sandbox."""
+        try:
+            await asyncio.wait_for(run.session.shutdown(), 10)
+        except Exception as e:
+            log.warning("session shutdown failed: %s", type(e).__name__, extra={"session": run.sid})
+        await self.sandbox.close(ref or run.ref)
+
+    def portals_changed(self, user_id: str) -> None:
+        """The user's portals changed: open runs reload them before their next turn; a running turn can't use them."""
+        for run in self.runs.values():
+            if run.user_id == user_id:
+                run.mcp.stale = True
 
     async def evict_idle(self) -> None:
         async with self.lock:
@@ -528,7 +552,10 @@ class SessionManager:
             run.session.abort()
             run.task.cancel()
             await asyncio.gather(run.task, return_exceptions=True)
-        await self.sandbox.close(ref)
+        if run:
+            await self.close_run(run, ref)
+        else:
+            await self.sandbox.close(ref)
 
     def info(self, row: dict) -> p.SessionInfo:
         r = self.runs.get(row["id"])
@@ -558,7 +585,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         yield
         evictor.cancel()
         for run in list(mgr.runs.values()):
-            await sandbox.close(run.ref)
+            await mgr.close_run(run)
         if hasattr(sandbox, "close_all"):
             await sandbox.close_all()
         await store.close()
@@ -690,9 +717,13 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         return await mgr.conns.list_apps(u["id"])
 
     @app.post("/api/apps/{app_name}/connect")  # OAuth for this one app only (incremental scopes)
-    async def connect_app(app_name: str, u=Depends(user)):
+    async def connect_app(app_name: str, response: Response, u=Depends(user)):
         try:
-            return {"url": mgr.conns.start(u["id"], app_name)}
+            url, nonce = mgr.conns.start(u["id"], app_name)
+            # binds the OAuth start to this browser (cookies ignore the port: web and API share the host)
+            response.set_cookie(OAUTH_COOKIE, nonce, max_age=STATE_TTL, httponly=True, samesite="lax",
+                                path="/api/connections", secure=settings.get("public_url", "").startswith("https"))
+            return {"url": url}
         except LookupError as e:
             raise HTTPException(404, str(e)) from None
         except RuntimeError as e:
@@ -704,6 +735,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             await mgr.conns.forget_app(u["id"], app_name)
         except LookupError as e:
             raise HTTPException(404, str(e)) from None
+        mgr.portals_changed(u["id"])
         return {"ok": True}
 
     @app.post("/api/apps/{app_name}/{action}")
@@ -716,20 +748,23 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             raise HTTPException(404, str(e)) from None
         except PermissionError as e:
             raise HTTPException(409, str(e)) from None
+        mgr.portals_changed(u["id"])
         return {"ok": True}
 
     @app.get("/api/connections/{app_name}/callback")  # no bearer: the browser comes back from Google; state proves who
-    async def connection_callback(app_name: str, state: str = "", code: str = "", error: str = ""):
+    async def connection_callback(request: Request, app_name: str, state: str = "", code: str = "", error: str = ""):
         web = settings.get("web_url", "http://localhost:5173/")
         try:
             if error or not code:
                 raise ValueError(error or "no code")
-            await mgr.conns.callback(app_name, code, state)
+            mgr.portals_changed(await mgr.conns.callback(app_name, code, state, request.cookies.get(OAUTH_COOKIE, "")))
             q = {"ok": app_name}
         except (ValueError, LookupError, RuntimeError, httpx.HTTPError) as e:
             log.warning("connect %s failed: %s", app_name, type(e).__name__ if isinstance(e, httpx.HTTPError) else e)
             q = {"error": str(e)[:100] if not isinstance(e, httpx.HTTPError) else "network error"}
-        return RedirectResponse(f"{web}#connections?{urllib.parse.urlencode(q)}", 302)
+        r = RedirectResponse(f"{web}#crafts?{urllib.parse.urlencode(q)}", 302)
+        r.delete_cookie(OAUTH_COOKIE, path="/api/connections")
+        return r
 
     @app.post("/api/connections/{app_name}/token")
     async def save_token(app_name: str, body: dict, u=Depends(user)):
@@ -741,11 +776,13 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             raise HTTPException(400, str(e)) from None
         except httpx.HTTPError:
             raise HTTPException(502, "could not check the token (network error)") from None
+        mgr.portals_changed(u["id"])
         return {"ok": True}
 
     @app.delete("/api/connections/{app_name}")
     async def delete_connection(app_name: str, u=Depends(user)):
         await mgr.conns.delete(u["id"], app_name)
+        mgr.portals_changed(u["id"])
         return {"ok": True}
 
     @app.delete("/api/sessions/{sid}")
