@@ -32,6 +32,9 @@ class Google:
     def __call__(self, req: httpx.Request) -> httpx.Response:
         form = dict(urllib.parse.parse_qsl(req.content.decode()))
         self.calls.append((req.url.path, form))
+        if req.url.host == "api.github.com":
+            ok = req.headers.get("authorization") == "Bearer ghp_good"
+            return httpx.Response(200, json={"login": "octo"}) if ok else httpx.Response(401)
         if req.url.path.endswith("/revoke"):
             return httpx.Response(200)
         if form["grant_type"] == "authorization_code":
@@ -80,7 +83,7 @@ async def test_oauth_flow_list_delete(tmp_path):
     row = (await mgr.store.connections(ua["id"]))[0]
     assert "AT-1" not in row["access_token_enc"] and "RT-1" not in row["refresh_token_enc"]  # encrypted at rest
     listed = (await c.get("/api/connections", headers=h)).json()
-    assert listed == [{"app": "google", "label": "Google", "connected": True, "email": "me@example.com", "status": "ok"}]
+    assert listed[0] == {"app": "google", "label": "Google", "connected": True, "email": "me@example.com", "status": "ok"}
     assert (await c.delete("/api/connections/google", headers=h)).json() == {"ok": True}
     assert g.calls[-1] == ("/revoke", {"token": "RT-1"})
     assert not await mgr.store.connections(ua["id"])
@@ -150,7 +153,7 @@ async def test_apps_one_login_toggle_disconnect(tmp_path):
     apps = (await c.get("/api/apps", headers=h)).json()
     assert [a["app"] for a in apps][:3] == ["gmail", "drive", "calendar"]
     assert apps[1] == {"app": "drive", "label": "Google Drive", "description": apps[1]["description"], "icon": "drive",
-                       "provider": "google", "connected": True, "enabled": True, "email": "me@example.com",
+                       "provider": "google", "auth": "oauth", "connected": True, "enabled": True, "email": "me@example.com",
                        "status": "ok"}
     assert (await c.post("/api/apps/drive/disable", headers=h)).json() == {"ok": True}
     assert {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]} == {"gmail", "calendar"}  # next run: no drive__
@@ -169,7 +172,7 @@ async def test_no_login_apps_off_by_default_toggle(tmp_path):
     h = {"Authorization": f"Bearer {ta}"}
     dw = next(a for a in (await c.get("/api/apps", headers=h)).json() if a["app"] == "deepwiki")
     assert dw == {"app": "deepwiki", "label": "DeepWiki", "description": dw["description"], "icon": "deepwiki",
-                  "provider": None, "connected": True, "enabled": False, "email": None, "status": None}
+                  "provider": None, "auth": None, "connected": True, "enabled": False, "email": None, "status": None}
     assert await mgr.conns.servers(ua["id"]) == ([], [])
     assert (await c.post("/api/apps/deepwiki/enable", headers=h)).json() == {"ok": True}  # no login needed
     assert (await mgr.conns.servers(ua["id"]))[0] == [{"name": "deepwiki", "url": "https://mcp.deepwiki.com/mcp"}]
@@ -178,4 +181,57 @@ async def test_no_login_apps_off_by_default_toggle(tmp_path):
     assert {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]} == {"deepwiki", "gmail", "drive", "calendar"}
     await c.post("/api/apps/deepwiki/disable", headers=h)
     assert "deepwiki" not in {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]}
+    await mgr.store.close()
+
+
+async def test_github_token_save_list_run_delete(tmp_path):
+    _, mgr, g, [(ta, ua), _], c = await make(tmp_path)
+    h = {"Authorization": f"Bearer {ta}"}
+    bad = await c.post("/api/connections/github/token", headers=h, json={"token": "nope"})
+    assert bad.status_code == 400 and bad.json()["detail"] == "token rejected"
+    assert (await c.post("/api/connections/google/token", headers=h, json={"token": "x"})).status_code == 404
+    assert (await c.post("/api/connections/github/start", headers=h)).status_code == 404
+    r = await c.post("/api/connections/github/token", headers=h, json={"token": "ghp_good"})
+    assert r.json() == {"ok": True}
+    row = (await mgr.store.connections(ua["id"]))[0]
+    assert "ghp_good" not in row["access_token_enc"] and row["account_email"] == "octo"
+    apps = (await c.get("/api/apps", headers=h))
+    assert "ghp_good" not in apps.text
+    gh = next(a for a in apps.json() if a["app"] == "github")
+    assert gh["auth"] == "token" and gh["connected"] and gh["enabled"] and gh["email"] == "octo"
+    assert gh["token_help_url"].startswith("https://github.com/")
+    assert next(a for a in apps.json() if a["app"] == "gmail")["auth"] == "oauth"
+    assert next(a for a in apps.json() if a["app"] == "deepwiki")["auth"] is None
+    servers, problems = await mgr.conns.servers(ua["id"])
+    assert servers == [{"name": "github", "url": "https://api.githubcopilot.com/mcp/",
+                        "headers": {"Authorization": "Bearer ghp_good"}, "provider": "github"}] and not problems
+    assert (await c.delete("/api/connections/github", headers=h)).json() == {"ok": True}
+    assert await mgr.store.connections(ua["id"]) == [] and not any(p[0] == "/revoke" for p in g.calls)
+    await mgr.store.close()
+
+
+async def test_token_401_at_run_marks_reconnect(tmp_path):
+    _, mgr, _, [(ta, ua), _], c = await make(tmp_path)
+    await c.post("/api/connections/github/token", headers={"Authorization": f"Bearer {ta}"}, json={"token": "ghp_good"})
+
+    class Run:
+        user_id = ua["id"]
+
+    Run.mgr = mgr
+    plug = UserMcp(Run(), servers=[])
+
+    async def boom(self, spec):
+        raise RuntimeError("HTTP 401 Unauthorized")
+    import simp_agent.plugins.mcp as m
+    orig, m.McpPlugin._connect = m.McpPlugin._connect, boom
+    try:
+        try:
+            await plug._connect({"name": "github", "url": "u", "provider": "github"})
+        except RuntimeError:
+            pass
+    finally:
+        m.McpPlugin._connect = orig
+    assert (await mgr.store.connections(ua["id"]))[0]["status"] == "needs_reconnect"
+    servers, problems = await mgr.conns.servers(ua["id"])
+    assert servers == [] and "GitHub" in problems[0]
     await mgr.store.close()

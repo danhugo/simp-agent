@@ -723,6 +723,18 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             q = {"error": str(e)[:100] if not isinstance(e, httpx.HTTPError) else "network error"}
         return RedirectResponse(f"{web}#connections?{urllib.parse.urlencode(q)}", 302)
 
+    @app.post("/api/connections/{app_name}/token")
+    async def save_token(app_name: str, body: dict, u=Depends(user)):
+        try:
+            await mgr.conns.save_token(u["id"], app_name, str(body.get("token") or ""))
+        except LookupError as e:
+            raise HTTPException(404, str(e)) from None
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+        except httpx.HTTPError:
+            raise HTTPException(502, "could not check the token (network error)") from None
+        return {"ok": True}
+
     @app.delete("/api/connections/{app_name}")
     async def delete_connection(app_name: str, u=Depends(user)):
         await mgr.conns.delete(u["id"], app_name)

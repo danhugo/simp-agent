@@ -81,6 +81,27 @@ Settings (all optional): `public_url = "http://localhost:8766"` (builds the redi
 `url`). Only providers and apps listed there exist, and only
 over HTTP: users can never add their own URL or a stdio server.
 
+Paste-a-token apps (GitHub built in): the user pastes a personal token (`POST /api/connections/<provider>/token
+{"token": ...}`), no OAuth app to register. It is checked once with `validate_url` (401/403 = "token rejected"),
+stored encrypted, and sent to the app's MCP URL with the `header` template. If the MCP server answers 401 during a
+run, the connection becomes `needs_reconnect`. Adding another one is config only:
+
+```toml
+[providers.linear]
+kind = "token"
+label = "Linear"
+token_help = "Make a personal API key."
+token_help_url = "https://linear.app/settings/account/security"
+header = "Authorization: Bearer {token}"
+validate_url = ""  # optional
+[apps.linear]
+label = "Linear"
+description = "Issues and projects"
+icon = "linear"
+provider = "linear"
+url = "https://mcp.linear.app/mcp"
+```
+
 Security: tokens are encrypted in `simp.db` with `SIMP_SECRET_KEY` from `.env` (made on first start if missing;
 back it up with `.env` — losing it means every user must reconnect). Tokens never go into logs, prompts, events or
 the sandbox. Access tokens are refreshed when a chat loads its tools; if refresh fails the connection shows

@@ -27,7 +27,7 @@ from . import protocol as p
 log = logging.getLogger("simp_server")
 
 PROVIDERS = {"google": {
-    "label": "Google",
+    "kind": "oauth", "label": "Google",
     "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
     "token_url": "https://oauth2.googleapis.com/token",
     "revoke_url": "https://oauth2.googleapis.com/revoke",
@@ -35,7 +35,14 @@ PROVIDERS = {"google": {
                "https://www.googleapis.com/auth/gmail.send", "https://www.googleapis.com/auth/calendar.events",
                "https://www.googleapis.com/auth/drive"],
     "client_id_env": "GOOGLE_CLIENT_ID", "client_secret_env": "GOOGLE_CLIENT_SECRET",
+}, "github": {  # kind "token": the user pastes a personal token; no OAuth app to register
+    "kind": "token", "label": "GitHub",
+    "token_help": "Make a fine-grained personal access token with the repo access you want the agent to have.",
+    "token_help_url": "https://github.com/settings/personal-access-tokens",
+    "header": "Authorization: Bearer {token}",
+    "validate_url": "https://api.github.com/user",  # optional: GET once on save; 401/403 = rejected; json login/email kept
 }}
+NO_EXPIRY = 1e18  # expires_at for pasted tokens: never refreshed
 APPS = {  # the app name is also the MCP server name, so its tools are "<app>__<tool>"
     "gmail": {"label": "Gmail", "description": "Search, read, label and draft email.", "icon": "gmail",
               "provider": "google", "url": "https://gmailmcp.googleapis.com/mcp/v1"},
@@ -44,6 +51,8 @@ APPS = {  # the app name is also the MCP server name, so its tools are "<app>__<
     "calendar": {"label": "Google Calendar", "description": "See and manage calendar events.", "icon": "calendar",
                  "provider": "google", "url": "https://calendarmcp.googleapis.com/mcp/v1"},
     # no login (provider None): off until the user turns them on, so new users don't get many extra tools
+    "github": {"label": "GitHub", "description": "Issues, pull requests, code and CI", "icon": "github",
+               "provider": "github", "url": "https://api.githubcopilot.com/mcp/"},
     "deepwiki": {"label": "DeepWiki", "description": "Ask about any public GitHub repo.", "icon": "deepwiki",
                  "provider": None, "url": "https://mcp.deepwiki.com/mcp"},
     "context7": {"label": "Context7", "description": "Up-to-date library docs and code examples.", "icon": "context7",
@@ -104,6 +113,32 @@ class Connections:
             raise LookupError(f"unknown app {name!r}")
         return self.apps[name]
 
+    def _header(self, prov: str, token: str) -> dict:
+        k, _, v = self.apps[prov].get("header", "Authorization: Bearer {token}").partition(":")
+        return {k.strip(): v.strip().replace("{token}", token)}
+
+    async def save_token(self, user_id: str, name: str, token: str) -> None:
+        """LookupError: not a token provider; ValueError: token rejected."""
+        a = self.app(name)
+        token = token.strip()
+        if a.get("kind") != "token":
+            raise LookupError(f"{name!r} does not take a pasted token")
+        if not token:
+            raise ValueError("token is empty")
+        who = None
+        if url := a.get("validate_url"):
+            r = await self.http.get(url, headers=self._header(name, token))
+            if r.status_code in (401, 403):
+                raise ValueError("token rejected")
+            if r.status_code == 200:
+                try:
+                    j = r.json()
+                    who = j.get("login") or j.get("email") or j.get("name")
+                except Exception:
+                    pass
+        await self.store.save_connection(user_id, name, who, self.fernet.encrypt(token.encode()).decode(), "",
+                                         NO_EXPIRY)
+
     def _client(self, a: dict) -> tuple[str, str]:
         cid, sec = self.keys.get(a["client_id_env"]), self.keys.get(a["client_secret_env"])
         if not cid or not sec:
@@ -115,6 +150,8 @@ class Connections:
 
     def start(self, user_id: str, name: str) -> str:
         a = self.app(name)
+        if a.get("kind") == "token":
+            raise LookupError(f"{name!r} takes a pasted token, not OAuth")
         cid, _ = self._client(a)
         now = time.time()
         self.pending = {s: v for s, v in self.pending.items() if v[3] > now}
@@ -155,7 +192,7 @@ class Connections:
 
     async def delete(self, user_id: str, name: str) -> None:
         row = next((r for r in await self.store.connections(user_id) if r["app"] == name), None)
-        if row and (url := self.apps.get(name, dict()).get("revoke_url")):
+        if row and row["refresh_token_enc"] and (url := self.apps.get(name, dict()).get("revoke_url")):
             try:  # best effort: the row goes either way
                 await self.http.post(url, data={"token": self.fernet.decrypt(row["refresh_token_enc"]).decode()})
             except Exception as e:
@@ -171,12 +208,14 @@ class Connections:
         for n, a in self.app_list.items():
             if a.get("provider") is None:
                 out.append({"app": n, "label": a.get("label", n), "description": a.get("description", ""),
-                            "icon": a.get("icon", n), "provider": None, "connected": True, "enabled": n in on,
+                            "icon": a.get("icon", n), "provider": None, "auth": None, "connected": True, "enabled": n in on,
                             "email": None, "status": None})
                 continue
-            row = rows.get(a["provider"])
+            row, prov = rows.get(a["provider"]), self.apps.get(a["provider"], dict())
             out.append({"app": n, "label": a.get("label", n), "description": a.get("description", ""),
-                        "icon": a.get("icon", n), "provider": a["provider"], "connected": row is not None,
+                        "icon": a.get("icon", n), "provider": a["provider"], "auth": prov.get("kind", "oauth"),
+                        **({"token_help": prov.get("token_help", ""), "token_help_url": prov.get("token_help_url")}
+                           if prov.get("kind") == "token" else dict()), "connected": row is not None,
                         "enabled": row is not None and n not in off, "email": row and row["account_email"],
                         "status": row and row["status"]})
         return out
@@ -229,7 +268,7 @@ class Connections:
             if token is None:
                 problems.append(f"{a.get('label', row['app'])} connection needs reconnect (Settings > Connections)")
                 continue
-            out += [{"name": n, "url": app["url"], "headers": {"Authorization": f"Bearer {token}"}}
+            out += [{"name": n, "url": app["url"], "headers": self._header(row["app"], token), "provider": row["app"]}
                     for n, app in mine.items()]
         return out, problems
 
@@ -257,6 +296,14 @@ class UserMcp(McpPlugin):
                 self.names.add(t.name)
                 if t.read_only_hint is not True:
                     session.needs_approval.add(t.name)
+
+    async def _connect(self, spec: dict):
+        try:
+            return await super()._connect(spec)
+        except Exception as e:  # revoked/expired token: ask the user to reconnect instead of failing every run
+            if spec.get("provider") and "401" in f"{e!r} {getattr(e, 'exceptions', '')}":
+                await self.run.mgr.store.set_connection_status(self.run.user_id, spec["provider"], "needs_reconnect")
+            raise
 
     async def tool_result(self, call, result):
         if call.name in self.names:
