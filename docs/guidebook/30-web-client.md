@@ -42,7 +42,7 @@ Recall what the server gives a client ([26](26-transport.md#sse-out-post-in)). E
 
 1. **The browser's SSE reader cannot send the token.** The stream needs Ana's [Bearer token](glossary.md#bearer-token) in an `Authorization` header ([27](27-store-auth.md)). The built-in reader, `EventSource`, cannot send headers, so the first call gets 401. A token in the URL would leak into server logs.
 2. **A reconnect gives duplicates and gaps.** Wi-Fi drops, the laptop sleeps, Ana presses reload in the middle of a long answer. If the page has `"Let me w"` and the same deltas come again, `text += delta` shows `"Let me wLet me w..."`. If a piece is lost, the text has a hole.
-3. **Many event kinds drift the screen.** Text, finished messages, tool output, approvals, run state, title and plan mode all change the same page. If each one pokes the page in its own way, the screen slowly drifts away from the truth on the server.
+3. **Many event kinds drift the screen.** Text, finished messages, tool output, approvals, run state and title all change the same page. If each one pokes the page in its own way, the screen slowly drifts away from the truth on the server.
 
 The web app is React + Vite in `apps/web/`. Types such as `ServerEvent` and `PendingApproval` come from `protocol.gen.ts`, which is made from the server's own types ([25](25-server-run.md)), so client and server cannot disagree about an event's fields.
 
@@ -170,7 +170,6 @@ The other durable cases follow the same pattern: each one sets one field. A `too
 
 > **Implementation notes**
 > - `approval_resolved` clears `pending` only if it is for the same `call_id`.
-> - A `notice` with text `"plan mode on"` or `"plan mode off"` also flips `planMode` (plan mode is from [22](22-profiles-plugins.md)).
 > - `compaction` becomes a notice like `Context compacted (… → … tokens)` (from [20](20-compaction.md)); `session_title` sets `title`.
 > - The state is kept twice: in React state, to redraw, and in `ref` (a `useRef`), which is updated at once, so a reconnect reads the true newest `lastSeq`. `apply` also refreshes the session list on `run_state`, `snapshot` and `session_title`.
 
@@ -208,8 +207,6 @@ case "thinking_delta": {
 
 A delta for a new `msg_id` starts a fresh bubble only if its offset is 0. If the first piece of a new message was lost, the page waits for the full message instead of showing the middle of it. `tool_output` uses the same `appendAt`, with one text per `call_id` in `toolOutputs`. It needs no new-message check, because each tool call has its own key and starts from an empty string.
 
-A delta for a new `msg_id` starts a fresh bubble only if its offset is 0. If the first piece of a new message was lost, the page waits for the full message instead of showing the middle of it. `tool_output` uses the same `appendAt`, with one text per `call_id` in `toolOutputs`; it needs no new-message check, because each tool call starts from an empty string.
-
 ## After a reload: the snapshot replaces live state
 
 Deltas fill holes only while the line stays up. After a reload the page has no in-flight text at all, so the server's snapshot fills it:
@@ -219,7 +216,7 @@ case "snapshot":
   // The snapshot is the truth for everything live: replace the in-flight bubble and live tool output.
   return {
     ...s, lastSeq: Math.max(s.lastSeq, ev.last_seq), runState: ev.run_state, pending: ev.pending_approval,
-    title: ev.title, planMode: ev.plan_mode,
+    title: ev.title,
     inFlight: ev.in_flight, toolOutputs: { ...s.toolOutputs, ...ev.in_flight.tool_outputs },
   };
 ```
@@ -232,10 +229,22 @@ The snapshot does not add to the in-flight text; it replaces it. After a reload 
 The state is now always right, so the page only has to draw it and send commands. When Ana presses Enter, `Chat.tsx` sends one command with `api.command(sid, c)`, which posts to `/api/sessions/{sid}/commands` through the same `call()`:
 
 ```ts
-send(!busy ? { type: "prompt", text: t } : queue ? { type: "follow_up", text: t } : { type: "steer", text: t });
+send(!busy ? { type: "prompt", text: t + note } : { type: "steer", text: t + note });
 ```
 
-If no run is going, the text starts a new run (`prompt`). If a run is going, it is queued for later (`follow_up`) or sent into the current run (`steer`). The POST returns at once. The page does not add Ana's message to the screen itself: her message and the answer come back as events on the stream `subscribe` holds open. Buttons work the same way, for example `{ type: "set_plan_mode", enabled: !state.planMode }`, `{ type: "compact" }` or `{ type: "continue" }`. `Chat.tsx` never changes `ChatState` itself, so data goes one way only and the screen always matches the server.
+(`note` lists any files Ana attached.) If no run is going, the text starts a new run (`prompt`). If a run is going, the text is a `steer`: it goes into the current run. There is no "queue as follow-up" choice in the web page. The server sets `steering_mode = "all"`, so every steer sent during a run reaches the model at the next turn, all together (the modes are in [09](09-steering.md#the-agent-side-two-lists-and-a-mode)). The POST returns at once. The page does not add Ana's message to the screen itself: her message and the answer come back as events on the stream `subscribe` holds open. Buttons work the same way, for example `{ type: "compact" }` or `{ type: "continue" }`. `Chat.tsx` never changes `ChatState` itself, so data goes one way only and the screen always matches the server.
+
+### Steers show at once, as pending bubbles
+
+One exception to "the page never adds Ana's message itself". A steer waits in the agent's list until the next turn starts ([09](09-steering.md)), and only then does the server send it back as a `user_message`. If a tool runs for a minute, Ana would see nothing for a minute and might type the same thing again. So `Chat.tsx` keeps a small local list of steers it sent and draws each one at the end of the chat as a grey bubble marked **Pending**. When the server echoes the same text back, the pending bubble hides and the real one takes its place. When the run ends, any left-over pending bubbles are dropped. If the POST fails, the bubble stays and says **Not sent**. This list is only for display; `ChatState` still comes only from the server.
+
+### One friendly line per tool call
+
+A tool call is drawn as a closed `<details>` block. Its `<summary>` is one short line in plain words, made by `toolLabel(call, finished)`: "Reading notes.md" while it runs, "Read notes.md" when done, "Ran \`pytest\`", "Searched the web: …", and so on. A coloured dot shows the status (running, done, error, needs approval), and a timer shows if the call took 2 seconds or more. The arguments and output are inside the block, so Ana opens it only if she wants the details. The block opens by itself only when the call waits for her approval, so the **Allow** button is never hidden.
+
+### The Memory page
+
+The server keeps memories per user ([27](27-store-auth.md#agents-and-memories)), using the memory plugin from [22](22-profiles-plugins.md). `Memory.tsx` lets Ana see and fix what the agent remembers about her. It opens from the **Memory** button in the side bar and shows two lists: "About you" (scope `global`) and "What the agent learned" (scope `agent`). It uses plain REST calls, not the event stream, because memories do not change word by word: `api.memories()`, `api.editMemory(id, content)`, `api.deleteMemory(id)` and `api.exportMemories()` (a `memories.json` download). Click a memory to edit it; delete asks once more ("Delete?") before it really deletes, like session delete.
 
 > **Implementation notes**
 > - **Continue** shows when `canContinue(state)` is true: the run state is `error`, or it is `idle` and the last item is a notice that starts with `interrupted:` (a server restart cut the run).
