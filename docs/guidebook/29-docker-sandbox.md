@@ -2,7 +2,9 @@
 
 **Goal:** Run each session's tools inside a container.
 
-**Builds on:** [28 Limits](28-limits.md) · **Next:** [30 Web client](30-web-client.md)
+**Builds on:** [28 Limits](28-limits.md) · **Next:** [29a Workspace and per-user sandbox](29a-workspace-sandbox.md)
+
+> Since commits `79faa70`/`76d83ea` the container is per **user**, not per session, and starts lazily; files can live in an S3 bucket. This chapter still explains the hardened container; [29a](29a-workspace-sandbox.md) covers what changed.
 
 ## Where we are
 

@@ -119,16 +119,8 @@ host = "127.0.0.1"                         # bind address
 allowed_hosts = ["localhost", "127.0.0.1"]  # Host headers accepted (DNS rebinding guard); add your LAN name here
 # allow_local_sandbox = true  # the server refuses to start with LocalSandbox and >1 user unless this is set
 
-[plugins]  # optional; defaults: LocalSandbox, SqliteStore, StaticTokenAuth
-sandbox = "simp_server.sandboxes.docker:DockerSandbox"  # needs `uv run simp-server build-sandbox` once
-
-[sandbox]  # DockerSandbox options (these are the defaults)
-# workspaces_dir = "<data_dir>/workspaces"
-image = "simp-sandbox:latest"
-network = "none"
-memory = "1g"
-cpus = "1"
-pids_limit = 256
+[sandbox]  # see "Sandbox and workspace" below
+kind = "docker"  # or SIMP_SANDBOX=docker; unset = LocalSandbox (no isolation, one user only)
 
 [profiles.luna]
 api = "openai-responses"
@@ -197,10 +189,128 @@ idle_minutes = 15       # top level; unload sessions idle this long (not running
 max_open_sessions = 8   # loaded at once; the least recently used idle one is unloaded first, else 503
 ```
 
-Files live per user in `<data_dir>/workspaces/<user_id>`, for both sandboxes: all sessions of a user see the same
-files (and the web Files panel shows that dir). Each session still gets its own container. There is no lock: two chats
-running at once can overwrite each other's files. Old per-session dirs (`sandboxes/<sid>` or `workspaces/<sid>`) move
-to `workspaces/<user_id>/<sid>/` on first open. Backups still copy all of `workspaces/`.
+### Sandbox and workspace
+
+Two parts (guidebook [ch 29a](docs/guidebook/29a-workspace-sandbox.md)): the **workspace store** holds each user's
+files (the disk), the **sandbox** runs their commands (the computer). The sandbox sees the workspace at `/work` through
+a mount, so there is no sync step. One sandbox per **user**, started on the first tool call that needs it and shared
+by all that user's sessions; the web Files panel reads the store directly and never starts a sandbox. Git repos live
+on the sandbox's own disk (`/home/user/repos`) and are mirrored to `/work/.simp/repos` after every tool call.
+There is no lock: two chats of one user running at once can overwrite each other's files.
+
+| Mode | Store | Sandbox | Use |
+|---|---|---|---|
+| Full local (default for `make dev`) | `local`: `<data_dir>/workspaces/<user_id>` | Docker, `mount = "bind"` | one machine |
+| Test | `s3` on MinIO (`make minio`) | Docker, `mount = "fuse"` (s3fs) | dev with production semantics |
+| Mini production | `s3` on AWS S3 or Cloudflare R2 | E2B, `mount = "fuse"` | sandboxes in the cloud |
+
+The server refuses to start with a combination that cannot work (e2b + local store, fuse + local, bind + s3).
+
+**Full local** (Docker image: `uv run simp-server build-sandbox` once):
+
+```toml
+[sandbox]
+kind = "docker"
+mount = "bind"              # defaults below
+# workspaces_dir = "<data_dir>/workspaces"
+image = "simp-sandbox:latest"
+network = "none"            # "bridge" when mount = "fuse"
+memory = "1g"
+cpus = "1"
+pids_limit = 256
+tmp_size = "256m"           # /tmp is a tmpfs
+idle_pause_s = 600          # remove the container after 10 min unused
+max_running = 10
+day_minutes = 0             # per-user daily compute budget, 0 = off (docker default)
+```
+
+**Test** (`make minio` starts MinIO on a free port with a versioned bucket and prints the `[workspace]` table and
+`.env` lines; `make minio-stop` removes it with its data):
+
+```toml
+[workspace]
+store = "s3"
+endpoint = "http://127.0.0.1:<port>"
+bucket = "simp-dev"
+access_key_env = "S3_ACCESS_KEY_ID"        # names of the env vars, not the keys
+secret_key_env = "S3_SECRET_ACCESS_KEY"
+# region = "us-east-1"
+# prefix = "users/{user_id}/"
+# mount_scope = "sts"                      # "sts" | "none"
+# role_arn = "arn:aws:iam::000000000000:role/simp-mount"   # AWS needs a real one; MinIO accepts any
+# mount_creds_ttl_s = 3600
+# mount_endpoint = ""                      # endpoint as seen from the sandbox; default: 127.0.0.1/localhost -> host.docker.internal
+
+[sandbox]
+kind = "docker"
+mount = "fuse"
+# max_life_s = 3300         # restart an idle container before the 1 h mount credential expires
+```
+
+**Mini production** (E2B; bucket versioning must be ON for `workspace-restore`):
+
+```toml
+[workspace]
+store = "s3"
+endpoint = "https://<account>.r2.cloudflarestorage.com"   # or omit for AWS S3
+bucket = "simp-workspaces"
+region = "auto"            # R2; an AWS region otherwise
+mount_scope = "none"       # R2 has no STS; on AWS keep "sts" and set role_arn
+
+[sandbox]
+kind = "e2b"               # mount defaults to "fuse"
+template = "simp-sandbox"
+tag = "simp"               # metadata app=<tag>: which E2B sandboxes this server owns
+cpus = 2                   # used for cost only; set at template build
+memory_mb = 2048
+idle_pause_s = 600         # pause after 10 min unused (home snapshot first)
+max_life_s = 3300          # kill and recreate after 55 min (E2B Hobby: 1 h continuous cap)
+snapshot_every_s = 900     # home snapshot to /work/.simp/home.tar.zst
+snapshot_max_mb = 2048     # over this, only repos go in the snapshot (libraries reinstall)
+# provider_timeout_s = idle_pause_s + 300   # E2B-side pause if this server dies
+max_running = 10           # E2B Hobby allows 20 concurrent
+day_minutes = 240          # per-user daily compute minutes (e2b default)
+price_vcpu_s = 0.000014
+price_gib_s = 0.0000045
+```
+
+Env vars (in `<data_dir>/.env` or the process env, names only): `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (or
+whatever `access_key_env` / `secret_key_env` name), `E2B_API_KEY`, optionally `SIMP_SANDBOX=docker|e2b`.
+
+Build the E2B template once (`--office` adds LibreOffice, about 500 MB):
+
+```sh
+E2B_API_KEY=... uv run python apps/server/sandboxes/e2b_template.py [--alias simp-sandbox] [--office] [--cpus 2] [--memory-mb 2048]
+```
+
+Admin:
+
+```sh
+uv run simp-server sandboxes                 # user, state, age, id of each sandbox
+uv run simp-server sandboxes --kill bob      # kill bob's sandbox; files stay
+uv run simp-server sandboxes --pause-all     # pause every running sandbox (docker: stop)
+uv run simp-server workspace-restore --user bob --at 2026-11-16T09:30:00+09:00 [--path src]  # s3 store only
+```
+
+`workspace-restore` puts each object back to its version at that time (newer files are deleted); old versions stay,
+so a restore can itself be undone.
+
+**Costs and limits.** Sandbox running time is recorded as a usage row (model `sandbox:<kind>`, cost =
+seconds x (cpus x `price_vcpu_s` + GiB x `price_gib_s`); docker prices default to 0) and counts toward the money
+budget. Before a sandbox starts or resumes the server checks `max_running` and the user's `day_minutes`; over either,
+the tool call gets a clear error and chat still works.
+
+**Security notes.**
+- Bind mode: `--network none`, `--read-only`, `--cap-drop ALL`, `no-new-privileges`, uid 1000, pids/memory/cpu limits.
+- Fuse mode (Docker) needs `/dev/fuse`, `CAP_SYS_ADMIN`, AppArmor unconfined and a network (`bridge`). Only one
+  `docker exec -u 0` uses the capability, for the mount; commands run as 1000 with no capabilities.
+- `mount_scope = "sts"` hands the sandbox a 1 h credential limited to `users/<user_id>/` (MinIO refuses AssumeRole for
+  its root user, so `make minio` creates a `simp-dev` user). `mount_scope = "none"` (needed for R2, which has no STS)
+  puts the store key itself into the sandbox: a user's code could then read other users' files. Use it only with
+  trusted users until R2 temporary credentials are wired in.
+
+Old per-session dirs (`sandboxes/<sid>` or `workspaces/<sid>`) move to `workspaces/<user_id>/<sid>/` on first open.
+Backups copy `workspaces/` (the local store); an S3 store is not in the backup: its bucket versioning is the history.
 
 ### Session commands, titles
 

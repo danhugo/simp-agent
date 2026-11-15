@@ -124,5 +124,5 @@ In the Playwright tests (10) the same flow runs against FakeLLM, so the answer i
 ## Builds on / Next
 
 - Builds on: [Part 4 big picture](16-part-4-session.md) and [17 Sessions](17-session.md)–[22a The MCP client plugin](22a-mcp.md).
-- Chapters: [24 The CLI](24-cli.md) · [25 The server run](25-server-run.md) · [26 Transport](26-transport.md) · [27 Store and auth](27-store-auth.md) · [28 Limits](28-limits.md) · [29 Docker sandbox](29-docker-sandbox.md) · [30 Web client](30-web-client.md) · [31 System tests and deploy](31-system-tests-deploy.md).
+- Chapters: [24 The CLI](24-cli.md) · [25 The server run](25-server-run.md) · [26 Transport](26-transport.md) · [27 Store and auth](27-store-auth.md) · [28 Limits](28-limits.md) · [29 Docker sandbox](29-docker-sandbox.md) · [29a Workspace and per-user sandbox](29a-workspace-sandbox.md) · [30 Web client](30-web-client.md) · [31 System tests and deploy](31-system-tests-deploy.md).
 - Next: [24 The CLI](24-cli.md).

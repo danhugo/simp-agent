@@ -442,3 +442,18 @@ The program that runs the agent and sets things the model must not change: the C
 
 ## Orphan tool call
 A `ToolCall` in the history with no `ToolResultMessage` after it. Vendors reject it with a 400 error, so `transform_messages` adds a "No result provided" result for it. Home: [02](02-pick-clean.md#what-can-be-broken).
+
+## Workspace store
+Where a user's files live, apart from any compute: a folder per user (`LocalStore`) or a prefix `users/<user_id>/` in an S3-compatible bucket (`S3Store`). The sandbox sees it at `/work`; the Files panel reads it directly. Home: [29a](29a-workspace-sandbox.md).
+
+## FUSE mount
+A filesystem served by a user-space program. `s3fs` mounts the user's bucket prefix at `/work`, turning open/read into GET, close-after-write into PUT, `ls` into LIST and `rm` into DELETE, so there is no sync step. Home: [29a](29a-workspace-sandbox.md#the-mount-no-sync-step).
+
+## Repo mirror
+A bare git repo at `/work/.simp/repos/<name>.git` that each repo in `/home/user/repos` is force-pushed to after every tool call, with a WIP commit of uncommitted changes; a fresh sandbox clones from it. Home: [29a](29a-workspace-sandbox.md#the-repo-mirror).
+
+## Lazy sandbox
+One sandbox per user, created or resumed only by the first tool call that needs it, shared by all the user's sessions, and paused or removed when idle. Home: [29a](29a-workspace-sandbox.md#lazy-per-user-sandbox-and-its-lifecycle).
+
+## Single writer
+While a user's sandbox runs, all their file tools go through it (or, in bind mode, the same folder), so nothing else changes `/work` behind its back and no merge is needed. Home: [29a](29a-workspace-sandbox.md#the-mount-no-sync-step).

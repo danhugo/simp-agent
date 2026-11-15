@@ -2,6 +2,10 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+## 2026-11-16
+
+- New ch 29a "Workspace and per-user sandbox": workspace store vs sandbox, the bind/FUSE mount, single writer, lazy per-user lifecycle (idle pause, max life, provider safety net, resume remount), where data lives, the repo mirror, the git-on-s3fs benchmark, Files panel through the store, compute costs and limits, mode switching, a worked example. Glossary: workspace store, FUSE mount, repo mirror, lazy sandbox, single writer. Ch 29 gets a pointer; README index and Part 5 chapter list updated. Checked against `79faa70`, `76d83ea`.
+
 ## 2026-11-04
 
 - `img/architecture.drawio`: two new pages for the session layer, from `session/__init__.py`. "3 · Session block": INPUT (setup, each run), the block (get ready once, read the prompt, the agent block with the sockets the session fills, every event saved and sent on, after the run: overflow → compact once, short failure → retry), OUTPUT, plugs in, rules, and a worked example ("now add tests" with a 429 retry). "3a · Session run (flowchart)": start → get ready → plugin may answer → run the agent (links to 2a) → the retry loop (overflow once, retry 2s/4s/8s, abort during the wait) → end, with six examples. Page 2 "used by" now links to page 3.
