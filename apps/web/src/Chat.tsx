@@ -130,7 +130,7 @@ export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = fal
             {firstPrompt && !state.items.some((i) => i.kind === "user") && <div className="msg user">{firstPrompt}</div>}
             {(f.text || f.thinking) && (
               <div className="msg assistant streaming" aria-live="off" aria-busy="true">
-                {f.thinking && <Thinking text={f.thinking} open />}
+                {f.thinking && <Thinking text={f.thinking} />}
                 {f.text && <Md text={f.text} />}
               </div>
             )}
