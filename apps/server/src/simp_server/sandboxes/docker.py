@@ -1,8 +1,12 @@
 """DockerSandbox: one hardened container per USER, started lazily on the first tool call that needs it, shared by all
 the user's sessions, removed after `idle_pause_s` without use (or when the user's last session closes).
 
-/work is a bind mount of the user's workspace dir, so file ops on /work run on the host (LocalEnv with root
-containment): same files, one writer. Paths outside /work (/home/user/repos, /tmp) and all commands go through
+[sandbox] mount = "bind" (default): /work is a bind mount of the user's workspace dir, so file ops on /work run on the
+host (LocalEnv with root containment): same files, one writer. mount = "fuse" (needs [workspace] store = "s3"): the
+container mounts the user's bucket prefix at /work with s3fs, and every file op runs in the container. Security
+trade-off of fuse mode: the container gets /dev/fuse and CAP_SYS_ADMIN (only root, used once by `docker exec -u 0` for
+the mount; commands run as 1000 with no capabilities and no-new-privileges), AppArmor is unconfined (the default profile
+blocks mount), and it needs a network to reach the store (default "bridge" instead of "none"). Paths outside /work (/home/user/repos, /tmp) and all commands go through
 `docker exec`. /home/user is a per-user named volume (simp-home-<user_id>), so repos and libraries survive a
 container restart; repos are also mirrored to /work/.simp/repos after each tool call (repos.py)."""
 
@@ -14,11 +18,13 @@ import json
 import logging
 import subprocess
 import time
+from datetime import datetime
 from pathlib import Path
 
 from simp_agent.agent.env import LocalEnv
 from simp_agent.coding import SANDBOX_HINT
-from simp_server.sandboxes import user_root
+from simp_server import workspace
+from simp_server.sandboxes import Compute, gib, user_root, valid_id
 from simp_server.sandboxes.repos import mirror_repos, restore_repos
 
 log = logging.getLogger("simp_server")
@@ -26,7 +32,16 @@ log = logging.getLogger("simp_server")
 IMAGE = "simp-sandbox:latest"
 DOCKERFILE_DIR = Path(__file__).resolve().parents[3] / "sandboxes"
 REPOS, MIRRORS = "/home/user/repos", "/work/.simp/repos"
+USER = ("-u", "1000:1000")  # every exec: in fuse mode the container's root holds CAP_SYS_ADMIN
+GONE = ("No such container", "is not running")
 CONTAINER_DIRS = ("/home/user", "/tmp")  # file tools may reach these container-only dirs; any other path outside /work is refused
+
+
+# s3fs as root; $1 bucket:/prefix, $2 endpoint, $3 region; key, secret, session token on stdin. uid 1000 owns the files.
+S3FS = """read -r AWSACCESSKEYID; read -r AWSSECRETACCESSKEY; read -r AWSSESSIONTOKEN
+export AWSACCESSKEYID AWSSECRETACCESSKEY; [ -n "$AWSSESSIONTOKEN" ] && export AWSSESSIONTOKEN
+exec s3fs "$1" /work -o url="$2" -o endpoint="$3" -o use_path_request_style -o allow_other -o uid=1000 -o gid=1000 \
+  -o umask=0022 -o compat_dir -o stat_cache_expire=5 -o enable_noobj_cache"""
 
 
 def build_image(tag: str = IMAGE) -> int:
@@ -47,7 +62,7 @@ async def _exec_in(container, command, cwd, timeout, cancel, on_output=None) -> 
     we can kill the group. 2>&1 inside the container: docker sends stderr as its own stream, which could overtake
     the pid line."""
     proc = await asyncio.create_subprocess_exec(
-        "docker", "exec", "-w", cwd, container,
+        "docker", "exec", *USER, "-w", cwd, container,
         "setsid", "-w", "sh", "-c", 'echo $$; exec sh -c "$0" 2>&1', command,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
     )
@@ -68,7 +83,7 @@ async def _exec_in(container, command, cwd, timeout, cancel, on_output=None) -> 
     stop.cancel()
     if run not in done:
         if pid.isdigit():
-            await _docker("exec", container, "kill", "-9", "--", f"-{pid}")
+            await _docker("exec", *USER, container, "kill", "-9", "--", f"-{pid}")
         if proc.returncode is None:
             proc.kill()
         await run
@@ -82,6 +97,7 @@ class _Box:
     def __init__(self, user_id: str, root: Path):
         self.user_id, self.root, self.name = user_id, root, f"simp-u-{user_id}"
         self.running, self.active, self.last = False, 0, time.monotonic()
+        self.started = self.metered = 0.0
         self.sessions: set[str] = set()
         self.lock = asyncio.Lock()
 
@@ -140,13 +156,20 @@ class DockerEnv(LocalEnv):
 
     def _in_container(self, path: str) -> bool:
         path = str(path)
-        return self._host_rel(path) is None and any(path == d or path.startswith(d + "/") for d in CONTAINER_DIRS) and "/../" not in path + "/"
+        if self._host_rel(path) is not None:
+            return self.sandbox.mount == "fuse"  # /work is the container's s3fs mount
+        return any(path == d or path.startswith(d + "/") for d in CONTAINER_DIRS) and "/../" not in path + "/"
+
+    def _cpath(self, path: str) -> str:
+        """The container path of a path _in_container (fuse: workspace paths map to /work, never escaping it)."""
+        rel = self._host_rel(path)
+        return path if rel is None else "/work/" + workspace.rel(rel)
 
     # files outside /work live only in the container
     async def _cat(self, path: str) -> bytes:
         async with self._use():
             p = await asyncio.create_subprocess_exec(
-                "docker", "exec", self.container, "cat", "--", path,
+                "docker", "exec", *USER, self.container, "cat", "--", self._cpath(path),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             out, err = await p.communicate()
         if p.returncode:
@@ -168,8 +191,8 @@ class DockerEnv(LocalEnv):
         if not self._in_container(path):
             return await super().write_bytes(path, data)
         async with self._use():
-            code, out = await _docker("exec", "-i", self.container, "sh", "-c",
-                                      'mkdir -p "$(dirname "$1")" && cat > "$1"', "sh", path, stdin=data)
+            code, out = await _docker("exec", *USER, "-i", self.container, "sh", "-c",
+                                      'mkdir -p "$(dirname "$1")" && cat > "$1"', "sh", self._cpath(path), stdin=data)
         if code:
             raise PermissionError(out.strip() or f"cannot write {path}")
 
@@ -179,14 +202,20 @@ class DockerEnv(LocalEnv):
         script = ("import json,os,sys; print(json.dumps([{'name': e.name, 'is_dir': e.is_dir(), "
                   "'size': 0 if e.is_dir() else e.stat().st_size} for e in sorted(os.scandir(sys.argv[1]), key=lambda e: e.name)]))")
         async with self._use():
-            code, out = await _docker("exec", self.container, "python3", "-c", script, path)
+            code, out = await _docker("exec", *USER, self.container, "python3", "-c", script, self._cpath(path))
         if code:
             raise FileNotFoundError(out.strip().splitlines()[-1] if out.strip() else path)
         return json.loads(out)
 
     async def exec(self, command, cwd, timeout, cancel, on_output=None) -> tuple[int | None, str]:
-        async with self._use():
-            return await _exec_in(self.container, self._to_container(command), self._cwd(cwd), timeout, cancel, on_output)
+        for attempt in (1, 2):
+            async with self._use():
+                code, out = await _exec_in(self.container, self._to_container(command), self._cwd(cwd), timeout, cancel,
+                                           on_output)
+            if attempt == 1 and code and out.startswith("Error response from daemon") and any(g in out for g in GONE):
+                self.box.running = False  # removed behind our back (`simp-server sandboxes --kill`): start again
+                continue
+            return code, out
 
     async def after_tool(self) -> None:
         """After each tool call that used the container: make it durable. One place for steps 2/3 to extend
@@ -209,10 +238,16 @@ class DockerSandbox:
 
     prompt_hint = SANDBOX_HINT
 
+    kind = "docker"
+
     def __init__(self, settings: dict):
         s = settings.get("sandbox", dict())
+        self.mount = s.get("mount", "bind")
+        self.store = None  # workspace store (fuse mode: mount creds), set by create_app
+        self.compute = Compute(settings, "docker")
+        self.max_life_s = s.get("max_life_s", 3300)  # fuse: restart before the mount credential expires
         self.workspaces_dir = Path(s.get("workspaces_dir", Path(settings["data_dir"]) / "workspaces")).expanduser()
-        self.image, self.network = s.get("image", IMAGE), s.get("network", "none")
+        self.image, self.network = s.get("image", IMAGE), s.get("network", "bridge" if self.mount == "fuse" else "none")
         self.memory, self.cpus, self.pids_limit = s.get("memory", "1g"), str(s.get("cpus", "1")), s.get("pids_limit", 256)
         self.tmp_size = s.get("tmp_size", "256m")
         self.idle_pause_s = s.get("idle_pause_s", 600)
@@ -238,33 +273,65 @@ class DockerSandbox:
         async with box.lock:
             if box.running:
                 return
+            await self.compute.check(box.user_id, sum(b.running for b in self.boxes.values()))
             await _docker("rm", "-f", box.name)  # leftover from a crash
+            work = (["--device", "/dev/fuse", "--cap-add", "SYS_ADMIN", "--security-opt", "apparmor=unconfined",
+                     "--add-host", "host.docker.internal:host-gateway"] if self.mount == "fuse"
+                    else ["-v", f"{box.root.resolve()}:/work"])
             code, out = await _docker(
                 "run", "-d", "--name", box.name, "--user", "1000:1000", "--network", self.network,
                 "--pids-limit", str(self.pids_limit), "--memory", self.memory, "--cpus", self.cpus,
                 "--read-only", "--tmpfs", f"/tmp:rw,nosuid,nodev,size={self.tmp_size}",
-                "--security-opt", "no-new-privileges", "--cap-drop", "ALL",
-                "-v", f"{box.root.resolve()}:/work", "-v", f"simp-home-{box.user_id}:/home/user",
+                "--security-opt", "no-new-privileges", "--cap-drop", "ALL", *work,
+                "-v", f"simp-home-{box.user_id}:/home/user",
                 "-w", "/work", "--label", f"simp.user={box.user_id}", self.image, "sleep", "infinity",
             )
             if code != 0:
                 raise RuntimeError(f"docker run failed: {out.strip()}")
+            if self.mount == "fuse":
+                try:
+                    await self._mount(box)
+                except Exception:
+                    await _docker("rm", "-f", box.name)
+                    raise
             box.running, box.last = True, time.monotonic()
+            box.started = box.metered = box.last
             await restore_repos(box, REPOS, MIRRORS, cwd="/work")
+
+    async def _mount(self, box: _Box) -> None:
+        """s3fs mount of the user's prefix at /work, as root (the only root exec). Credentials go in on stdin."""
+        c = await self.store.mount_creds(box.user_id)
+        creds = f"{c['access_key']}\n{c['secret_key']}\n{c['session_token']}\n".encode()
+        code, out = await _docker("exec", "-i", "-u", "0", box.name, "sh", "-c", S3FS, "sh",
+                                  f"{c['bucket']}:/{c['prefix'].rstrip('/')}", c["endpoint"], c["region"], stdin=creds)
+        if code != 0:
+            raise RuntimeError(f"workspace mount failed: {out.strip()}")
+
+    async def meter(self, box: _Box, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        if box.metered:
+            await self.compute.record(box.user_id, now - box.metered, float(self.cpus), gib(self.memory))
+        box.metered = now if box.running else 0.0
 
     async def _stop(self, box: _Box) -> None:
         async with box.lock:
             if box.running:
                 box.running = False
+                await self.meter(box)
                 await _docker("rm", "-f", box.name)
 
     async def stop_idle(self, now: float | None = None) -> None:
         """Remove containers unused for idle_pause_s. Never while a command runs (active > 0)."""
         now = time.monotonic() if now is None else now
         for box in list(self.boxes.values()):
-            if box.running and box.active == 0 and now - box.last >= self.idle_pause_s:
+            if not box.running:
+                continue
+            if box.active == 0 and (now - box.last >= self.idle_pause_s
+                                    or self.mount == "fuse" and now - box.started >= self.max_life_s):
                 log.info("sandbox idle stop", extra={"user": box.user_id})
                 await self._stop(box)
+            else:
+                await self.meter(box, max(now, box.metered))
 
     async def close(self, session_id: str) -> None:
         """The session is done with the sandbox; the container goes when the user's last session closes."""
@@ -277,3 +344,24 @@ class DockerSandbox:
     async def close_all(self) -> None:
         self.envs.clear()
         await asyncio.gather(*(self._stop(b) for b in self.boxes.values()))
+
+    # ---- admin (`simp-server sandboxes`) ---------------------------------------------------------------------------
+
+    async def list_all(self) -> list[dict]:
+        code, out = await _docker("ps", "-a", "--filter", "label=simp.user", "--format",
+                                  '{{.ID}}\t{{.Label "simp.user"}}\t{{.State}}\t{{.CreatedAt}}')
+        rows = [line.split("\t") for line in out.splitlines() if line.count("\t") == 3] if code == 0 else []
+        return [{"id": i, "user_id": u, "state": st, "started_at": datetime.strptime(c[:19], "%Y-%m-%d %H:%M:%S").astimezone()}
+                for i, u, st, c in rows]
+
+    async def admin_kill(self, user_id: str) -> int:
+        n = sum(r["user_id"] == user_id for r in await self.list_all())
+        await _docker("rm", "-f", f"simp-u-{valid_id(user_id)}")
+        return n
+
+    async def admin_pause_all(self) -> int:
+        """Docker has no paused state here: stop (remove) every user container; the next tool call starts it again."""
+        rows = [r for r in await self.list_all() if r["state"] == "running"]
+        for r in rows:
+            await _docker("rm", "-f", r["id"])
+        return len(rows)

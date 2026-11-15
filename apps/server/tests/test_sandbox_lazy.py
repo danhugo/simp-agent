@@ -197,3 +197,47 @@ async def test_mirror_repo_without_commits_and_failures_never_raise(tmp_path):
         async def exec(self, *a, **k):
             raise RuntimeError("sandbox gone")
     assert await repos.mirror_repos(Broken(), "/nope", "/nope", "s") == ""
+
+
+async def test_files_panel_goes_to_the_store_and_starts_nothing(tmp_path, fake_docker):
+    import httpx
+    calls, _ = fake_docker
+    (tmp_path / "settings.toml").write_text('[plugins]\nsandbox = "simp_server.sandboxes.docker:DockerSandbox"\n'
+                                            '[profiles.test]\napi = "fake"\nmodel = "m"\n')
+    app = create_app(load_settings(tmp_path), FakeProvider())
+    mgr = app.state.mgr
+    await mgr.store.open()
+    token = await mgr.store.add_user("d")
+    user = await mgr.store.user_by_token(token)
+    sid = (await mgr.store.add_session(user["id"], "test", "t"))["id"]
+    h, base = {"Authorization": f"Bearer {token}"}, f"/api/sessions/{sid}/files"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        assert (await c.put(base + "/raw?path=/work/up.txt", headers=h, content=b"x")).status_code == 200
+        assert (await c.get(base, headers=h)).json() == [{"name": "up.txt", "is_dir": False, "size": 1}]
+        assert (await c.get(base + "/raw?path=up.txt", headers=h)).content == b"x"
+        assert (await c.get(base + "/raw?path=/home/user/.bashrc", headers=h)).status_code == 403  # /work only
+    assert calls == []
+    assert (tmp_path / "workspaces" / user["id"] / "up.txt").read_bytes() == b"x"
+    await mgr.store.close()
+
+
+async def test_docker_usage_rows_and_concurrency_limit(tmp_path, fake_docker):
+    from simp_server.sandboxes import SandboxLimit
+    sb = sandbox(tmp_path, max_running=1)
+
+    class Db:
+        rows = []
+
+        async def add_usage(self, *a, **k):
+            self.rows.append((a, k))
+
+        async def sandbox_seconds(self, *a):
+            return 0
+    sb.compute.db = Db()
+    env = await sb.open("s1", "u1")
+    await env.exec("true", ".", None, asyncio.Event())
+    with pytest.raises(SandboxLimit, match="limit is 1"):
+        await (await sb.open("s2", "u2")).exec("true", ".", None, asyncio.Event())
+    await sb.stop_idle(now=env.box.metered + 42)
+    (user, sid, model, secs, out), kw = Db.rows[0]
+    assert (user, model, secs, kw["cost"]) == ("u1", "sandbox:docker", 42, 0.0)

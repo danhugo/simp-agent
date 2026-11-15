@@ -8,7 +8,14 @@ dev:
 	uv run simp-server run --port $(PORT) $(ARGS) & trap "kill $$!" EXIT; \
 	cd apps/web && SIMP_SERVER=http://127.0.0.1:$(PORT) pnpm dev
 
+# dev MinIO for [workspace] store = "s3" + [sandbox] mount = "fuse": free port, bucket with versioning ON
+minio:
+	uv run python -m simp_server.devminio start
+
+minio-stop:
+	uv run python -m simp_server.devminio stop
+
 e2e:
 	cd apps/web && pnpm e2e
 
-.PHONY: dev e2e
+.PHONY: dev e2e minio minio-stop

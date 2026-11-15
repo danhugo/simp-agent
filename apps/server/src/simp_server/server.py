@@ -44,7 +44,7 @@ from simp_agent.plugins.redact_secrets import RedactSecrets
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
 
-from . import budget, ops
+from . import budget, ops, workspace
 from . import protocol as p
 from .connections import STATE_TTL, Connections, UserMcp, providers
 from .fake import sse
@@ -60,6 +60,7 @@ MAX_QUEUED = 20  # steer + follow-up messages waiting per session
 OAUTH_COOKIE = "simp_oauth"  # browser nonce that binds an OAuth start to the callback
 HOME = Path(os.environ.get("SIMP_SERVER_HOME", Path.home() / ".simp-server"))
 TITLE_PROMPT = "Name this conversation in 3 to 6 words, in the user's language. Reply with the title only."
+SANDBOX_KINDS = {"docker": "simp_server.sandboxes.docker:DockerSandbox", "e2b": "simp_server.sandboxes.e2b:E2BSandbox"}
 DEFAULT_PLUGINS = {"sandbox": "simp_server.server:LocalSandbox", "store": "simp_server.store:SqliteStore",
                    "auth": "simp_server.server:StaticTokenAuth"}
 
@@ -165,7 +166,8 @@ def load_settings(home: Path = HOME) -> dict:
     s = tomllib.loads(f.read_text()) if f.exists() else dict()
     s.setdefault("data_dir", str(home))
     s["data_dir"] = str(Path(s["data_dir"]).expanduser())
-    docker = {"sandbox": "simp_server.sandboxes.docker:DockerSandbox"} if os.environ.get("SIMP_SANDBOX") == "docker" else {}
+    kind = os.environ.get("SIMP_SANDBOX") or s.get("sandbox", dict()).get("kind")  # [sandbox] kind = "docker" | "e2b"
+    docker = {"sandbox": SANDBOX_KINDS[kind]} if kind in SANDBOX_KINDS else {}
     s["plugins"] = {**DEFAULT_PLUGINS, **docker, **s.get("plugins", dict())}
     s.setdefault("profiles", dict())
     s.setdefault("host", "127.0.0.1")
@@ -177,7 +179,8 @@ def load_settings(home: Path = HOME) -> dict:
 def take_keys(settings: dict) -> dict:
     """Model keys from <data_dir>/.env and the process env. Removed from os.environ so sandboxed commands never see them."""
     names = ({pr.get("api_key_env") for pr in settings["profiles"].values()} | {"OPENAI_API_KEY", "ANTHROPIC_API_KEY",
-             "SIMP_SECRET_KEY"} | {a.get(k) for a in providers(settings).values() for k in ("client_id_env", "client_secret_env")})
+             "SIMP_SECRET_KEY", "E2B_API_KEY"} | {settings.get("workspace", dict()).get(k, d) for k, d in (
+             ("access_key_env", "S3_ACCESS_KEY_ID"), ("secret_key_env", "S3_SECRET_ACCESS_KEY"))} | {a.get(k) for a in providers(settings).values() for k in ("client_id_env", "client_secret_env")})
     keys = dict()
     f = Path(settings["data_dir"]) / ".env"
     if f.exists():
@@ -586,12 +589,18 @@ class SessionManager:
 
 def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     pl = settings["plugins"]
+    if err := workspace.check_config(settings):
+        raise SystemExit(err)
     for pr in settings["profiles"].values():
         build_plugins(core_plugins(pr))  # a typo fails at boot, not on first chat
     store = load_plugin(pl["store"])(settings)
     sandbox = load_plugin(pl["sandbox"])(settings)
     auth = load_plugin(pl["auth"])(store)
     mgr = SessionManager(settings, store, sandbox, stream_fn)
+    files = workspace.make_store(settings, mgr.keys)  # the Files panel's view of /work: never wakes a sandbox
+    if hasattr(sandbox, "compute"):
+        sandbox.store, sandbox.compute.db = files, store
+        sandbox.keys = mgr.keys
 
     @asynccontextmanager
     async def lifespan(app):
@@ -601,6 +610,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         for name, pr in settings["profiles"].items():
             if "price_in" not in pr or "price_out" not in pr:
                 log.warning("profile %s has no prices: its calls cost $0 and never hit a budget", name)
+        if hasattr(sandbox, "start"):  # e2b: adopt or kill sandboxes left by a previous server process
+            await sandbox.start()
         evictor = asyncio.create_task(mgr.evict_loop(settings.get("evict_every", 60)))
         yield
         evictor.cancel()
@@ -855,16 +866,18 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
 
     @app.get("/api/sessions/{sid}/files")
     async def list_files(sid: str, path: str = ".", u=Depends(user)):
-        return await fs((await mgr.get(u, sid)).env.list(path))
+        await mgr.get(u, sid)  # ownership (and the one-time workspace migration); no sandbox starts
+        return await fs(files.list(u["id"], path))
 
     @app.get("/api/sessions/{sid}/files/raw")
     async def download(sid: str, path: str, u=Depends(user)):
-        data = await fs((await mgr.get(u, sid)).env.read_bytes(path))
+        await mgr.get(u, sid)
+        data = await fs(files.read(u["id"], path))
         return Response(data, media_type="application/octet-stream")
 
     @app.put("/api/sessions/{sid}/files/raw")
     async def upload(sid: str, path: str, request: Request, u=Depends(user)):
-        env = (await mgr.get(u, sid)).env
+        await mgr.get(u, sid)
         limit = settings.get("files_max_bytes", 50 * 2**20)
         if int(request.headers.get("content-length") or 0) > limit:
             raise HTTPException(413, f"file larger than {limit} bytes")
@@ -873,7 +886,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             data += chunk
             if len(data) > limit:
                 raise HTTPException(413, f"file larger than {limit} bytes")
-        await fs(env.write_bytes(path, bytes(data)))
+        await fs(files.write(u["id"], path, bytes(data)))
         return {"ok": True}
 
     return app
@@ -887,6 +900,39 @@ async def with_store(fn):
         return await fn(store)
     finally:
         await store.close()
+
+
+async def user_id_of(who: str) -> str:
+    users = await with_store(lambda s: s.list_users())
+    return next((u["id"] for u in users if who in (u["id"], u["name"])), who)
+
+
+async def sandboxes_cli(a) -> None:
+    settings = load_settings()
+    sandbox = load_plugin(settings["plugins"]["sandbox"])(settings)
+    if not hasattr(sandbox, "list_all"):
+        raise SystemExit("the sandbox is LocalSandbox: there are no sandboxes to list")
+    sandbox.keys = take_keys(settings)
+    if a.kill:
+        print(f"killed {await sandbox.admin_kill(await user_id_of(a.kill))}")
+    elif a.pause_all:
+        print(f"paused {await sandbox.admin_pause_all()}")
+    else:
+        names = {u["id"]: u["name"] for u in await with_store(lambda s: s.list_users())}
+        now = time.time()
+        for r in await sandbox.list_all():
+            age = int(now - r["started_at"].timestamp())
+            print(f"{names.get(r['user_id'], r['user_id'])}\t{r['state']}\t{age // 3600}h{age % 3600 // 60:02d}m\t{r['id']}")
+
+
+async def restore_cli(a) -> None:
+    from datetime import datetime
+    settings = load_settings()
+    at = datetime.fromisoformat(a.at)
+    at = at if at.tzinfo else at.astimezone()
+    store = workspace.make_store(settings, take_keys(settings))
+    for key in await store.restore(await user_id_of(a.user), at, a.path):
+        print("restored", key)
 
 
 def ask_password() -> str:
@@ -921,12 +967,23 @@ def main() -> None:
     b.add_argument("--keep", type=int, default=0, help="keep only the newest N backups in --to (0 = keep all)")
     sub.add_parser("pause", help="kill switch: refuse every LLM call until resume")
     sub.add_parser("resume", help="lift the kill switch")
+    sx = sub.add_parser("sandboxes", help="list user sandboxes (user, age, state); --kill USER, --pause-all")
+    sx.add_argument("--kill", metavar="USER", help="kill a user's sandbox (name or id); files stay")
+    sx.add_argument("--pause-all", action="store_true", help="pause every running sandbox (docker: stop)")
+    wr = sub.add_parser("workspace-restore", help="restore a user's workspace files to a past time (s3 store, versioned)")
+    wr.add_argument("--user", required=True, help="name or id")
+    wr.add_argument("--at", required=True, help="ISO time, e.g. 2026-11-16T09:30:00+09:00 (no zone = local)")
+    wr.add_argument("--path", default="", help="only this file or dir")
     a = ap.parse_args()
     if a.mode in ("pause", "resume"):
         f = Path(load_settings()["data_dir"]) / "PAUSED"
         f.touch() if a.mode == "pause" else f.unlink(missing_ok=True)
         print(a.mode + "d")
         return
+    if a.mode == "sandboxes":
+        return asyncio.run(sandboxes_cli(a))
+    if a.mode == "workspace-restore":
+        return asyncio.run(restore_cli(a))
     if a.mode == "backup":
         print(ops.backup(Path(load_settings()["data_dir"]), Path(a.to), keep=a.keep))
     elif a.mode == "seed":

@@ -293,6 +293,11 @@ class SqliteStore:
             sql, args = sql + " AND session_id=?", args + [session_id]
         return (await self._all(sql, *args))[0]["c"]
 
+    async def sandbox_seconds(self, user_id: str, since: float) -> float:
+        """Sandbox compute seconds since `since`: usage rows with model "sandbox:<kind>" keep seconds in `input`."""
+        return (await self._all("SELECT COALESCE(SUM(input), 0) AS s FROM usage WHERE user_id=? AND at>=? AND model LIKE "
+                                "'sandbox:%'", user_id, since))[0]["s"]
+
     async def usage(self, user_id: str) -> list[dict]:
         return await self._all("SELECT * FROM usage WHERE user_id=?", user_id)
 

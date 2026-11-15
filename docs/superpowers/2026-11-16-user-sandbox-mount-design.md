@@ -1,6 +1,6 @@
 # User sandbox design, v2: mounted workspace (plan b)
 
-Date: 2026-11-16 · Status: proposed to the user, reviewed once (simp-agent-7e), not yet implemented
+Date: 2026-11-16 · Status: steps 1–4 implemented (step 5 design only)
 Replaces the sync-based design of 2026-11-15: instead of copying files in and out of the sandbox, the user's
 workspace is **mounted** into it. One sandbox per user, short lifetime, secrets outside and a pluggable
 backend carry over.
@@ -200,10 +200,38 @@ month each), prevented by our idle pause, the provider-side pause timeout and th
 5. **Scale (design only now).** Several server processes need run state out of process memory and Postgres;
    per-user sandbox lookup moves to the DB. Steps 1–4 must not assume a single server.
 
+## Implementation notes (deviations)
+
+- **E2B SDK 2.64:** the provider-side pause is `lifecycle={"on_timeout": "pause", "auto_resume": False}` on create;
+  resume is `AsyncSandbox.connect(id)`; list by metadata `{app, user_id}`. Not run live yet (no bucket).
+- **MinIO:** the Docker Hub `minio/minio` image is gone; dev uses `cgr.dev/chainguard/minio` (+ `minio-client`).
+- **Docker fuse mode** needs a network to reach the store (default `bridge`, not `none`), `/dev/fuse`,
+  `CAP_SYS_ADMIN` (used only by one `docker exec -u 0` for the mount; commands run as 1000 with no caps) and
+  AppArmor unconfined. The container restarts at `max_life_s` when idle so the 1 h mount credential never expires.
+- **Usage rows:** sandbox time is a usage row with model `sandbox:<kind>`, seconds in `input`, cost from
+  `price_vcpu_s`/`price_gib_s`; it counts toward the money budget too. `day_minutes` (e2b default 240, docker off)
+  and `max_running` (default 10) raise a clear tool error.
+- **Kill at max life** does not yet tell the user that background processes (dev servers) stopped.
+
 ## Open questions
 
 - Compare `s3fs`, Mountpoint (no rename) and Archil on git and many
   small files.
+  **Measured (step 2, s3fs 1.95 → MinIO on the same Mac, Docker Desktop; `apps/server/scripts/bench_git_mount.py --docker`):**
+
+  | | write files | init+add+commit | status clean | status dirty | commit 5 files |
+  |---|---|---|---|---|---|
+  | 300 files, `/work` (s3fs) | 3.3 s | 15.0 s | 0.41 s | 0.31 s | 0.70 s |
+  | 300 files, `/home/user` (volume) | 0.02 s | 0.05 s | <0.01 s | 0.01 s | 0.01 s |
+  | 2000 files, `/work` (s3fs) | 16.4 s | 67.4 s | 2.3 s | 0.70 s | 1.2 s |
+  | 2000 files, `/home/user` (volume) | 0.08 s | 0.25 s | 0.02 s | 0.03 s | 0.03 s |
+
+  100–300x slower with the store on the same machine; over the internet (R2/S3) it can only be worse. **Decision:
+  repos stay on local disk with the mirror.** Mountpoint/Archil not measured.
 - Does paused time count toward the Hobby 1 h continuous-runtime limit, and is paused storage billed?
 - R2 vs S3 for per-prefix, short-lived credentials usable by a FUSE mount.
+  Implemented: `[workspace] mount_scope = "sts"` (default) = STS AssumeRole with a session policy limited to
+  `users/<id>/` (AWS needs `role_arn`; MinIO accepts any ARN but refuses AssumeRole for its root user, so
+  `make minio` creates a `simp-dev` user). R2 has no STS: use `mount_scope = "none"` (the store key goes into the
+  sandbox) until R2 temporary credentials are wired in.
 - Network policy for E2B sandboxes (what can be blocked).
