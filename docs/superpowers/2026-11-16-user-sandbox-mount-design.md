@@ -213,6 +213,34 @@ month each), prevented by our idle pause, the provider-side pause timeout and th
   and `max_running` (default 10) raise a clear tool error.
 - **Kill at max life** does not yet tell the user that background processes (dev servers) stopped.
 
+### Review fixes (2026-11-16)
+
+- **Home snapshot excludes `repos/`.** The mirror is the only source of truth for repos; restore unpacks old
+  snapshots with `--exclude=repos`. Over `snapshot_max_mb` no new snapshot is written.
+- **Pause/kill vs a new call.** Pause and kill take the box's mirror lock, then its lock, re-check `active == 0`
+  and set state `stopping` before snapshotting; `ensure()` only fast-paths on `running`, so a new call waits and
+  then resumes. Same rule for Docker's idle stop / max life.
+- **Docker gone container.** `docker exec` errors ("No such container") are detected before the pid line; the box
+  is marked stopped and the command (which never started) runs once on a new container.
+- **No re-run of a command lost mid-run** (E2B `SandboxLost`); only calls that never started retry. The tick
+  refreshes the provider timeout while a call runs.
+- **Mount credential expiry** is tracked per box (`expires_in` from the store); refresh + remount at an idle point,
+  and before any call whose timeout would outlive it (refused while another call uses the mount).
+- **Mirror:** one per user at a time (lock), capped at 30 s in the foreground then continued in the background
+  holding the lock (pause/kill wait for it); archives and json written to a temp file then renamed;
+  `<name>.status` records the last good mirror (`ok_at`) or the failure. A failed mirror is retried before a kill
+  and logged as an error; a recreate after a failed mirror is logged as an error.
+- **Restore** uses `git read-tree -u --reset <wip>` (WIP deletions stay deleted), skips symlinks and bad members in
+  the ignored-files archive, and never removes a repo whose git restore succeeded. git runs without hooks/fsmonitor.
+- **Budget** enforced in the tick (pause/stop after the current call); `max_running` slots reserved under a global
+  lock before create.
+- **Docker fuse stop:** SIGTERM user processes, wait, `umount /work` as root, then `docker rm -f`.
+- **Config:** Docker `mount = "fuse"` needs `dev_fuse = true` (test only: bridge network reaches the host);
+  `mount_scope = "none"` needs `dev_unscoped_mount = true`.
+- **Bind mode host file IO** (LocalEnv with a root, LocalStore / Files panel) walks with `O_NOFOLLOW` from the root
+  dir fd: all symlinks are refused, so a container cannot race a symlink swap toward the server's files.
+- Two simp instances must not share a Docker host's sandbox names or an E2B key (README).
+
 ## Open questions
 
 - Compare `s3fs`, Mountpoint (no rename) and Archil on git and many

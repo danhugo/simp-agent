@@ -26,28 +26,38 @@ from datetime import datetime, timezone
 
 from simp_agent.coding import SANDBOX_HINT
 from simp_server import workspace
-from simp_server.sandboxes import Compute, valid_id
+from simp_server.sandboxes import Compute, SandboxLimit, valid_id
 from simp_server.sandboxes.docker import S3FS
-from simp_server.sandboxes.repos import mirror_repos, restore_repos
+from simp_server.sandboxes.repos import mirror_locked, remirror_if_failed, restore_repos
 
 log = logging.getLogger("simp_server")
 
 REPOS, MIRRORS, SNAPSHOT = "/home/user/repos", "/work/.simp/repos", "/work/.simp/home.tar.zst"
 SANDBOX_DIRS = ("/work", "/home/user", "/tmp")
-HOME_DIRS = "repos .local .npm-global .venvs"
+# Libraries only. Never repos/ (review C2): the repo mirror is their one source of truth; an older snapshot restored
+# over them would roll them back and the next mirror would force-push the rollback.
+HOME_DIRS = ".local .npm-global .venvs"
 
-# $1 cap in bytes. Libraries are skipped when the archive is over the cap (they reinstall from manifests).
+# $1 cap in bytes. Over the cap there is no new snapshot (libraries reinstall from manifests).
 SNAPSHOT_SH = f"""cd /home/user || exit 0; d=$(ls -d {HOME_DIRS} 2>/dev/null); [ -n "$d" ] || exit 0
 mkdir -p /work/.simp && tar -cf - $d 2>/dev/null | zstd -q -f -o /tmp/home.tar.zst || exit 1
-if [ "$(stat -c %s /tmp/home.tar.zst)" -gt "$1" ]; then tar -cf - repos 2>/dev/null | zstd -q -f -o /tmp/home.tar.zst; fi
-cp /tmp/home.tar.zst {SNAPSHOT} && rm -f /tmp/home.tar.zst && sync"""
-RESTORE_SH = f"[ -f {SNAPSHOT} ] || exit 0; zstd -dc {SNAPSHOT} | tar -C /home/user -xf -"
+if [ "$(stat -c %s /tmp/home.tar.zst)" -gt "$1" ]; then rm -f /tmp/home.tar.zst; echo "home snapshot over the cap: skipped"; exit 0; fi
+cp /tmp/home.tar.zst {SNAPSHOT}.tmp && mv -f {SNAPSHOT}.tmp {SNAPSHOT} && rm -f /tmp/home.tar.zst && sync"""
+# old snapshots may still hold repos/: never unpack them
+RESTORE_SH = f"[ -f {SNAPSHOT} ] || exit 0; zstd -dc {SNAPSHOT} | tar -C /home/user -xf - --anchored --exclude=repos --exclude=./repos"
+SUDO_CHECK = "sudo -n true 2>/dev/null && echo SIMP_SUDO_OK; true"  # the template must not give `user` root
+DENIED = ("Transport endpoint is not connected", "AccessDenied", "403 Forbidden")
+CREDS_MARGIN_S = 300
 MOUNT_SH = 'printf "%s\\n%s\\n%s\\n" "$K" "$S" "$T" | sh -c ' + shlex.quote(S3FS) + ' sh "$B" "$U" "$R"'
 
 
 def _sdk():
     from e2b import AsyncSandbox
     return AsyncSandbox
+
+
+class SandboxLost(RuntimeError):
+    """The sandbox was paused or killed while a command ran: it may have had effects, so it is never re-run."""
 
 
 def _gone(e: Exception) -> bool:
@@ -88,13 +98,16 @@ async def _run(sbx, command: str, cwd: str, timeout, cancel, on_output=None, use
     try:
         return wait.result().exit_code, "".join(chunks)
     except Exception as e:  # CommandExitException: a non-zero exit
+        if _gone(e):
+            raise SandboxLost(f"sandbox stopped while the command ran: {e}") from e
         if (code := getattr(e, "exit_code", None)) is None:
             raise
         return code, "".join(chunks)
 
 
 class _Box:
-    """A user's E2B sandbox state, shared by their sessions' envs. state: none | running | paused."""
+    """A user's E2B sandbox state, shared by their sessions' envs. state: none | running | stopping | paused.
+    "stopping" (pause/kill in progress, under the lock): ensure() waits for the lock instead of using the box."""
 
     def __init__(self, user_id: str):
         self.user_id, self.sbx, self.sbx_id, self.state = user_id, None, None, "none"
@@ -102,6 +115,9 @@ class _Box:
         self.started = self.metered = self.snap_at = self.timeout_at = 0.0
         self.sessions: set[str] = set()
         self.lock = asyncio.Lock()
+        self.starting = self.over = False  # starting: holds a running slot (M8); over: daily budget used up
+        self.mirror_lock, self.mirror_failed, self.mirror_sid, self.mirror_bg = asyncio.Lock(), False, None, None
+        self.creds_until = 0.0  # monotonic time the mount credential expires (0 = none)
 
     async def exec(self, command, cwd, timeout, cancel, on_output=None, user="user"):  # raw: no start, no busy count
         return await _run(self.sbx, command, cwd, timeout, cancel, on_output, user=user)
@@ -118,26 +134,37 @@ class E2BEnv:
         self.used = False
 
     @contextlib.asynccontextmanager
-    async def _use(self):
+    async def _use(self, need_s: float | None = None):
         self.box.active += 1  # before any await: stop_idle sees it even while we wait for the start lock
         try:
+            if self.box.over:  # set by the tick (M8); cleared once the budget resets
+                if await self.sandbox.compute.over(self.box.user_id):
+                    raise SandboxLimit(self.sandbox.compute.over_msg)
+                self.box.over = False
             await self.sandbox.ensure(self.box)
+            await self.sandbox.fresh_creds(self.box, need_s)
             self.used = True
             yield self.box.sbx
         finally:
             self.box.active -= 1
             self.box.last = time.monotonic()
 
-    async def _call(self, fn):
-        """fn(sbx) in the running sandbox; once more on a fresh/resumed one if it was paused or killed behind our back."""
+    async def _call(self, fn, need_s: float | None = None):
+        """fn(sbx) in the running sandbox; once more on a fresh/resumed one if it was paused or killed behind our back
+        before fn started anything (a _gone error; a command lost mid-run raises SandboxLost and is never re-run)."""
         for attempt in (1, 2):
             try:
-                async with self._use() as sbx:
+                async with self._use(need_s) as sbx:
                     return await fn(sbx)
+            except SandboxLost:
+                if self.box.state == "running":
+                    self.box.state = "paused" if self.box.sbx_id else "none"
+                raise
             except Exception as e:
                 if attempt == 2 or not _gone(e):
                     raise
-                self.box.state = "paused" if self.box.sbx_id else "none"
+                if self.box.state == "running":
+                    self.box.state = "paused" if self.box.sbx_id else "none"
 
     def _path(self, path: str) -> str:
         path = str(path)
@@ -188,7 +215,9 @@ class E2BEnv:
 
     async def exec(self, command, cwd, timeout, cancel, on_output=None) -> tuple[int | None, str]:
         cwd = self._path(cwd or ".")
-        return await self._call(lambda sbx: _run(sbx, command, cwd, timeout, cancel, on_output))
+        code, out = await self._call(lambda sbx: _run(sbx, command, cwd, timeout, cancel, on_output), timeout)
+        self.sandbox.check_denied(self.box, out)
+        return code, out
 
     async def after_tool(self) -> None:
         """After each tool call that used the sandbox: sync (s3fs uploads closed files), mirror changed repos."""
@@ -196,7 +225,7 @@ class E2BEnv:
             return
         try:
             await self.exec("sync", "/work", 60, asyncio.Event())
-            await mirror_repos(self, REPOS, MIRRORS, self.session_id, cwd="/work")
+            await mirror_locked(self, self.box, REPOS, MIRRORS, self.session_id, cwd="/work")
         except Exception as e:
             log.warning("after-tool sync failed: %s", e, extra={"session": self.session_id})
         finally:
@@ -244,45 +273,63 @@ class E2BSandbox:
         return env
 
     def running(self) -> int:
-        return sum(b.state == "running" for b in self.boxes.values())
+        return sum(b.state in ("running", "stopping") or b.starting for b in self.boxes.values())
+
+    async def _refresh_timeout(self, box: _Box, now: float) -> None:
+        """Keep the provider-side pause timer ahead of us (on use, and in the tick while a call runs: M1)."""
+        if box.sbx is not None and now - box.timeout_at > 60:
+            box.timeout_at = now
+            with contextlib.suppress(Exception):
+                await box.sbx.set_timeout(self.provider_timeout_s)
 
     async def ensure(self, box: _Box) -> None:
-        if box.state == "running":
-            if time.monotonic() - box.timeout_at > 60:  # keep the provider-side pause timer ahead of us
-                box.timeout_at = time.monotonic()
-                with contextlib.suppress(Exception):
-                    await box.sbx.set_timeout(self.provider_timeout_s)
+        if box.state == "running":  # "stopping" falls through to the lock: wait for the pause/kill, then resume
+            await self._refresh_timeout(box, time.monotonic())
             return
         async with box.lock:
             if box.state == "running":
                 return
-            await self.compute.check(box.user_id, self.running())
-            resumed = False
-            if box.state == "paused" and box.sbx_id:
-                try:
-                    box.sbx = await self._sdk.connect(box.sbx_id, timeout=self.provider_timeout_s, **self._api())
-                    resumed = True
-                except Exception as e:
-                    log.warning("sandbox resume failed, creating a new one: %s", e, extra={"user": box.user_id})
-                    with contextlib.suppress(Exception):
-                        await self._sdk.kill(box.sbx_id, **self._api())
-            if not resumed:
-                box.sbx = await self._sdk.create(
-                    template=self.template, timeout=self.provider_timeout_s, **self._api(),
-                    metadata={"app": self.tag, "user_id": box.user_id},
-                    lifecycle={"on_timeout": "pause", "auto_resume": False})
-                box.started = time.monotonic()
-            box.sbx_id, box.state = box.sbx.sandbox_id, "running"
-            box.last = box.metered = box.snap_at = box.timeout_at = time.monotonic()
+            await self.compute.reserve(box, self.running)  # M8: slot held (box.starting) until running or failed
             try:
-                if not resumed or not await self._mounted(box):
-                    await self._mount(box)
-                if not resumed:
-                    await box.exec(RESTORE_SH, "/home/user", 600, asyncio.Event())
-                    await restore_repos(box, REPOS, MIRRORS, cwd="/work")
-            except Exception:
-                await self._kill(box, snapshot=False)
-                raise
+                await self._start(box)
+            finally:
+                box.starting = False
+
+    async def _start(self, box: _Box) -> None:
+        resumed = False
+        if box.state == "paused" and box.sbx_id:
+            try:
+                box.sbx = await self._sdk.connect(box.sbx_id, timeout=self.provider_timeout_s, **self._api())
+                resumed = True
+            except Exception as e:
+                log.warning("sandbox resume failed, creating a new one: %s", e, extra={"user": box.user_id})
+                if box.mirror_failed:
+                    log.error("RECREATING SANDBOX after a FAILED repo mirror: repo changes since the last good "
+                              "mirror are lost", extra={"user": box.user_id})
+                with contextlib.suppress(Exception):
+                    await self._sdk.kill(box.sbx_id, **self._api())
+        if not resumed:
+            box.sbx = await self._sdk.create(
+                template=self.template, timeout=self.provider_timeout_s, **self._api(),
+                metadata={"app": self.tag, "user_id": box.user_id},
+                lifecycle={"on_timeout": "pause", "auto_resume": False})
+            box.started = time.monotonic()
+            box.mirror_failed = False
+        box.sbx_id, box.state = box.sbx.sandbox_id, "running"
+        box.last = box.metered = box.snap_at = box.timeout_at = time.monotonic()
+        try:
+            if not resumed or not await self._mounted(box):
+                await self._mount(box)
+            if not resumed:
+                _, out = await box.exec(SUDO_CHECK, "/", 20, asyncio.Event())
+                if "SIMP_SUDO_OK" in out:
+                    raise RuntimeError("e2b template gives `user` passwordless sudo: rebuild it with "
+                                       "apps/server/sandboxes/e2b_template.py")
+                await box.exec(RESTORE_SH, "/home/user", 600, asyncio.Event())
+                await restore_repos(box, REPOS, MIRRORS, cwd="/work")
+        except Exception:
+            await self._kill(box, snapshot=False)
+            raise
 
     async def _mounted(self, box: _Box) -> bool:
         code, _ = await box.exec("mountpoint -q /work && ls /work >/dev/null", "/", 20, asyncio.Event())
@@ -291,6 +338,7 @@ class E2BSandbox:
     async def _mount(self, box: _Box) -> None:
         """(Re)mount the user's prefix at /work with a fresh scoped credential (as root; the files belong to `user`)."""
         c = await self.store.mount_creds(box.user_id)
+        box.creds_until = time.monotonic() + c["expires_in"] if c.get("expires_in") else 0.0
         envs = {"K": c["access_key"], "S": c["secret_key"], "T": c["session_token"] or "",
                 "B": f"{c['bucket']}:/{c['prefix'].rstrip('/')}", "U": c["endpoint"], "R": c["region"]}
         await box.exec("umount -l /work 2>/dev/null; mkdir -p /work", "/", 30, asyncio.Event(), user="root")
@@ -315,17 +363,44 @@ class E2BSandbox:
             await self.compute.record(box.user_id, max(0.0, now - box.metered), self.cpus, self.memory_gib)
         box.metered = now if box.state == "running" else 0.0
 
-    async def _pause(self, box: _Box, snapshot: bool = True) -> None:
+    def check_denied(self, box: _Box, out: str) -> None:
+        if any(m in out for m in DENIED):
+            left = box.creds_until - time.monotonic() if box.creds_until else None
+            log.error("WORKSPACE MOUNT DENIED (s3fs 403 / dead mount) for user %s; credential expires in %s s",
+                      box.user_id, None if left is None else round(left), extra={"user": box.user_id})
+
+    async def fresh_creds(self, box: _Box, need_s: float | None) -> None:
+        """Review M2: never start a call that would outlive the mount credential (STS: at most the role's max
+        session, 1 h when chained; max_life_s does not bound a long call). If it expires within the call's timeout
+        (or CREDS_MARGIN_S), take a fresh one and remount first, when no other call uses the mount."""
+        if not box.creds_until or box.creds_until - time.monotonic() > max(need_s or 0, CREDS_MARGIN_S):
+            return
         async with box.lock:
-            if box.state != "running":
+            if box.state != "running" or box.creds_until - time.monotonic() > max(need_s or 0, CREDS_MARGIN_S):
                 return
-            if snapshot:
-                await self.snapshot(box)
+            if box.active > 1:
+                raise SandboxLimit("sandbox: the workspace credential is about to expire and another command is still "
+                                   "running; try again when it ends.")
+            log.info("refreshing workspace mount credential", extra={"user": box.user_id})
+            await box.exec("sync", "/work", 60, asyncio.Event())
+            await self._mount(box)
+
+    async def _pause(self, box: _Box, snapshot: bool = True, idle: bool = False) -> None:
+        """idle=True (tick, close): only if no call is active once both locks are held (C3). The mirror lock first:
+        a background mirror finishes before the pause (M7)."""
+        async with box.mirror_lock, box.lock:
+            if box.state != "running" or idle and box.active:
+                return
+            box.state = "stopping"  # before any await: a new call waits on box.lock, then resumes
             try:
+                if snapshot:
+                    await self.snapshot(box)
                 await box.sbx.pause()
                 box.state = "paused"
             except Exception as e:
                 log.warning("sandbox pause failed, killing it: %s", e, extra={"user": box.user_id})
+                if box.mirror_failed:
+                    log.error("KILLING SANDBOX after a FAILED repo mirror", extra={"user": box.user_id})
                 with contextlib.suppress(Exception):
                     await box.sbx.kill()
                 box.state, box.sbx_id = "none", None
@@ -333,15 +408,24 @@ class E2BSandbox:
             await self.meter(box)
 
     async def _kill(self, box: _Box, snapshot: bool = True) -> None:
-        """Max life (or a failed start): snapshot home, sync, unmount, kill. Caller holds no lock when snapshot=True."""
+        """Max life (or a failed start): snapshot home, retry a failed mirror, sync, unmount, kill. Caller holds
+        box.lock (and box.mirror_lock when snapshot=True)."""
+        box.state = "stopping"
         if snapshot:
             await self.snapshot(box)
+            with contextlib.suppress(Exception):
+                await remirror_if_failed(box, REPOS, MIRRORS)
             with contextlib.suppress(Exception):
                 await box.exec("sync; umount /work", "/", 60, asyncio.Event(), user="root")
         with contextlib.suppress(Exception):
             await box.sbx.kill()
         box.state, box.sbx, box.sbx_id = "none", None, None
         await self.meter(box)
+
+    async def _kill_idle(self, box: _Box) -> None:
+        async with box.mirror_lock, box.lock:
+            if box.state == "running" and not box.active:  # C3: re-checked under the locks
+                await self._kill(box)
 
     async def stop_idle(self, now: float | None = None) -> None:
         """Server tick: pause idle sandboxes, kill those at max life, snapshot home on schedule, meter running time.
@@ -350,24 +434,34 @@ class E2BSandbox:
         for box in list(self.boxes.values()):
             if box.state != "running":
                 continue
-            if box.active == 0 and now - box.last >= self.idle_pause_s:
+            if box.active == 0 and (now - box.last >= self.idle_pause_s or box.over):
                 log.info("sandbox idle pause", extra={"user": box.user_id})
-                await self._pause(box)
+                await self._pause(box, idle=True)
             elif box.active == 0 and now - box.started >= self.max_life_s:
                 log.info("sandbox max life: kill", extra={"user": box.user_id})
-                async with box.lock:
-                    await self._kill(box)
+                await self._kill_idle(box)
             else:
+                if box.active:  # M1: a long call must not hit the provider-side pause timer
+                    await self._refresh_timeout(box, now)
                 if now - box.snap_at >= self.snapshot_every_s:
                     await self.snapshot(box)
                 await self.meter(box, max(now, box.metered))
+                if box.active == 0 and box.creds_until and box.creds_until - time.monotonic() < 2 * CREDS_MARGIN_S:
+                    try:
+                        await self.fresh_creds(box, 2 * CREDS_MARGIN_S)  # M2: refresh at an idle point
+                    except Exception as e:
+                        log.error("workspace credential refresh failed: %s", e, extra={"user": box.user_id})
+                if not box.over and await self.compute.over(box.user_id):
+                    log.warning("sandbox daily budget used up: pausing after the current call",
+                                extra={"user": box.user_id})
+                    box.over = True  # M8: no new calls; paused on the next tick with active == 0
 
     async def close(self, session_id: str) -> None:
         env = self.envs.pop(session_id, None)
         if env:
             env.box.sessions.discard(session_id)
             if not env.box.sessions and env.box.active == 0:
-                await self._pause(env.box)
+                await self._pause(env.box, idle=True)
 
     async def close_all(self) -> None:
         """Server shutdown: pause without a snapshot (the paused disk keeps home; there is little time)."""

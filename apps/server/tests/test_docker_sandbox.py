@@ -123,3 +123,16 @@ async def test_repo_survives_container_loss(sandbox):
     assert "SECRET=1" in out and "?? b.txt" in out and "?? c.txt" in out and out.strip().endswith("main")
     await sandbox.close(sid)
     subprocess.run(["docker", "volume", "rm", "-f", f"simp-home-{user}"], capture_output=True)
+
+
+async def test_container_killed_behind_the_box_is_restarted(sandbox):
+    """Review C1: docker's "No such container" is not taken as the pid; the box is marked gone and the call runs
+    once on a fresh container."""
+    user = f"u-{uuid.uuid4().hex[:8]}"
+    env = await sandbox.open(f"s-{uuid.uuid4().hex[:8]}", user)
+    assert (await env.exec("echo one", ".", 30, asyncio.Event())) == (0, "one\n")
+    subprocess.run(["docker", "rm", "-f", env.container], check=True, capture_output=True)
+    assert (await env.exec("echo two", ".", 30, asyncio.Event())) == (0, "two\n")
+    assert env.box.running
+    assert subprocess.run(["docker", "inspect", env.container], capture_output=True).returncode == 0
+    subprocess.run(["docker", "volume", "rm", "-f", f"simp-home-{user}"], capture_output=True)

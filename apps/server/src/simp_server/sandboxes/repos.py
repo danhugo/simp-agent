@@ -7,24 +7,44 @@ ExecutionEnv. Failures are logged, never raised: backup must not fail the user's
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import shlex
 
 log = logging.getLogger("simp_server")
 
 _COMMON = r'''
-import hashlib, io, json, os, shutil, subprocess, sys, tarfile, tempfile
+import hashlib, io, json, os, shutil, stat, subprocess, sys, tarfile, tempfile, time
 SKIP = {"node_modules", ".venv", "__pycache__", "dist", "build", ".cache", "target"}
 FILE_CAP, ARCHIVE_CAP = 10 * 2**20, 50 * 2**20
 MANIFEST = ".simp-not-backed-up.txt"
 ENV = {**os.environ, "GIT_AUTHOR_NAME": "simp", "GIT_AUTHOR_EMAIL": "simp@localhost",
        "GIT_COMMITTER_NAME": "simp", "GIT_COMMITTER_EMAIL": "simp@localhost", "GIT_TERMINAL_PROMPT": "0"}
 
+# repo config is the user's (and the agent's): never run its hooks or fsmonitor command from our backup
+SAFE = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
+
 def git(repo, *a, env=None, check=True):
-    r = subprocess.run(["git", "-C", repo, *a], capture_output=True, text=True, env=env or ENV)
+    r = subprocess.run(["git", *SAFE, "-C", repo, *a], capture_output=True, text=True, env=env or ENV)
     if check and r.returncode:
         raise RuntimeError(f"git {a[0]} in {repo}: {r.stderr.strip()}")
     return r.stdout.strip()
+
+def put(path, write):
+    """write(tmp_path) then rename over path: a reader (or a concurrent mirror) never sees half a file."""
+    tmp = f"{path}.tmp-{os.getpid()}"
+    try:
+        write(tmp)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+def put_json(path, obj):
+    def w(tmp):
+        with open(tmp, "w") as f:
+            json.dump(obj, f)
+    put(path, w)
 '''
 
 _MIRROR = _COMMON + r'''
@@ -50,6 +70,8 @@ for name in sorted(os.listdir(repos_dir)) if os.path.isdir(repos_dir) else []:
         for rel in git(repo, "ls-files", "-z", "--others", "--ignored", "--exclude-standard").split("\0"):
             if rel and not SKIP & set(rel.split("/")[:-1]):
                 st = os.lstat(os.path.join(repo, rel))
+                if not stat.S_ISREG(st.st_mode):
+                    continue  # symlinks (maybe absolute, pointing anywhere) and specials are not backed up
                 ignored.append((rel, st.st_size, st.st_mtime_ns))
         sig = hashlib.sha256(json.dumps([head, tree, refs, sid]).encode()).hexdigest()
         isig = hashlib.sha256(json.dumps(ignored).encode()).hexdigest()
@@ -59,17 +81,17 @@ for name in sorted(os.listdir(repos_dir)) if os.path.isdir(repos_dir) else []:
         if last.get("sig") != sig or not os.path.isdir(mirror):
             if not os.path.isdir(mirror):
                 os.makedirs(mirrors, exist_ok=True)
-                subprocess.run(["git", "init", "-q", "--bare", mirror], check=True, capture_output=True)
+                subprocess.run(["git", *SAFE, "init", "-q", "--bare", mirror], check=True, capture_output=True)
                 git(mirror, "config", "receive.unpackLimit", "1")
             branch = git(repo, "symbolic-ref", "-q", "--short", "HEAD", check=False)
             msg = f"simp wip\n\nbranch: {branch}\n"
             wip = git(repo, "commit-tree", tree, *(["-p", head] if head else []), "-m", msg)
-            git(repo, "push", "-q", "--force", mirror, "refs/heads/*:refs/heads/*", "refs/tags/*:refs/tags/*",
+            git(repo, "push", "-q", "--no-verify", "--force", mirror, "refs/heads/*:refs/heads/*", "refs/tags/*:refs/tags/*",
                 f"{wip}:refs/simp/wip/{sid}")
             remotes = {r: git(repo, "remote", "get-url", r) for r in git(repo, "remote").split()}
-            with open(os.path.join(mirrors, name + ".remotes.json"), "w") as f:
-                json.dump(remotes, f)
+            put_json(os.path.join(mirrors, name + ".remotes.json"), remotes)
             last["sig"] = sig
+            put_json(os.path.join(mirrors, name + ".status"), {"ok_at": time.time(), "session": sid})
         if last.get("isig") != isig:
             skipped, total = [], 0
             with tempfile.TemporaryDirectory() as tmp:
@@ -86,19 +108,27 @@ for name in sorted(os.listdir(repos_dir)) if os.path.isdir(repos_dir) else []:
                     info.size = len(data)
                     tar.addfile(info, io.BytesIO(data))
                 base = os.path.join(mirrors, name + ".ignored.tar")
-                for ext in (".zst", ".gz"):
-                    if os.path.exists(base + ext):
-                        os.remove(base + ext)
-                if shutil.which("zstd"):
-                    subprocess.run(["zstd", "-q", "-f", tar_path, "-o", base + ".zst"], check=True)
+                ext = ".zst" if shutil.which("zstd") else ".gz"
+                if ext == ".zst":
+                    put(base + ext, lambda t: subprocess.run(["zstd", "-q", "-f", tar_path, "-o", t], check=True))
                 else:
-                    subprocess.run(f"gzip -c {tar_path!r} > {base + '.gz'!r}", shell=True, check=True)
+                    put(base + ext, lambda t: subprocess.run(f"gzip -c {tar_path!r} > {t!r}", shell=True, check=True))
+                other = base + (".gz" if ext == ".zst" else ".zst")
+                if os.path.exists(other):
+                    os.remove(other)
             last["isig"] = isig
         with open(state_f, "w") as f:
             json.dump(last, f)
         print(f"ok {name}")
     except Exception as e:
         print(f"FAIL {name}: {e}")
+        try:
+            sf = os.path.join(mirrors, name + ".status")
+            old = json.load(open(sf)) if os.path.exists(sf) else {}
+            put_json(sf, {**old, "failed_at": time.time(), "error": str(e)[:500]})
+        except Exception:
+            pass
+print("SIMP_DONE")
 '''
 
 _RESTORE = _COMMON + r'''
@@ -110,9 +140,10 @@ for m in sorted(os.listdir(mirrors)) if os.path.isdir(mirrors) else []:
     repo = os.path.join(repos_dir, name)
     if os.path.exists(repo):
         continue
+    git_done = False
     try:
         os.makedirs(repos_dir, exist_ok=True)
-        subprocess.run(["git", "clone", "-q", "--no-checkout", mirror, repo], check=True, capture_output=True, env=ENV)
+        subprocess.run(["git", *SAFE, "clone", "-q", "--no-checkout", mirror, repo], check=True, capture_output=True, env=ENV)
         git(repo, "fetch", "-q", "origin", "+refs/simp/*:refs/simp/*")
         wip = git(repo, "for-each-ref", "--sort=-committerdate", "--count=1", "--format=%(objectname)", "refs/simp/wip")
         if wip:
@@ -125,7 +156,7 @@ for m in sorted(os.listdir(mirrors)) if os.path.isdir(mirrors) else []:
                 git(repo, "checkout", "-q", "--detach", parent)
             elif branch:
                 git(repo, "symbolic-ref", "HEAD", f"refs/heads/{branch}")
-            git(repo, "checkout", "-q", wip, "--", ".")  # WIP tree into the working tree...
+            git(repo, "read-tree", "-u", "--reset", wip)  # WIP tree into index + working tree (deletions too)...
             if parent:
                 git(repo, "reset", "-q")  # ...and the index back to HEAD: changes show as uncommitted again
             else:
@@ -140,6 +171,7 @@ for m in sorted(os.listdir(mirrors)) if os.path.isdir(mirrors) else []:
         rf = os.path.join(mirrors, name + ".remotes.json")
         for r, url in (json.load(open(rf)) if os.path.exists(rf) else {}).items():
             git(repo, "remote", "add", r, url, check=False)
+        git_done = True  # from here on a failure only loses ignored files: never remove the repo
         base = os.path.join(mirrors, name + ".ignored.tar")
         tar_path = None
         if os.path.exists(base + ".zst"):
@@ -149,13 +181,19 @@ for m in sorted(os.listdir(mirrors)) if os.path.isdir(mirrors) else []:
             tar_path = base + ".gz"
         if tar_path:
             with tarfile.open(tar_path) as tar:
-                members = [x for x in tar.getmembers() if x.name != MANIFEST]
-                tar.extractall(repo, members=members, filter="data")
+                for x in tar.getmembers():
+                    if x.name == MANIFEST or not x.isfile():
+                        continue
+                    try:
+                        tar.extract(x, repo, filter="data")
+                    except Exception as e:
+                        print(f"skip {name}/{x.name}: {e}")
             if tar_path.endswith("simp-ignored.tar"):
                 os.remove(tar_path)
         print(f"restored {name}")
     except Exception as e:
-        shutil.rmtree(repo, ignore_errors=True)  # half a restore would block the next try
+        if not git_done:
+            shutil.rmtree(repo, ignore_errors=True)  # half a git restore would block the next try
         print(f"FAIL {name}: {e}")
 '''
 
@@ -182,4 +220,44 @@ async def restore_repos(env, repos_dir: str, mirrors_dir: str, cwd: str = "/", t
     return await _run_script(env, _RESTORE, [repos_dir, mirrors_dir], "restore", timeout, cwd)
 
 
-__all__ = ["mirror_repos", "restore_repos"]
+MIRROR_FG_S = 30  # the after-tool mirror holds up the tool call at most this long
+
+
+async def mirror_locked(env, box, repos_dir: str, mirrors_dir: str, session_id: str, cwd: str = "/",
+                        fg_timeout: float | None = None, timeout: float = 120) -> None:
+    """The after-tool mirror (review M6/M7): one at a time per user (box.mirror_lock), at most `fg_timeout` in the
+    foreground; a longer one goes on in the background still holding the lock, so pause/kill (which take the lock)
+    wait for it. Sets box.mirror_failed (checked before a kill or a recreate). Never raises."""
+    async def job():
+        async with box.mirror_lock:
+            out = await mirror_repos(env, repos_dir, mirrors_dir, session_id, cwd=cwd, timeout=timeout)
+            box.mirror_failed = "SIMP_DONE" not in out or "FAIL " in out
+            box.mirror_sid = session_id
+            if box.mirror_failed:
+                log.error("REPO MIRROR FAILED for user %s: repos on the sandbox disk are not backed up; see "
+                          "%s/<name>.status", box.user_id, mirrors_dir, extra={"user": box.user_id})
+
+    task = asyncio.ensure_future(job())
+    done, _ = await asyncio.wait({task}, timeout=MIRROR_FG_S if fg_timeout is None else fg_timeout)
+    if not done:
+        log.warning("repo mirror is slow: continuing in the background", extra={"user": box.user_id})
+        box.mirror_bg = task  # keep a reference; pause/kill wait on box.mirror_lock
+        return
+    with contextlib.suppress(Exception):
+        task.result()
+
+
+async def remirror_if_failed(box, repos_dir: str, mirrors_dir: str, cwd: str = "/work") -> None:
+    """Before a kill (the disk is gone after it): if the last mirror failed, try once more on the raw box and say so
+    loudly either way. Caller holds box.mirror_lock."""
+    if not getattr(box, "mirror_failed", False):
+        return
+    log.error("last repo mirror failed: retrying before the sandbox is removed", extra={"user": box.user_id})
+    out = await mirror_repos(box, repos_dir, mirrors_dir, box.mirror_sid or "kill", cwd=cwd)
+    box.mirror_failed = "SIMP_DONE" not in out or "FAIL " in out
+    if box.mirror_failed:
+        log.error("REPO MIRROR STILL FAILING: removing the sandbox anyway; repo changes since the last good mirror "
+                  "are lost (home volume/snapshot may still have them)", extra={"user": box.user_id})
+
+
+__all__ = ["mirror_repos", "restore_repos", "mirror_locked", "remirror_if_failed"]

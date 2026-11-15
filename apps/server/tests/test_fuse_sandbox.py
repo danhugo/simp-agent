@@ -16,7 +16,7 @@ from simp_server.workspace import S3Store
 async def fuse(tmp_path, s3_settings):
     if subprocess.run(["docker", "image", "inspect", IMAGE], capture_output=True).returncode and build_image():
         pytest.skip("no sandbox image")
-    settings, keys = s3_settings(tmp_path, prefix=f"fuse-{uuid.uuid4().hex[:6]}/{{user_id}}/", mount="fuse",
+    settings, keys = s3_settings(tmp_path, prefix=f"fuse-{uuid.uuid4().hex[:6]}/{{user_id}}/", mount="fuse", dev_fuse=True,
                                  workspaces_dir=str(tmp_path / "ws"))
     sb = DockerSandbox(settings)
     sb.store = S3Store(settings, keys)

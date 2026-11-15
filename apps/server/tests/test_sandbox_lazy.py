@@ -37,6 +37,7 @@ def fake_docker(monkeypatch):
 
     async def _docker(*args, stdin=None):
         calls.append(args)
+        await asyncio.sleep(0)  # a real docker call yields: lets concurrent starts interleave
         return 0, ""
 
     async def _exec_in(container, command, cwd, timeout, cancel, on_output=None):
@@ -46,12 +47,12 @@ def fake_docker(monkeypatch):
         return 0, ""
 
     async def noop(*a, **k):
-        return ""
+        return "SIMP_DONE"
 
     monkeypatch.setattr(docker, "_docker", _docker)
     monkeypatch.setattr(docker, "_exec_in", _exec_in)
     monkeypatch.setattr(docker, "restore_repos", noop)
-    monkeypatch.setattr(docker, "mirror_repos", noop)
+    monkeypatch.setattr(repos, "mirror_repos", noop)
     return calls, gate
 
 
@@ -241,3 +242,192 @@ async def test_docker_usage_rows_and_concurrency_limit(tmp_path, fake_docker):
     await sb.stop_idle(now=env.box.metered + 42)
     (user, sid, model, secs, out), kw = Db.rows[0]
     assert (user, model, secs, kw["cost"]) == ("u1", "sandbox:docker", 42, 0.0)
+
+
+def _repo(tmp_path):
+    env, home, mirrors = LocalEnv(), tmp_path / "home" / "repos", tmp_path / "work" / ".simp" / "repos"
+    repo = home / "app"
+    repo.mkdir(parents=True)
+    git(repo, "init", "-q", "-b", "main")
+    (repo / "a.txt").write_text("a\n")
+    return env, home, mirrors, repo
+
+
+async def test_restore_skips_symlinks_in_ignored_files_and_keeps_the_repo(tmp_path):
+    """Review M5: an absolute symlink in an ignored dir is not archived; a bad archive member is skipped, and a
+    failure after the git restore never removes the restored repo."""
+    import io
+    import os
+    import shutil
+    import tarfile
+    env, home, mirrors, repo = _repo(tmp_path)
+    (repo / ".gitignore").write_text("logs/\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "init")
+    (repo / "logs").mkdir()
+    (repo / "logs" / "ok.log").write_text("kept\n")
+    os.symlink("/etc/hosts", repo / "logs" / "abs")
+    assert "ok app" in await repos.mirror_repos(env, str(home), str(mirrors), "s", cwd=str(tmp_path))
+    archive = next(mirrors.glob("app.ignored.tar.*"))
+    if archive.suffix == ".gz":
+        with tarfile.open(archive) as t:
+            assert "logs/abs" not in t.getnames()
+        # an old archive with an absolute symlink (from before the fix) must not sink the restore
+        with tarfile.open(archive, "w:gz") as t:
+            t.add(repo / "logs" / "ok.log", "logs/ok.log")
+            link = tarfile.TarInfo("logs/abs")
+            link.type, link.linkname = tarfile.SYMTYPE, "/etc/hosts"
+            t.addfile(link)
+            t.addfile(tarfile.TarInfo(".simp-not-backed-up.txt"), io.BytesIO(b""))
+    shutil.rmtree(repo)
+    out = await repos.restore_repos(env, str(home), str(mirrors), cwd=str(tmp_path))
+    assert "restored app" in out, out
+    assert (repo / "a.txt").read_text() == "a\n" and (repo / "logs" / "ok.log").read_text() == "kept\n"
+    assert not os.path.lexists(repo / "logs" / "abs")
+
+
+async def test_restore_keeps_wip_deletions_and_never_runs_repo_hooks(tmp_path):
+    """git safety: a file deleted in the WIP stays deleted after restore (read-tree), and the repo's own hooks
+    (pre-push) never run during the mirror; a status file records the last good mirror."""
+    import json
+    import shutil
+    env, home, mirrors, repo = _repo(tmp_path)
+    (repo / "gone.txt").write_text("x\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "init")
+    (repo / "gone.txt").unlink()
+    hook = repo / ".git" / "hooks" / "pre-push"
+    hook.write_text(f"#!/bin/sh\ntouch {tmp_path / 'HOOK_RAN'}\n")
+    hook.chmod(0o755)
+    assert "ok app" in await repos.mirror_repos(env, str(home), str(mirrors), "s", cwd=str(tmp_path))
+    assert not (tmp_path / "HOOK_RAN").exists()
+    assert json.loads((mirrors / "app.status").read_text())["ok_at"] > 0
+    shutil.rmtree(repo)
+    assert "restored app" in await repos.restore_repos(env, str(home), str(mirrors), cwd=str(tmp_path))
+    assert not (repo / "gone.txt").exists() and " D gone.txt" in git(repo, "status", "--porcelain")
+
+
+async def test_mirrors_of_one_user_run_one_at_a_time(tmp_path, fake_docker, monkeypatch):
+    """Review M6: two sessions' after-tool mirrors of one user never overlap."""
+    inflight, peak = [0], [0]
+
+    async def mirror(*a, **k):
+        inflight[0] += 1
+        peak[0] = max(peak[0], inflight[0])
+        await asyncio.sleep(0.05)
+        inflight[0] -= 1
+        return "SIMP_DONE"
+    monkeypatch.setattr(repos, "mirror_repos", mirror)
+    sb = sandbox(tmp_path)
+    a, b = await sb.open("sa", "u1"), await sb.open("sb", "u1")
+    await asyncio.gather(*(e.exec("true", ".", None, asyncio.Event()) for e in (a, b)))
+    await asyncio.gather(a.after_tool(), b.after_tool())
+    assert peak[0] == 1
+
+
+async def test_slow_mirror_goes_on_in_background_and_stop_waits(tmp_path, fake_docker, monkeypatch):
+    """Review M7: the foreground mirror is capped; the rest runs in the background holding the mirror lock, and the
+    idle stop waits for it. A failed mirror is retried once before the container is removed."""
+    calls, _ = fake_docker
+    gate, n = asyncio.Event(), [0]
+
+    async def mirror(*a, **k):
+        n[0] += 1
+        if n[0] == 1:
+            await gate.wait()
+            return "FAIL app: boom\nSIMP_DONE"
+        return "SIMP_DONE"
+    monkeypatch.setattr(repos, "mirror_repos", mirror)
+    monkeypatch.setattr(repos, "MIRROR_FG_S", 0.05)
+    sb = sandbox(tmp_path, idle_pause_s=1)
+    env = await sb.open("s1", "u1")
+    await env.exec("true", ".", None, asyncio.Event())
+    await asyncio.wait_for(env.after_tool(), 2)  # returns at the cap
+    stop = asyncio.create_task(sb.stop_idle(now=env.box.last + 100))
+    await asyncio.sleep(0.1)
+    rm = lambda: calls.count(("rm", "-f", "simp-u-u1"))  # noqa: E731 (the first is the leftover cleanup at start)
+    assert env.box.running and rm() == 1  # waits for the background mirror
+    gate.set()
+    await stop
+    assert not env.box.running and rm() == 2
+    assert n[0] == 2  # the failed mirror was retried before the removal
+
+
+async def test_idle_stop_aborts_when_a_call_starts_while_it_waits(tmp_path, fake_docker):
+    """Review C3 (docker): the tick saw active == 0, but a call started before the stop got the lock: no removal."""
+    calls, gate = fake_docker
+    sb = sandbox(tmp_path, idle_pause_s=1)
+    env = await sb.open("s1", "u1")
+    await env.exec("true", ".", None, asyncio.Event())
+    await env.box.lock.acquire()  # e.g. a credential refresh in progress
+    stop = asyncio.create_task(sb.stop_idle(now=env.box.last + 100))
+    await asyncio.sleep(0.01)
+    gate["sleep 5"] = asyncio.Event()
+    call = asyncio.create_task(env.exec("sleep 5", ".", None, asyncio.Event()))
+    await wait_for(lambda: ("exec", "simp-u-u1", "sleep 5") in calls)
+    env.box.lock.release()
+    await stop
+    assert env.box.running and calls.count(("rm", "-f", "simp-u-u1")) == 1  # only the start's cleanup
+    gate["sleep 5"].set()
+    await call
+
+
+async def test_concurrent_starts_respect_max_running(tmp_path, fake_docker):
+    """Review M8: the slot is reserved under a global lock before `docker run`."""
+    from simp_server.sandboxes import SandboxLimit
+    sb = sandbox(tmp_path, max_running=1)
+    envs = [await sb.open(f"s{i}", f"u{i}") for i in range(3)]
+    res = await asyncio.gather(*(e.exec("true", ".", None, asyncio.Event()) for e in envs), return_exceptions=True)
+    assert sum(isinstance(r, SandboxLimit) for r in res) == 2 and sb.running() == 1
+
+
+async def test_budget_enforced_in_the_tick(tmp_path, fake_docker):
+    """Review M8: a box that went over its daily budget stops after its current call; new calls are refused."""
+    from simp_server.sandboxes import SandboxLimit
+    sb = sandbox(tmp_path, day_minutes=1)
+
+    class Db:
+        seconds = 0
+
+        async def add_usage(self, *a, **k):
+            pass
+
+        async def sandbox_seconds(self, *a):
+            return self.seconds
+    sb.compute.db = Db()
+    env = await sb.open("s1", "u1")
+    await env.exec("true", ".", None, asyncio.Event())
+    sb.compute.db.seconds = 61
+    env.box.active = 1  # a call is running: not stopped under it
+    await sb.stop_idle(now=env.box.last + 1)
+    assert env.box.running and env.box.over
+    env.box.active = 0
+    await sb.stop_idle(now=env.box.last + 1)
+    assert not env.box.running
+    with pytest.raises(SandboxLimit, match="budget"):
+        await env.exec("true", ".", None, asyncio.Event())
+
+
+async def test_fuse_stop_unmounts_before_removal(tmp_path, fake_docker):
+    """Review M10: fuse mode stops user processes and unmounts /work as root (s3fs flushes) before `docker rm`."""
+    calls, _ = fake_docker
+    sb = sandbox(tmp_path, mount="fuse")
+
+    class Store:
+        async def mount_creds(self, user_id):
+            return {"endpoint": "http://s3", "bucket": "b", "prefix": "p/", "region": "r", "access_key": "k",
+                    "secret_key": "s", "session_token": "t", "expires_in": 3600}
+    sb.store = Store()
+    env = await sb.open("s1", "u1")
+    await env.exec("true", ".", None, asyncio.Event())
+    await sb.close("s1")
+    i = next(i for i, c in enumerate(calls) if "umount /work" in " ".join(c) and "pkill -TERM" in " ".join(c))
+    assert calls[i][:4] == ("exec", "-u", "0", "simp-u-u1")
+    assert calls.index(("rm", "-f", "simp-u-u1"), 1) > i
+
+
+async def test_to_container_replaces_the_root_only_on_a_path_boundary(tmp_path, fake_docker):
+    sb = sandbox(tmp_path)
+    env = await sb.open("s1", "u1")
+    root = str(env.root)
+    assert env._to_container(f"ls {root} {root}/a {root}0/x {root}-b {root}.x") == f"ls /work /work/a {root}0/x {root}-b {root}.x"

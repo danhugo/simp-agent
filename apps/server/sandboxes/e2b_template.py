@@ -22,6 +22,12 @@ def template(office: bool = False):
                    "id -u user >/dev/null 2>&1 || useradd -u 1000 -m -d /home/user -s /bin/bash user",
                    "mkdir -p /work /home/user/repos && chown user:user /work /home/user/repos",
                    "echo user_allow_other >> /etc/fuse.conf"])
+         # `user` must not get root: commands run as user, only the mount runs as root (via envd, not sudo).
+         # The python base image has no sudo; E2B's own provisioning may add a sudoers entry, so remove sudo and
+         # any rule naming user, then assert. E2BSandbox also checks `sudo -n true` fails at every create.
+         .run_cmd(["apt-get purge -y sudo >/dev/null 2>&1 || true",
+                   "rm -f /usr/bin/sudo /etc/sudoers.d/* && (sed -i '/^user[[:space:]]/d' /etc/sudoers 2>/dev/null || true)",
+                   "! su -s /bin/sh user -c 'sudo -n true' >/dev/null 2>&1"])
          .set_envs({"PIP_USER": "1", "NPM_CONFIG_PREFIX": "/home/user/.npm-global",
                     "PATH": "/home/user/.local/bin:/home/user/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"})
          .set_user("user")

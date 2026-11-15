@@ -61,8 +61,7 @@ class LocalStore:
         await self._env(user_id).write_bytes(rel(path) or ".", data)
 
     async def delete(self, user_id: str, path: str) -> None:
-        p = self._env(user_id)._path(rel(path) or ".")
-        await asyncio.to_thread(p.unlink)
+        await asyncio.to_thread(self._env(user_id)._unlink, rel(path) or ".")  # O_NOFOLLOW walk, like read/write
 
     async def mount_creds(self, user_id: str) -> dict | None:
         return None  # bind mount: nothing to hand over
@@ -157,7 +156,9 @@ class S3Store:
              "Resource": [f"arn:aws:s3:::{self.bucket}/{prefix}*"]}]}
         c = (await asyncio.to_thread(self.sts.assume_role, RoleArn=self.role_arn, RoleSessionName=f"simp-{user_id}"[:64],
                                      Policy=json.dumps(policy), DurationSeconds=self.creds_ttl))["Credentials"]
-        return out | {"access_key": c["AccessKeyId"], "secret_key": c["SecretAccessKey"], "session_token": c["SessionToken"]}
+        left = (c["Expiration"] - datetime.now(c["Expiration"].tzinfo)).total_seconds() if c.get("Expiration") else self.creds_ttl
+        return out | {"access_key": c["AccessKeyId"], "secret_key": c["SecretAccessKey"], "session_token": c["SessionToken"],
+                      "expires_in": max(0.0, left)}  # sandboxes remount before this runs out (review M2)
 
     async def restore(self, user_id: str, at: datetime, path: str = "") -> list[str]:
         """Put every object under the user's prefix (or under `path` in it) back to its version at time `at`: objects
@@ -217,6 +218,14 @@ def check_config(settings: dict) -> str | None:
         return '[workspace] store = "s3" with Docker needs [sandbox] mount = "fuse" (a bind mount needs a local dir)'
     if kind == "e2b" and mount != "fuse":
         return '[sandbox] kind = "e2b" needs mount = "fuse"'
+    if kind == "docker" and mount == "fuse" and not s.get("dev_fuse"):
+        return ('[sandbox] mount = "fuse" with Docker is for tests only: the container gets CAP_SYS_ADMIN, /dev/fuse, no '
+                'AppArmor and a bridge network with access to host.docker.internal (your host). Set [sandbox] '
+                'dev_fuse = true to use it anyway.')
+    w = settings.get("workspace", dict())
+    if store == "s3" and kind != "local" and w.get("mount_scope", "sts") == "none" and not w.get("dev_unscoped_mount"):
+        return ('[workspace] mount_scope = "none" hands the store key itself (every user\'s files) to each sandbox. '
+                'Dev only: set [workspace] dev_unscoped_mount = true to use it anyway.')
     return None
 
 

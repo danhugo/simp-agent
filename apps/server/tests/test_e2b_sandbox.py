@@ -4,6 +4,7 @@ E2B_API_KEY and an S3 test bucket (SIMP_TEST_S3_ENDPOINT/BUCKET/KEY/SECRET)."""
 import asyncio
 import itertools
 import os
+import time
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -12,6 +13,7 @@ import pytest
 
 from simp_server.sandboxes import SandboxLimit
 from simp_server.sandboxes import e2b as e2b_mod
+from simp_server.sandboxes import repos as repos_mod
 from simp_server.sandboxes.e2b import E2BSandbox
 
 
@@ -20,9 +22,13 @@ class FakeHandle:
         self.sbx, self.cmd, self.gate, self.on_stdout, self.killed = sbx, cmd, gate, on_stdout, False
 
     async def wait(self):
-        await self.on_stdout("4242\n")  # the setsid wrapper's pid line
+        await self.on_stdout("4242\n" + self.sbx.cloud.out.get(self.cmd, ""))  # the setsid wrapper's pid line
         if self.gate:
             await self.gate.wait()
+        if self.cmd in self.sbx.cloud.lose:  # paused/killed while the command ran
+            self.sbx.state = "paused"
+            from e2b.exceptions import SandboxNotRunningException
+            raise SandboxNotRunningException("paused")
         code = self.sbx.cloud.codes.pop(self.cmd, 0)  # one-shot
         if code:
             from e2b import CommandExitException
@@ -81,8 +87,10 @@ class FakeE2B:
 
     def __init__(self):
         self.ids, self.boxes, self.log, self.gates, self.codes = itertools.count(1), dict(), list(), dict(), dict()
+        self.out, self.lose, self.create_delay = dict(), set(), 0
 
     async def create(self, template=None, timeout=None, metadata=None, lifecycle=None, **kw):
+        await asyncio.sleep(self.create_delay)
         sbx = FakeSandbox(self, metadata)
         self.boxes[sbx.sandbox_id] = sbx
         self.log.append(("create", sbx.sandbox_id, metadata["user_id"], timeout, lifecycle["on_timeout"]))
@@ -124,9 +132,11 @@ class FakeE2B:
 
 
 class FakeStore:
+    expires_in = None
+
     async def mount_creds(self, user_id):
         return {"endpoint": "http://s3", "bucket": "b", "prefix": f"users/{user_id}/", "region": "r",
-                "access_key": "k", "secret_key": "s", "session_token": "t"}
+                "access_key": "k", "secret_key": "s", "session_token": "t", "expires_in": self.expires_in}
 
 
 class FakeDb:
@@ -144,7 +154,7 @@ class FakeDb:
 @pytest.fixture
 def cloud(monkeypatch):
     c = FakeE2B()
-    monkeypatch.setattr(e2b_mod, "mirror_repos", lambda *a, **k: asyncio.sleep(0))
+    monkeypatch.setattr(repos_mod, "mirror_repos", lambda *a, **k: asyncio.sleep(0, "SIMP_DONE"))
     monkeypatch.setattr(e2b_mod, "restore_repos", lambda *a, **k: asyncio.sleep(0))
     return c
 
@@ -293,6 +303,165 @@ async def test_close_pauses_after_last_session(cloud):
     assert a.box.state == "paused"
 
 
+async def until(cond, n=300):
+    for _ in range(n):
+        if cond():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("timeout")
+
+
+async def test_home_snapshot_never_holds_repos(cloud):
+    """Review C2: repos come back only from the mirror; the home snapshot neither packs nor unpacks repos/."""
+    sb = make(cloud, idle_pause_s=1)
+    env = await sb.open("s1", "u1")
+    await go(env)
+    restore = cloud.runs("zstd -dc")[0]
+    assert "--exclude=repos" in restore and "--anchored" in restore
+    await sb.stop_idle(now=env.box.last + 10)
+    snap = [r for r in cloud.runs() if "zstd -q -f" in r][0]
+    assert "repos" not in snap.split("ls -d", 1)[1].split(")")[0]
+    assert "tar -cf - repos" not in snap
+
+
+async def test_pause_waits_and_aborts_for_a_call_that_started(cloud):
+    """Review C3: the tick's pause re-checks active under the lock and aborts if a call started meanwhile."""
+    sb = make(cloud, idle_pause_s=1)
+    env = await sb.open("s1", "u1")
+    await go(env)
+    await env.box.lock.acquire()
+    tick = asyncio.create_task(sb.stop_idle(now=env.box.last + 100))
+    await asyncio.sleep(0.01)
+    gate = cloud.gates["sleep 5"] = asyncio.Event()
+    call = asyncio.create_task(go(env, "sleep 5"))
+    await until(lambda: cloud.runs("sleep 5"))
+    env.box.lock.release()
+    await tick
+    assert env.box.state == "running" and not cloud.kinds("pause")
+    gate.set()
+    assert (await call)[0] == 0
+
+
+async def test_call_during_a_pause_waits_then_resumes(cloud):
+    """Review C3: while the pause snapshots (state "stopping"), a new call waits for it, then resumes the sandbox;
+    it never runs in the sandbox being paused."""
+    sb = make(cloud, idle_pause_s=1)
+    env = await sb.open("s1", "u1")
+    await go(env)
+    gate, real = asyncio.Event(), sb.snapshot
+
+    async def slow_snapshot(box):
+        await gate.wait()
+        await real(box)
+    sb.snapshot = slow_snapshot
+    tick = asyncio.create_task(sb.stop_idle(now=env.box.last + 100))
+    await until(lambda: env.box.state == "stopping")
+    call = asyncio.create_task(go(env, "echo after"))
+    await asyncio.sleep(0.05)
+    assert not cloud.runs("echo after")  # waits for the pause
+    gate.set()
+    await tick
+    assert (await call)[0] == 0
+    names = [e[0] for e in cloud.log]
+    assert names.index("pause") < names.index("connect") < max(i for i, e in enumerate(cloud.log) if e[0] == "run"
+                                                                 and e[3] == "echo after")
+
+
+async def test_tick_refreshes_provider_timeout_during_a_long_call_and_lost_exec_is_not_rerun(cloud):
+    """Review M1: the tick keeps the provider-side pause timer ahead while a call runs; a command whose sandbox was
+    paused under it raises and is not run a second time."""
+    sb = make(cloud, idle_pause_s=600)
+    env = await sb.open("s1", "u1")
+    gate = cloud.gates["long"] = asyncio.Event()
+    call = asyncio.create_task(go(env, "long"))
+    await until(lambda: cloud.runs("long"))
+    n = len(cloud.kinds("set_timeout"))
+    await sb.stop_idle(now=env.box.timeout_at + 61)
+    assert len(cloud.kinds("set_timeout")) == n + 1
+    gate.set()
+    await call
+    cloud.lose.add("side effect")
+    with pytest.raises(e2b_mod.SandboxLost):
+        await go(env, "side effect")
+    assert len(cloud.runs("side effect")) == 1
+
+
+async def test_mount_credential_refreshed_before_it_expires(cloud):
+    """Review M2: a call that would outlive the mount credential remounts first; the tick refreshes at an idle
+    point; with another call on the mount, a new call is refused instead."""
+    sb = make(cloud, idle_pause_s=10_000)
+    sb.store.expires_in = 3600
+    env = await sb.open("s1", "u1")
+    await go(env)
+    mounts = lambda: len(cloud.runs("s3fs"))  # noqa: E731
+    n = mounts()
+    await env.exec("short", ".", 60, asyncio.Event())
+    assert mounts() == n  # plenty left
+    env.box.creds_until = time.monotonic() + 1000
+    await env.exec("long build", ".", 2000, asyncio.Event())  # would run past expiry: remount first
+    assert mounts() == n + 1
+    i = [k for k, e in enumerate(cloud.log) if e[0] == "run" and "s3fs" in e[3]][-1]
+    assert i < [k for k, e in enumerate(cloud.log) if e[0] == "run" and e[3] == "long build"][0]
+    env.box.creds_until = time.monotonic() + 400
+    await sb.stop_idle(now=env.box.last + 1)  # idle, near expiry
+    assert mounts() == n + 2
+    gate = cloud.gates["zz-other"] = asyncio.Event()
+    env.box.creds_until = time.monotonic() + 10_000
+    other = asyncio.create_task(go(env, "zz-other"))
+    await until(lambda: cloud.runs("zz-other"))
+    env.box.creds_until = time.monotonic() + 10
+    with pytest.raises(SandboxLimit, match="credential"):
+        await go(env, "blocked")
+    gate.set()
+    await other
+
+
+async def test_concurrent_creates_respect_max_running_and_budget_tick(cloud):
+    """Review M8: the running slot is reserved under a global lock before create; the tick pauses a box that
+    went over the daily budget once its call ended, and new calls are refused."""
+    cloud.create_delay = 0.02
+    sb = make(cloud, max_running=1, day_minutes=1)
+    envs = [await sb.open(f"s{i}", f"u{i}") for i in range(3)]
+    res = await asyncio.gather(*(go(e) for e in envs), return_exceptions=True)
+    assert sum(isinstance(r, SandboxLimit) for r in res) == 2 and len(cloud.kinds("create")) == 1
+    env = next(e for e, r in zip(envs, res) if not isinstance(r, Exception))
+    sb.compute.db.seconds = 61
+    env.box.active = 1
+    await sb.stop_idle(now=env.box.last + 1)
+    assert env.box.state == "running" and env.box.over
+    env.box.active = 0
+    await sb.stop_idle(now=env.box.last + 1)
+    assert env.box.state == "paused"
+    with pytest.raises(SandboxLimit, match="budget"):
+        await go(env)
+
+
+async def test_failed_mirror_is_retried_before_max_life_kill(cloud, monkeypatch):
+    """Review C2/M7: never kill silently after a failed mirror: retry it first."""
+    n = [0]
+
+    async def mirror(*a, **k):
+        n[0] += 1
+        return "SIMP_DONE"
+    monkeypatch.setattr(repos_mod, "mirror_repos", mirror)
+    sb = make(cloud, max_life_s=100, idle_pause_s=10_000)
+    env = await sb.open("s1", "u1")
+    await go(env)
+    env.box.mirror_failed = True
+    await sb.stop_idle(now=env.box.started + 200)
+    assert env.box.state == "none" and n[0] == 1 and not env.box.mirror_failed
+
+
+async def test_template_with_sudo_is_refused(cloud):
+    from simp_server.sandboxes.e2b import SUDO_CHECK
+    cloud.out[SUDO_CHECK] = "SIMP_SUDO_OK\n"
+    sb = make(cloud)
+    env = await sb.open("s1", "u1")
+    with pytest.raises(RuntimeError, match="sudo"):
+        await go(env)
+    assert cloud.kinds("kill")
+
+
 LIVE = os.environ.get("E2B_API_KEY") and all(os.environ.get(f"SIMP_TEST_S3_{k}") for k in ("ENDPOINT", "BUCKET", "KEY", "SECRET"))
 
 
@@ -302,6 +471,7 @@ async def test_live_e2b(tmp_path):
     settings = {"data_dir": str(tmp_path), "sandbox": {"kind": "e2b", "tag": "simp-test"},
                 "workspace": {"store": "s3", "endpoint": os.environ["SIMP_TEST_S3_ENDPOINT"],
                               "bucket": os.environ["SIMP_TEST_S3_BUCKET"], "mount_scope": os.environ.get("SIMP_TEST_S3_SCOPE", "none"),
+                              "dev_unscoped_mount": True,
                               "prefix": f"test-{uuid.uuid4().hex[:8]}/{{user_id}}/"}}
     store = S3Store(settings, {"S3_ACCESS_KEY_ID": os.environ["SIMP_TEST_S3_KEY"],
                                "S3_SECRET_ACCESS_KEY": os.environ["SIMP_TEST_S3_SECRET"]})

@@ -29,7 +29,11 @@ def test_check_config(tmp_path):
     assert ok(**e2b, workspace={"store": "s3"}) is None
     assert "needs [workspace] store" in ok(**docker, sandbox={"mount": "fuse"})
     assert "needs [sandbox] mount" in ok(**docker, workspace={"store": "s3"})
-    assert ok(**docker, workspace={"store": "s3"}, sandbox={"mount": "fuse"}) is None
+    assert "tests only" in ok(**docker, workspace={"store": "s3"}, sandbox={"mount": "fuse"})  # review M4
+    assert "host.docker.internal" in ok(**docker, workspace={"store": "s3"}, sandbox={"mount": "fuse"})
+    assert ok(**docker, workspace={"store": "s3"}, sandbox={"mount": "fuse", "dev_fuse": True}) is None
+    assert "dev_unscoped_mount" in ok(**e2b, workspace={"store": "s3", "mount_scope": "none"})
+    assert ok(**e2b, workspace={"store": "s3", "mount_scope": "none", "dev_unscoped_mount": True}) is None
     (tmp_path / "settings.toml").write_text('[sandbox]\nkind = "e2b"\n[profiles.test]\napi = "fake"\nmodel = "m"\n')
     settings = load_settings(tmp_path)
     assert settings["plugins"]["sandbox"].endswith(":E2BSandbox")

@@ -1,3 +1,4 @@
+import asyncio
 import re
 import shutil
 from pathlib import Path
@@ -46,6 +47,26 @@ class Compute:
         self.price_gib_s = s.get("price_gib_s", 0.0000045 if cloud else 0.0)
         self.max_running = s.get("max_running", 10)  # E2B Hobby: 20 concurrent; keep headroom
         self.day_minutes = s.get("day_minutes", 240 if cloud else 0)  # 0 = no budget
+        self.start_lock = asyncio.Lock()  # one start decision at a time: the running count includes reserved slots
+
+    @property
+    def over_msg(self) -> str:
+        return (f"sandbox: daily compute budget of {self.day_minutes:g} minutes used up. Commands and file tools are off "
+                "until tomorrow; chat still works.")
+
+    async def over(self, user_id: str) -> bool:
+        if not self.day_minutes or self.db is None:
+            return False
+        from simp_server.budget import day_start
+        return await self.db.sandbox_seconds(user_id, day_start()) >= self.day_minutes * 60
+
+    async def reserve(self, box, running) -> None:
+        """Check the limits and take a running slot (box.starting = True; the caller clears it once the box runs or
+        fails) under a global lock, so concurrent starts cannot pass max_running together. running() counts
+        starting boxes."""
+        async with self.start_lock:
+            await self.check(box.user_id, running())
+            box.starting = True
 
     async def check(self, user_id: str, running: int) -> None:
         if running >= self.max_running:

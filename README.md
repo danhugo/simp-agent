@@ -236,7 +236,7 @@ access_key_env = "S3_ACCESS_KEY_ID"        # names of the env vars, not the keys
 secret_key_env = "S3_SECRET_ACCESS_KEY"
 # region = "us-east-1"
 # prefix = "users/{user_id}/"
-# mount_scope = "sts"                      # "sts" | "none"
+# mount_scope = "sts"                      # "sts" | "none" ("none" also needs dev_unscoped_mount = true)
 # role_arn = "arn:aws:iam::000000000000:role/simp-mount"   # AWS needs a real one; MinIO accepts any
 # mount_creds_ttl_s = 3600
 # mount_endpoint = ""                      # endpoint as seen from the sandbox; default: 127.0.0.1/localhost -> host.docker.internal
@@ -244,6 +244,7 @@ secret_key_env = "S3_SECRET_ACCESS_KEY"
 [sandbox]
 kind = "docker"
 mount = "fuse"
+dev_fuse = true             # required: Docker fuse mode is for tests only (see Security notes)
 # max_life_s = 3300         # restart an idle container before the 1 h mount credential expires
 ```
 
@@ -256,6 +257,7 @@ endpoint = "https://<account>.r2.cloudflarestorage.com"   # or omit for AWS S3
 bucket = "simp-workspaces"
 region = "auto"            # R2; an AWS region otherwise
 mount_scope = "none"       # R2 has no STS; on AWS keep "sts" and set role_arn
+dev_unscoped_mount = true  # required with "none": the store key goes into every sandbox (trusted users only)
 
 [sandbox]
 kind = "e2b"               # mount defaults to "fuse"
@@ -266,7 +268,7 @@ memory_mb = 2048
 idle_pause_s = 600         # pause after 10 min unused (home snapshot first)
 max_life_s = 3300          # kill and recreate after 55 min (E2B Hobby: 1 h continuous cap)
 snapshot_every_s = 900     # home snapshot to /work/.simp/home.tar.zst
-snapshot_max_mb = 2048     # over this, only repos go in the snapshot (libraries reinstall)
+snapshot_max_mb = 2048     # over this, no new snapshot (libraries reinstall); repos are never in it (mirror only)
 # provider_timeout_s = idle_pause_s + 300   # E2B-side pause if this server dies
 max_running = 10           # E2B Hobby allows 20 concurrent
 day_minutes = 240          # per-user daily compute minutes (e2b default)
@@ -298,16 +300,32 @@ so a restore can itself be undone.
 **Costs and limits.** Sandbox running time is recorded as a usage row (model `sandbox:<kind>`, cost =
 seconds x (cpus x `price_vcpu_s` + GiB x `price_gib_s`); docker prices default to 0) and counts toward the money
 budget. Before a sandbox starts or resumes the server checks `max_running` and the user's `day_minutes`; over either,
-the tool call gets a clear error and chat still works.
+the tool call gets a clear error and chat still works. The tick also checks the budget of running sandboxes: one that
+went over is paused (docker: stopped) after its current call. Starts reserve their slot under one lock, so concurrent
+starts cannot pass `max_running`.
+
+**Mount credential.** With `mount_scope = "sts"` the mount credential lasts at most the role's max session (1 h when
+role-chained), whatever `max_life_s` says. The server remounts with a fresh credential at an idle point before it
+runs out, and never starts a command whose timeout would run past it (remount first; refused while another command
+still uses the mount). s3fs 403s / dead mounts are logged as errors.
+
+**One simp per Docker host / E2B key.** Container names (`simp-u-<user_id>`), home volumes and the E2B `tag` are not
+namespaced per server: two simp instances must not share one Docker host's sandboxes or one E2B API key (with the same
+`tag`), or each kills and adopts the other's sandboxes.
 
 **Security notes.**
 - Bind mode: `--network none`, `--read-only`, `--cap-drop ALL`, `no-new-privileges`, uid 1000, pids/memory/cpu limits.
-- Fuse mode (Docker) needs `/dev/fuse`, `CAP_SYS_ADMIN`, AppArmor unconfined and a network (`bridge`). Only one
-  `docker exec -u 0` uses the capability, for the mount; commands run as 1000 with no capabilities.
+- Bind mode host-side file access (agent file tools, Files panel) opens every path component with `O_NOFOLLOW`
+  from the workspace root's fd: a symlink in the workspace is refused, even one swapped in by a running command.
+- Fuse mode (Docker) is **test only** (`dev_fuse = true` required): it needs `/dev/fuse`, `CAP_SYS_ADMIN`, AppArmor
+  unconfined and a `bridge` network that can reach `host.docker.internal` (your host). Only `docker exec -u 0` uses
+  the capability (mount, and the unmount before removal); commands run as 1000 with no capabilities.
+- The E2B template removes sudo; every new sandbox checks that `user` has no passwordless sudo.
+- Repo backup runs git with hooks and fsmonitor off (`core.hooksPath=/dev/null`, `push --no-verify`).
 - `mount_scope = "sts"` hands the sandbox a 1 h credential limited to `users/<user_id>/` (MinIO refuses AssumeRole for
   its root user, so `make minio` creates a `simp-dev` user). `mount_scope = "none"` (needed for R2, which has no STS)
-  puts the store key itself into the sandbox: a user's code could then read other users' files. Use it only with
-  trusted users until R2 temporary credentials are wired in.
+  puts the store key itself into the sandbox: a user's code could then read other users' files. The server refuses it
+  unless `dev_unscoped_mount = true`; use it only with trusted users until R2 temporary credentials are wired in.
 
 Old per-session dirs (`sandboxes/<sid>` or `workspaces/<sid>`) move to `workspaces/<user_id>/<sid>/` on first open.
 Backups copy `workspaces/` (the local store); an S3 store is not in the backup: its bucket versioning is the history.
