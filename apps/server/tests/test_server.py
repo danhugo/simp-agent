@@ -220,6 +220,7 @@ async def test_run_through_docker_sandbox_and_close_on_shutdown(tmp_path):
         assert await run.env.read_bytes("out.txt") == b"hi\n"
         container = run.env.container
     assert subprocess.run(["docker", "inspect", container], capture_output=True).returncode != 0  # closed on shutdown
+    subprocess.run(["docker", "volume", "rm", "-f", f"simp-home-{user['id']}"], capture_output=True)
 
 
 async def test_profile_compat_reaches_responses_request(tmp_path):

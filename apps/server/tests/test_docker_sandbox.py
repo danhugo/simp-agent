@@ -2,6 +2,7 @@ import asyncio
 import shutil
 import subprocess
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -25,6 +26,8 @@ async def sandbox(tmp_path):
     sb = DockerSandbox({"data_dir": str(tmp_path), "sandbox": {"workspaces_dir": str(tmp_path / "ws")}})
     yield sb
     await sb.close_all()
+    for user in sb.boxes:
+        subprocess.run(["docker", "volume", "rm", "-f", f"simp-home-{user}"], capture_output=True)
 
 
 class TestDockerEnvConformance(EnvConformance):
@@ -75,10 +78,48 @@ async def test_coding_tools_with_host_paths(sandbox):
     assert (await env.read_bytes("/work/notes.txt")) == b"hello world\n"  # container paths work host-side too
 
 
-async def test_user_sessions_share_files_not_containers(sandbox):
+async def test_user_sessions_share_one_container(sandbox):
     a, b = f"sa-{uuid.uuid4().hex[:8]}", f"sb-{uuid.uuid4().hex[:8]}"
-    ea, eb = await sandbox.open(a, "u2"), await sandbox.open(b, "u2")
-    assert ea.container != eb.container and ea.root == eb.root
+    user = f"u-{uuid.uuid4().hex[:8]}"
+    ea, eb = await sandbox.open(a, user), await sandbox.open(b, user)
+    assert ea.container == eb.container == f"simp-u-{user}" and ea.root == eb.root
+    assert not ea.box.running  # lazy: open starts nothing
     await ea.write_bytes("shared.txt", b"hi")
-    await sandbox.close(a)
+    assert not ea.box.running  # /work file ops run on the host mount
+    assert (await ea.exec("cat shared.txt", ".", 30, asyncio.Event()))[1] == "hi"
+    await sandbox.close(a)  # b still uses the container
     assert (await eb.exec("cat shared.txt", ".", 30, asyncio.Event()))[1] == "hi"
+    await sandbox.close(b)
+    assert subprocess.run(["docker", "inspect", ea.container], capture_output=True).returncode != 0
+    subprocess.run(["docker", "volume", "rm", "-f", f"simp-home-{user}"], capture_output=True)
+
+
+async def test_repo_survives_container_loss(sandbox):
+    """A repo under /home/user/repos is mirrored to /work/.simp/repos after a tool call and restored on the next
+    start, even with the home volume gone."""
+    from simp_agent.agent import ToolContext
+    from simp_agent.coding import make_tools
+    user, sid = f"u-{uuid.uuid4().hex[:8]}", f"s-{uuid.uuid4().hex[:8]}"
+    env = await sandbox.open(sid, user)
+    run = lambda cmd: env.exec(cmd, ".", 60, asyncio.Event())
+    code, out = await run("mkdir -p /home/user/repos/app && cd /home/user/repos/app && git init -q -b main && "
+                          "echo a > a.txt && echo '.env' > .gitignore && echo SECRET=1 > .env && "
+                          "git add -A && git -c user.name=t -c user.email=t@t commit -qm init && echo b > b.txt")
+    assert code == 0, out
+    tools = {t.name: t for t in make_tools()}
+
+    async def noop(_): pass
+    ctx = ToolContext(asyncio.Event(), env, env.root, noop)
+    await tools["write"].execute({"path": "/home/user/repos/app/c.txt", "content": "c\n"}, ctx)  # via the container
+    assert "c" in await tools["read"].execute({"path": "/home/user/repos/app/c.txt"}, ctx)
+    await env.after_tool()
+    assert (Path(env.root) / ".simp/repos/app.git").is_dir()
+    await sandbox.close(sid)
+    subprocess.run(["docker", "volume", "rm", "-f", f"simp-home-{user}"], capture_output=True)
+    env = await sandbox.open(sid, user)
+    code, out = await env.exec("cd /home/user/repos/app && cat a.txt b.txt c.txt .env && git status --porcelain && "
+                               "git branch --show-current", ".", 60, asyncio.Event())
+    assert code == 0, out
+    assert "SECRET=1" in out and "?? b.txt" in out and "?? c.txt" in out and out.strip().endswith("main")
+    await sandbox.close(sid)
+    subprocess.run(["docker", "volume", "rm", "-f", f"simp-home-{user}"], capture_output=True)

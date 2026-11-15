@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import os
 import shlex
@@ -19,8 +20,16 @@ def _path(ctx, path: str) -> str:
     return os.path.join(ctx.cwd, path)  # absolute paths stay as is
 
 
+def _seen(ctx, path: str, text: str) -> None:
+    """Remember the content hash of a file this session read or wrote (edit's change check)."""
+    ctx.state.setdefault("read_hash", dict())[path] = hashlib.sha256(text.encode()).hexdigest()
+
+
 async def read(args: dict, ctx) -> str:
-    lines = (await ctx.env.read_file(_path(ctx, args["path"]))).splitlines()
+    p = _path(ctx, args["path"])
+    text = await ctx.env.read_file(p)
+    _seen(ctx, p, text)
+    lines = text.splitlines()
     start = max(args.get("offset", 1), 1) - 1
     end = start + args.get("limit", MAX_LINES)
     out, info = truncate_head("\n".join(f"{i + 1}\t{line}" for i, line in enumerate(lines[start:end], start)))
@@ -32,6 +41,7 @@ async def read(args: dict, ctx) -> str:
 
 async def write(args: dict, ctx) -> str:
     await ctx.env.write_file(_path(ctx, args["path"]), args["content"])
+    _seen(ctx, _path(ctx, args["path"]), args["content"])
     return f"Wrote {len(args['content'])} chars to {args['path']}"
 
 
@@ -44,6 +54,11 @@ async def edit(args: dict, ctx) -> str:
         raise ValueError("Give old_text/new_text or edits")
     p = _path(ctx, args["path"])
     text = await ctx.env.read_file(p)
+    # content hash, not mtime (unreliable on FUSE mounts): another session or a command may have changed the file.
+    # An edit without a prior read in this session is allowed.
+    seen = ctx.state.get("read_hash", dict()).get(p)
+    if seen and seen != hashlib.sha256(text.encode()).hexdigest():
+        raise ValueError(f"{args['path']} changed since you last read it; read it again before editing")
     spans = []
     for i, e in enumerate(edits):
         n = text.count(e["old_text"]) if e["old_text"] else 0
@@ -58,6 +73,7 @@ async def edit(args: dict, ctx) -> str:
     for start, end, new in reversed(spans):
         text = text[:start] + new + text[end:]
     await ctx.env.write_file(p, text)
+    _seen(ctx, p, text)
     return f"Successfully replaced {len(spans)} block(s) in {args['path']}."
 
 

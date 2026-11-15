@@ -29,6 +29,7 @@ class ToolContext:
     env: ExecutionEnv
     cwd: str
     on_update: Callable[[str], Awaitable[None]]  # emits tool_execution_update (progress for the UI)
+    state: dict = field(default_factory=dict)  # per-agent tool state (edit's read hashes); lives as long as the Agent
 
 
 async def _maybe_await(r):
@@ -64,6 +65,7 @@ class LoopConfig:
     before_tool_call: Callable[[ai.ToolCall, "ToolContext"], Any] | None = None
     # (call, result, ctx) -> new ToolResultMessage or None to keep it (pi afterToolCall). Also runs after a deny.
     after_tool_call: Callable[[ai.ToolCall, ToolResultMessage, "ToolContext"], Any] | None = None
+    tool_state: dict = field(default_factory=dict)  # handed to every ToolContext as ctx.state
 
 
 async def api_key_opts(get_api_key, model) -> dict:
@@ -168,7 +170,7 @@ async def agent_loop(
                 else:
                     await send({"type": "tool_execution_start", "call": call})
                     on_update = functools.partial(lambda c, text: send({"type": "tool_execution_update", "call": c, "text": text}), call)
-                    ctx = ToolContext(cancel, config.env, config.cwd, on_update)
+                    ctx = ToolContext(cancel, config.env, config.cwd, on_update, config.tool_state)
                     deny = await _maybe_await(config.before_tool_call(call, ctx)) if config.before_tool_call else None
                     if deny is not None:
                         result = ToolResultMessage(call.id, call.name, f"User denied: {deny}", is_error=True)
@@ -247,6 +249,7 @@ class Agent:
         self.system_prompt, self.model, self.tools, self.stream_fn = system_prompt, model, tools, stream_fn
         self.get_api_key, self.env, self.cwd = get_api_key, env or LocalEnv(), cwd or os.getcwd()
         self.prepare_next_turn, self.before_tool_call, self.after_tool_call = prepare_next_turn, before_tool_call, after_tool_call
+        self.tool_state = dict()  # ctx.state for tools, kept across runs (edit: file hashes this session read)
         self.declared_tools = None  # tool names the model was told about (for the "Tools added/removed" note)
         self.steering, self.follow_ups = list(), list()
         self.steering_mode = self.follow_up_mode = "one-at-a-time"  # or "all"
@@ -315,6 +318,7 @@ class Agent:
                 cwd=self.cwd,
                 before_tool_call=self.before_tool_call,
                 after_tool_call=self.after_tool_call,
+                tool_state=self.tool_state,
             )
             emit = lambda e: _emit_all(self._subs, e)  # noqa: E731
             try:

@@ -93,6 +93,19 @@ class LocalSandbox:
         pass
 
 
+class SandboxSync:
+    """After each tool call: the sandbox's durability hook (sync, repo mirror), if it has one. Never fails the call."""
+
+    name = "sandbox_sync"
+
+    def __init__(self, env):
+        self.env = env
+
+    async def tool_result(self, call, result):
+        if after := getattr(self.env, "after_tool", None):
+            await after()
+
+
 class StaticTokenAuth:
     def __init__(self, store):
         self.store = store
@@ -214,10 +227,12 @@ class Run:
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
             plugins=[*build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(), Memory(store=DbMemoryStore(
-                mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), self.mcp],
+                mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), self.mcp, SandboxSync(env)],
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.agent.steering_mode = "all"  # all queued steers reach the next turn
+        if (hint := getattr(mgr.sandbox, "prompt_hint", None)) and not no_tools:
+            self.session.add_prompt_section("sandbox", hint, 5)
         self.session.subscribe(self.on_event)
 
     @property
@@ -535,6 +550,8 @@ class SessionManager:
             for sid, run in list(self.runs.items()):
                 if self.evictable(run) and now - self.last_used.get(sid, 0) >= self.idle_s:
                     await self.evict(sid)
+        if hasattr(self.sandbox, "stop_idle"):  # the user's container: idle across all their sessions
+            await self.sandbox.stop_idle()
 
     async def evict_loop(self, every: float) -> None:
         while True:

@@ -94,3 +94,21 @@ async def test_multi_edit(tmp_path):
     assert r.is_error and "found 0" in r.content
     r = await call(tmp_path, "edit", path="f", old_text="3", new_text="three")
     assert not r.is_error and f.read_text() == "two two three"
+
+
+async def test_edit_fails_when_file_changed_since_read(tmp_path):
+    async def upd(text):
+        pass
+
+    c = ToolContext(asyncio.Event(), LocalEnv(), str(tmp_path), upd)
+    run = lambda name, **a: run_tool(make_tools(), ToolCall("c", name, a), c)  # noqa: E731
+    f = tmp_path / "f.txt"
+    f.write_text("one\ntwo\n")
+    assert not (await run("edit", path="f.txt", old_text="one", new_text="ONE")).is_error  # no prior read: allowed
+    assert not (await run("read", path="f.txt")).is_error
+    assert not (await run("edit", path="f.txt", old_text="two", new_text="TWO")).is_error  # own edit keeps the hash
+    f.write_text("ONE\nTWO\nthree\n")  # changed by someone else (another session, a command)
+    r = await run("edit", path="f.txt", old_text="three", new_text="3")
+    assert r.is_error and "read it again" in r.content and f.read_text() == "ONE\nTWO\nthree\n"
+    await run("read", path="f.txt")
+    assert not (await run("edit", path="f.txt", old_text="three", new_text="3")).is_error

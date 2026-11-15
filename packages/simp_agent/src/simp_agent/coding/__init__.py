@@ -69,4 +69,8 @@ def system_prompt(tools: list, cwd: str, context: tuple[str, str] | None = None,
     return out + f"Current date: {today}\nCurrent working directory: {cwd}"
 
 
-__all__ = ["TOOLS", "make_tools", "CONTEXT_FILES", "load_context_file", "system_prompt", "clean_locale", "clean_location"]
+SANDBOX_HINT = ("Where to put things: user files in /work (the user sees them); git repos under /home/user/repos; "
+                "databases and big intermediates in /tmp.")
+
+
+__all__ = ["TOOLS", "make_tools", "CONTEXT_FILES", "load_context_file", "system_prompt", "SANDBOX_HINT", "clean_locale", "clean_location"]
