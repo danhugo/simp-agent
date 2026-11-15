@@ -1,6 +1,8 @@
 """Deterministic stream_fn for e2e (`simp-server run --fake-llm`). Reacts to the last message:
 "slow ..." -> 40 slow chunks; "tool ..." -> a bash call (needs approval); a tool result -> "Tool said: ..."; else echo.
-A title request (system prompt "Name this conversation...") -> "Fake title"."""
+A title request (system prompt "Name this conversation...") -> "Fake title".
+Load-test mode (only when SIMP_FAKE_TOKENS is set): any user prompt streams SIMP_FAKE_TOKENS tokens ("tok ")
+after SIMP_FAKE_TTFT seconds, at SIMP_FAKE_TPS tokens/sec. See apps/server/scripts/loadtest.py."""
 
 from __future__ import annotations
 
@@ -12,10 +14,30 @@ from simp_agent.ai import AssistantMessage, TextContent, ThinkingContent, ToolCa
 
 DELAY = float(os.environ.get("SIMP_FAKE_DELAY", "0.05"))
 ids = itertools.count(1)
+LOAD_TOKENS = int(os.environ.get("SIMP_FAKE_TOKENS", "0"))
+LOAD_TPS = float(os.environ.get("SIMP_FAKE_TPS", "50"))
+LOAD_TTFT = float(os.environ.get("SIMP_FAKE_TTFT", "0.8"))
+
+
+async def load_stream(ctx):
+    """Realistic-speed answer; sleeps against a deadline so per-token sleeps don't drift under load."""
+    loop = asyncio.get_running_loop()
+    msg = AssistantMessage([TextContent("tok " * LOAD_TOKENS)], stop_reason="stop",
+                           usage={"input": 1, "output": LOAD_TOKENS})
+    yield {"type": "start", "partial": msg}
+    t0 = loop.time() + LOAD_TTFT
+    for i in range(LOAD_TOKENS):
+        await asyncio.sleep(max(0.0, t0 + i / LOAD_TPS - loop.time()))
+        yield {"type": "text_delta", "delta": "tok "}
+    yield {"type": "done", "message": msg}
 
 
 async def stream(model, ctx, api_key=None):
     last = ctx.messages[-1]
+    if LOAD_TOKENS and last.role == "user" and not ctx.system_prompt.startswith("Name this conversation"):
+        async for ev in load_stream(ctx):
+            yield ev
+        return
     if ctx.system_prompt.startswith("Name this conversation"):
         chunks, calls = ["Fake title"], []
     elif last.role == "tool_result":
