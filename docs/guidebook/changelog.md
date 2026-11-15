@@ -4,6 +4,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 
 ## 2026-11-16
 
+- Ch 29a updated after the code review (commit `c4ae988`): stopping state so pause/kill never race a call, provider timeout refreshed during long calls and lost commands never re-run, mount credential expiry and remount, budget enforced in the tick, repos excluded from the home archive (restored only from the mirror), mirror lock + background slow mirror + status file, git without hooks, symlinks refused by the file tools (`O_NOFOLLOW`), dev flags for docker fuse mode and unscoped mounts, no sudo in the E2B template.
 - New ch 29a "Workspace and per-user sandbox": workspace store vs sandbox, the bind/FUSE mount, single writer, lazy per-user lifecycle (idle pause, max life, provider safety net, resume remount), where data lives, the repo mirror, the git-on-s3fs benchmark, Files panel through the store, compute costs and limits, mode switching, a worked example. Glossary: workspace store, FUSE mount, repo mirror, lazy sandbox, single writer. Ch 29 gets a pointer; README index and Part 5 chapter list updated. Checked against `79faa70`, `76d83ea`.
 
 ## 2026-11-04

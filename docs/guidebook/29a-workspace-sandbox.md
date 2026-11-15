@@ -126,13 +126,21 @@ Then the server tick (`stop_idle`) decides:
 
 Nothing is paused or killed while a foreground command runs (`box.active > 0`). Background processes do not keep a sandbox alive.
 
+How "never during a call" is enforced (fixed after review, races found in the first version):
+
+- **Stopping state.** Pause and kill take the user's mirror lock, then the box lock, re-check `active == 0`, and set `state = "stopping"` before snapshotting. A call that arrives now waits in `ensure` and resumes the sandbox afterwards instead of being killed underneath.
+- **Long calls.** While a call runs, the tick refreshes the E2B timeout, so the safety net does not pause a 20-minute build. A command lost mid-run (`SandboxLost`) is reported, **never re-run**: only calls that never started are retried.
+- **Credentials.** Each box knows when its mount credential expires (`creds_until`). The tick refreshes and remounts at an idle point; a call whose timeout would outlive the credential gets a fresh mount first.
+- **Budget in the tick.** `day_minutes` is checked on every tick too, not only at start: a user over budget is paused after the current call. Running slots are reserved under a lock, so concurrent starts cannot exceed `max_running`.
+- **A container that disappeared** (killed by an admin, OOM) is detected from docker's error and started again on the next command.
+
 ### Where data lives
 
 | Path | Lives in | Survives stop? |
 |---|---|---|
 | `/work` | the store | always |
-| `/home/user/repos` | sandbox disk (Docker: named volume `simp-home-<user_id>`) | Docker: yes (volume); E2B: via pause, the home archive and the repo mirror |
-| `/home/user/.local`, `.npm-global`, `.venvs` | sandbox disk | Docker: volume; E2B: in `/work/.simp/home.tar.zst` unless it is over `snapshot_max_mb` (then only repos go in; libraries reinstall) |
+| `/home/user/repos` | sandbox disk (Docker: named volume `simp-home-<user_id>`) | Docker: yes (volume); E2B: via pause and the **repo mirror only** (repos are never in the home archive, so an old archive cannot roll code back) |
+| `/home/user/.local`, `.npm-global`, `.venvs` | sandbox disk | Docker: volume; E2B: in `/work/.simp/home.tar.zst` unless it is over `snapshot_max_mb` (then no new archive is written; libraries reinstall) |
 | `/tmp` | tmpfs (Docker 256 MB) | no |
 
 ### Why repos are not on `/work`: the benchmark
@@ -155,7 +163,14 @@ Git touches many small files and calls `stat` a lot; each one is an HTTP round t
 3. `git push --force` branches, tags and a WIP commit (`refs/simp/wip/<session_id>`) to a bare repo `/work/.simp/repos/<name>.git`, and save the remotes to `<name>.remotes.json`;
 4. pack gitignored files (not `node_modules`, `.venv`, `dist`, ...; 10 MB per file, 50 MB total) into an archive; what is skipped is listed in `.simp-not-backed-up.txt`.
 
-On a fresh sandbox, `restore_repos` clones each missing repo from its mirror, checks out the WIP tree, restores remotes and the ignored-files archive. Failures are logged, never raised: a backup must not fail the user's tool call.
+On a fresh sandbox, `restore_repos` clones each missing repo from its mirror, checks out the WIP tree with `read-tree -u --reset` (so files deleted in the WIP stay deleted), restores remotes and the ignored-files archive. Failures are logged, never raised: a backup must not fail the user's tool call.
+
+Safety and concurrency of the mirror:
+
+- git runs with `core.hooksPath=/dev/null`, `core.fsmonitor=false` and `push --no-verify`, so repo-controlled hooks never run during a backup.
+- Only regular files go into the ignored-files archive (no symlinks); restore extracts member by member, and a bad member never deletes a repo that was restored.
+- One mirror at a time per user (`mirror_lock`), and archives are written to a temp file then renamed, so two sessions cannot corrupt them.
+- A mirror slower than 30 s continues in the background, still holding the lock; pause and kill wait for it. `<name>.status` records the last success or the error, and a stale mirror is retried before a kill.
 
 ### The Files panel goes through the store
 
@@ -186,7 +201,11 @@ Moving from local to s3 means copying `workspaces/<user_id>/` to `users/<user_id
 ### Security trade-offs
 
 - FUSE in Docker needs `/dev/fuse`, `CAP_SYS_ADMIN`, AppArmor unconfined and a network. Only one `docker exec -u 0` uses root, for the mount; every command runs as uid 1000 with no capabilities and `no-new-privileges`.
-- The mount credential is scoped: `mount_scope = "sts"` gets a 1 h STS credential whose policy allows only `users/<user_id>/*`. R2 has no STS, so there `mount_scope = "none"` hands the store key itself to the sandbox: trusted users only.
+- The mount credential is scoped: `mount_scope = "sts"` gets a 1 h STS credential whose policy allows only `users/<user_id>/*`. R2 has no STS, so there `mount_scope = "none"` hands the store key itself to the sandbox: trusted users only, and the server refuses it unless `dev_unscoped_mount = true`.
+- Docker fuse mode gives the container a bridge network that can reach `host.docker.internal` (this machine's services). It is a test mode: the server refuses it unless `dev_fuse = true`.
+- **Symlinks are refused by the file tools.** In bind mode the server touches files on the host, and a process in the container could swap a folder for a symlink between the path check and the open. So `LocalEnv` opens every path component with `O_NOFOLLOW` from the workspace root: any symlink inside the workspace is refused by `read`/`write`/`edit`/`ls` and the Files panel. `bash` inside the sandbox still follows symlinks normally.
+- The E2B template has no `sudo` for `user`; every new sandbox checks this and is killed if `sudo -n true` works (otherwise the user could read the s3fs credential).
+- One simp instance per Docker host and per E2B key: sandbox names (`simp-u-<user_id>`) and E2B tags are not instance-scoped.
 
 ## Worked example
 
@@ -198,7 +217,7 @@ Ana asks: "cut the first 10 seconds of `intro.mp4`, then commit the script chang
 4. The agent runs `git commit -am "trim"` in `/home/user/repos/site`: local disk, fast.
 5. After the call, `SandboxSync` → `after_tool`: `sync`, then `mirror_repos` pushes the new commit and a WIP ref to `/work/.simp/repos/site.git` (more PUTs).
 6. Ana sees `out.mp4` in the Files panel at once: `LIST users/ana/`, no compute.
-7. Ten minutes later the tick snapshots `/home/user` to `/work/.simp/home.tar.zst` and pauses. The running seconds are a `sandbox:e2b` usage row.
+7. Ten minutes later the tick takes the mirror lock, sets the sandbox to `stopping`, snapshots the libraries in `/home/user` (not `repos/`) to `/work/.simp/home.tar.zst` and pauses. The running seconds are a `sandbox:e2b` usage row.
 
 ## Builds on / Next
 
