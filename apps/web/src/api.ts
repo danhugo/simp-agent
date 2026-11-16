@@ -9,6 +9,13 @@ export interface AppItem {
   app: string; label: string; description: string; icon: string; provider: string | null;  // null: no login needed, connected is always true
   connected: boolean; enabled: boolean; email: string | null; status: "ok" | "needs_reconnect" | null;
   auth: "oauth" | "token" | null; token_help_url: string | null;  // auth "token": paste a token (POST .../token)
+  accounts?: Account[];  // linked accounts that can use this app, default (oldest) first
+}
+export interface Account { link_id: string; email: string | null; status: "ok" | "needs_reconnect"; created: number }
+/** REST-only (GET /api/apps/{app}): the portal detail page. */
+export interface AppDetail extends AppItem {
+  scopes: string[]; url: string; tools: { name: string; needs_approval: boolean }[];
+  calls: { at: number; tool: string; account: string | null; ok: boolean; decision: string }[];
 }
 /** REST-only (GET /api/memories), not in the protocol schema. */
 export interface MemoryItem { id: string; scope: "global" | "agent"; agent_id: string | null; content: string; created: number; source_run_id: string | null }
@@ -52,9 +59,12 @@ export const api = {
     call(`/api/sessions/${sid}/files/raw?path=${encodeURIComponent(path)}`, { method: "PUT", body: data }),
   apps: async (): Promise<AppItem[]> => (await call("/api/apps")).json(),
   setApp: (app: string, on: boolean) => call(`/api/apps/${app}/${on ? "enable" : "disable"}`, { method: "POST" }),
-  connect: async (app: string): Promise<{ url: string }> => (await call(`/api/apps/${app}/connect`, { method: "POST" })).json(),
+  appDetail: async (app: string): Promise<AppDetail> => (await call(`/api/apps/${app}`)).json(),
+  /** linkId: add this app's scopes to that account; none: Google's account chooser (add an account). */
+  connect: async (app: string, linkId?: string): Promise<{ url: string }> =>
+    (await call(`/api/apps/${app}/connect`, linkId ? json({ link_id: linkId }) : { method: "POST" })).json(),
   saveToken: (provider: string, token: string) => call(`/api/connections/${provider}/token`, json({ token })),
-  disconnect: (app: string) => call(`/api/connections/${app}`, { method: "DELETE" }),
+  disconnect: (linkId: string) => call(`/api/connections/${linkId}`, { method: "DELETE" }),
   memories: async (): Promise<MemoryItem[]> => (await call("/api/memories")).json(),
   editMemory: (id: string, content: string) => call(`/api/memories/${id}`, { ...json({ content }), method: "PATCH" }),
   deleteMemory: (id: string) => call(`/api/memories/${id}`, { method: "DELETE" }),

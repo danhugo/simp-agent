@@ -269,3 +269,11 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .mascot3d-steam i:last-child { right: 15%; animation-delay: .8s; }
 @keyframes steam { 0% { transform: translateY(40%) scale(.6); opacity: 0; } 30% { opacity: .9; } 100% { transform: translateY(-60%) scale(1.15); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .mascot3d-steam i { animation: none; opacity: .35; } }
+
+.app-open { background: none; border: 0; padding: 0; color: inherit; cursor: pointer; font: inherit; }
+.app-open:hover strong { text-decoration: underline; }
+.app-detail section { margin-top: var(--sp-4); }
+.detail-list { list-style: none; padding: 0; display: grid; gap: var(--sp-2); }
+.detail-list li { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.detail-table { border-collapse: collapse; font-size: var(--fs-sm); }
+.detail-table th, .detail-table td { text-align: left; padding: var(--sp-1) var(--sp-2); border-bottom: 1px solid var(--border); }

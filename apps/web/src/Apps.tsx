@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, AuthError, type AppItem } from "./api";
+import { api, AuthError, type AppDetail, type AppItem } from "./api";
 import { errorText } from "./Chat";
 import { IconPlus } from "./icons";
 
@@ -34,6 +34,7 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
   const [tokenFor, setTokenFor] = useState("");  // app whose "paste a token" form is open
   const [tab, setTab] = useState<"Portals" | "Skills">("Portals");
   const [tokenErr, setTokenErr] = useState("");
+  const [detail, setDetail] = useState("");  // app whose detail page is open
   const fail = useCallback((e: unknown) => { onError(e); if (!(e instanceof AuthError)) setNote({ ok: false, text: errorText(e) }); }, [onError]);
   const load = useCallback(() => api.apps().then(setItems, fail), [fail]);
   useEffect(() => { load(); }, [load]);
@@ -55,10 +56,10 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
       setTokenFor(""); setNote({ ok: true, text: `${a.label} is connected.` }); await load();
     } catch (err) { onError(err); input.value = ""; setTokenErr(errorText(err)); }
   };
-  const disconnect = async (provider: string) => {
-    if (confirm !== provider) return setConfirm(provider);  // first click asks, second disconnects
+  const disconnect = async (linkId: string) => {
+    if (confirm !== linkId) return setConfirm(linkId);  // first click asks, second disconnects
     setConfirm("");
-    try { await api.disconnect(provider); setNote({ ok: true, text: "Your account is disconnected." }); await load(); } catch (e) { fail(e); }
+    try { await api.disconnect(linkId); setNote({ ok: true, text: "Your account is disconnected." }); await load(); } catch (e) { fail(e); }
   };
 
   const tokenForm = (a: AppItem) => (
@@ -82,7 +83,7 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
     <li key={a.app} className="mem app-card" aria-label={a.label}>
       <AppIcon name={a.icon} />
       <div className="app-text">
-        <strong>{a.label}</strong>
+        <button className="link app-open" aria-label={`${a.label} details`} onClick={() => setDetail(a.app)}><strong>{a.label}</strong></button>
         <div className="muted small app-desc">{a.description}</div>
         {a.status === "needs_reconnect" && <div className="small warn">Token stopped working. Please update it.</div>}
       </div>
@@ -91,8 +92,8 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
           <div className="token-on">
             <button className={`switch ${a.enabled ? "on" : ""}`} role="switch" aria-checked={a.enabled}
               aria-label={`Use ${a.label}`} onClick={() => toggle(a)}><span /></button>
-            <button className={`ghost small ${confirm === a.provider ? "danger" : ""}`} onClick={() => disconnect(a.provider!)}
-              onBlur={() => setConfirm("")}>{confirm === a.provider ? "Disconnect?" : "Disconnect"}</button>
+            <button className={`ghost small ${confirm === a.accounts?.[0]?.link_id ? "danger" : ""}`} onClick={() => disconnect(a.accounts![0].link_id)}
+              onBlur={() => setConfirm("")}>{confirm === a.accounts?.[0]?.link_id ? "Disconnect?" : "Disconnect"}</button>
           </div>
         ) : (
           <button className="ghost icon add" aria-label={`Connect ${a.label}`} title="Connect" onClick={() => openToken(a.app)}><IconPlus /></button>
@@ -102,7 +103,7 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
     <li key={a.app} className="mem app-card" aria-label={a.label}>
       <AppIcon name={a.icon} />
       <div className="app-text">
-        <strong>{a.label}</strong>
+        <button className="link app-open" aria-label={`${a.label} details`} onClick={() => setDetail(a.app)}><strong>{a.label}</strong></button>
         <div className="muted small app-desc">{a.description}</div>
         {a.status === "needs_reconnect" && <div className="small warn">Access expired. Please reconnect.</div>}
       </div>
@@ -118,8 +119,9 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
   const section = (title: string, list: AppItem[]) => list.length > 0 && (
     <section aria-label={title}><h2>{title}</h2><ul className="app-grid">{list.map(card)}</ul></section>
   );
-  // one account line per connected login provider (only Google today); no-auth apps (provider null) have none
-  const accounts = [...new Map((items ?? []).filter((a) => a.provider && a.connected && a.auth !== "token").map((a) => [a.provider!, a])).values()];
+  // one line per linked OAuth account (Google); token apps disconnect on their card, no-auth apps have none
+  const accounts = [...new Map((items ?? []).filter((a) => a.auth === "oauth").flatMap((a) => (a.accounts ?? []).map((x) => [x.link_id, { ...x, provider: a.provider! }] as const))).values()];
+  if (detail) return <Detail app={detail} onBack={() => { setDetail(""); load(); }} fail={fail} menuButton={menuButton} />;
 
   return (
     <main className="memory">
@@ -136,13 +138,65 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
           {section("Connected", items.filter((a) => a.enabled))}
           {section("Available", items.filter((a) => !a.enabled))}
           {accounts.map((a) => (
-            <p key={a.provider} className="muted small account-line">
+            <p key={a.link_id} className="muted small account-line">
               <span>{a.provider === "google" ? "Google" : a.provider} account: {a.email ?? "connected"}</span>
-              <button className={`ghost ${confirm === a.provider ? "danger" : ""}`} onClick={() => disconnect(a.provider!)}
-                onBlur={() => setConfirm("")}>{confirm === a.provider ? "Disconnect?" : "Disconnect"}</button>
+              <button className={`ghost ${confirm === a.link_id ? "danger" : ""}`} onClick={() => disconnect(a.link_id)}
+                onBlur={() => setConfirm("")}>{confirm === a.link_id ? "Disconnect?" : "Disconnect"}</button>
             </p>
           ))}
         </>}
+        </>}
+      </div>
+    </main>
+  );
+}
+
+const day = (t: number) => new Date(t * 1000).toLocaleDateString();
+
+/** Portal detail page: its accounts, scopes, tools, MCP URL and recent calls. */
+function Detail({ app, onBack, fail, menuButton }: { app: string; onBack: () => void; fail: (e: unknown) => void; menuButton: React.ReactNode }) {
+  const [d, setD] = useState<AppDetail | null>(null);
+  const [confirm, setConfirm] = useState("");
+  const load = useCallback(() => api.appDetail(app).then(setD, fail), [app, fail]);
+  useEffect(() => { load(); }, [load]);
+  const add = async () => { try { location.href = (await api.connect(app)).url; } catch (e) { fail(e); } };
+  const disconnect = async (linkId: string) => {
+    if (confirm !== linkId) return setConfirm(linkId);
+    setConfirm("");
+    try { await api.disconnect(linkId); await load(); } catch (e) { fail(e); }
+  };
+  return (
+    <main className="memory">
+      <header className="home-head">{menuButton}<button className="ghost" onClick={onBack}>← Portals</button><h1>{d?.label ?? app}</h1></header>
+      <div className="memory-body app-detail">
+        {d === null ? <p className="muted">Loading…</p> : <>
+          <p className="muted">{d.description}</p>
+          {d.provider && <section aria-label="Accounts"><h2>Accounts</h2>
+            {(d.accounts ?? []).length === 0 && <p className="muted small">No account connected.</p>}
+            <ul className="detail-list">{(d.accounts ?? []).map((x, i) => (
+              <li key={x.link_id}>
+                <span>{x.email ?? "account"}{i === 0 && <span className="muted small"> (default)</span>}</span>
+                <span className={`small ${x.status === "ok" ? "muted" : "warn"}`}>{x.status === "ok" ? "connected" : "needs reconnect"} · {day(x.created)}</span>
+                <button className={`ghost small ${confirm === x.link_id ? "danger" : ""}`} onClick={() => disconnect(x.link_id)}
+                  onBlur={() => setConfirm("")}>{confirm === x.link_id ? "Disconnect?" : "Disconnect"}</button>
+              </li>))}
+            </ul>
+            {d.auth === "oauth" && <button className="ghost" onClick={add}>+ Add account</button>}
+          </section>}
+          {d.scopes.length > 0 && <section aria-label="Scopes"><h2>Granted scopes</h2>
+            <ul className="detail-list">{d.scopes.map((s) => <li key={s}><code>{s}</code></li>)}</ul></section>}
+          <section aria-label="Tools"><h2>Tools</h2>
+            {d.tools.length === 0 ? <p className="muted small">Tools show here after a chat uses this portal.</p>
+              : <ul className="detail-list">{d.tools.map((t) => (
+                <li key={t.name}><code>{t.name}</code><span className="muted small">{t.needs_approval ? "needs approval" : "auto"}</span></li>))}</ul>}
+          </section>
+          <section aria-label="MCP URL"><h2>MCP URL</h2><p><code>{d.url}</code></p></section>
+          <section aria-label="Recent calls"><h2>Recent calls</h2>
+            {d.calls.length === 0 ? <p className="muted small">No calls yet.</p>
+              : <table className="detail-table"><thead><tr><th>Time</th><th>Tool</th><th>Account</th><th>OK</th></tr></thead>
+                <tbody>{d.calls.map((c, i) => (
+                  <tr key={i}><td>{new Date(c.at * 1000).toLocaleString()}</td><td>{c.tool}</td><td>{c.account ?? "-"}</td><td>{c.ok ? "yes" : "no"}</td></tr>))}</tbody></table>}
+          </section>
         </>}
       </div>
     </main>

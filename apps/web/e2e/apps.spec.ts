@@ -10,14 +10,15 @@ async function login(p: Page, hash = "") {
 const APPS = [["gmail", "Gmail"], ["drive", "Google Drive"], ["calendar", "Google Calendar"]];
 const apps = (connected: boolean, off: string[] = []) => APPS.map(([app, label]) => ({
   app, label, description: `${label} for the agent`, icon: app, provider: "google",
-  connected, enabled: connected && !off.includes(app), email: connected ? "me@example.com" : null, status: connected ? "ok" : null,
+  connected, enabled: connected && !off.includes(app), email: connected ? "me@example.com" : null, status: connected ? "ok" : null, auth: "oauth",
+  accounts: connected ? [{ link_id: "lnk_g1", email: "me@example.com", status: "ok", created: 1 }] : [],
 }));
 
 test("apps: connect state, toggle drive off/on, disconnect (mocked API)", async ({ page }) => {
   let connected = false, off: string[] = [];
   const calls: string[] = [];
   await page.route("**/api/apps", (r) => r.fulfill({ json: apps(connected, off) }));
-  await page.route(/\/api\/(apps\/\w+\/\w+|connections\/google(\/start)?)$/, (r) => {
+  await page.route(/\/api\/(apps\/\w+\/\w+|connections\/lnk_\w+)$/, (r) => {
     const path = new URL(r.request().url()).pathname;
     calls.push(r.request().method() + " " + path);
     const m = path.match(/apps\/(\w+)\/(enable|disable)/);
@@ -59,7 +60,7 @@ test("apps: connect state, toggle drive off/on, disconnect (mocked API)", async 
   await expect(dis).toHaveText("Disconnect?");
   await dis.click();
   await expect(available.getByRole("button", { name: "Connect Gmail" })).toBeVisible();
-  expect(calls).toEqual(["POST /api/apps/gmail/connect", "POST /api/apps/drive/disable", "POST /api/apps/drive/enable", "DELETE /api/connections/google"]);
+  expect(calls).toEqual(["POST /api/apps/gmail/connect", "POST /api/apps/drive/disable", "POST /api/apps/drive/enable", "DELETE /api/connections/lnk_g1"]);
 });
 
 test("no-auth app: switch only, toggles on and off without a login", async ({ page }) => {
@@ -92,8 +93,9 @@ test("token app (GitHub): paste token, server error, disconnect (mocked API)", a
   await page.route("**/api/apps", (r) => r.fulfill({ json: [{
     app: "github", label: "GitHub", description: "Repos, issues and PRs", icon: "github", provider: "github",
     connected, enabled: connected, email: null, status: connected ? "ok" : null, auth: "token", token_help_url: "https://example.com/help",
+    accounts: connected ? [{ link_id: "lnk_gh1", email: "octo", status: "ok", created: 1 }] : [],
   }] }));
-  await page.route(/\/api\/connections\/github(\/token)?$/, (r) => {
+  await page.route(/\/api\/connections\/(github\/token|lnk_gh1)$/, (r) => {
     const req = r.request();
     calls.push(req.method() + " " + new URL(req.url()).pathname + (req.postData() ? " " + req.postData() : ""));
     if (req.method() === "DELETE") { connected = false; return r.fulfill({ json: { ok: true } }); }
@@ -125,7 +127,7 @@ test("token app (GitHub): paste token, server error, disconnect (mocked API)", a
   await expect(dis).toHaveText("Disconnect?");
   await dis.click();
   await expect(page.getByRole("region", { name: "Available" }).getByRole("button", { name: "Connect GitHub" })).toBeVisible();
-  expect(calls).toEqual(['POST /api/connections/github/token {"token":"bad"}', 'POST /api/connections/github/token {"token":"ghp_good"}', "DELETE /api/connections/github"]);
+  expect(calls).toEqual(['POST /api/connections/github/token {"token":"bad"}', 'POST /api/connections/github/token {"token":"ghp_good"}', "DELETE /api/connections/lnk_gh1"]);
 });
 
 test("approval card for an MCP tool shows app + action and readable args", async ({ page }) => {
@@ -145,4 +147,45 @@ test("approval card for an MCP tool shows app + action and readable args", async
   await expect(card.locator("li").first()).toHaveText("to: a@b.c");
   await expect(card.locator("pre")).toHaveCount(0);
   for (const n of ["Allow", "Always", "Deny"]) await expect(card.getByRole("button", { name: n })).toBeVisible();
+});
+
+test("portal detail page: accounts, add account, scopes, tools, MCP URL, recent calls (mocked API)", async ({ page }) => {
+  let accounts = [{ link_id: "lnk_a", email: "a@x.com", status: "ok", created: 1700000000 },
+    { link_id: "lnk_b", email: "b@x.com", status: "needs_reconnect", created: 1700100000 }];
+  const calls: string[] = [];
+  await page.route("**/api/apps", (r) => r.fulfill({ json: apps(true) }));
+  await page.route("**/api/apps/gmail", (r) => r.fulfill({ json: {
+    ...apps(true)[0], accounts, scopes: ["https://www.googleapis.com/auth/gmail.modify"], url: "https://gmailmcp.googleapis.com/mcp/v1",
+    tools: [{ name: "search", needs_approval: false }, { name: "send", needs_approval: true }],
+    calls: [{ at: 1700200000, tool: "send", account: "b@x.com", ok: true, decision: "allow" }],
+  } }));
+  await page.route(/\/api\/(apps\/gmail\/connect|connections\/lnk_\w+)$/, (r) => {
+    const path = new URL(r.request().url()).pathname;
+    calls.push(r.request().method() + " " + path);
+    if (path.endsWith("/connect")) return r.fulfill({ json: { url: "/?oauth=1#crafts?ok=google" } });
+    accounts = accounts.filter((a) => !path.endsWith(a.link_id));
+    return r.fulfill({ json: { ok: true } });
+  });
+  await login(page, "#crafts");
+  await page.getByRole("button", { name: "Gmail details" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Gmail" })).toBeVisible();
+  const acc = page.getByRole("region", { name: "Accounts" });
+  await expect(acc.getByRole("listitem")).toHaveCount(2);
+  await expect(acc.getByRole("listitem").first()).toContainText("a@x.com (default)");
+  await expect(acc.getByRole("listitem").nth(1)).toContainText("needs reconnect");
+  await expect(page.getByRole("region", { name: "Scopes" })).toContainText("gmail.modify");
+  const tools = page.getByRole("region", { name: "Tools" });
+  await expect(tools.locator("li").first()).toContainText("search");
+  await expect(tools).toContainText("needs approval");
+  await expect(page.getByRole("region", { name: "MCP URL" })).toContainText("gmailmcp.googleapis.com");
+  await expect(page.getByRole("region", { name: "Recent calls" }).locator("tbody tr")).toHaveText(/send\s*b@x.com\s*yes/);
+  await page.screenshot({ path: "test-results/portal-detail.png" });
+  const dis = acc.getByRole("listitem").first().getByRole("button", { name: "Disconnect" });
+  await dis.click();
+  await expect(dis).toHaveText("Disconnect?");
+  await dis.click();
+  await expect(acc.getByRole("listitem")).toHaveCount(1);
+  await expect(acc.getByRole("listitem").first()).toContainText("b@x.com (default)");
+  await acc.getByRole("button", { name: "+ Add account" }).click();
+  await expect.poll(() => calls).toEqual(["DELETE /api/connections/lnk_a", "POST /api/apps/gmail/connect"]);
 });

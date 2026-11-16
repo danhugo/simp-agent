@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import dataclasses
 import hashlib
 import json
 import logging
@@ -119,6 +120,10 @@ def _granted(row: dict | None) -> set[str]:
     return set((row and row.get("scopes") or "").split())
 
 
+def new_link_id() -> str:
+    return "lnk_" + secrets.token_hex(4)
+
+
 class Connections:
     def __init__(self, settings: dict, store, keys: dict):
         self.settings, self.store, self.keys = settings, store, keys
@@ -156,8 +161,9 @@ class Connections:
                     who = j.get("login") or j.get("email") or j.get("name")
                 except Exception:
                     pass
-        await self.store.save_connection(user_id, name, who, self.fernet.encrypt(token.encode()).decode(), "",
-                                         NO_EXPIRY)
+        same = next((r for r in await self.links(user_id, name) if who and r["account_email"] == who), None)
+        await self.store.save_connection(user_id, same["link_id"] if same else new_link_id(), name, who,
+                                         self.fernet.encrypt(token.encode()).decode(), "", NO_EXPIRY)
         for n, app in self.app_list.items():  # a forgotten app turns on again with its new token
             if app.get("provider") == name:
                 await self.store.set_app_disabled(user_id, n, False)
@@ -172,12 +178,20 @@ class Connections:
         return f"{self.settings.get('public_url', 'http://localhost:8766').rstrip('/')}/api/connections/{name}/callback"
 
     def authorized(self, app: dict, row: dict | None) -> bool:
-        """Provider connected and every scope of this app granted (apps without scopes: the login is enough)."""
+        """This link has every scope of this app (apps without scopes: the login is enough)."""
         return row is not None and set(app.get("scopes", ())) <= _granted(row)
 
-    def start(self, user_id: str, app_name: str) -> tuple[str, str]:
+    async def links(self, user_id: str, prov: str) -> list[dict]:
+        """The user's accounts of one provider, oldest (= default) first."""
+        return [r for r in await self.store.connections(user_id) if r["app"] == prov]
+
+    async def link(self, user_id: str, link_id: str) -> dict | None:
+        return next((r for r in await self.store.connections(user_id) if r["link_id"] == link_id), None)
+
+    def start(self, user_id: str, app_name: str, link: dict | None = None) -> tuple[str, str]:
         """(auth URL, browser nonce) for one app: only its scopes (+ the provider's base ones); Google adds them to
-        earlier grants. The nonce goes in an HttpOnly cookie; the callback needs it, so a URL sent to someone else fails."""
+        earlier grants. The nonce goes in an HttpOnly cookie; the callback needs it, so a URL sent to someone else fails.
+        link None: Google shows the account chooser (add an account); a link: add scopes to that account only."""
         if app_name not in self.app_list or not self.app_list[app_name].get("provider"):
             raise LookupError(f"unknown app {app_name!r}")
         name = self.app_list[app_name]["provider"]
@@ -188,12 +202,12 @@ class Connections:
         now = time.time()
         self.pending = {s: v for s, v in self.pending.items() if v[3] > now}
         state, verifier, nonce = secrets.token_urlsafe(32), secrets.token_urlsafe(64), secrets.token_urlsafe(32)
-        self.pending[state] = (user_id, name, verifier, now + STATE_TTL, app_name, _hash(nonce))
+        self.pending[state] = (user_id, name, verifier, now + STATE_TTL, app_name, _hash(nonce), link and link["link_id"])
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
         q = {"client_id": cid, "redirect_uri": self.redirect_uri(name), "response_type": "code",
              "scope": " ".join(a["scopes"] + self.app_list[app_name].get("scopes", [])), "state": state, "code_challenge": challenge,
-             "code_challenge_method": "S256", "access_type": "offline", "prompt": "consent",
-             "include_granted_scopes": "true"}
+             "code_challenge_method": "S256", "access_type": "offline", "prompt": "consent select_account",
+             "include_granted_scopes": "true", **({"login_hint": link["account_email"]} if link else dict())}
         return f"{a['auth_url']}?{urllib.parse.urlencode(q)}", nonce
 
     async def callback(self, name: str, code: str, state: str, nonce: str = "") -> str:
@@ -201,7 +215,7 @@ class Connections:
         v = self.pending.pop(state, None)
         if v is None or v[1] != name or v[3] < time.time() or not secrets.compare_digest(v[5], _hash(nonce)):
             raise ValueError("bad or expired state")
-        user_id, _, verifier, _, app_name, _ = v
+        user_id, _, verifier, _, app_name, _, link_id = v
         a = self.app(name)
         cid, sec = self._client(a)
         r = await self.http.post(a["token_url"], data={
@@ -212,11 +226,18 @@ class Connections:
         t = r.json()
         if not t.get("refresh_token"):
             raise ValueError("no refresh token returned")
+        email = _email(t.get("id_token"))
+        mine = await self.links(user_id, name)
+        if link_id:  # adding scopes to one account: the user must not pick another one in Google's chooser
+            old = next((r for r in mine if r["link_id"] == link_id), None)
+            if old is None or not email or email != old["account_email"]:
+                raise ValueError("signed in with a different account; nothing saved")
+        else:  # same account again -> update it, else a new account
+            old = next((r for r in mine if email and r["account_email"] == email), None)
         # Google's "scope" = everything granted so far (include_granted_scopes); missing -> what we asked for
-        old = next((r for r in await self.store.connections(user_id) if r["app"] == name), None)
         scopes = t.get("scope") or " ".join(sorted(_granted(old) | set(a["scopes"]) |
                                                   set(self.app_list[app_name].get("scopes", []))))
-        await self.store.save_connection(user_id, name, _email(t.get("id_token")), self.fernet.encrypt(
+        await self.store.save_connection(user_id, old["link_id"] if old else new_link_id(), name, email, self.fernet.encrypt(
             t["access_token"].encode()).decode(), self.fernet.encrypt(t["refresh_token"].encode()).decode(),
             time.time() + float(t.get("expires_in", 3600)), scopes)
         await self.store.set_app_disabled(user_id, app_name, False)  # only the app just connected turns on
@@ -232,7 +253,7 @@ class Connections:
         now = time.time()
         self.pending = {s: v for s, v in self.pending.items() if v[3] > now}
         state, verifier, nonce = secrets.token_urlsafe(32), secrets.token_urlsafe(64), secrets.token_urlsafe(32)
-        self.pending[state] = (None, "login", verifier, now + STATE_TTL, None, _hash(nonce))
+        self.pending[state] = (None, "login", verifier, now + STATE_TTL, None, _hash(nonce), None)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
         q = {"client_id": cid, "redirect_uri": self.login_redirect_uri(), "response_type": "code",
              "scope": " ".join(a["scopes"]), "state": state, "code_challenge": challenge,
@@ -261,11 +282,8 @@ class Connections:
         app = self.app_list.get(app_name)
         if not app or not app.get("provider"):
             raise LookupError(f"unknown app {app_name!r}")
-        prov = app["provider"]
-        row = next((r for r in await self.store.connections(user_id) if r["app"] == prov), None)
-        if row is None:
-            return
-        await self._forget(user_id, app_name, row)
+        for row in await self.links(user_id, app["provider"]):
+            await self._forget(user_id, app_name, row)
         await self.store.set_app_disabled(user_id, app_name, True)  # stays off until this app is connected again
 
     async def _forget(self, user_id: str, app_name: str, row: dict) -> None:
@@ -273,28 +291,37 @@ class Connections:
         left = _granted(row) - set(app.get("scopes", ()))
         others = [a for n, a in self.app_list.items() if a.get("provider") == prov and n != app_name]
         if not app.get("scopes") or not any(set(a.get("scopes", ())) <= left for a in others if a.get("scopes")):
-            return await self.delete(user_id, prov)
-        await self.store.set_connection_scopes(user_id, prov, " ".join(sorted(left)))
+            return await self.delete(user_id, row["link_id"])
+        await self.store.set_connection_scopes(user_id, row["link_id"], " ".join(sorted(left)))
 
     async def list(self, user_id: str) -> list[dict]:
-        rows = {r["app"]: r for r in await self.store.connections(user_id)}
-        return [{"app": n, "label": a.get("label", n), "connected": n in rows,
-                 "email": rows[n]["account_email"] if n in rows else None,
-                 "status": rows[n]["status"] if n in rows else None} for n, a in self.apps.items()]
+        """Every linked account (never tokens); default = the oldest of its provider."""
+        seen, out = set(), list()
+        for r in await self.store.connections(user_id):
+            out.append({"link_id": r["link_id"], "provider": r["app"], "label": self.apps.get(r["app"], dict()).get(
+                "label", r["app"]), "email": r["account_email"], "status": r["status"], "created": r["created"],
+                "scopes": sorted(_granted(r)), "default": r["app"] not in seen})
+            seen.add(r["app"])
+        return out
 
-    async def delete(self, user_id: str, name: str) -> None:
-        row = next((r for r in await self.store.connections(user_id) if r["app"] == name), None)
-        if row and row["refresh_token_enc"] and (url := self.apps.get(name, dict()).get("revoke_url")):
+    async def delete(self, user_id: str, link_id: str) -> None:
+        """Revoke and drop one account; the next oldest of its provider becomes the default. LookupError: unknown."""
+        row = await self.link(user_id, link_id)
+        if row is None:
+            raise LookupError(f"unknown link {link_id!r}")
+        name = row["app"]
+        if row["refresh_token_enc"] and (url := self.apps.get(name, dict()).get("revoke_url")):
             try:  # best effort: the row goes either way
                 await self.http.post(url, data={"token": self.fernet.decrypt(row["refresh_token_enc"]).decode()})
             except Exception as e:
                 log.warning("revoke %s failed: %s", name, type(e).__name__)
-        await self.store.delete_connection(user_id, name)
-        await self.store.clear_app_flags(user_id, [n for n, a in self.app_list.items() if a.get("provider") == name])
+        await self.store.delete_connection(user_id, link_id)
+        if not await self.links(user_id, name):  # last account gone: its apps start fresh on the next connect
+            await self.store.clear_app_flags(user_id, [n for n, a in self.app_list.items() if a.get("provider") == name])
 
     async def list_apps(self, user_id: str) -> list[dict]:
         """Every app; enabled = provider connected and not turned off (default on: a login enables all its apps)."""
-        rows = {r["app"]: r for r in await self.store.connections(user_id)}
+        rows = await self.store.connections(user_id)
         off, on = await self.store.disabled_apps(user_id), await self.store.enabled_apps(user_id)
         out = list()
         for n, a in self.app_list.items():
@@ -303,13 +330,17 @@ class Connections:
                             "icon": a.get("icon", n), "provider": None, "auth": None, "connected": True, "enabled": n in on,
                             "email": None, "status": None})
                 continue
-            row, prov = rows.get(a["provider"]), self.apps.get(a["provider"], dict())
+            prov = self.apps.get(a["provider"], dict())
+            ok = [r for r in rows if r["app"] == a["provider"] and self.authorized(a, r)]
+            row = ok[0] if ok else None  # the default account for this app
             out.append({"app": n, "label": a.get("label", n), "description": a.get("description", ""),
                         "icon": a.get("icon", n), "provider": a["provider"], "auth": prov.get("kind", "oauth"),
                         **({"token_help": prov.get("token_help", ""), "token_help_url": prov.get("token_help_url")}
-                           if prov.get("kind") == "token" else dict()), "connected": self.authorized(a, row),
-                        "enabled": self.authorized(a, row) and n not in off, "email": row and row["account_email"],
-                        "status": row and row["status"]})
+                           if prov.get("kind") == "token" else dict()), "connected": row is not None,
+                        "enabled": row is not None and n not in off, "email": row and row["account_email"],
+                        "status": row and row["status"], "accounts": [
+                            {"link_id": r["link_id"], "email": r["account_email"], "status": r["status"],
+                             "created": r["created"]} for r in ok]})
         return out
 
     async def set_enabled(self, user_id: str, name: str, on: bool) -> None:
@@ -319,8 +350,7 @@ class Connections:
         prov = self.app_list[name].get("provider")
         if prov is None:
             return await self.store.set_app_on(user_id, name, on)
-        row = next((r for r in await self.store.connections(user_id) if r["app"] == prov), None)
-        if on and not self.authorized(self.app_list[name], row):
+        if on and not any(self.authorized(self.app_list[name], r) for r in await self.links(user_id, prov)):
             raise PermissionError(f"connect {name} first")
         await self.store.set_app_disabled(user_id, name, not on)
 
@@ -331,7 +361,7 @@ class Connections:
                 return self.fernet.decrypt(row["access_token_enc"]).decode()
             refresh = self.fernet.decrypt(row["refresh_token_enc"]).decode()
         except InvalidToken:  # SIMP_SECRET_KEY changed: only this login is lost
-            await self.store.set_connection_status(user_id, row["app"], "needs_reconnect")
+            await self.store.set_connection_status(user_id, row["link_id"], "needs_reconnect")
             return None
         a = self.apps[row["app"]]
         try:
@@ -344,11 +374,11 @@ class Connections:
         t = r.json() if r.status_code == 200 else None
         if not t or not t.get("access_token"):
             if r.status_code in (400, 401):  # invalid_grant: revoked or expired for good
-                await self.store.set_connection_status(user_id, row["app"], "needs_reconnect")
+                await self.store.set_connection_status(user_id, row["link_id"], "needs_reconnect")
             else:
                 log.warning("refresh %s failed: HTTP %s", row["app"], r.status_code)
             return None
-        await self.store.update_connection_token(user_id, row["app"], self.fernet.encrypt(
+        await self.store.update_connection_token(user_id, row["link_id"], self.fernet.encrypt(
             t["access_token"].encode()).decode(), time.time() + float(t.get("expires_in", 3600)))
         return t["access_token"]
 
@@ -357,6 +387,7 @@ class Connections:
         out, problems = list(), list()
         off, on = await self.store.disabled_apps(user_id), await self.store.enabled_apps(user_id)
         out += [{"name": n, "url": a["url"]} for n, a in self.app_list.items() if a.get("provider") is None and n in on]
+        defaults = set()  # apps seen: the first authorized link of each app is its default
         for row in await self.store.connections(user_id):
             mine = {n: a for n, a in self.app_list.items() if a.get("provider") == row["app"] and n not in off
                     and self.authorized(a, row)}
@@ -367,16 +398,17 @@ class Connections:
                 continue
             token = await self._access(user_id, row) if row["status"] == "ok" else None
             if token is None:
-                gone = (await self._status(user_id, row["app"])) != "ok"
-                problems.append(f"{a.get('label', row['app'])} " + ("connection needs reconnect (Crafts > Portals)"
+                gone = (await self.link(user_id, row["link_id"]) or dict()).get("status") != "ok"
+                who = f" ({row['account_email']})" if row["account_email"] else ""
+                problems.append(f"{a.get('label', row['app'])}{who} " + ("connection needs reconnect (Crafts > Portals)"
                                 if gone else "is not reachable right now, try again later"))
                 continue
-            out += [{"name": n, "url": app["url"], "headers": self._header(row["app"], token), "provider": row["app"]}
-                    for n, app in mine.items()]
+            for n, app in mine.items():
+                out.append({"name": n, "url": app["url"], "headers": self._header(row["app"], token), "provider": row[
+                    "app"], "link_id": row["link_id"], "email": row["account_email"], "default": n not in defaults})
+                defaults.add(n)
         return out, problems
 
-    async def _status(self, user_id: str, prov: str) -> str | None:
-        return next((r["status"] for r in await self.store.connections(user_id) if r["app"] == prov), None)
 
 
 class UserMcp(McpPlugin):
@@ -388,6 +420,8 @@ class UserMcp(McpPlugin):
         super().__init__(servers=servers)
         self.run, self.names = run, set()
         self.api, self.config, self.stale = None, dict(), False  # stale: the user changed portals; reload next turn
+        self.emails: dict[str, str | None] = dict()  # link_id -> account email (audit, approval card)
+        self.default: dict[str, str] = dict()  # app -> its default link_id
 
     async def reload(self) -> None:
         """Drop the old connections and tools, read the user's portals again. Only between turns."""
@@ -399,6 +433,7 @@ class UserMcp(McpPlugin):
             self.api.unregister_tool(n)
             self.run.session.needs_approval.discard(n)
         self.names, self.servers, self.stop = set(), None, asyncio.Event()
+        self.emails, self.default = dict(), dict()
         await self.setup(self.api, self.config)
 
     async def tool_call(self, call):
@@ -414,20 +449,84 @@ class UserMcp(McpPlugin):
                 await self.run.durable(p.Notice, level="warning", text=text)
         if not self.servers:
             return
-        await super().setup(api, config)
+        for spec in self.servers:
+            if spec.get("link_id"):
+                self.emails[spec["link_id"]] = spec.get("email")
+                if spec.get("default"):
+                    self.default[spec["name"]] = spec["link_id"]
+        tools = list()
+
+        class Collect:  # gather every link's tools first: same-named tools of one app become one tool
+            emit = api.emit
+
+            def register_tool(self, t):
+                tools.append(t)
+        await super().setup(Collect(), config)
+        by_name: dict[str, list] = dict()
+        for t in tools:
+            by_name.setdefault(t.name, list()).append(t)
+        for ts in by_name.values():
+            api.register_tool(ts[0] if len(ts) == 1 else self._merge(ts))
         session = self.run.session
         for t in session.agent.tools:
             if hasattr(t, "read_only_hint"):  # set by McpPlugin on every MCP tool
                 self.names.add(t.name)
                 if t.read_only_hint is not True:
                     session.needs_approval.add(t.name)
+        # for the portal detail page; ponytail: in memory, filled when a chat opens the app (empty after a restart)
+        known = self.run.mgr.tools_seen.setdefault(self.run.user_id, dict())
+        for t in session.agent.tools:
+            if t.name in self.names:
+                app, _, tool = t.name.partition("__")
+                known.setdefault(app, dict())[tool] = t.read_only_hint is not True
+
+    async def _tools(self, spec: dict, client):
+        out = await super()._tools(spec, client)
+        for t in out:
+            t.link_id = spec.get("link_id")
+        return out
+
+    def _merge(self, ts: list):
+        """One tool for many accounts: optional link_id picks the account (missing -> the default).
+        The model sees link ids and emails only, never tokens."""
+        app = ts[0].name.partition("__")[0]
+        by_link = {t.link_id: t for t in ts}
+        default = self.default.get(app) or ts[0].link_id
+        base = by_link[default]
+        accounts = ", ".join(f"{lid} = {self.emails.get(lid) or 'account'}" + (" (default)" if lid == default else "")
+                             for lid in by_link)
+        params = dict(base.parameters)
+        params["properties"] = {**params.get("properties", dict()), "link_id": {
+            "type": "string", "enum": list(by_link), "description": f"Which account to use: {accounts}. Omit for the default."}}
+
+        async def execute(args, ctx):
+            args = dict(args)
+            t = by_link.get(args.pop("link_id", None) or default)
+            if t is None:
+                return f"{base.name} error: unknown link_id; use one of {', '.join(by_link)}"
+            return await t.execute(args, ctx)
+        tool = dataclasses.replace(base, parameters=params, execute=execute)
+        tool.read_only_hint, tool.destructive_hint = base.read_only_hint, base.destructive_hint
+        tool.link_id = None
+        return tool
+
+    def link_of(self, call) -> str | None:
+        app = call.name.partition("__")[0]
+        return (call.arguments or dict()).get("link_id") or self.default.get(app)
+
+    def shown_args(self, call) -> dict:
+        """Approval card args: the account's email instead of the raw link id."""
+        args = dict(call.arguments or dict())
+        if "link_id" in args:
+            args["link_id"] = self.emails.get(args["link_id"]) or args["link_id"]
+        return args
 
     async def _connect(self, spec: dict):
         try:
             return await super()._connect(spec)
         except Exception as e:  # revoked/expired token: ask the user to reconnect instead of failing every run
             if spec.get("provider") and _is_401(e):
-                await self.run.mgr.store.set_connection_status(self.run.user_id, spec["provider"], "needs_reconnect")
+                await self.run.mgr.store.set_connection_status(self.run.user_id, spec["link_id"], "needs_reconnect")
             raise
 
     async def tool_result(self, call, result):
@@ -435,5 +534,5 @@ class UserMcp(McpPlugin):
             server, _, tool = call.name.partition("__")
             ok = not result.is_error and not result.content.startswith(f"{call.name} error:")
             await self.run.mgr.store.add_audit(self.run.user_id, self.run.sid, server, tool,
-                                               self.run.decisions.pop(call.id, "auto"), ok)
+                                               self.run.decisions.pop(call.id, "auto"), ok, self.link_of(call))
         return None
