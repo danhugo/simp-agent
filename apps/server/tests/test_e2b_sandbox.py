@@ -274,8 +274,21 @@ async def test_paused_behind_our_back_is_resumed(cloud):
     env = await sb.open("s1", "u1")
     await go(env)
     await cloud.pause(env.box.sbx_id)  # `simp-server sandboxes --pause-all` from another process
-    assert (await go(env, "echo again"))[0] == 0
+    # a command is never re-run: behind a buffering proxy the "gone" error can come after it started
+    with pytest.raises(e2b_mod.SandboxLost):
+        await go(env, "echo again")
+    assert (await go(env, "echo again"))[0] == 0  # the next call resumes
     assert cloud.kinds("connect")
+
+
+async def test_timeout_before_pid_file_waits_for_it(cloud):
+    """The kill waits for the pid file, so a timeout before the wrapper wrote it still kills the command."""
+    sb = make(cloud)
+    env = await sb.open("s1", "u1")
+    cloud.gates["slow"] = asyncio.Event()
+    assert (await env.exec("slow", ".", 0.05, asyncio.Event()))[0] is None
+    kill = cloud.runs("kill -9")[-1]
+    assert kill.index("[ -s") < kill.index("kill -9")
 
 
 async def test_usage_budget_and_concurrency(cloud):

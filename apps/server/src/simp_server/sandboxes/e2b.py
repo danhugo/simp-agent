@@ -100,7 +100,9 @@ async def _run(sbx, command: str, cwd: str, timeout, cancel, on_output=None, use
     stop.cancel()
     if wait not in done:
         with contextlib.suppress(Exception):
-            await sbx.commands.run(f"kill -9 -- -$(cat {pidfile}) 2>/dev/null; rm -f {pidfile}", user=user, timeout=10)
+            # the wrapper may not have written the pid file yet: wait up to 5 s for it
+            await sbx.commands.run(f"for i in $(seq 50); do [ -s {pidfile} ] && break; sleep 0.1; done; "
+                                   f"kill -9 -- -$(cat {pidfile}) 2>/dev/null; rm -f {pidfile}", user=user, timeout=15)
         await asyncio.wait({wait}, timeout=5)  # killed: the stream ends and flushes the output a proxy held back
         wait.cancel()
         await asyncio.gather(wait, return_exceptions=True)
@@ -108,10 +110,10 @@ async def _run(sbx, command: str, cwd: str, timeout, cancel, on_output=None, use
     try:
         return wait.result().exit_code, "".join(chunks)
     except Exception as e:  # CommandExitException: a non-zero exit
-        if not started:  # could not start (e.g. paused): the caller resumes and retries, nothing ran
-            raise
-        if _gone(e):
+        if _gone(e):  # even before `started`: behind a buffering proxy run() can raise after the command began
             raise SandboxLost(f"sandbox stopped while the command ran: {e}") from e
+        if not started:  # could not start for another reason: nothing ran
+            raise
         if (code := getattr(e, "exit_code", None)) is None:
             raise
         return code, "".join(chunks)
