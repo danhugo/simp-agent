@@ -48,7 +48,7 @@ The web app is React + Vite in `apps/web/`. Types such as `ServerEvent` and `Pen
 
 ## Every call carries Ana's token
 
-The first problem starts at login. The login form posts the name and password to `/api/login` (or `/api/signup` for a new user) and stores the returned token in `localStorage`. `api.ts` then wraps `fetch` once, in `call()`, so every later call, including the event stream, carries the token:
+The first problem starts at login. The login page has one button, "Sign in with Google", which goes to `/api/auth/google/start`. After Google, the server's `/api/auth/google/callback` sends the browser back to the app as `/#login=<token>` ([27](27-store-auth.md#google-login)). `App.tsx` takes the token from the address, stores it in `localStorage`, and cleans the address. `api.ts` then wraps `fetch` once, in `call()`, so every later call, including the event stream, carries the token:
 
 ```ts
 export const getToken = () => localStorage.getItem("simp.token") ?? "";

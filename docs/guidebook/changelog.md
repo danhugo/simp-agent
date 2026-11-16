@@ -2,6 +2,10 @@
 
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
+
+## 2026-11-16
+
+- Web login is Google-only (code ce118d2): ch27 "Who are you?" rewritten (Google sign-in, `allowed_emails`, `google_login`, anchor `scrypt-passwords` -> `google-login`); ch30 login, ch31 serve.sh + e2e login helper + accounts.spec, ch32 limit 6, ch23 row 3, ref-objects note on unused `users.password`, architecture.drawio auth/users boxes; glossary: Salt and Scrypt removed, Per-device token rewritten, Allow-list added.
 ## 2026-11-16
 
 - Ch 29a updated after the code review (commit `c4ae988`): stopping state so pause/kill never race a call, provider timeout refreshed during long calls and lost commands never re-run, mount credential expiry and remount, budget enforced in the tick, repos excluded from the home archive (restored only from the mirror), mirror lock + background slow mirror + status file, git without hooks, symlinks refused by the file tools (`O_NOFOLLOW`), dev flags for docker fuse mode and unscoped mounts, no sudo in the E2B template.
