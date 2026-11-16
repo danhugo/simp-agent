@@ -567,6 +567,13 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     store = load_plugin(pl["store"])(settings)
     sandbox = load_plugin(pl["sandbox"])(settings)
     auth = load_plugin(pl["auth"])(store)
+
+    async def authed(request: Request) -> dict | None:
+        """auth plus allowed_emails on every request: Google users (name has "@") lose access once removed."""
+        u = await auth.authenticate(request)
+        if u and "@" in u["name"] and u["name"].lower() not in {e.lower() for e in settings.get("allowed_emails", [])}:
+            return None
+        return u
     mgr = SessionManager(settings, store, sandbox, stream_fn)
     files = workspace.make_store(settings, mgr.keys)  # the Files panel's view of /work: never wakes a sandbox
     if hasattr(sandbox, "compute"):
@@ -603,7 +610,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         return await call_next(request)
 
     async def user(request: Request) -> dict:
-        u = await auth.authenticate(request)
+        u = await authed(request)
         if u is None:
             raise HTTPException(401, "bad token")
         return u
@@ -625,6 +632,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             if error or not code:
                 raise ValueError(error or "no code")
             email = await mgr.conns.login_callback(code, state, request.cookies.get(OAUTH_COOKIE, ""))
+        except PermissionError as e:
+            return HTMLResponse(html.escape(str(e)), status_code=403)
         except (ValueError, RuntimeError, httpx.HTTPError) as e:
             log.warning("google sign-in failed: %s", type(e).__name__ if isinstance(e, httpx.HTTPError) else e)
             return HTMLResponse("Google sign-in failed. Please try again.", status_code=400)
@@ -809,7 +818,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
                     try:
                         yield sse(await asyncio.wait_for(q.get(), HEARTBEAT))
                     except TimeoutError:
-                        if await request.is_disconnected() or await auth.authenticate(request) is None:
+                        if await request.is_disconnected() or await authed(request) is None:
                             return  # gone, or its token was revoked/rotated
                         yield ": ping\n\n"
             finally:
