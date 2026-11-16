@@ -1,8 +1,8 @@
 :root {
   /* 3D pixel mascot (Mascot3D): 4 tones + outline, eyes, blush */
-  --m3-hi:#ffffff; --m3-base:#fbf8f2; --m3-mid:#e9e2d7; --m3-low:#d3c9ba; --m3-out:#c4c4c4; --m3-eye:#3b2f2a; --m3-blush:#f4a6a6; --m3-sweat:#9fd0ec; --m3-hot:#e86f6f;
+  --m3-hi:#ffffff; --m3-base:#fbf8f2; --m3-mid:#e9e2d7; --m3-low:#d3c9ba; --m3-out:#ddd4c6; --m3-eye:#3b2f2a; --m3-blush:#f4a6a6; --m3-sweat:#9fd0ec; --m3-hot:#e86f6f;
   /* mascot (PixelAgent): light head with outline */
-  --m-w:#fbf8f2; --m-o:#c4c4c4; --m-s:#e9e2d7; --m-h:#ffffff; --m-b:#3b2f2a; --m-p:#f4a6a6;
+  --m-w:#fbf8f2; --m-o:#ddd4c6; --m-s:#e9e2d7; --m-h:#ffffff; --m-b:#3b2f2a; --m-p:#f4a6a6;
   --bg: #ffffff; --panel: #f5f5f5; --border: #e3e3e3; --text: #1f1f1f; --muted: #5f5f5f;
   --accent: #1f1f1f; --accent-text: #ffffff; --user: #f0f0f0; --code: #f4f4f4;
   --ok: #3f6a2e; --warn: #774c0c; --err: #a3392b;
