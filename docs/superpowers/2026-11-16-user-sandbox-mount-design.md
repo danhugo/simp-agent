@@ -263,3 +263,28 @@ month each), prevented by our idle pause, the provider-side pause timeout and th
   `make minio` creates a `simp-dev` user). R2 has no STS: use `mount_scope = "none"` (the store key goes into the
   sandbox) until R2 temporary credentials are wired in.
 - Network policy for E2B sandboxes (what can be blocked).
+
+## Status and remaining work (paused 2026-11-17)
+
+Done and pushed (`79faa70` … `242a647`): steps 1–4, README + guidebook ch 29a, independent review with
+critical/major fixes (`c4ae988`), live E2B lifecycle test against real E2B (`test_e2b_live.py`: template
+`simp-sandbox`, exec, files, no sudo, pause/resume keeps /home/user, adoption, max-life kill; create ~3.4 s,
+resume ~0.4 s).
+
+Not verified yet: anything that needs a real bucket reachable from E2B.
+
+1. **Create the bucket** (R2 or S3), versioning on, lifecycle rule keeping noncurrent versions 30 days; an
+   API token limited to that bucket. Put `SIMP_TEST_S3_*` (see `tests/test_e2b_sandbox.py::test_live_e2b`)
+   and the production `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` into `~/.simp-server/.env` yourself.
+2. **Run `test_live_e2b`** (real s3fs mount in E2B): mount with scoped creds, `/work` writes reach the
+   bucket after `after_tool`, resume remount, credential refresh before expiry, home archive restore on a
+   fresh sandbox, repo mirror push/restore through the bucket. On R2 (no STS) this needs
+   `mount_scope = "none"` + `dev_unscoped_mount = true`; decide whether that is acceptable or use S3 + STS.
+3. **Provider-side pause firing** on timeout (create with a short timeout, wait, check `paused`).
+4. **Switch the real server**: migrate `~/.simp-server/workspaces/<user_id>/` to `users/<user_id>/` in the
+   bucket, set `[workspace] store = "s3"`, `[sandbox] kind = "e2b"`, restart, smoke-test from the web UI.
+
+Deferred on purpose (reviewed as minor or documented): instance-scoped sandbox names/tags (M9: one simp
+per Docker host / E2B key), container auto-restart for file ops on `/home/user` (C1 covers `exec` only),
+Mountpoint/Archil benchmark, UI for mirror status and "dev servers were restarted" notices, the remaining
+minor review items.
