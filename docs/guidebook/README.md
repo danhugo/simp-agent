@@ -42,7 +42,7 @@ The block numbers in the picture and the table are the same, in the order the st
 - [24 Part 5 · The CLI](24-cli.md) — Wrap the session in a terminal app.
 - [25 Part 5 · The server run](25-server-run.md) — Run a session on a server with a typed protocol.
 - [26 Part 5 · Transport](26-transport.md) — Stream events to clients and take commands back.
-- [27 Part 5 · Store and auth](27-store-auth.md) — Save users, sessions and events durably.
+- [27 Part 5 · Store and auth](27-store-auth.md) — Save users, sessions and events durably, and each user's linked accounts (connections).
 - [28 Part 5 · Limits](28-limits.md) — Stop runaway cost and free idle resources.
 - [29 Part 5 · Docker sandbox](29-docker-sandbox.md) — Run each session's tools inside a container.
 - [29a Part 5 · Workspace and per-user sandbox](29a-workspace-sandbox.md) — Keep files in a workspace store, run commands in one lazy sandbox per user that mounts it.

@@ -454,3 +454,9 @@ One sandbox per user, created or resumed only by the first tool call that needs 
 
 ## Single writer
 While a user's sandbox runs, all their file tools go through it (or, in bind mode, the same folder), so nothing else changes `/work` behind its back and no merge is needed. Home: [29a](29a-workspace-sandbox.md#the-mount-no-sync-step).
+
+## Connection
+One user's saved login to an outside provider (Google, GitHub): a `connections` row with encrypted tokens, email, scopes and status (`ok` or `needs_reconnect`). Tokens never reach the model. Home: [27](27-store-auth.md#connections).
+
+## Link (link_id)
+The id of one linked account inside a [connection](#connection), like `lnk_3f9a01c2`; rows are keyed `(user_id, link_id)`, so one user can link two Gmail accounts. For each app, the oldest link with that app's scopes is the default. Home: [27](27-store-auth.md#connections).

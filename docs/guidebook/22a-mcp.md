@@ -164,7 +164,17 @@ plugin_config = {"mcp": {
 }}
 ```
 
-Or, in Python, pass the list directly: `McpPlugin(servers=[{"name": "github", "command": [...]}])`. `build_plugins` also knows the name `"mcp"`, so a profile can list it. But neither the CLI nor the server fills `plugin_config["mcp"]` yet (the server passes settings only to `redact_secrets`), so today an app that wants MCP builds the plugin itself.
+Or, in Python, pass the list directly: `McpPlugin(servers=[{"name": "github", "command": [...]}])`. `build_plugins` also knows the name `"mcp"`, so a profile can list it. The CLI does not fill `plugin_config["mcp"]`; there, an app that wants MCP builds the plugin itself.
+
+<a id="on-the-server-one-mcp-plugin-per-user"></a>
+
+### On the server: one MCP plugin per user
+
+The server gives each run its own plugin, `UserMcp` (a small subclass of `McpPlugin`). Its servers come from the user's [connections](27-store-auth.md#connections): `Connections.servers(user_id)` gives one server spec per enabled app and per [link](glossary.md#link-link_id), with the access token in the header. It reads them when the first prompt sets the plugin up, and again when Ana changes her portals. So each linked account has its own MCP session.
+
+If Ana has one Gmail, nothing changes: the tools look exactly as above. If two of her links both have Gmail's scopes, both sessions list the same tools, and `UserMcp` merges each pair into one tool with one extra, optional parameter `link_id`. It is an enum of her link ids, and its description lists the emails ("lnk_a1 = ana@home.com (default), lnk_b2 = ana@work.com"). If the model leaves it out, the call goes to the default account. The model sees link ids and emails, never tokens.
+
+Every MCP call is written to the `mcp_audit` table with its `link_id`, and when the model names a `link_id`, the approval card shows that account's email instead of the raw id, so Ana knows which mailbox a "send" will use.
 
 Now the user asks "what are my open issues?". The model sees `github__list_issues` in its tool list, calls it, and gets back the marker and the list. Our core code did not change at all.
 
