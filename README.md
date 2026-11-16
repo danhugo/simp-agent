@@ -1,5 +1,7 @@
 <div align="center">
 
+<a href="docs/assets/simp-film.mp4"><img src="docs/assets/simp-film.gif" width="900" alt="Simp: plan my week, from prompt to Allow"></a>
+
 <img src="docs/assets/mascot.svg" width="96" alt="Simp">
 
 # Simp
