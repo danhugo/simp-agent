@@ -128,7 +128,7 @@ Ana may now open her own session. Problem 3: every message and event of her conv
 entries(session_id, user_id, seq, type, json)     // one row per message or event
 ```
 
-A row is one of two kinds, sharing that one `seq`. A **message** (`type = "msg"`) is part of the history the model sees ([17](17-session.md)). A **durable event** is a saved event for the browser, with a `type` like `run_state` or `tool_result` ([25](25-server-run.md)). Both sit in one table, in one order. So one read later gives back the whole conversation. Besides `users`, the store has four more tables: `tokens` (device tokens), `sessions` (one row per conversation), `entries`, and `usage` (tokens and cost of each model call, read by [28 Limits](28-limits.md)). Two more, `agents` and `memories`, hold what the agent remembers; they come below.
+A row is one of two kinds, sharing that one `seq`. A **message** (`type = "msg"`) is part of the history the model sees ([17](17-session.md)). A **durable event** is a saved event for the browser, with a `type` like `run_state` or `tool_result` ([25](25-server-run.md)). Both sit in one table, in one order. So one read later gives back the whole conversation. Besides `users`, the store has four more tables: `tokens` (device tokens), `sessions` (one row per conversation), `entries`, and `usage` (tokens and cost of each model call, read by [28 Limits](28-limits.md)). Two more, `agents` and `memories`, hold what the agent remembers; they come below. And `connections` (each user's linked accounts) and `mcp_audit` (one row per MCP call) come in [Connections](#connections).
 
 <a id="opening-the-store"></a>
 
@@ -161,6 +161,37 @@ Ana can also see and fix her notes herself, through REST:
 A wrong id, or someone else's id, gets `404`.
 
 Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.memories`, `DbMemoryStore`; [server.py](../../apps/server/src/simp_server/server.py) — the `/api/memories` routes.
+
+<a id="connections"></a>
+
+## Who is the agent acting for? Connections
+
+Ana asks her agent "what did my landlord write last week?". To answer, the agent must read *her* Gmail. Google does not know the agent, and Bob's agent must never read Ana's mail. So Ana herself must give the server a key to her account, and the server must keep that key for her alone. That key, kept for one user, is a **[connection](glossary.md#connection)**.
+
+### One user, one Gmail
+
+On the Portals page Ana clicks Gmail. The server (`Connections.start`) sends her browser to Google's sign-in page with the scopes Gmail needs (read, label, send) plus `openid` and `email`, so Google also tells us *which* address she used. Ana says yes. Google sends her back to `/api/connections/google/callback` with a one-time code, and `Connections.callback` trades that code for two tokens: a short **access token** (about one hour) and a long **refresh token**. A random `state` and a nonce in an HttpOnly cookie make sure the code came back to the same browser that started; a code sent to someone else fails.
+
+The tokens go into a `connections` row in `simp.db`, next to her sessions. They are encrypted first (Fernet, with `SIMP_SECRET_KEY` from `<data_dir>/.env`), so a copied `simp.db` gives a thief nothing. The row also keeps the verified email, the granted scopes, the expiry time and a status, `ok`.
+
+When Ana's first prompt sets up the run's MCP plugin, the server asks `Connections.servers(user_id)` for Ana's MCP servers ([22a](22a-mcp.md#on-the-server-one-mcp-plugin-per-user)). If her access token ends within five minutes, it first uses the refresh token to get a new one. If Google says the refresh token is dead (Ana removed access in her Google account), the row's status becomes `needs_reconnect`, and the run shows a notice "Google (ana@…) connection needs reconnect" instead of failing on every call. (If Google is just not reachable, the status stays `ok` and the notice says to try again later.)
+
+One rule holds all the way: **tokens never reach the model**. They are only sent to Google's own token and MCP URLs, as an HTTP header. They are never in a prompt, an event, a log line or the sandbox.
+
+### One user, two Gmail accounts
+
+Then Ana wants her work Gmail too. With one row per user and provider, the second login would overwrite the first. So each linked account gets its own id, the **[link](glossary.md#link-link_id)** (`link_id`, like `lnk_3f9a01c2`), and the table key becomes `(user_id, link_id)`. The `app` column says which provider (`google`) the row belongs to.
+
+Now the small rules follow from that key:
+
+- **+ Add account** starts the login with Google's account chooser. If Ana picks an email she already linked, that row is updated; a new email makes a new row.
+- **The default** for an app is the oldest link that has that app's scopes. When the agent does not say which account, it uses the default.
+- **Adding scopes to one account** (Ana turns on Drive for her work account) sends `login_hint` with that account's email. If Ana still picks another account in the chooser, the callback refuses: "signed in with a different account; nothing saved". Otherwise the work scopes could land on the wrong row.
+- **Disconnect** of one account (on the app's detail page) revokes the refresh token at Google and deletes that one row. The next oldest link becomes the default by itself, because "default" is not stored; it is just "the oldest one left". (Turning a whole app off on the Portals page is different: it only drops that app's scopes from her links.)
+
+How the agent picks an account at call time is in [22a](22a-mcp.md#on-the-server-one-mcp-plugin-per-user); the page Ana uses is in [30](30-web-client.md#the-portal-detail-page).
+
+Real code: [connections.py](../../apps/server/src/simp_server/connections.py) — `Connections.start`, `callback`, `servers`, `_access`, `delete`; [store.py](../../apps/server/src/simp_server/store.py) — the `connections` table.
 
 <a id="recover"></a>
 
