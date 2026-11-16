@@ -6,10 +6,7 @@ const last = (p: Page) => p.locator(".msg.assistant .md").last();
 const badge = (p: Page) => p.locator(".chat header .badge");
 
 async function login(p: Page) {
-  await p.goto("/");
-  await p.click("text=Use an access token instead");
-  await p.fill("input[aria-label=Token]", token());
-  await p.click("text=Sign in");
+  await p.goto(`/#login=${token()}`);
   // New session only opens the hero now; tests that need a session before the first send get one via the API.
   const headers = { Authorization: `Bearer ${token()}` };
   const [profile] = await (await p.request.get("/api/profiles", { headers })).json();
@@ -26,11 +23,8 @@ async function say(p: Page, text: string) {
 }
 
 test("wrong token is rejected", async ({ page }) => {
-  await page.goto("/");
-  await page.click("text=Use an access token instead");
-  await page.fill("input[aria-label=Token]", "nope");
-  await page.click("text=Sign in");
-  await expect(page.locator(".login .error")).toHaveText("That token was not accepted.");
+  await page.goto("/#login=nope");
+  await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeVisible();
 });
 
 test("streaming answer", async ({ page }) => {

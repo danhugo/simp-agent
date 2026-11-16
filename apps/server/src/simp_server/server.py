@@ -9,9 +9,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import functools
-import hmac
-import re
-import sqlite3
+import html
 import sys
 import logging
 import os
@@ -26,9 +24,7 @@ from typing import Protocol
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.exception_handlers import request_validation_exception_handler
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from simp_agent import ai
@@ -118,31 +114,6 @@ class StaticTokenAuth:
 
 class MemoryEdit(BaseModel):
     content: str = Field(min_length=1, max_length=MEM_ITEM_MAX)
-
-
-class Account(BaseModel):  # caps keep scrypt and the db cheap whatever a client sends
-    name: str = Field(max_length=64)
-    password: str = Field(max_length=1024)
-    code: str = ""
-
-
-NAME_RE = re.compile(r"[a-z0-9_-]{2,32}")
-SIGNUP_MODES = ("open", "invite", "closed")
-
-
-def signup_mode(settings: dict) -> str:
-    """`signup` in settings.toml; unset = "invite" when signup_code is set, else "open"."""
-    # TEMPORARY deliberate default: unset `signup` (and no signup_code) means OPEN sign-up. Risk: anyone who can reach
-    # the server can create accounts that spend real API budget (up to the per-user daily limit each). Set
-    # signup = "invite" or "closed" before exposing the server beyond localhost (tunnel etc.).
-    mode = settings.get("signup") or ("invite" if settings.get("signup_code") else "open")
-    if mode not in SIGNUP_MODES:
-        raise ValueError(f"settings: signup must be one of {', '.join(SIGNUP_MODES)}, not {mode!r}")
-    return mode
-
-
-def norm_name(name: str) -> str:
-    return name.strip().lower()
 
 
 def load_plugin(path: str):
@@ -637,44 +608,36 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             raise HTTPException(401, "bad token")
         return u
 
-    mode = signup_mode(settings)
-
-    @app.exception_handler(RequestValidationError)
-    async def no_echo(request: Request, e: RequestValidationError):  # FastAPI's 422 echoes the input: never a password
-        if request.url.path in ("/api/signup", "/api/login"):
-            return JSONResponse({"detail": "username or password too long, or malformed"}, status_code=400)
-        return await request_validation_exception_handler(request, e)
-
-    @app.get("/api/signup-mode")  # no auth: the login page shows or hides "Create account" / the invite code
-    def get_signup_mode():
-        return {"mode": mode}
-
-    @app.post("/api/signup")
-    async def signup(a: Account):
-        code = settings.get("signup_code")
-        if mode == "closed" or mode == "invite" and (
-                not code or not hmac.compare_digest(a.code.strip().encode(), str(code).encode())):
-            raise HTTPException(403, "sign-up is closed or the invite code is wrong")
-        name = norm_name(a.name)
-        if not NAME_RE.fullmatch(name):
-            raise HTTPException(400, "Username must be 2-32 characters: letters, digits, _ or -.")
-        if not a.password:
-            raise HTTPException(400, "Password must not be empty.")
-        if err := check_sandbox(settings, await store.count_users() + 1):
-            raise HTTPException(409, err)
+    @app.get("/api/auth/google/start")  # no auth: the login page links here; Google is the only web sign-in
+    async def google_start():
         try:
-            if await store.name_taken(name):
-                raise sqlite3.IntegrityError
-            await store.add_user(name, password=a.password, token=False)
-        except sqlite3.IntegrityError:
-            raise HTTPException(409, "That username is taken.") from None
-        return {"token": await store.login(name, a.password)}
+            url, nonce = mgr.conns.login_start()
+        except RuntimeError as e:
+            raise HTTPException(503, str(e)) from None
+        r = RedirectResponse(url, 302)
+        r.set_cookie(OAUTH_COOKIE, nonce, max_age=STATE_TTL, httponly=True, samesite="lax", path="/api/auth/google",
+                     secure=settings.get("public_url", "").startswith("https"))
+        return r
 
-    @app.post("/api/login")
-    async def login(a: Account):
-        if (token := await store.login(a.name.strip(), a.password)) is None:
-            raise HTTPException(401, "Wrong username or password.")
-        return {"token": token}
+    @app.get("/api/auth/google/callback")
+    async def google_callback(request: Request, state: str = "", code: str = "", error: str = ""):
+        try:
+            if error or not code:
+                raise ValueError(error or "no code")
+            email = await mgr.conns.login_callback(code, state, request.cookies.get(OAUTH_COOKIE, ""))
+        except (ValueError, RuntimeError, httpx.HTTPError) as e:
+            log.warning("google sign-in failed: %s", type(e).__name__ if isinstance(e, httpx.HTTPError) else e)
+            return HTMLResponse("Google sign-in failed. Please try again.", status_code=400)
+        if email.lower() not in {e.lower() for e in settings.get("allowed_emails", [])}:
+            return HTMLResponse(f"{html.escape(email)} is not allowed to use this server. "
+                                "Ask the admin to add it to allowed_emails.", status_code=403)
+        if not await store.name_taken(email.lower()) and (err := check_sandbox(settings, await store.count_users() + 1)):
+            return HTMLResponse(html.escape(err), status_code=409)
+        if (token := await store.google_login(email.lower())) is None:
+            return HTMLResponse("This account is revoked. Ask the admin.", status_code=403)
+        r = RedirectResponse(f"{settings.get('web_url', 'http://localhost:5173/')}#login={token}", 302)
+        r.delete_cookie(OAUTH_COOKIE, path="/api/auth/google")
+        return r
 
     @app.post("/api/logout")
     async def logout(request: Request, u=Depends(user)):
@@ -935,16 +898,6 @@ async def restore_cli(a) -> None:
         print("restored", key)
 
 
-def ask_password() -> str:
-    from getpass import getpass
-    pw = getpass("password: ")
-    if not pw or len(pw) > 1024:
-        raise SystemExit("password: 1-1024 characters")
-    if getpass("again: ") != pw:
-        raise SystemExit("passwords differ")
-    return pw
-
-
 def main() -> None:
     import argparse
 
@@ -954,8 +907,6 @@ def main() -> None:
     sub = ap.add_subparsers(dest="mode", required=True)
     sd = sub.add_parser("seed", help="create a user, print its token once")
     sd.add_argument("--name", required=True)
-    sd.add_argument("--password", action="store_true", help="also set a password (prompted) for web sign-in")
-    sub.add_parser("passwd", help="set a user's password (prompted)").add_argument("--name", required=True)
     sub.add_parser("users", help="list users")
     sub.add_parser("revoke", help="disable a user's token").add_argument("--name", required=True)
     sub.add_parser("rotate", help="new token for a user, print it once").add_argument("--name", required=True)
@@ -987,19 +938,12 @@ def main() -> None:
     if a.mode == "backup":
         print(ops.backup(Path(load_settings()["data_dir"]), Path(a.to), keep=a.keep))
     elif a.mode == "seed":
-        pw = ask_password() if a.password else None
-
         async def seed(s):
-            token = await s.add_user(a.name, password=pw)
+            token = await s.add_user(a.name)
             if err := check_sandbox(load_settings(), await s.count_users()):
                 print(f"warning: {err} A running server keeps going; it refuses to start next time.", file=sys.stderr)
             return token
         print(asyncio.run(with_store(seed)))
-    elif a.mode == "passwd":
-        pw = ask_password()
-        if not asyncio.run(with_store(lambda s: s.set_password(a.name, pw))):
-            raise SystemExit(f"no user named {a.name}")
-        print("password set")
     elif a.mode == "users":
         for u in asyncio.run(with_store(lambda s: s.list_users())):
             print(f"{u['name']}\t{'active' if u['active'] else 'revoked'}")

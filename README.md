@@ -52,6 +52,15 @@ cut at `max_chars`. MCP tools run with the rights of the server (a stdio server 
 sandbox), so only add servers you trust. Tool annotations are kept as `tool.read_only_hint` / `tool.destructive_hint`
 (no approval prompt yet).
 
+### Web sign-in (Google only)
+
+The web app signs in with Google only (`GET /api/auth/google/start` -> Google -> `/api/auth/google/callback`, which
+redirects to `web_url#login=<token>`). Only emails in `allowed_emails = ["you@gmail.com", ...]` (settings.toml) get in;
+any other Google account gets a 403 page. The first sign-in creates the user (name = the email). It uses the same
+`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` as below; also add the redirect URI
+`http://localhost:8766/api/auth/google/callback`. Open the web app at `http://localhost:5173` (not 127.0.0.1), so the
+sign-in cookie matches. The CLI client still uses `simp-server seed` tokens.
+
 ### Connections (Google via OAuth -> MCP tools)
 
 A user logs in to Google once; that turns on three apps: Gmail, Google Drive, Google Calendar. Each app can be

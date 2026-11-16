@@ -221,6 +221,39 @@ class Connections:
         await self.store.set_app_disabled(user_id, app_name, False)  # only the app just connected turns on
         return user_id
 
+    def login_redirect_uri(self) -> str:
+        return f"{self.settings.get('public_url', 'http://localhost:8766').rstrip('/')}/api/auth/google/callback"
+
+    def login_start(self) -> tuple[str, str]:
+        """(Google auth URL, browser nonce) for web sign-in: openid + email only, no API scopes, no refresh token."""
+        a = self.app("google")
+        cid, _ = self._client(a)
+        now = time.time()
+        self.pending = {s: v for s, v in self.pending.items() if v[3] > now}
+        state, verifier, nonce = secrets.token_urlsafe(32), secrets.token_urlsafe(64), secrets.token_urlsafe(32)
+        self.pending[state] = (None, "login", verifier, now + STATE_TTL, None, _hash(nonce))
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+        q = {"client_id": cid, "redirect_uri": self.login_redirect_uri(), "response_type": "code",
+             "scope": " ".join(a["scopes"]), "state": state, "code_challenge": challenge,
+             "code_challenge_method": "S256", "prompt": "select_account"}
+        return f"{a['auth_url']}?{urllib.parse.urlencode(q)}", nonce
+
+    async def login_callback(self, code: str, state: str, nonce: str = "") -> str:
+        """The signed-in Google email. Raises ValueError with a short, token-free reason."""
+        v = self.pending.pop(state, None)
+        if v is None or v[1] != "login" or v[3] < time.time() or not secrets.compare_digest(v[5], _hash(nonce)):
+            raise ValueError("bad or expired state")
+        a = self.app("google")
+        cid, sec = self._client(a)
+        r = await self.http.post(a["token_url"], data={
+            "grant_type": "authorization_code", "code": code, "redirect_uri": self.login_redirect_uri(),
+            "client_id": cid, "client_secret": sec, "code_verifier": v[2]})
+        if r.status_code != 200:
+            raise ValueError(f"token exchange failed ({r.status_code})")
+        if not (email := _email(r.json().get("id_token"))):
+            raise ValueError("no email from Google")
+        return email
+
     async def forget_app(self, user_id: str, app_name: str) -> None:
         """Per-app disconnect: drop its scopes locally (Google can't revoke one scope); the last app revokes the token.
         ponytail: Google still holds the scope, so a later connect of another app may report it granted again."""

@@ -3,10 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 
 const token = () => readFileSync("/tmp/simp-e2e/token", "utf8").trim();
 async function login(p: Page, hash = "") {
-  await p.goto("/" + hash);
-  await p.click("text=Use an access token instead");
-  await p.fill("input[aria-label=Token]", token());
-  await p.click("text=Sign in");
+  await p.goto(`/#login=${token()}`);
+  if (hash) await p.goto("/" + hash);
 }
 
 const APPS = [["gmail", "Gmail"], ["drive", "Google Drive"], ["calendar", "Google Calendar"]];

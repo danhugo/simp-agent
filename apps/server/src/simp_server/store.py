@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
-import hmac
 import json
 import secrets
 import sqlite3
@@ -41,23 +39,6 @@ MEM_ITEM_MAX = 500  # chars per memory item
 
 def sha(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
-
-
-def _scrypt(password: str, salt: bytes) -> bytes:
-    return hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1)
-
-
-def hash_password(password: str) -> str:
-    salt = secrets.token_bytes(16)
-    return f"scrypt${salt.hex()}${_scrypt(password, salt).hex()}"
-
-
-def check_password(password: str, stored: str | None) -> bool:
-    if not stored:
-        _scrypt(password, b"0" * 16)  # same time whether or not the user exists
-        return False
-    _, salt, h = stored.split("$")
-    return hmac.compare_digest(_scrypt(password, bytes.fromhex(salt)), bytes.fromhex(h))
 
 
 class SqliteStore:
@@ -160,13 +141,12 @@ class SqliteStore:
         await self.db.execute(sql, args)
         await self.db.commit()
 
-    # users: a static token (seed/rotate, users.token_sha256) and/or a password whose logins get per-device tokens
-    async def add_user(self, name: str, password: str | None = None, token: bool = True) -> str | None:
+    # users: a static token (seed/rotate, users.token_sha256) and/or Google sign-ins that get per-device tokens
+    async def add_user(self, name: str, token: bool = True) -> str | None:
         """Returns the static token (shown once); only its sha256 is stored. Raises sqlite3.IntegrityError on a taken name."""
         t = secrets.token_urlsafe(32) if token else None
         uid = uuid.uuid4().hex
-        await self._do("INSERT INTO users(id, name, token_sha256, password) VALUES(?,?,?,?)", uid, name,
-                       t and sha(t), password and await asyncio.to_thread(hash_password, password))
+        await self._do("INSERT INTO users(id, name, token_sha256) VALUES(?,?,?)", uid, name, t and sha(t))
         await self._add_agent(uid)
         return t
 
@@ -198,19 +178,15 @@ class SqliteStore:
                                "(SELECT user_id FROM tokens WHERE token_sha256=?))", sha(token), sha(token))
         return rows[0] if rows else None
 
-    async def set_password(self, name: str, password: str) -> bool:
-        cur = await self.db.execute("UPDATE users SET password=? WHERE name=?", (await asyncio.to_thread(hash_password, password), name))
-        await self.db.commit()
-        return cur.rowcount > 0
-
     async def name_taken(self, name: str) -> bool:  # case-insensitive: older CLI-seeded names may have capitals
         return bool(await self._all("SELECT 1 FROM users WHERE lower(name)=lower(?)", name))
 
-    async def login(self, name: str, password: str) -> str | None:
-        """Name matches case-insensitively; an exact-case match wins (older CLI-seeded names may have capitals)."""
-        rows = await self._all("SELECT id, password FROM users WHERE lower(name)=lower(?) AND disabled=0 "
-                               "ORDER BY name=? DESC LIMIT 1", name, name)
-        if not await asyncio.to_thread(check_password, password, rows[0]["password"] if rows else None):
+    async def google_login(self, email: str) -> str | None:
+        """A new device token for the user named `email`, created on first sign-in. None if that user is revoked."""
+        if not await self._all("SELECT 1 FROM users WHERE name=?", email):
+            await self.add_user(email, token=False)
+        rows = await self._all("SELECT id FROM users WHERE name=? AND disabled=0", email)
+        if not rows:
             return None
         token = secrets.token_urlsafe(32)
         await self._do("INSERT INTO tokens VALUES(?,?,?)", sha(token), rows[0]["id"], time.time())

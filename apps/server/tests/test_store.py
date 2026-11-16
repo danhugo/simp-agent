@@ -75,7 +75,6 @@ async def test_opens_stage2_users_table(tmp_path):
     db.close()
     s = await opened(tmp_path)
     try:
-        assert await s.count_users() == 1 and await s.set_password("old", "password1")
-        assert await s.login("old", "password1")
+        assert await s.count_users() == 1 and await s.user_by_token(await s.google_login("old"))
     finally:
         await s.close()
