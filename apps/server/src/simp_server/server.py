@@ -325,9 +325,10 @@ class Run:
     async def approve(self, call) -> str:
         """AgentSession approve callback: ask every tab, wait for a decision. Abort cancels this."""
         self.answer = asyncio.get_running_loop().create_future()
-        self.pending = p.PendingApproval(call_id=call.id, tool=call.name, args=call.arguments)
+        args = self.mcp.shown_args(call) if call.name in self.mcp.names else call.arguments  # email, not link id
+        self.pending = p.PendingApproval(call_id=call.id, tool=call.name, args=args)
         try:  # an abort can land at any await here, not only while waiting for the answer
-            await self.durable(p.ApprovalRequest, call_id=call.id, tool=call.name, args=call.arguments)
+            await self.durable(p.ApprovalRequest, call_id=call.id, tool=call.name, args=args)
             if self.state == "running":
                 await self.set_state("waiting_approval")
             decision = await self.answer
@@ -461,6 +462,7 @@ class SessionManager:
         self.settings, self.store, self.sandbox, self.stream_fn = settings, store, sandbox, stream_fn
         self.keys = take_keys(settings)
         self.conns = Connections(settings, store, self.keys)
+        self.tools_seen: dict[str, dict] = dict()  # user -> app -> tool -> needs approval (portal detail page)
         self.limits = budget.limits(settings)
         self.redact = RedactSecrets()  # same mask for memory_save content (RedactSecrets never sees tool args)
         self.redact.setup(None, {"secrets": list(self.keys.values())})
@@ -719,10 +721,27 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def list_apps(u=Depends(user)):
         return await mgr.conns.list_apps(u["id"])
 
-    @app.post("/api/apps/{app_name}/connect")  # OAuth for this one app only (incremental scopes)
-    async def connect_app(app_name: str, response: Response, u=Depends(user)):
+    @app.get("/api/apps/{app_name}")  # portal detail page
+    async def app_detail(app_name: str, u=Depends(user)):
+        a = next((x for x in await mgr.conns.list_apps(u["id"]) if x["app"] == app_name), None)
+        if a is None:
+            raise HTTPException(404, "unknown app")
+        spec = mgr.conns.app_list[app_name]
+        emails = {r["link_id"]: r["account_email"] for r in await store.connections(u["id"])}
+        calls = [{"at": c["at"], "tool": c["tool"], "account": emails.get(c["link_id"]) or c["link_id"], "ok": bool(c["ok"]),
+                  "decision": c["decision"]} for c in await store.audit(u["id"], app_name)]
+        tools = mgr.tools_seen.get(u["id"], dict()).get(app_name, dict())
+        return {**a, "scopes": spec.get("scopes", []), "url": spec["url"], "calls": calls,
+                "tools": [{"name": n, "needs_approval": v} for n, v in sorted(tools.items())]}
+
+    @app.post("/api/apps/{app_name}/connect")  # OAuth for this one app; body {link_id}: add its scopes to that account
+    async def connect_app(app_name: str, request: Request, response: Response, u=Depends(user)):
+        body = await request.json() if await request.body() else dict()
         try:
-            url, nonce = mgr.conns.start(u["id"], app_name)
+            link = None
+            if body.get("link_id") and (link := await mgr.conns.link(u["id"], str(body["link_id"]))) is None:
+                raise LookupError("unknown link")
+            url, nonce = mgr.conns.start(u["id"], app_name, link)
             # binds the OAuth start to this browser (cookies ignore the port: web and API share the host)
             response.set_cookie(OAUTH_COOKIE, nonce, max_age=STATE_TTL, httponly=True, samesite="lax",
                                 path="/api/connections", secure=settings.get("public_url", "").startswith("https"))
@@ -782,9 +801,12 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         mgr.portals_changed(u["id"])
         return {"ok": True}
 
-    @app.delete("/api/connections/{app_name}")
-    async def delete_connection(app_name: str, u=Depends(user)):
-        await mgr.conns.delete(u["id"], app_name)
+    @app.delete("/api/connections/{link_id}")
+    async def delete_connection(link_id: str, u=Depends(user)):
+        try:
+            await mgr.conns.delete(u["id"], link_id)
+        except LookupError as e:
+            raise HTTPException(404, str(e)) from None
         mgr.portals_changed(u["id"])
         return {"ok": True}
 

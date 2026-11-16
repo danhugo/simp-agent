@@ -38,6 +38,10 @@ class Google:
         if req.url.path.endswith("/revoke"):
             return httpx.Response(200)
         if form["grant_type"] == "authorization_code":
+            if form["code"].startswith("C:"):  # "C:<email>": sign in as that account
+                e = form["code"][2:]
+                return httpx.Response(200, json={"access_token": f"AT-{e}", "refresh_token": f"RT-{e}",
+                                                 "expires_in": 3600, "id_token": id_token(e)})
             return httpx.Response(200, json={"access_token": "AT-1", "refresh_token": "RT-1", "expires_in": 3600,
                                              "id_token": id_token("me@example.com")})
         if self.refresh_ok:
@@ -61,10 +65,10 @@ async def make(tmp_path, stream_fn=None):
     return app, mgr, g, users, client
 
 
-async def connect(c, token, app="gmail"):
-    r = await c.post(f"/api/apps/{app}/connect", headers={"Authorization": f"Bearer {token}"})
+async def connect(c, token, app="gmail", code="C", body=None):
+    r = await c.post(f"/api/apps/{app}/connect", headers={"Authorization": f"Bearer {token}"}, json=body)
     q = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(r.json()["url"]).query))
-    return q, await c.get("/api/connections/google/callback", params={"code": "C", "state": q["state"]})
+    return q, await c.get("/api/connections/google/callback", params={"code": code, "state": q["state"]})
 
 
 async def test_oauth_flow_list_delete(tmp_path):
@@ -84,8 +88,12 @@ async def test_oauth_flow_list_delete(tmp_path):
     row = (await mgr.store.connections(ua["id"]))[0]
     assert "AT-1" not in row["access_token_enc"] and "RT-1" not in row["refresh_token_enc"]  # encrypted at rest
     listed = (await c.get("/api/connections", headers=h)).json()
-    assert listed[0] == {"app": "google", "label": "Google", "connected": True, "email": "me@example.com", "status": "ok"}
-    assert (await c.delete("/api/connections/google", headers=h)).json() == {"ok": True}
+    lid = row["link_id"]
+    assert lid.startswith("lnk_") and len(lid) == 12
+    assert listed == [{"link_id": lid, "provider": "google", "label": "Google", "email": "me@example.com", "status": "ok",
+                       "created": row["created"], "scopes": sorted(row["scopes"].split()), "default": True}]
+    assert (await c.delete("/api/connections/lnk_nope", headers=h)).status_code == 404
+    assert (await c.delete(f"/api/connections/{lid}", headers=h)).json() == {"ok": True}
     assert g.calls[-1] == ("/revoke", {"token": "RT-1"})
     assert not await mgr.store.connections(ua["id"])
     await mgr.store.close()
@@ -99,11 +107,11 @@ async def test_servers_per_user_refresh_and_reconnect(tmp_path):
     assert {s["name"] for s in servers} == {"gmail", "drive", "calendar"} and not problems
     assert servers[0]["headers"] == {"Authorization": "Bearer AT-1"} and "command" not in servers[0]
     assert await mgr.conns.servers(ub["id"]) == ([], [])  # the other user gets nothing
-    await mgr.store.update_connection_token(ua["id"], "google", (await mgr.store.connections(ua["id"]))[0][
+    await mgr.store.update_connection_token(ua["id"], (await mgr.store.connections(ua["id"]))[0]["link_id"], (await mgr.store.connections(ua["id"]))[0][
         "access_token_enc"], time.time() + 60)  # ends soon -> refresh
     servers, _ = await mgr.conns.servers(ua["id"])
     assert servers[0]["headers"]["Authorization"] == "Bearer AT-2"
-    await mgr.store.update_connection_token(ua["id"], "google", "x", time.time())
+    await mgr.store.update_connection_token(ua["id"], (await mgr.store.connections(ua["id"]))[0]["link_id"], "x", time.time())
     g.refresh_ok = False
     servers, problems = await mgr.conns.servers(ua["id"])
     assert servers == [] and "reconnect" in problems[0]
@@ -157,12 +165,13 @@ async def test_apps_one_login_toggle_disconnect(tmp_path):
     assert [a["app"] for a in apps][:3] == ["gmail", "drive", "calendar"]
     assert apps[1] == {"app": "drive", "label": "Google Drive", "description": apps[1]["description"], "icon": "drive",
                        "provider": "google", "auth": "oauth", "connected": True, "enabled": True, "email": "me@example.com",
-                       "status": "ok"}
+                       "status": "ok", "accounts": apps[1]["accounts"]}
+    assert [x["email"] for x in apps[1]["accounts"]] == ["me@example.com"]
     assert (await c.post("/api/apps/drive/disable", headers=h)).json() == {"ok": True}
     assert {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]} == {"gmail", "calendar"}  # next run: no drive__
     assert (await c.post("/api/apps/drive/enable", headers=h)).status_code == 200
     await c.post("/api/apps/drive/disable", headers=h)
-    await c.delete("/api/connections/google", headers=h)
+    await c.delete(f"/api/connections/{(await mgr.store.connections(ua['id']))[0]['link_id']}", headers=h)
     google = lambda r: [a for a in r.json() if a["provider"] == "google"]
     assert not any(a["enabled"] or a["connected"] for a in google(await c.get("/api/apps", headers=h)))
     await connect(c, ta, "drive")  # a new login turns on only that app
@@ -207,8 +216,11 @@ async def test_github_token_save_list_run_delete(tmp_path):
     assert next(a for a in apps.json() if a["app"] == "deepwiki")["auth"] is None
     servers, problems = await mgr.conns.servers(ua["id"])
     assert servers == [{"name": "github", "url": "https://api.githubcopilot.com/mcp/",
-                        "headers": {"Authorization": "Bearer ghp_good"}, "provider": "github"}] and not problems
-    assert (await c.delete("/api/connections/github", headers=h)).json() == {"ok": True}
+                        "headers": {"Authorization": "Bearer ghp_good"}, "provider": "github", "link_id": row["link_id"],
+                        "email": "octo", "default": True}] and not problems
+    await c.post("/api/connections/github/token", headers=h, json={"token": "ghp_good"})  # same login: same link
+    assert [r["link_id"] for r in await mgr.store.connections(ua["id"])] == [row["link_id"]]
+    assert (await c.delete(f"/api/connections/{row['link_id']}", headers=h)).json() == {"ok": True}
     assert await mgr.store.connections(ua["id"]) == [] and not any(p[0] == "/revoke" for p in g.calls)
     await mgr.store.close()
 
@@ -230,7 +242,8 @@ async def test_token_401_at_run_marks_reconnect(tmp_path):
     orig, m.McpPlugin._connect = m.McpPlugin._connect, boom
     try:
         try:
-            await plug._connect({"name": "github", "url": "u", "provider": "github"})
+            await plug._connect({"name": "github", "url": "u", "provider": "github",
+                                  "link_id": (await mgr.store.connections(ua["id"]))[0]["link_id"]})
         except BaseExceptionGroup:
             pass
     finally:
@@ -247,7 +260,7 @@ async def test_google_apps_authorize_one_at_a_time(tmp_path):
     G = "https://www.googleapis.com/auth/"
     q, _ = await connect(c, ta, "gmail")
     assert q["scope"].split() == ["openid", G + "userinfo.email", G + "gmail.modify", G + "gmail.send"]
-    assert q["include_granted_scopes"] == "true" and q["prompt"] == "consent" and q["access_type"] == "offline"
+    assert q["include_granted_scopes"] == "true" and q["prompt"] == "consent select_account" and q["access_type"] == "offline"
     async def apps():
         return {a["app"]: (a["connected"], a["enabled"]) for a in (await c.get("/api/apps", headers=h)).json()
                 if a["provider"] == "google"}
@@ -324,7 +337,7 @@ async def test_oauth_callback_needs_same_browser(tmp_path):
 async def test_refresh_network_error_keeps_login(tmp_path):
     _, mgr, g, [(ta, ua), _], c = await make(tmp_path)
     await connect(c, ta)
-    await mgr.store.update_connection_token(ua["id"], "google", "x", time.time())
+    await mgr.store.update_connection_token(ua["id"], (await mgr.store.connections(ua["id"]))[0]["link_id"], "x", time.time())
     mgr.conns.http = httpx.AsyncClient(transport=httpx.MockTransport(lambda req: httpx.Response(503)))
     servers, problems = await mgr.conns.servers(ua["id"])
     assert servers == [] and "try again" in problems[0]
@@ -338,11 +351,11 @@ async def test_forgotten_app_stays_off_and_bad_key_row_is_isolated(tmp_path):
     await connect(c, ta, "gmail")
     await c.post("/api/apps/gmail/disconnect", headers=h)
     await connect(c, ta, "drive")  # Google reports gmail scopes granted again
-    await mgr.store.set_connection_scopes(ua["id"], "google", " ".join(
+    await mgr.store.set_connection_scopes(ua["id"], (await mgr.store.connections(ua["id"]))[0]["link_id"], " ".join(
         sum((a.get("scopes", []) for a in mgr.conns.app_list.values() if a.get("provider") == "google"), [])))
     assert "gmail" not in {s["name"] for s in (await mgr.conns.servers(ua["id"]))[0]}  # does not come back
     await c.post("/api/apps/deepwiki/enable", headers=h)
-    await mgr.store.update_connection_token(ua["id"], "google", "not-fernet", time.time() + 3600)
+    await mgr.store.update_connection_token(ua["id"], (await mgr.store.connections(ua["id"]))[0]["link_id"], "not-fernet", time.time() + 3600)
     servers, problems = await mgr.conns.servers(ua["id"])
     assert [s["name"] for s in servers] == ["deepwiki"] and problems  # no-auth portal still works
     assert (await mgr.store.connections(ua["id"]))[0]["status"] == "needs_reconnect"
@@ -372,3 +385,116 @@ async def test_mcp_tools_register_sorted():
     plug._connect, plug._tools = connect, tools
     await plug.setup(Api(), dict())
     assert names == ["a__y", "a__z", "b__y", "b__z"]  # not the order servers answered in
+
+
+def fake_gmail_of(who):
+    s = MCPServer("gmail")
+
+    @s.tool(annotations=ToolAnnotations(read_only_hint=True))
+    def search(q: str) -> str:
+        return f"{who} found {q}"
+
+    @s.tool()
+    def send(to: str) -> str:
+        return f"{who} sent to {to}"
+    return s
+
+
+async def test_many_accounts_connect_route_disconnect(tmp_path):
+    _, mgr, g, [(ta, ua), _], c = await make(tmp_path)
+    h = {"Authorization": f"Bearer {ta}"}
+    q, _ = await connect(c, ta, code="C:a@x.com")
+    assert "select_account" in q["prompt"] and "login_hint" not in q  # "+ add account" always shows the chooser
+    await connect(c, ta, code="C:b@x.com")
+    await connect(c, ta, code="C:a@x.com")  # same account again: updates it, no third link
+    links = (await c.get("/api/connections", headers=h)).json()
+    assert [(x["email"], x["default"]) for x in links] == [("a@x.com", True), ("b@x.com", False)]
+    a, b = links[0]["link_id"], links[1]["link_id"]
+    servers, _ = await mgr.conns.servers(ua["id"])
+    assert [(s["link_id"], s["headers"]["Authorization"], s["default"]) for s in servers] == [
+        (a, "Bearer AT-a@x.com", True), (b, "Bearer AT-b@x.com", False)]
+    gm = next(x for x in (await c.get("/api/apps", headers=h)).json() if x["app"] == "gmail")
+    assert gm["email"] == "a@x.com" and [x["link_id"] for x in gm["accounts"]] == [a, b]
+
+    # adding scopes to account A: Google is told A; signing in as B instead is rejected and saves nothing
+    before = await mgr.store.connections(ua["id"])
+    q, r = await connect(c, ta, "drive", code="C:b@x.com", body={"link_id": a})
+    assert q["login_hint"] == "a@x.com" and "different account" in urllib.parse.unquote_plus(r.headers["location"])
+    assert await mgr.store.connections(ua["id"]) == before
+    _, r = await connect(c, ta, "drive", code="C:a@x.com", body={"link_id": a})
+    assert r.headers["location"].endswith("ok=google")
+
+    # disconnect A: B is left and is the default
+    assert (await c.delete(f"/api/connections/{a}", headers=h)).json() == {"ok": True}
+    assert g.calls[-1] == ("/revoke", {"token": "RT-a@x.com"})
+    links = (await c.get("/api/connections", headers=h)).json()
+    assert [(x["link_id"], x["default"]) for x in links] == [(b, True)]
+    servers, _ = await mgr.conns.servers(ua["id"])
+    assert [(s["link_id"], s["default"]) for s in servers] == [(b, True)]
+    await mgr.store.close()
+
+
+async def test_agent_picks_account_by_link_id(tmp_path):
+    fp = FakeProvider(reply("", [ToolCall("c1", "gmail__search", {"q": "x", "link_id": "lnk_b"})]),
+                      reply("", [ToolCall("c2", "gmail__search", {"q": "y"})]),
+                      reply("", [ToolCall("c3", "gmail__send", {"to": "bob", "link_id": "lnk_b"})]), reply("done"))
+    _, mgr, _, [(ta, ua), _], c = await make(tmp_path, fp)
+    row = await mgr.store.add_session(ua["id"], "test", "t")
+    run = await mgr.get(ua, row["id"])
+    run.mcp.servers = [
+        {"name": "gmail", "server": fake_gmail_of("A"), "link_id": "lnk_a", "email": "a@x.com", "default": True},
+        {"name": "gmail", "server": fake_gmail_of("B"), "link_id": "lnk_b", "email": "b@x.com", "default": False}]
+    await run.command(p.Prompt(text="hi"))
+    await wait_for(lambda: run.pending is not None)
+    assert run.pending.args == {"to": "bob", "link_id": "b@x.com"}  # the approval card shows the email
+    await run.command(p.Approve(call_id="c3", decision="allow"))
+    await wait_for(lambda: not run.busy and run.task.done())
+    tool = next(t for t in run.session.agent.tools if t.name == "gmail__search")
+    prop = tool.parameters["properties"]["link_id"]
+    assert prop["enum"] == ["lnk_a", "lnk_b"] and "lnk_a = a@x.com (default), lnk_b = b@x.com" in prop["description"]
+    assert [n for n in (t.name for t in run.session.agent.tools) if n.startswith("gmail__")] == ["gmail__search", "gmail__send"]
+    results = [e["content"] for e in run.log if e["type"] == "tool_result"]
+    assert results[0].endswith("B found x") and results[1].endswith("A found y") and results[2].endswith("B sent to bob")
+    audit = await mgr.store._all("SELECT tool, link_id FROM mcp_audit ORDER BY at")
+    assert [(x["tool"], x["link_id"]) for x in audit] == [("search", "lnk_b"), ("search", "lnk_a"), ("send", "lnk_b")]
+    d = (await c.get("/api/apps/gmail", headers={"Authorization": f"Bearer {ta}"})).json()  # portal detail page
+    assert d["tools"] == [{"name": "search", "needs_approval": False}, {"name": "send", "needs_approval": True}]
+    assert [x["tool"] for x in d["calls"]] == ["send", "search", "search"] and d["url"].startswith("https://")
+    await run.session.shutdown()
+    await mgr.store.close()
+
+
+async def test_one_account_schema_unchanged(tmp_path):
+    fp = FakeProvider(reply("done"))
+    _, mgr, _, [(_, ua), _], _ = await make(tmp_path, fp)
+    row = await mgr.store.add_session(ua["id"], "test", "t")
+    run = await mgr.get(ua, row["id"])
+    run.mcp.servers = [{"name": "gmail", "server": fake_gmail_of("A"), "link_id": "lnk_a", "email": "a@x.com",
+                        "default": True}]
+    await run.command(p.Prompt(text="hi"))
+    await wait_for(lambda: not run.busy and run.task.done())
+    tool = next(t for t in run.session.agent.tools if t.name == "gmail__search")
+    assert "link_id" not in tool.parameters.get("properties", dict())
+    await run.session.shutdown()
+    await mgr.store.close()
+
+
+async def test_old_connections_table_migrates(tmp_path):
+    import sqlite3
+
+    from simp_server.store import SqliteStore
+    db = sqlite3.connect(tmp_path / "simp.db")
+    db.execute("CREATE TABLE connections(user_id TEXT NOT NULL, app TEXT NOT NULL, account_email TEXT, "
+               "access_token_enc TEXT, refresh_token_enc TEXT, expires_at REAL, status TEXT, created REAL, updated REAL, "
+               "PRIMARY KEY(user_id, app))")
+    db.execute("CREATE TABLE mcp_audit(user_id TEXT, session_id TEXT, server TEXT, tool TEXT, decision TEXT, ok INTEGER, at REAL)")
+    db.execute("INSERT INTO connections VALUES('u','google','me@x.com','A','R',1,'ok',5,5)")
+    db.commit()
+    db.close()
+    st = SqliteStore({"data_dir": str(tmp_path)})
+    await st.open()
+    [r] = await st.connections("u")
+    assert r["link_id"].startswith("lnk_") and r["account_email"] == "me@x.com" and r["created"] == 5
+    await st.add_audit("u", "s", "gmail", "search", "auto", True, r["link_id"])
+    assert (await st.audit("u", "gmail"))[0]["link_id"] == r["link_id"]
+    await st.close()
