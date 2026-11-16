@@ -1,3 +1,4 @@
+import { IconSearch } from "./icons";
 import { useCallback, useEffect, useState } from "react";
 import { api, AuthError, type AppDetail, type AppItem } from "./api";
 import { errorText } from "./Chat";
@@ -28,6 +29,8 @@ const AppIcon = ({ name }: { name: string }) => (
 /** Crafts page, Portals tab: apps the agent can use for you: connect a provider once (Google), then turn each app on or off. */
 export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; menuButton: React.ReactNode }) {
   const [items, setItems] = useState<AppItem[] | null>(null);
+  const [q, setQ] = useState("");  // search portals by name or description
+  const [searching, setSearching] = useState(false);
   const [note, setNote] = useState(oauthResult);
   const [confirm, setConfirm] = useState("");  // provider whose Disconnect was clicked once
   const [tokenFor, setTokenFor] = useState("");  // app whose "paste a token" form is open
@@ -119,18 +122,37 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
 
   return (
     <main className="memory">
-      <header className="home-head">{menuButton}<h1>Crafts</h1></header>
+      <header className="home-head">{menuButton}</header>
       <div className="memory-body">
-        <div className="tabs" role="tablist">
-          {(["Portals", "Skills"] as const).map((t) => (
-            <button key={t} role="tab" aria-selected={tab === t} className="tab" onClick={() => setTab(t)}>{t}</button>
+        <h1 className="page-title">Crafts</h1>
+        {/* same layout as Memory (and claude.ai): tabs on the left, tools on the right */}
+        <div className="mem-toolbar">
+          <div className="tabs" role="tablist">
+            {(["Portals", "Skills"] as const).map((t) => (
+              <button key={t} role="tab" aria-selected={tab === t} className="tab" onClick={() => setTab(t)}>{t}</button>
+            ))}
+          </div>
+          <span className="spacer" />
+          {tab === "Portals" && (searching || q ? (
+            <label className="mem-search"><IconSearch size={16} />
+              <input type="search" autoFocus value={q} onChange={(e) => setQ(e.target.value)} onBlur={() => !q && setSearching(false)}
+                onKeyDown={(e) => e.key === "Escape" && (setQ(""), setSearching(false))} placeholder="Search portals…" aria-label="Search portals" />
+            </label>
+          ) : (
+            <button className="ghost icon" aria-label="Search" title="Search" onClick={() => setSearching(true)}><IconSearch /></button>
           ))}
         </div>
         {tab === "Skills" ? <p className="muted">Skills are coming soon.</p> : <>
         {note && <p className={note.ok ? "ok" : "error"} role="status">{note.text}</p>}
         {items === null ? <p className="muted">Loading…</p> : items.length === 0 ? <p className="muted">No portals are set up on this server.</p> : <>
-          {section("Connected", items.filter((a) => a.enabled), true)}
-          {section("Available", items.filter((a) => !a.enabled), false)}
+          {(() => {
+            const needle = q.trim().toLowerCase();
+            const shown = needle ? items.filter((a) => `${a.label} ${a.description}`.toLowerCase().includes(needle)) : items;
+            return shown.length === 0 ? <p className="muted">No portals match “{q.trim()}”.</p> : <>
+              {section("Connected", shown.filter((a) => a.enabled), true)}
+              {section("Available", shown.filter((a) => !a.enabled), false)}
+            </>;
+          })()}
         </>}
         </>}
       </div>

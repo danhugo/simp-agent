@@ -6,6 +6,7 @@
   --bg: #ffffff; --panel: #f5f5f5; --border: #e3e3e3; --text: #1f1f1f; --muted: #5f5f5f;
   --accent: #1f1f1f; --accent-text: #ffffff; --user: #f0f0f0; --code: #f4f4f4;
   --ok: #3f6a2e; --warn: #774c0c; --err: #a3392b;
+  --note: #fffbea; --note-edge: #efe6c4;
   --hover: #ededed; --active: #e6e6e6;  /* muted text stays >= 4.5:1 on both */
   --fs-xs: 12px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 18px; --fs-xl: 28px;
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
@@ -23,6 +24,7 @@
   --bg: #18191b; --panel: #1f2023; --border: #303236; --text: #ececea; --muted: #9c9ea3;
   --accent: #ececea; --accent-text: #18191b; --user: #2a2b2f; --code: #232427;
   --ok: #8fb878; --warn: #e0a957; --err: #ec8a7a;
+  --note: #26251f; --note-edge: #3a3829;
   --hover: #27282b; --active: #2d2f32;
   --shadow-sm: 0 1px 2px rgb(0 0 0 / .4); --shadow-md: 0 4px 16px rgb(0 0 0 / .5);
   color-scheme: dark;
@@ -142,32 +144,51 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .home { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; }
 .home-head { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); min-height: 52px; }
 .memory { flex: 1; min-width: 0; overflow-y: auto; }
-.memory .home-head h1 { flex: 1; margin: 0; font-size: var(--fs-lg); }
-.memory .export { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: 44px; }
-.memory-body { max-width: 760px; margin: 0 auto; padding: 0 var(--sp-5) var(--sp-8); }
+/* page title sits in the content column, big enough to lead the page */
+.page-title { margin: var(--sp-2) 0 var(--sp-3); font-size: var(--fs-xl); font-weight: 500; letter-spacing: -.01em; }
+.memory-body { max-width: 1040px; margin: 0 auto; padding: 0 var(--sp-5) var(--sp-8); }
+/* tabs: plain words; the chosen one sits on a soft grey pill */
 .tabs { display: flex; gap: var(--sp-1); margin-top: var(--sp-2); }
-.tab { background: none; border: 0; padding: var(--sp-2) var(--sp-3); color: var(--muted); font: inherit; cursor: pointer; }
-.tab:hover:not(:disabled), .tab:active { background: none; }
-.tab:hover { color: color-mix(in srgb, var(--muted), var(--text)); }
-.tab[aria-selected="true"] { color: var(--text); font-weight: 600; }
-.memory-body h2 { font-size: var(--fs-md); margin: var(--sp-6) 0 var(--sp-2); }
+.tab { background: none; border: 0; border-radius: 10px; padding: 6px var(--sp-3); color: var(--text); font: inherit; cursor: pointer; }
+.tab:hover:not(:disabled), .tab:active { background: var(--hover); }
+.tab[aria-selected="true"], .tab[aria-selected="true"]:hover:not(:disabled) { background: var(--active); }
+.memory-body h2 { font-size: var(--fs-lg); font-weight: 600; margin: var(--sp-8) 0 var(--sp-2); }
+/* a section's one-line description hugs its heading, then space before the content */
+.memory-body h2:has(+ .mem-about) { margin-bottom: 2px; }
+.memory-body .mem-about { margin: 0 0 var(--sp-3); }
 .memory-body ul { list-style: none; margin: 0; padding: 0; }
 /* memories: one list per section, a row per memory (text left, date/source/delete right) */
-.memory-body ul.mem-list { display: block; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
-.mem { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-1); }
-.mem + .mem { border-top: 1px solid var(--border); }
-.mem > form { flex: 1; padding: var(--sp-2); }
-.mem-text { flex: 1; min-width: 0; min-height: 40px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); padding: var(--sp-2); }
-.mem-meta { display: flex; align-items: center; gap: var(--sp-3); flex-shrink: 0; white-space: nowrap; }
-.mem-meta .del { width: 36px; height: 36px; }
-.mem-meta .edit { padding: 4px 10px; color: var(--muted); }
-.mem-add { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-2); }
-.mem-add input { flex: 1; min-width: 0; }
-.mem-src { color: var(--muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
-.mem-src:hover { color: var(--text); }
+/* memories as small notes in a grid: short, scannable, a couple hundred still fit (about 4 per row) */
+.memory-body ul.mem-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--sp-3); }
+.mem { display: flex; flex-direction: column; gap: var(--sp-2); min-height: 112px; padding: var(--sp-3) var(--sp-3) var(--sp-2);
+  border: 0; border-radius: 12px; background: var(--panel); font-size: var(--fs-sm); line-height: 1.45; }
+.mem-list.agent .mem { background: var(--note); }  /* Simp's notes: a little paper-yellow */
+.mem > form { flex: 1; }
+.mem-text { flex: none; min-width: 0; text-align: left; justify-content: flex-start; align-items: flex-start; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); padding: 0; font-size: var(--fs-sm);
+  display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; align-self: stretch; }
+.mem-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--sp-1); margin-top: auto; white-space: nowrap; font-size: var(--fs-xs); color: var(--muted); }
+.mem-meta .del, .mem-meta .edit { width: 26px; height: 26px; min-height: 0; padding: 0; color: var(--muted); flex: none; }
+.mem-toolbar { display: flex; align-items: center; gap: var(--sp-1); margin: var(--sp-2) 0 var(--sp-2); }
+.mem-toolbar .tabs { margin: 0; }
+.mem-toolbar .new-mem { margin-left: var(--sp-2); }
+.mem-search { display: flex; align-items: center; gap: var(--sp-2); width: 240px; min-width: 0; padding: 0 var(--sp-3); border-radius: 10px; background: var(--panel); color: var(--muted); }
+.mem-search input { flex: 1; min-width: 0; border: 0; background: none; padding: 7px 0; box-shadow: none; outline: none; }
+.mem-search:focus-within { outline: 2px solid var(--text); outline-offset: 1px; }
+@media (max-width: 560px) { .mem-toolbar { flex-wrap: wrap; } .mem-search { width: 100%; order: 3; } }
+.mem-empty { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-3); padding: var(--sp-3) var(--sp-1); }
+.mem-empty p { margin: 0; }
+/* add: a "+" field, about one line of text long (not the full page width) */
+.mem-add { display: flex; align-items: center; gap: var(--sp-2); max-width: 640px; margin: var(--sp-3) 0; padding-left: var(--sp-3); border: 1px solid var(--border); border-radius: 10px; color: var(--muted); }
+.mem-add:focus-within { border-color: var(--text); }
+.mem-add input { flex: 1; min-width: 0; border: 0; background: none; box-shadow: none; outline: none; }
+.mem-add button { margin: 3px; }
+.mem-src { flex-basis: 100%; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.mem-src:empty { display: none; }
+.mem-date { font-variant-numeric: tabular-nums; margin-right: auto; }
+.mem-src { text-decoration: none; }
+.mem-src:hover { color: var(--text); text-decoration: underline; }
 .mem-meta .edit:hover { color: var(--text); }
-.mem-text { cursor: text; border-radius: var(--radius-sm); }
-.mem-text:hover { background: var(--bg); }  /* the text itself looks editable on hover */
+.mem-text { cursor: text; }
 .mem-meta .del.confirm { width: auto; padding: 0 var(--sp-3); color: var(--err); }
 .memory-body .app-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .app-card { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: space-between;
@@ -290,7 +311,7 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .app-open { background: none; border: 0; padding: 0; color: inherit; cursor: pointer; font: inherit; }
 .app-open:hover strong { text-decoration: underline; }
 /* ---- portal detail page ---- */
-.app-detail { max-width: 760px; display: flex; flex-direction: column; gap: var(--sp-8); }
+.app-detail { max-width: 1040px; display: flex; flex-direction: column; gap: var(--sp-8); }
 .detail-hero { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-2) 0 var(--sp-1); }
 .detail-hero .app-icon { width: 48px; height: 48px; flex: none; }
 .detail-hero > div { flex: 1; min-width: 0; }
@@ -324,17 +345,19 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 
 
 /* Portals: connected apps as rows, the rest as compact tiles; brand icons are the only color */
-.app-rows { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
-.app-row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3); cursor: pointer; }
-.app-row + .app-row { border-top: 1px solid var(--border); }
+/* flat grey items, no border or shadow (same as Memory and claude.ai) */
+.app-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.app-row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3); cursor: pointer; border-radius: 12px; background: var(--panel); }
 .app-row .app-text, .app-tile .app-text { flex: 1; min-width: 0; }
 .app-row .muted { overflow-wrap: anywhere; }
 .app-row .more { margin-left: var(--sp-2); padding: 0 6px; border-radius: 9px; background: var(--hover); white-space: nowrap; }
 .sw { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
 .sw .switch { position: relative; flex-shrink: 0; }
-.app-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); column-gap: var(--sp-5, 24px); }
-.app-tile { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+.app-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--sp-2); }
+.app-tile { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3); border-radius: 12px; background: var(--panel); cursor: pointer; }
 .app-tile.editing { flex-direction: column; align-items: stretch; cursor: default; }
-.app-tile strong, .app-row strong { font-size: var(--fs-sm); }
-@media (max-width: 560px) { .mem { flex-wrap: wrap; } .mem-meta { margin-left: auto; }
+.app-tile strong, .app-row strong { font-size: var(--fs-sm); font-weight: 600; }  /* same weight as headings */
+@media (max-width: 560px) {
   .app-row { flex-wrap: wrap; } .app-row .sw { margin-left: 64px; } }
+/* the small memory buttons stay 44px to tap on touch screens */
+@media (pointer: coarse) { .mem-meta button { position: relative; } .mem-meta button::before { content: ""; position: absolute; inset: 50% auto auto 50%; width: 44px; height: 44px; translate: -50% -50%; } }
