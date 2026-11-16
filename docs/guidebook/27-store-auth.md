@@ -39,26 +39,41 @@ flowchart LR
 
 The chapter follows this picture and solves four problems, in this order:
 
-1. **Who are you?** Ana logs in once, and each later request must prove it is her.
+1. **Who are you?** Ana signs in with Google once, and each later request must prove it is her.
 2. **You may only see your own sessions.** Bob must never open Ana's.
 3. **Nothing is lost.** Every message and event is on disk the moment it happens.
 4. **A session can be loaded again exactly**, even if the server died in the middle of a run.
 
-<a id="scrypt-passwords"></a>
+<a id="google-login"></a>
 
 ## Who are you?
 
-The first problem from the list: Ana opens the web client ([30](30-web-client.md)) and types her name and password. The server must check them, so it needs a row for Ana in a `users` table. The row is written when she signs up, or when the admin runs `simp-server seed`.
+The first problem from the list: Ana opens the web client ([30](30-web-client.md)). The server must learn who she is, and it must keep out everyone the team did not invite. We do not want to keep passwords at all: a password table is one more thing to protect, and Ana already has a Google account. So the web client has one button, "Sign in with Google", and the server lets Google check who she is.
 
-Her password is not kept as text, because anyone who copies the database file could read it. We keep a **hash** of it: a scrambled form that lets us check a password but not get it back. For passwords we use **[scrypt](glossary.md#scrypt)**, a hash that is slow on purpose. So an attacker who copies the file can try only a few guesses per second. Each password is mixed with a **[salt](glossary.md#salt)** (random bytes), so two users with the same password get different hashes.
+Who may come in is decided by one list in `settings.toml`, the **[allow-list](glossary.md#email-allow-list)**:
 
-When the password matches, `login` gives Ana a **[token](glossary.md#token-auth)**: a long random string. Her browser sends it on every later request, in the header `Authorization: Bearer <token>`. She types the password once, and the token proves who she is after that.
+```toml
+allowed_emails = ["ana@gmail.com", "bob@gmail.com"]
+```
+
+The button goes to `/api/auth/google/start`. The server sends Ana's browser on to Google's sign-in page. Ana picks her account, and Google sends the browser back to `/api/auth/google/callback` with a one-time code. The server trades that code with Google for her email address. Then it asks one question: is this email in `allowed_emails`? If not, Ana gets a short "not allowed" page (HTTP 403), and nothing is written. If yes, the store's `google_login` finds the user whose name is that email. The first time, it creates that user, so there is no sign-up step: the admin adds an email to the list, and the person's first sign-in makes the account.
+
+```text
+google_callback(code, state):
+    email = ask Google for the email behind code      // fails -> "sign-in failed" page (400)
+    IF email not in allowed_emails -> "not allowed" page (403)
+    token = store.google_login(email)                 // creates the user the first time
+    IF no token -> "account revoked" page (403)
+    redirect the browser to web_url#login=<token>
+```
+
+`google_login` gives Ana a **[token](glossary.md#token-auth)**: a long random string. The web client takes it from the `#login=` part of the address and keeps it. Her browser sends it on every later request, in the header `Authorization: Bearer <token>`. She signs in with Google once, and the token proves who she is after that.
 
 <a id="token-hashes"></a>
 
-The server does not keep the token either. It keeps only its SHA-256 hash. So a copied database gives nothing that works as a token. Why is a fast hash enough here, when passwords need the slow one? A token is 32 random bytes, so nobody can guess it. A password can be guessed.
+The server does not keep the token as text. It keeps only its SHA-256 hash. So a copied database gives nothing that works as a token. A fast hash is enough here: a token is 32 random bytes, so nobody can guess it.
 
-There are two kinds of token, and one query checks both. A **[per-device token](glossary.md#per-device-token)** comes from each login. It has its own row, so `logout` ends just that one device. A **[static token](glossary.md#static-token)** is one long-lived token per user. The admin makes it with `simp-server seed` and replaces it with `simp-server rotate`. When the admin runs `revoke`, the user is marked disabled and all tokens die at once.
+There are two kinds of token, and one query checks both. A **[per-device token](glossary.md#per-device-token)** comes from each Google sign-in. It has its own row in the `tokens` table, so `logout` ends just that one device. A **[static token](glossary.md#static-token)** is one long-lived token per user. The admin makes it with `simp-server seed` and replaces it with `simp-server rotate`; the CLI ([24](24-cli.md)) and the tests use it. When the admin runs `revoke`, the user is marked disabled and all tokens die at once.
 
 On each request, the class in the server's `auth` slot reads the header and asks the store "whose token is this?":
 
@@ -74,14 +89,14 @@ user_by_token(token):
 
 `auth` and `store` are two of the three **[server slots](glossary.md#server-slot)**. A slot is a named place where the server takes one class, picked by name from `DEFAULT_PLUGINS`. The defaults are `StaticTokenAuth` and `SqliteStore`. A team with its own login system would put another class in the `auth` slot. [29](29-docker-sandbox.md) fills the third slot, `sandbox`.
 
-Real code: [store.py](../../apps/server/src/simp_server/store.py) — `hash_password`, `check_password`, `SqliteStore.login`, `sha`, `SqliteStore.user_by_token`; [server.py](../../apps/server/src/simp_server/server.py) — `StaticTokenAuth.authenticate`, `DEFAULT_PLUGINS`
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `google_start`, `google_callback`, `StaticTokenAuth.authenticate`, `DEFAULT_PLUGINS`; [connections.py](../../apps/server/src/simp_server/connections.py) — `Connections.login_start`, `Connections.login_callback`; [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.google_login`, `sha`, `SqliteStore.user_by_token`
 
 > **Implementation notes**
-> - scrypt runs with `n=2**14, r=8, p=1`, common safe values; the stored form is `scrypt$<salt>$<hash>`.
-> - If the name does not exist, `check_password` still runs scrypt once, so the reply time does not show which names exist.
-> - Hashes are compared with `hmac.compare_digest`, which takes the same time whatever bytes match.
-> - scrypt is slow, so it runs in `asyncio.to_thread`; it must not block the [event loop](glossary.md#event-loop).
-> - Sign-up is closed unless `signup_code` is set in settings, so a stranger who finds the port cannot make an account. Names must match `[a-z0-9_-]{2,32}`, passwords need 8 characters.
+> - The Google step uses the same `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` as the Google apps; the admin also adds the redirect URI `<public_url>/api/auth/google/callback` in Google's console. It asks only for the email (`openid` + `email`), no other Google access.
+> - `login_start` makes a random `state`, a PKCE verifier and a nonce. The nonce goes to the browser in a short-lived cookie; the server keeps only its hash, in memory. The callback must bring back the same `state` and cookie, so a link made by someone else cannot sign Ana in. Because it is in memory, a restart in the middle of a sign-in means Ana must press the button again.
+> - Emails are compared in lower case, and the user name is the lower-case email.
+> - A new user must also pass `check_sandbox`: with `LocalSandbox`, a second user is refused (HTTP 409) unless `allow_local_sandbox = true` ([29](29-docker-sandbox.md)).
+> - Open the web app at `localhost`, not `127.0.0.1`, so the cookie set by the start step comes back on the callback.
 
 ## How does Bob never see Ana's session?
 
@@ -94,7 +109,7 @@ get_session(user_id, sid):
     SELECT the session row WHERE id = sid AND user_id = user_id     // Bob's id + s1 -> no row -> HTTP 404
 ```
 
-Bob gets 404, the same answer as for a session that does not exist. So he cannot even learn that `s1` is there. Only the few queries that find the user in the first place (`login`, `user_by_token`) search by name or token instead.
+Bob gets 404, the same answer as for a session that does not exist. So he cannot even learn that `s1` is there. Only the few queries that find the user in the first place (`google_login`, `user_by_token`) search by name or token instead.
 
 Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.get_session`, `SqliteStore.entries`
 
@@ -119,7 +134,7 @@ Real code: [store.py](../../apps/server/src/simp_server/store.py) — `SqliteSto
 > **Implementation notes**
 > - `open()` turns on SQLite's **[WAL](glossary.md#wal)** mode: readers do not wait for a writer, and a crash does not leave a half-written file.
 > - `aiosqlite` wraps the standard `sqlite3` so calls are `async` and do not block the server.
-> - A `simp.db` from an older version lacks some columns (`cost`, `password`, `disabled`); `open()` adds them with `ALTER TABLE`, so an update keeps the same file. All columns: [ref-objects · Server store tables](ref-objects.md#server-store-tables).
+> - A `simp.db` from an older version lacks some columns (`cost`, `password`, `disabled`); `open()` adds them with `ALTER TABLE`, so an update keeps the same file. (`password` is left over from the old password login and is no longer used.) All columns: [ref-objects · Server store tables](ref-objects.md#server-store-tables).
 
 <a id="agents-and-memories"></a>
 

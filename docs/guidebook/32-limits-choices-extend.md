@@ -155,7 +155,7 @@ The other six limits are at the edges, in the server and in how it is run.
 
 **5. Budgets are soft.** The budget is checked **before** each LLM call ([28](28-limits.md)). So if Ana has $0.01 left, one more call still runs and can take her over the limit. A profile with no prices costs $0 and never hits a budget; the server only warns at startup.
 
-**6. No rate limit on login.** The README says: *"There is no rate limit on `/api/login` and `/api/signup`: before exposing the server through a tunnel, put one in front."*
+**6. No rate limit on sign-in.** The server has no rate limit on its routes, including the Google sign-in routes `/api/auth/google/start` and `/api/auth/google/callback` ([27](27-store-auth.md#google-login)). The README says to put one in front before exposing the server through a tunnel. Only emails in `allowed_emails` can get an account, so a stranger cannot sign up, but nothing slows down many requests.
 
 **7. `LocalSandbox` is not isolation.** Its docstring says: *"Not isolation: DockerSandbox replaces it."* The server refuses to start with `LocalSandbox` when there is more than one user in the store (`check_sandbox`), unless `allow_local_sandbox = true` is set ([29](29-docker-sandbox.md)).
 

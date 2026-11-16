@@ -239,7 +239,7 @@ The whole chat state of the browser client, from `apps/web/src/state.ts`. Chapte
 
 ## Server store tables
 
-The full `SCHEMA` of simp-server's SQLite store, from `apps/server/src/simp_server/store.py`. Chapter [27](27-store-auth.md#opening-the-store) explains each table where it is used; `usage` is used in [28](28-limits.md).
+The full `SCHEMA` of simp-server's SQLite store, from `apps/server/src/simp_server/store.py`. Chapter [27](27-store-auth.md#opening-the-store) explains each table where it is used; `usage` is used in [28](28-limits.md). `users.password` is left over from the old password login and is no longer used; web users sign in with Google ([27](27-store-auth.md#google-login)).
 
 ```sql
 CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, name TEXT UNIQUE, token_sha256 TEXT UNIQUE, password TEXT,
