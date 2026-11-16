@@ -6,6 +6,7 @@ Changes to this book, newest first. Each entry names the project commit the text
 ## 2026-11-16
 
 - Glossary: ch27 "Allow-list" renamed "Email allow-list" (anchor `email-allow-list`) so it no longer clashes with the backup "Allow list" (ch31); ch27 link updated, ch31 link already points to the backup entry.
+- Google login hardening (code 8585378): ch27 adds `email_verified` check, case-insensitive names, allow-list checked on every request (`authed`); glossary Allow-list updated.
 - Web login is Google-only (code ce118d2): ch27 "Who are you?" rewritten (Google sign-in, `allowed_emails`, `google_login`, anchor `scrypt-passwords` -> `google-login`); ch30 login, ch31 serve.sh + e2e login helper + accounts.spec, ch32 limit 6, ch23 row 3, ref-objects note on unused `users.password`, architecture.drawio auth/users boxes; glossary: Salt and Scrypt removed, Per-device token rewritten, Allow-list added.
 ## 2026-11-16
 
