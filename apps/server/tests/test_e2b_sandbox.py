@@ -47,14 +47,23 @@ class FakeSandbox:
         self.cloud, self.sandbox_id, self.metadata = cloud, f"sbx-{next(cloud.ids)}", metadata
         self.state, self.files_ = "running", dict()
         self.commands = SimpleNamespace(run=self._run)
-        self.files = SimpleNamespace(read=self._read, write=self._write, list=self._list)
+        self.files = SimpleNamespace(read=self._read, write=self._write, list=self._list, exists=self._exists)
         self.started_at = datetime.now(timezone.utc)
 
     async def _run(self, cmd, background=None, cwd=None, user=None, envs=None, on_stdout=None, on_stderr=None, timeout=60):
+        if cmd.startswith("m=/tmp/.simp-"):  # _began: marker file or a frozen process that still has it on its cmdline
+            marker = cmd.split(";", 1)[0][2:] + ".started"
+            began = marker in self.files_ or marker in self.cloud.frozen
+            return SimpleNamespace(stdout="began\n" if began else "no\n", exit_code=0)
+        inner = shlex.split(cmd.split("' ", 1)[1].rsplit("; c=$?", 1)[0])[0] if cmd.startswith("setsid") else cmd
+        if inner in self.cloud.began:  # buffering proxy: it started, then the sandbox paused before the start event
+            self.cloud.began.discard(inner)
+            self.files_[cmd.split("touch ", 1)[1].split(" ", 1)[0]] = ""
+            self.cloud.log.append(("run", self.sandbox_id, user, inner))
+            self.state = "paused"
         if self.state != "running":
             from e2b.exceptions import SandboxNotRunningException
             raise SandboxNotRunningException("paused")
-        inner = shlex.split(cmd.split("' ", 1)[1].rsplit("; c=$?", 1)[0])[0] if cmd.startswith("setsid") else cmd
         self.cloud.log.append(("run", self.sandbox_id, user, inner))
         return FakeHandle(self, inner, self.cloud.gates.get(inner), on_stdout or (lambda t: asyncio.sleep(0)))
 
@@ -63,6 +72,9 @@ class FakeSandbox:
             from e2b.exceptions import NotFoundException
             raise NotFoundException(path)
         return self.files_[path]
+
+    async def _exists(self, path):
+        return path in self.files_
 
     async def _write(self, path, data):
         self.files_[path] = data
@@ -88,7 +100,7 @@ class FakeE2B:
 
     def __init__(self):
         self.ids, self.boxes, self.log, self.gates, self.codes = itertools.count(1), dict(), list(), dict(), dict()
-        self.out, self.lose, self.create_delay = dict(), set(), 0
+        self.out, self.lose, self.began, self.frozen, self.create_delay = dict(), set(), set(), set(), 0
 
     async def create(self, template=None, timeout=None, metadata=None, lifecycle=None, **kw):
         await asyncio.sleep(self.create_delay)
@@ -274,11 +286,52 @@ async def test_paused_behind_our_back_is_resumed(cloud):
     env = await sb.open("s1", "u1")
     await go(env)
     await cloud.pause(env.box.sbx_id)  # `simp-server sandboxes --pause-all` from another process
-    # a command is never re-run: behind a buffering proxy the "gone" error can come after it started
+    assert (await go(env, "echo again"))[0] == 0  # not started: resumed and run, no error for the user
+    assert cloud.kinds("connect") and len(cloud.runs("echo again")) == 1
+
+
+async def test_paused_after_start_behind_proxy_is_not_rerun(cloud):
+    """A buffering proxy can hide the start event: the command began, then the sandbox paused. Its start marker is in
+    the resumed sandbox, so it is not run a second time."""
+    sb = make(cloud)
+    env = await sb.open("s1", "u1")
+    await go(env)
+    cloud.began.add("side effect")
     with pytest.raises(e2b_mod.SandboxLost):
-        await go(env, "echo again")
-    assert (await go(env, "echo again"))[0] == 0  # the next call resumes
-    assert cloud.kinds("connect")
+        await go(env, "side effect")
+    assert len(cloud.runs("side effect")) == 1 and cloud.kinds("connect")
+    assert (await go(env, "echo next"))[0] == 0  # the sandbox is usable again
+
+
+async def test_paused_before_touch_is_not_rerun(cloud):
+    """Frozen by the pause after envd started the wrapper but before `touch`: no marker yet, but its process is
+    still there, so it is not run a second time."""
+    sb = make(cloud)
+    env = await sb.open("s1", "u1")
+    await go(env)
+    real = env.box.sbx.commands.run
+
+    async def run(cmd, **kw):
+        if "frozen cmd" in cmd and cmd.startswith("setsid"):
+            cloud.frozen.add(cmd.split("touch ", 1)[1].split(" ", 1)[0])
+            env.box.sbx.state = "paused"
+        return await real(cmd, **kw)
+    env.box.sbx.commands.run = run
+    with pytest.raises(e2b_mod.SandboxLost):
+        await go(env, "frozen cmd")
+    assert not cloud.runs("frozen cmd")
+
+
+async def test_not_started_then_new_sandbox_is_not_rerun(cloud):
+    """Paused before start but the resume fails (a new sandbox): the old one cannot be checked, so no re-run."""
+    sb = make(cloud)
+    env = await sb.open("s1", "u1")
+    await go(env)
+    await cloud.pause(env.box.sbx_id)
+    cloud.boxes.pop(env.box.sbx_id)  # gone for good: resume fails, a fresh sandbox is created
+    with pytest.raises(e2b_mod.SandboxLost):
+        await go(env, "maybe ran")
+    assert not cloud.runs("maybe ran")
 
 
 async def test_timeout_before_pid_file_waits_for_it(cloud):

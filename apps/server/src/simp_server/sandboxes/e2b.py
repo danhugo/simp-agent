@@ -61,6 +61,16 @@ class SandboxLost(RuntimeError):
     """The sandbox was paused or killed while a command ran: it may have had effects, so it is never re-run."""
 
 
+class _NotStarted(SandboxLost):
+    """The sandbox was gone when commands.run was called (no start event). Behind a buffering proxy that is not proof
+    the command never ran, so E2BEnv._call resumes the SAME sandbox and re-runs only if the command's start marker is
+    missing there. Other callers of _run treat it as SandboxLost."""
+
+    def __init__(self, marker: str, err: Exception):
+        super().__init__(f"sandbox stopped before the command started: {err}")
+        self.marker = marker
+
+
 def _gone(e: Exception) -> bool:
     from e2b.exceptions import SandboxNotFoundException, SandboxNotRunningException
     return isinstance(e, (SandboxNotFoundException, SandboxNotRunningException))
@@ -84,7 +94,9 @@ async def _run(sbx, command: str, cwd: str, timeout, cancel, on_output=None, use
     # The pid also goes to a file: the stream (start event + output) can arrive only at the end (a buffering proxy,
     # e.g. Netskope), so the timeout clock starts before commands.run and the kill must not need the stream.
     pidfile = f"/tmp/.simp-{uuid.uuid4().hex}.pid"
-    wrapped = (f"setsid -w sh -c 'echo $$ > {pidfile}; echo $$; exec sh -c \"$0\" 2>&1' " + shlex.quote(command)
+    marker = pidfile[:-4] + ".started"  # kept after the command ends: proves it began (ponytail: 0-byte files in /tmp)
+    wrapped = (f"setsid -w sh -c 'touch {marker} || exit 97; echo $$ > {pidfile}; echo $$; exec sh -c \"$0\" 2>&1' "
+               + shlex.quote(command)
                + f"; c=$?; rm -f {pidfile}; exit $c")
 
     started = list()
@@ -110,13 +122,26 @@ async def _run(sbx, command: str, cwd: str, timeout, cancel, on_output=None, use
     try:
         return wait.result().exit_code, "".join(chunks)
     except Exception as e:  # CommandExitException: a non-zero exit
-        if _gone(e):  # even before `started`: behind a buffering proxy run() can raise after the command began
+        if _gone(e):
+            if not started:  # maybe never ran; behind a buffering proxy maybe it did: _call checks the marker
+                raise _NotStarted(marker, e) from e
             raise SandboxLost(f"sandbox stopped while the command ran: {e}") from e
         if not started:  # could not start for another reason: nothing ran
             raise
         if (code := getattr(e, "exit_code", None)) is None:
             raise
         return code, "".join(chunks)
+
+
+async def _began(sbx, marker: str) -> bool:
+    """After resuming the same sandbox: did a _NotStarted command begin? Yes if its start marker exists, or if a process
+    still has the marker path in its command line (frozen by the pause before `touch` ran, now waking up)."""
+    base = marker.removesuffix(".started")
+    pat = base.rsplit("/", 1)[1] + "[.]started"
+    # never write the full marker path in this command: its own shell would then match the pgrep pattern
+    r = await sbx.commands.run(f"m={base}; if [ -e \"$m.started\" ] || pgrep -f '{pat}' >/dev/null; then echo began; "
+                               "else echo no; fi", user="user", timeout=15)
+    return r.stdout.strip() != "no"  # anything unexpected counts as "began": never risk a second run
 
 
 class _Box:
@@ -166,10 +191,19 @@ class E2BEnv:
     async def _call(self, fn, need_s: float | None = None):
         """fn(sbx) in the running sandbox; once more on a fresh/resumed one if it was paused or killed behind our back
         before fn started anything (a _gone error; a command lost mid-run raises SandboxLost and is never re-run)."""
+        pending = None  # (_NotStarted, sandbox id) of a first try that hit a paused sandbox
         for attempt in (1, 2):
             try:
                 async with self._use(need_s) as sbx:
+                    if pending and (sbx.sandbox_id != pending[1] or await _began(sbx, pending[0].marker)):
+                        raise SandboxLost(f"{pending[0]}; it may have run, so it is not run again")  # new box: unknown
                     return await fn(sbx)
+            except _NotStarted as e:
+                if self.box.state == "running":
+                    self.box.state = "paused" if self.box.sbx_id else "none"
+                if attempt == 2:
+                    raise
+                pending = (e, self.box.sbx_id)
             except SandboxLost:
                 if self.box.state == "running":
                     self.box.state = "paused" if self.box.sbx_id else "none"

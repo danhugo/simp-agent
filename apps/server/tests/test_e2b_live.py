@@ -113,3 +113,21 @@ async def test_live_provider_timeout_pauses(tmp_path):
     finally:
         for i in await sb.list_all():
             await sb._sdk.kill(i["id"], **sb._api())
+
+
+async def test_live_paused_behind_our_back_resumes(tmp_path):
+    """Pause the sandbox through the E2B API (as `sandboxes --pause-all` from another process would): the server still
+    thinks it runs, and the next command resumes it and runs, with no error and without running anything twice."""
+    tag = f"simp-live-{uuid.uuid4().hex[:8]}"
+    sb = NoMountE2BSandbox({"data_dir": str(tmp_path), "sandbox": {"kind": "e2b", "tag": tag, "provider_timeout_s": 300}})
+    sb.keys = {"E2B_API_KEY": KEY}
+    try:
+        env = await sb.open("s1", "u1")
+        assert await env.exec("echo 1 >> /home/user/count", ".", 60, ev()) == (0, "")
+        await sb._sdk.pause(env.box.sbx_id, api_key=KEY)
+        assert env.box.state == "running"  # the server does not know
+        assert await env.exec("echo 1 >> /home/user/count; wc -l < /home/user/count", ".", 60, ev()) == (0, "2\n")
+    finally:
+        await sb.close_all()
+        for i in await sb.list_all():
+            await sb._sdk.kill(i["id"], api_key=KEY)
