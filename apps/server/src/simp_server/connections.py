@@ -380,6 +380,7 @@ class Connections:
             return None
         await self.store.update_connection_token(user_id, row["link_id"], self.fernet.encrypt(
             t["access_token"].encode()).decode(), time.time() + float(t.get("expires_in", 3600)))
+        row["expires_at"] = time.time() + float(t.get("expires_in", 3600))  # servers() passes it to UserMcp
         return t["access_token"]
 
     async def servers(self, user_id: str) -> tuple[list[dict], list[str]]:
@@ -405,7 +406,8 @@ class Connections:
                 continue
             for n, app in mine.items():
                 out.append({"name": n, "url": app["url"], "headers": self._header(row["app"], token), "provider": row[
-                    "app"], "link_id": row["link_id"], "email": row["account_email"], "default": n not in defaults})
+                    "app"], "link_id": row["link_id"], "email": row["account_email"], "default": n not in defaults,
+                    "expires_at": row["expires_at"]})
                 defaults.add(n)
         return out, problems
 
@@ -413,8 +415,7 @@ class Connections:
 
 class UserMcp(McpPlugin):
     """The run's MCP plugin: the user's connected apps. Tools not marked read-only need approval; every call is audited.
-    ponytail: the access token is fixed when the first prompt connects (about 1 h); a very long-lived run then
-    gets auth errors until it is evicted and reloaded. Reconnect on 401 if that matters."""
+    Tokens are fixed at setup; expired() tells the run to reload before a turn once the earliest one is near its end."""
 
     def __init__(self, run, servers: list[dict] | None = None):
         super().__init__(servers=servers)
@@ -422,6 +423,11 @@ class UserMcp(McpPlugin):
         self.api, self.config, self.stale = None, dict(), False  # stale: the user changed portals; reload next turn
         self.emails: dict[str, str | None] = dict()  # link_id -> account email (audit, approval card)
         self.default: dict[str, str] = dict()  # app -> its default link_id
+        self.expires = NO_EXPIRY  # earliest token expiry of the links
+        self.links: dict[str, set] = dict()  # tool name -> link ids it can run with (audit)
+
+    def expired(self) -> bool:
+        return time.time() > self.expires - REFRESH_EARLY
 
     async def reload(self) -> None:
         """Drop the old connections and tools, read the user's portals again. Only between turns."""
@@ -433,7 +439,7 @@ class UserMcp(McpPlugin):
             self.api.unregister_tool(n)
             self.run.session.needs_approval.discard(n)
         self.names, self.servers, self.stop = set(), None, asyncio.Event()
-        self.emails, self.default = dict(), dict()
+        self.emails, self.default, self.expires, self.links = dict(), dict(), NO_EXPIRY, dict()
         await self.setup(self.api, self.config)
 
     async def tool_call(self, call):
@@ -454,6 +460,7 @@ class UserMcp(McpPlugin):
                 self.emails[spec["link_id"]] = spec.get("email")
                 if spec.get("default"):
                     self.default[spec["name"]] = spec["link_id"]
+            self.expires = min(self.expires, spec.get("expires_at", NO_EXPIRY))
         tools = list()
 
         class Collect:  # gather every link's tools first: same-named tools of one app become one tool
@@ -465,7 +472,8 @@ class UserMcp(McpPlugin):
         by_name: dict[str, list] = dict()
         for t in tools:
             by_name.setdefault(t.name, list()).append(t)
-        for ts in by_name.values():
+        for name, ts in by_name.items():
+            self.links[name] = {t.link_id for t in ts}
             api.register_tool(ts[0] if len(ts) == 1 else self._merge(ts))
         session = self.run.session
         for t in session.agent.tools:
@@ -492,6 +500,8 @@ class UserMcp(McpPlugin):
         app = ts[0].name.partition("__")[0]
         by_link = {t.link_id: t for t in ts}
         default = self.default.get(app) or ts[0].link_id
+        if default not in by_link:  # the default link failed to connect
+            default = self.default[app] = ts[0].link_id
         base = by_link[default]
         accounts = ", ".join(f"{lid} = {self.emails.get(lid) or 'account'}" + (" (default)" if lid == default else "")
                              for lid in by_link)
@@ -511,8 +521,12 @@ class UserMcp(McpPlugin):
         return tool
 
     def link_of(self, call) -> str | None:
-        app = call.name.partition("__")[0]
-        return (call.arguments or dict()).get("link_id") or self.default.get(app)
+        """The link the call ran with: the one asked for if this tool has it, else the tool's default."""
+        links = self.links.get(call.name, set())
+        if len(links) == 1:  # unmerged: any link_id the model passes is ignored
+            return next(iter(links))
+        lid = (call.arguments or dict()).get("link_id") or self.default.get(call.name.partition("__")[0])
+        return lid if lid in links else None  # unknown link_id: nothing ran
 
     def shown_args(self, call) -> dict:
         """Approval card args: the account's email instead of the raw link id."""

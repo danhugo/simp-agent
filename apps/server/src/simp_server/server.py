@@ -400,7 +400,7 @@ class Run:
 
     async def _run(self, fn) -> None:
         try:
-            if self.mcp.stale:
+            if self.mcp.stale or self.mcp.expired():
                 await self.mcp.reload()
             await self._turn(fn)
         finally:  # never leave the session stuck busy, whatever failed (even a store write or a cancel)

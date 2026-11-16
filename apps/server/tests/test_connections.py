@@ -12,7 +12,7 @@ from simp_agent.ai import ToolCall
 from simp_agent.testing import FakeProvider
 
 from simp_server import protocol as p
-from simp_server.connections import UserMcp
+from simp_server.connections import NO_EXPIRY, UserMcp
 from simp_server.server import create_app, load_settings
 
 from .test_server import reply, wait_for
@@ -217,7 +217,7 @@ async def test_github_token_save_list_run_delete(tmp_path):
     servers, problems = await mgr.conns.servers(ua["id"])
     assert servers == [{"name": "github", "url": "https://api.githubcopilot.com/mcp/",
                         "headers": {"Authorization": "Bearer ghp_good"}, "provider": "github", "link_id": row["link_id"],
-                        "email": "octo", "default": True}] and not problems
+                        "email": "octo", "default": True, "expires_at": NO_EXPIRY}] and not problems
     await c.post("/api/connections/github/token", headers=h, json={"token": "ghp_good"})  # same login: same link
     assert [r["link_id"] for r in await mgr.store.connections(ua["id"])] == [row["link_id"]]
     assert (await c.delete(f"/api/connections/{row['link_id']}", headers=h)).json() == {"ok": True}
@@ -498,3 +498,44 @@ async def test_old_connections_table_migrates(tmp_path):
     await st.add_audit("u", "s", "gmail", "search", "auto", True, r["link_id"])
     assert (await st.audit("u", "gmail"))[0]["link_id"] == r["link_id"]
     await st.close()
+
+
+async def test_token_near_expiry_reloads_before_next_turn(tmp_path):
+    _, mgr, _, [(_, ua), _], _ = await make(tmp_path, FakeProvider(reply("a"), reply("b")))
+    row = await mgr.store.add_session(ua["id"], "test", "t")
+    run = await mgr.get(ua, row["id"])
+    calls = list()
+
+    async def servers(user_id):  # each reload gets a freshly refreshed token
+        calls.append(user_id)
+        return [{"name": "gmail", "server": fake_gmail_of(f"T{len(calls)}"), "link_id": "lnk_a",
+                 "default": True, "expires_at": time.time() + 3600 if len(calls) > 1 else time.time() + 10}], []
+    mgr.conns.servers = servers
+    await run.command(p.Prompt(text="hi"))
+    await wait_for(lambda: not run.busy and run.task.done())
+    assert len(calls) == 1 and run.mcp.expired()  # token ends within REFRESH_EARLY
+    await run.command(p.Prompt(text="again"))
+    await wait_for(lambda: not run.busy and run.task.done())
+    assert len(calls) == 2 and not run.mcp.expired()
+    await run.session.shutdown()
+    await mgr.store.close()
+
+
+async def test_default_link_fails_other_links_work_and_audit_real_link(tmp_path):
+    fp = FakeProvider(reply("", [ToolCall("c1", "gmail__search", {"q": "x"})]),
+                      reply("", [ToolCall("c2", "gmail__search", {"q": "y", "link_id": "lnk_zz"})]), reply("done"))
+    _, mgr, _, [(_, ua), _], _ = await make(tmp_path, fp)
+    row = await mgr.store.add_session(ua["id"], "test", "t")
+    run = await mgr.get(ua, row["id"])
+    run.mcp.servers = [
+        {"name": "gmail", "command": ["/nonexistent-mcp"], "link_id": "lnk_a", "default": True},  # can't connect
+        {"name": "gmail", "server": fake_gmail_of("B"), "link_id": "lnk_b", "default": False},
+        {"name": "gmail", "server": fake_gmail_of("C"), "link_id": "lnk_c", "default": False}]
+    await run.command(p.Prompt(text="hi"))
+    await wait_for(lambda: not run.busy and run.task.done())
+    results = [e["content"] for e in run.log if e["type"] == "tool_result"]
+    assert results[0].endswith("B found x") and "lnk_zz" in results[1]
+    audit = await mgr.store._all("SELECT link_id FROM mcp_audit ORDER BY at")
+    assert [x["link_id"] for x in audit] == ["lnk_b", None]  # the link that ran; none for a bad link_id
+    await run.session.shutdown()
+    await mgr.store.close()
