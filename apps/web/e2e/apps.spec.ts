@@ -157,7 +157,7 @@ test("approval card for an MCP tool shows app + action and readable args", async
   await expect(card).toContainText("Allow Gmail · create draft?");
   await expect(card.locator("li").first()).toHaveText("to: a@b.c");
   await expect(card.locator("pre")).toHaveCount(0);
-  for (const n of ["Allow", "Always", "Deny"]) await expect(card.getByRole("button", { name: n })).toBeVisible();
+  for (const n of ["Allow", "Always allow Gmail", "Deny"]) await expect(card.getByRole("button", { name: n, exact: true })).toBeVisible();
 });
 
 test("portal detail page: accounts, add account, scopes, tools, MCP URL, recent calls (mocked API)", async ({ page }) => {

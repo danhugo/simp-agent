@@ -37,9 +37,19 @@ test("streaming answer", async ({ page }) => {
 test("tool call: Allow shows the result, Deny is reported", async ({ page }) => {
   await login(page);
   await say(page, "tool please");
-  await page.locator(".approval-card").getByRole("button", { name: "Allow" }).click();
+  await page.locator(".approval-card").getByRole("button", { name: "Allow", exact: true }).click();
   await expect(last(page)).toContainText("Tool said: hi-from-tool");
   await expect(page.locator(".tool.done")).toHaveCount(1);
+  // two model calls in this turn, one "Thinking" for the turn, labeled once done
+  await expect(page.locator(".thinking")).toHaveCount(1);
+  await expect(page.locator(".thinking summary")).toHaveText(/^(Thoughts|Thought for .+)$/);
+  await page.locator(".thinking summary").click();
+  await expect(page.locator(".thinking > div")).toHaveText("thinking...\n\nthinking...");
+  // the latest answer: copy and "try again" (asks the same question again)
+  await page.getByRole("button", { name: "Try again" }).click();
+  await page.locator(".approval-card").getByRole("button", { name: "Allow", exact: true }).click();
+  await expect(page.locator(".tool.done")).toHaveCount(2);
+  await expect(page.locator(".msg.user", { hasText: "tool please" })).toHaveCount(2);
   await say(page, "tool again");
   await page.locator(".approval-card").getByRole("button", { name: "Deny" }).click();
   await expect(badge(page)).toHaveText("idle");
@@ -55,7 +65,7 @@ test("reload mid-stream continues with no gaps or dups; pending approval restore
   await say(page, "tool");
   await expect(page.locator(".approval-card")).toBeVisible();
   await page.reload();
-  await page.locator(".approval-card").getByRole("button", { name: "Allow" }).click();
+  await page.locator(".approval-card").getByRole("button", { name: "Allow", exact: true }).click();
   await expect(last(page)).toContainText("Tool said: hi-from-tool");
 });
 
@@ -65,7 +75,8 @@ test("Stop aborts", async ({ page }) => {
   await expect(page.locator(".streaming .md")).toContainText("w2 ");
   await page.getByRole("button", { name: "Stop" }).click();
   await expect(badge(page)).toHaveText("idle");
-  await expect(page.locator(".notice.warning")).toHaveText("run aborted");
+  await expect(page.locator(".msg-actions .stopped")).toHaveText("Stopped");  // one quiet word, no banner or red pill
+  await expect(page.locator(".notice")).toHaveCount(0);
 });
 
 test("steer while running", async ({ page }) => {

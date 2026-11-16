@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import { api, AuthError, type ConnStatus } from "./api";
 import { Badge, chatName } from "./App";
 import {
-  IconArrowDown, IconArrowUp, IconBell, IconCheck, IconChevron, IconCompact, IconCopy, IconDownload, IconFile, IconFolder, IconMore, IconPlus,
+  IconArrowDown, IconArrowUp, IconBell, IconCheck, IconChevron, IconClose, IconCompact, IconCopy, IconDownload, IconFile, IconFolder, IconMore, IconPlus, IconRefresh,
   IconStop,
 } from "./icons";
 import type { PendingApproval, ToolCall } from "./protocol.gen";
@@ -110,6 +110,40 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
     { key: "files", label: "Files", icon: <IconFolder size={16} />, title: "Show files", pressed: filesOpen, onClick: onToggleFiles },
   ];
 
+  // One "Thinking" per turn (everything between two user messages), not one per model call:
+  // the turn's first assistant message shows all its thoughts, the later ones none.
+  const turnOf = new Map<number, number>(), thoughts = new Map<number, string[]>();
+  let turn = 0;
+  for (const it of state.items) {
+    if (it.kind === "user") turn = it.seq;
+    else if (it.kind === "assistant") {
+      if (!thoughts.has(turn)) { thoughts.set(turn, []); turnOf.set(it.seq, turn); }
+      if (it.msg.thinking.trim()) thoughts.get(turn)!.push(it.msg.thinking);
+    }
+  }
+  const liveTurnHasItems = thoughts.has(turn);
+  // Tool calls in a row (across the model's steps, until it writes text again) form one group,
+  // so 20 page opens are one line ("Searched the web 2 times, opened 18 pages") instead of 20.
+  const groupCalls = new Map<number, ToolCall[]>(), absorbed = new Set<number>();
+  let owner: number | null = null;
+  for (const it of state.items) {
+    if (it.kind !== "assistant") { owner = null; continue; }
+    const calls = it.msg.tool_calls;
+    if (owner !== null && !it.msg.text && !it.msg.error) { groupCalls.get(owner)!.push(...calls); absorbed.add(it.seq); }
+    else { groupCalls.set(it.seq, [...calls]); owner = calls.length ? it.seq : null; }
+  }
+  // the latest answer gets its actions shown (not only on hover), plus "try again" with the last question
+  const lastUserItem = [...state.items].reverse().find((i) => i.kind === "user");
+  const lastUser = lastUserItem?.kind === "user" ? lastUserItem.text : "";
+  const lastAnswer = [...state.items].reverse().find((i) => i.kind === "assistant")?.seq;
+  if (f.thinking.trim()) (thoughts.get(turn) ?? (thoughts.set(turn, []), thoughts.get(turn)!)).push(f.thinking);
+  const thinkingNow = busy && !!f.thinking && !f.text;
+  const thinkMs = useThinkTime(`${sid}:${turn}`, thinkingNow);
+  const turnThinking = (t: number, live: boolean) => {
+    const all = thoughts.get(t) ?? [];
+    return all.length > 0 && <Thinking text={all.join("\n\n")} live={live && thinkingNow} ms={thinkMs(t === turn ? `${sid}:${turn}` : `${sid}:${t}`)} />;
+  };
+
   return (
     <main className="chat">
       <header>
@@ -127,21 +161,35 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
           <div className="thread">
             {state.items.map((it) =>
               it.kind === "user" ? <div key={it.seq} className="msg user"><Md text={it.text} /></div>
-              : it.kind === "notice" ? <div key={it.seq} className={`notice ${it.level}`}>{it.text}</div>
+              : it.kind === "notice" ? (it.text === "run aborted" ? null  // shown as "Stopped" under the answer
+                : <div key={it.seq} className={`notice ${it.level}`}>{it.text}</div>)
+              : absorbed.has(it.seq) ? null  // its tool calls are shown in the group above
               : (
                 <div key={it.seq} className="msg assistant">
-                  {it.msg.thinking && <Thinking text={it.msg.thinking} />}
+                  {turnOf.has(it.seq) && turnThinking(turnOf.get(it.seq)!, turnOf.get(it.seq) === turn)}
                   {it.msg.text && <Md text={it.msg.text} />}
-                  {it.msg.error && <div className="notice error">{it.msg.error}</div>}
-                  {it.msg.tool_calls.map((c) => <Tool key={c.id} call={c} state={state} send={send} sid={sid} onOpenFile={onOpenFile} onError={onError} />)}
-                  {it.msg.text && <div className="msg-actions"><CopyButton text={() => it.msg.text} /></div>}
+                  {it.msg.error && it.msg.error !== "aborted" && <div className="notice error">{it.msg.error}</div>}
+                  {(groupCalls.get(it.seq)?.length ?? 0) > 0 &&
+                    <ToolGroup calls={groupCalls.get(it.seq)!} state={state} send={send} sid={sid} onOpenFile={onOpenFile} onError={onError} />}
+                  {/* copy only the answer, not an in-between step that called tools (its button landed under the tool) */}
+                  {((it.msg.text && it.msg.tool_calls.length === 0) || it.msg.error === "aborted") && (
+                    <div className={`msg-actions ${it.seq === lastAnswer || it.msg.error === "aborted" ? "last" : ""}`}>
+                      {/* you pressed Stop: one quiet word where the answer ends, not a red error plus a banner */}
+                      {it.msg.error === "aborted" && <span className="stopped">Stopped</span>}
+                      {it.msg.text && <CopyButton label="Copy answer" text={() => it.msg.text} />}
+                      {it.seq === lastAnswer && !busy && lastUser && (
+                        <button type="button" className="icon-btn" aria-label="Try again" title="Ask again"
+                          onClick={() => send({ type: "prompt", text: lastUser })}><IconRefresh size={16} /></button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             {/* aria-live off + aria-busy: don't announce every streamed token; the finished message is announced once */}
             {firstPrompt && !state.items.some((i) => i.kind === "user") && <div className="msg user">{firstPrompt}</div>}
-            {(f.text || f.thinking) && (
+            {(f.text || (f.thinking && !liveTurnHasItems)) && (
               <div className="msg assistant streaming" aria-live="off" aria-busy="true">
-                {f.thinking && <Thinking text={f.thinking} />}
+                {!liveTurnHasItems && turnThinking(turn, true)}
                 {f.text && <Md text={f.text} />}
               </div>
             )}
@@ -260,13 +308,25 @@ const mdComponents: Components = {
 };
 export const Md = ({ text }: { text: string }) => <div className="md"><Markdown remarkPlugins={[remarkGfm]} components={mdComponents}>{text}</Markdown></div>;
 
-function Thinking({ text, open }: { text: string; open?: boolean }) {
+/** "Thinking…" while the model thinks, then "Thought for 4s" (or "Thoughts" when the time isn't known, e.g. after a reload). */
+function Thinking({ text, live = false, ms }: { text: string; live?: boolean; ms?: number }) {
+  const label = live ? "Thinking…" : ms && ms >= 1000 ? `Thought for ${fmtDuration(ms)}` : "Thoughts";
   return (
-    <details className="thinking" open={open}>
-      <summary><IconChevron size={16} className="chev" />Thinking</summary>
+    <details className={`thinking ${live ? "live" : ""}`}>
+      <summary><IconChevron size={16} className="chev" /><span className="think-label">{label}</span></summary>
       <div>{text}</div>
     </details>
   );
+}
+
+// Time spent thinking per turn, measured in this tab (it adds up over the turn's model calls).
+const thinkTimes = new Map<string, { ms: number; since?: number }>();
+function useThinkTime(key: string, thinking: boolean) {
+  const now = useNow(thinking);
+  let t = thinkTimes.get(key);
+  if (thinking) { if (!t) thinkTimes.set(key, (t = { ms: 0 })); if (t.since === undefined) t.since = now; }
+  else if (t?.since !== undefined) { t.ms += now - t.since; t.since = undefined; }
+  return (k: string) => { const x = thinkTimes.get(k); return x ? x.ms + (x.since !== undefined ? now - x.since : 0) : undefined; };
 }
 
 export type Send = (c: Parameters<typeof api.command>[1]) => void;
@@ -299,6 +359,54 @@ function FileCard({ path, sid, onOpen, onError }: { path: string; sid: string; o
   );
 }
 
+type ToolProps = { state: ChatState; send: Send; sid: string; onOpenFile?: (p: string) => void; onError: (e: unknown) => void };
+
+/** A few calls show as rows; more fold into one summary line. Calls still running or waiting for you stay visible. */
+function ToolGroup({ calls, ...p }: ToolProps & { calls: ToolCall[] }) {
+  const finished = calls.filter((c) => p.state.results[c.id]);
+  const active = calls.filter((c) => !p.state.results[c.id]);
+  if (calls.length <= 3 || finished.length <= 1) return <>{calls.map((c) => <Tool key={c.id} call={c} {...p} />)}</>;
+  const failed = finished.filter((c) => p.state.results[c.id].is_error).length;
+  return (
+    <>
+      <details className="tool tool-group">
+        <summary>
+          <span className={`tstat ${failed ? "error" : "done"}`} role="img" aria-label={failed ? `${failed} failed` : "done"}>
+            {failed ? <IconClose size={14} strokeWidth={2.5} /> : <IconCheck size={14} strokeWidth={2.5} />}
+          </span>
+          <span className="tool-label">{groupSummary(finished)}{failed > 0 && `, ${failed} failed`}</span>
+          <IconChevron size={16} className="chev" />
+        </summary>
+        <div className="tool-group-body">{finished.map((c) => <Tool key={c.id} call={c} {...p} />)}</div>
+      </details>
+      {active.map((c) => <Tool key={c.id} call={c} {...p} />)}
+    </>
+  );
+}
+
+/** "Searched the web 2 times, opened 18 pages" */
+export function groupSummary(calls: ToolCall[]): string {
+  const n = new Map<string, number>();
+  for (const c of calls) { const k = mcpLabel(c.name) ? `app:${mcpLabel(c.name)!.split(" · ")[0]}` : c.name; n.set(k, (n.get(k) ?? 0) + 1); }
+  const pl = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
+  const parts = [...n].map(([name, k]) => {
+    const app = name.startsWith("app:") ? name.slice(4) : undefined;
+    if (app) return `used ${app} ${k === 1 ? "once" : `${k} times`}`;
+    switch (name) {
+      case "web_search": return k === 1 ? "searched the web" : `searched the web ${k} times`;
+      case "web_fetch": return `opened ${pl(k, "page")}`;
+      case "read": return `read ${pl(k, "file")}`;
+      case "write": return `wrote ${pl(k, "file")}`;
+      case "edit": return `edited ${pl(k, "file")}`;
+      case "bash": return `ran ${pl(k, "command")}`;
+      case "grep": case "find": case "ls": return `looked through files ${k === 1 ? "once" : `${k} times`}`;
+      default: return `used ${name.replace(/[_-]+/g, " ")} ${k === 1 ? "once" : `${k} times`}`;
+    }
+  });
+  const out = parts.join(", ");
+  return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
 function Tool({ call, state, send, sid, onOpenFile, onError }: {
   call: ToolCall; state: ChatState; send: Send; sid: string; onOpenFile?: (p: string) => void; onError: (e: unknown) => void;
 }) {
@@ -310,24 +418,31 @@ function Tool({ call, state, send, sid, onOpenFile, onError }: {
   const ms = useToolTimer(call.id, !result);
   return (
     <>
-    <details className={`tool ${status}`} open={status === "approval"}>
+    <details className={`tool ${status}`}>
       <summary>
-        <span className={`dot ${status}`} title={dotLabel[status]} role="img" aria-label={dotLabel[status]} />
-        <span className="tool-label">{toolLabel(call, status !== "running" && status !== "approval")}</span>
-        {ms !== null && ms >= 2000 && <span className="tool-time" aria-label={`ran for ${fmtDuration(ms)}`}>{fmtDuration(ms)}</span>}
+        <span className={`tstat ${status}`} title={dotLabel[status]} role="img" aria-label={dotLabel[status]}>
+          {status === "done" ? <IconCheck size={14} strokeWidth={2.5} /> : status === "error" ? <IconClose size={14} strokeWidth={2.5} /> : status === "approval" ? "?" : null}
+        </span>
+        <span className="tool-label">{withCode(toolLabel(call, status !== "running" && status !== "approval"))}</span>
+        {ms !== null && ms >= 1000 && <span className="tool-time" aria-label={`ran for ${fmtDuration(ms)}`}>{fmtDuration(ms)}</span>}
         <IconChevron size={16} className="chev" />
       </summary>
       <div className="tool-body">
-        {state.pending?.call_id === call.id && <Approval p={state.pending} send={send} />}
         {decision && decision !== "allow" && <p className="small muted">Decision: {decision}</p>}
         {output && <pre className={`output ${result?.is_error ? "err" : ""}`}>{output}</pre>}
       </div>
     </details>
+    {/* the question stands on its own under the row, not nested in the tool's output */}
+    {state.pending?.call_id === call.id && <Approval p={state.pending} send={send} />}
     {result?.is_error && output && <p className="tool-err small">{oneLine(output)}</p>}
     {file && <FileCard path={file} sid={sid} onOpen={onOpenFile} onError={onError} />}
     </>
   );
 }
+
+/** "Ran `npm test`" -> Ran <code>npm test</code> (the label marks commands with backticks). */
+const withCode = (label: string) =>
+  label.split(/`([^`]*)`/).map((part, i) => (i % 2 ? <code key={i} className="tool-code">{part}</code> : part));
 
 const dotLabel = { running: "running", done: "done", error: "error", approval: "needs approval" } as const;
 
@@ -381,6 +496,20 @@ export function mcpLabel(name: string): string | undefined {
   return `${n} · ${words(name.slice(i + 2))}`;
 }
 /** Args as short "key: value" lines (long values cut) instead of raw JSON. */
+/** What the approval box asks, in plain words: the command or file instead of raw JSON arguments. */
+export function approvalAsk(tool: string, args: Record<string, unknown>): { question: string; code?: string; lines: string[] } {
+  const str = (k: string) => (typeof args[k] === "string" ? (args[k] as string) : "");
+  const mcp = mcpLabel(tool);
+  if (mcp) return { question: `Allow ${mcp}?`, lines: argLines(args) };
+  switch (tool) {
+    case "bash": return { question: "Run this command?", code: str("command"), lines: [] };
+    case "write": return { question: `Write ${str("path")}?`, code: str("content").slice(0, 2000), lines: [] };
+    case "edit": return { question: `Edit ${str("path")}?`, lines: [] };
+    case "read": return { question: `Read ${str("path")}?`, lines: [] };
+    default: return { question: `Allow ${tool}?`, lines: argLines(args) };
+  }
+}
+
 export const argLines = (args: Record<string, unknown>) => Object.entries(args).map(([k, v]) =>
   `${words(k)}: ${oneLine(typeof v === "string" ? v : JSON.stringify(v), 120)}`);
 
@@ -395,16 +524,17 @@ function Approval({ p, send }: { p: PendingApproval; send: Send }) {
   }, [p.call_id]);
   return (
     <div ref={card} tabIndex={-1} className="approval-card" role="alertdialog" aria-label="Approval needed">
-      {mcpLabel(p.tool) ? <>
-        <p><strong>Allow {mcpLabel(p.tool)}?</strong></p>
-        <ul className="args-list">{argLines(p.args).map((l, i) => <li key={i}>{l}</li>)}</ul>
-      </> : <>
-        <p><strong>Allow {p.tool}?</strong></p>
-        <pre className="args">{JSON.stringify(p.args, null, 2)}</pre>
-      </>}
+      {(() => {
+        const ask = approvalAsk(p.tool, p.args);
+        return <>
+          <p className="ask">{ask.question}</p>
+          {ask.code !== undefined && <pre className="args">{ask.code}</pre>}
+          {ask.lines.length > 0 && <ul className="args-list">{ask.lines.map((l, i) => <li key={i}>{l}</li>)}</ul>}
+        </>;
+      })()}
       <div className="row">
         <button className="primary" onClick={() => answer("allow")}>Allow</button>
-        <button onClick={() => answer("always")}>Always</button>
+        <button onClick={() => answer("always")}>Always allow {mcpLabel(p.tool)?.split(" · ")[0] ?? p.tool}</button>
         <button className="danger" onClick={() => answer("deny")}>Deny</button>
       </div>
     </div>
