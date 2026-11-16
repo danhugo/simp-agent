@@ -19,7 +19,7 @@ from .test_server import reply, wait_for
 
 
 def id_token(email):
-    body = base64.urlsafe_b64encode(json.dumps({"email": email}).encode()).decode().rstrip("=")
+    body = base64.urlsafe_b64encode(json.dumps({"email": email, "email_verified": True}).encode()).decode().rstrip("=")
     return f"h.{body}.sig"
 
 
