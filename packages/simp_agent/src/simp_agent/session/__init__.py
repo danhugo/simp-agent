@@ -85,7 +85,8 @@ class AgentSession:
                  system_prompt: str | None = None, stream_fn: Callable = ai.stream, auto_compact: bool = True,
                  max_retries: int = 3, retry_base_delay: float = 2.0, approve: Callable[[ai.ToolCall], Any] | None = None,
                  messages: list | None = None, plugins: list = (), plugin_config: dict | None = None,
-                 locale: str | None = None, timezone: str | None = None, location=None):
+                 locale: str | None = None, timezone: str | None = None, location=None, context_file: bool = True):
+        self.context_file = context_file  # read AGENTS.md / CLAUDE.md from cwd on the first prompt (coding agents)
         self.store, self.auto_compact, self.compaction = store, auto_compact, CompactionSettings()
         self.max_retries, self.retry_base_delay = max_retries, retry_base_delay
         self.agent = Agent(self._build_prompt, model, list(TOOLS if tools is None else tools), stream_fn,
@@ -145,7 +146,7 @@ class AgentSession:
         if self._started:
             return
         self._started = True
-        if self._default_prompt and (cf := await load_context_file(self.agent.env, self.agent.cwd)):
+        if self._default_prompt and self.context_file and (cf := await load_context_file(self.agent.env, self.agent.cwd)):
             self.add_prompt_section("context_file", f"# Project Context\n\n## {cf[0]}\n\n{cf[1]}", 10)
         for p in self.plugins:
             await self._hook(p, "setup", PluginAPI(self, plugin_name(p)), self.plugin_config.get(plugin_name(p), {}))
@@ -232,9 +233,16 @@ class AgentSession:
 
     def abort(self) -> None:
         self._abort.set()
-        self.agent.abort()
+        self.agent._abort_upcoming()  # also while this run is still being prepared (prompt, plugins, MCP)
+
+    def _fresh_abort(self) -> None:
+        """A new run: forget aborts from before it. Done before start() and plugin hooks (MCP, memory...) so a
+        Stop pressed while they run still ends the run."""
+        self._abort = asyncio.Event()
+        self.agent._cancel = asyncio.Event()
 
     async def prompt(self, text: str) -> list:
+        self._fresh_abort()
         await self.start()
         for p in self.plugins:
             r = await self._hook(p, "input", text) or {}
@@ -248,6 +256,7 @@ class AgentSession:
         return await self._run(functools.partial(self.agent.prompt, text, extra))
 
     async def continue_(self) -> list:
+        self._fresh_abort()
         await self.start()
         return await self._run(self.agent.continue_)
 
@@ -281,7 +290,6 @@ class AgentSession:
 
     async def _run(self, start) -> list:
         a = self.agent
-        self._abort = asyncio.Event()
         new = await start()
         overflowed, attempt = False, 0
         while (last := a.messages[-1]).role == "assistant" and last.stop_reason == "error":

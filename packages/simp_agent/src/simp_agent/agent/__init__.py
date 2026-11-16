@@ -107,6 +107,8 @@ async def _emit_all(subs: list, e: dict) -> None:
 
 async def _stream(stream_fn, model, ctx, cancel: asyncio.Event, opts: dict):
     """Yield provider events; on cancel, close the provider stream (ends the HTTP request) and stop."""
+    if cancel.is_set():  # aborted before the call (e.g. while the run was being prepared): don't call the model
+        return
     it = stream_fn(model, ctx, **opts).__aiter__()
     stop = asyncio.ensure_future(cancel.wait())
     try:
@@ -283,6 +285,12 @@ class Agent:
         return out
 
     def abort(self) -> None:
+        """Stop the current run. A no-op when idle, so a stale abort can't kill the next prompt."""
+        if self.is_streaming:
+            self._cancel.set()
+
+    def _abort_upcoming(self) -> None:
+        """Abort even before the run starts (a session is still preparing it): the run will see it at once."""
         self._cancel.set()
 
     async def prompt(self, text: str, extra: list = ()) -> list:
@@ -301,7 +309,7 @@ class Agent:
     async def _run(self, prompts: list) -> list:
         if self.is_streaming:
             raise RuntimeError("Agent is already processing a prompt; wait for it or call abort() first")
-        self._cancel = asyncio.Event()
+        # not reset here: an abort that came while a session was still preparing this run must stick
         self.is_streaming = True
         start = len(self.messages)
         try:
@@ -330,3 +338,4 @@ class Agent:
             return self.messages[start:]
         finally:
             self.is_streaming = False
+            self._cancel = asyncio.Event()  # fresh for the next run

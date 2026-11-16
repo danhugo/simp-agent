@@ -198,6 +198,7 @@ class Run:
         self.session = AgentSession(
             self.model, tools=[] if no_tools else None, store=self, env=env, cwd=getattr(env, "root", None) or "/",
             stream_fn=self.guarded_stream,
+            context_file=False,  # a general agent: no AGENTS.md/CLAUDE.md (reading them woke the sandbox on every first message)
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
             plugins=[*build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(), Memory(store=DbMemoryStore(

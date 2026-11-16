@@ -49,6 +49,31 @@ async def test_abort_during_backoff_stops():
     assert len(seen) == 1 and s.messages[-1].stop_reason == "error"
 
 
+async def test_abort_while_plugins_prepare_the_run_stops_it():
+    """Stop pressed while a plugin hook (e.g. MCP connect, memory) is still running must end the run with no LLM call."""
+    stream = FakeProvider(DONE)
+    seen = stream.messages
+
+    class Slow:
+        async def before_agent_start(self, ev):
+            s.abort()
+            await asyncio.sleep(0)
+
+    s = session(stream, plugins=[Slow()])
+    await asyncio.wait_for(s.prompt("hi"), 5)
+    assert seen == [] and s.messages[-1].stop_reason == "aborted"
+    s.plugins = []
+    await s.prompt("again")  # the abort doesn't leak into the next run
+    assert s.messages[-1] is DONE
+
+
+async def test_agent_abort_when_idle_does_not_kill_next_prompt():
+    s = session(FakeProvider(DONE))
+    s.agent.abort()
+    await s.prompt("hi")
+    assert s.messages[-1] is DONE
+
+
 async def test_store_gets_every_message_in_order():
     stream = FakeProvider(AssistantMessage([ToolCall("c1", "nope", {})], stop_reason="tool_use"), DONE)
     store = ListStore()
@@ -81,6 +106,8 @@ async def test_context_file_in_system_prompt(tmp_path):
 
     await AgentSession(Model(), [], cwd=str(tmp_path), stream_fn=stream).prompt("hi")
     assert "use tabs" in prompts[0] and "AGENTS.md" in prompts[0]
+    await AgentSession(Model(), [], cwd=str(tmp_path), stream_fn=stream, context_file=False).prompt("hi")
+    assert "use tabs" not in prompts[1]  # a general agent (the server) skips it
 
 
 def test_prompt_locale_timezone_and_date_in_zone(monkeypatch):
