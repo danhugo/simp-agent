@@ -71,7 +71,12 @@ async def _exec_in(container, command, cwd, timeout, cancel, on_output=None) -> 
         "setsid", "-w", "sh", "-c", 'echo $$; exec sh -c "$0" 2>&1', command,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
     )
-    first = await proc.stdout.readline()
+    try:  # the timeout also covers the wait for the pid line
+        first = await asyncio.wait_for(proc.stdout.readline(), timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return None, ""
     pid = first.strip().decode(errors="replace")
     if not pid.isdigit():  # the command never started: docker's own error ("No such container", ...) or EOF
         rest = await proc.stdout.read()
