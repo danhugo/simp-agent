@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import json
+import time
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -35,7 +36,7 @@ class Hub:
     """One session: durable log + seq, run state, in-flight buffers, live subscribers."""
 
     def __init__(self, sid: str, delay: float):
-        self.info = p.SessionInfo(id=sid)
+        self.info = p.SessionInfo(id=sid, created=time.time())
         self.delay = delay
         self.log = []
         self.inflight = p.InFlight()

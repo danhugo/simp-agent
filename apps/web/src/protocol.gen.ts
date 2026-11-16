@@ -284,4 +284,5 @@ export interface SessionInfo {
   id: string;
   title: string;
   run_state: "idle" | "running" | "waiting_approval" | "aborting" | "error";
+  created: number;
 }

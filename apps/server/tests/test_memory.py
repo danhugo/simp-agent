@@ -101,4 +101,12 @@ async def test_memory_api_owner_only(tmp_path):
         assert [m["content"] for m in (await c.get("/api/memories/export", headers=ha)).json()] == ["[REDACTED]"]
         assert (await c.delete("/api/memories/m1", headers=ha)).status_code == 200
         assert (await c.get("/api/memories", headers=ha)).json() == []
+        # typed by the user: About you, no source chat, secrets masked, only theirs
+        r = await c.post("/api/memories", json={"content": f" Call me D {SECRET} "}, headers=ha)
+        assert r.status_code == 200
+        [m] = (await c.get("/api/memories", headers=ha)).json()
+        assert m["id"] == r.json()["id"] and m["scope"] == "global" and m["source_run_id"] is None
+        assert m["content"] == "Call me D [REDACTED]"
+        assert (await c.get("/api/memories", headers=hb)).json() == []
+        assert (await c.post("/api/memories", json={"content": ""}, headers=ha)).status_code == 422
     await s.close()

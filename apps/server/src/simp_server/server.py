@@ -181,7 +181,7 @@ class Run:
 
     def __init__(self, mgr: "SessionManager", row: dict, env: ExecutionEnv, entries: list[dict]):
         self.mgr, self.sid, self.user_id, self.env, self.ref = mgr, row["id"], row["user_id"], env, row["sandbox_ref"]
-        self.info = p.SessionInfo(id=row["id"], title=row["title"] or "")
+        self.info = p.SessionInfo(id=row["id"], title=row["title"] or "", created=row["created"] or 0)
         self.log = [e["data"] for e in entries if e["type"] != "msg"]  # ponytail: whole log in memory
         states = [e["state"] for e in self.log if e["type"] == "run_state"]
         self.info.run_state = states[-1] if states else "idle"
@@ -556,7 +556,7 @@ class SessionManager:
 
     def info(self, row: dict) -> p.SessionInfo:
         r = self.runs.get(row["id"])
-        return p.SessionInfo(id=row["id"], title=row["title"] or "", run_state=r.state if r else "idle")
+        return p.SessionInfo(id=row["id"], title=row["title"] or "", created=row["created"] or 0, run_state=r.state if r else "idle")
 
 
 # ---- app ------------------------------------------------------------------------------------------------------------
@@ -686,6 +686,10 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def export_memories(u=Depends(user)):
         return JSONResponse(await store.memories(u["id"]),
                             headers={"content-disposition": 'attachment; filename="memories.json"'})
+
+    @app.post("/api/memories")
+    async def add_memory(m: MemoryEdit, u=Depends(user)):
+        return {"id": await store.add_memory(u["id"], mgr.redact.mask(m.content.strip()))}
 
     @app.patch("/api/memories/{mid}")
     async def edit_memory(mid: str, m: MemoryEdit, u=Depends(user)):

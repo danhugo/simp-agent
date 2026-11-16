@@ -215,6 +215,7 @@ class SessionInfo(_M):
     id: str
     title: str = ""
     run_state: RunStateName = "idle"
+    created: float = 0  # unix seconds; the web app names untitled chats "New chat <date time>"
 
 
 class Protocol(_M):

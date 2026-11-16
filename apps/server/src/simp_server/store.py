@@ -175,9 +175,21 @@ class SqliteStore:
 
     # memories (REST side; the agent side is DbMemoryStore). Only the owner's global + default-agent rows.
     async def memories(self, user_id: str) -> list[dict]:
-        return await self._all("SELECT id, scope, agent_id, content, created, source_run_id FROM memories WHERE user_id=? "
-                               "AND (agent_id IS NULL OR agent_id=?) ORDER BY created DESC",
+        # source_run_id holds the chat (session) id the memory was saved in; its title, if the chat still exists,
+        # lets the page link back to it ("" = untitled, NULL = deleted or not from a chat)
+        return await self._all("SELECT m.id, m.scope, m.agent_id, m.content, m.created, m.source_run_id, "
+                               "s.title AS source_title, s.created AS source_created FROM memories m "
+                               "LEFT JOIN sessions s ON s.id = m.source_run_id AND s.user_id = m.user_id "
+                               "WHERE m.user_id=? AND (m.agent_id IS NULL OR m.agent_id=?) ORDER BY m.created DESC",
                                user_id, await self.default_agent(user_id))
+
+    async def add_memory(self, user_id: str, content: str) -> str:
+        """A memory the user typed on the Memory page: "About you" (global), no source chat."""
+        mid = uuid.uuid4().hex[:12]
+        await self.db.execute("INSERT INTO memories VALUES(?,?,?,?,?,?,?)",
+                              (mid, user_id, None, "global", content[:MEM_ITEM_MAX], time.time(), None))
+        await self.db.commit()
+        return mid
 
     async def update_memory(self, user_id: str, mid: str, content: str) -> bool:
         cur = await self.db.execute("UPDATE memories SET content=? WHERE id=? AND user_id=?", (content, mid, user_id))
