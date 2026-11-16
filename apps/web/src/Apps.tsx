@@ -1,4 +1,4 @@
-import { IconSearch } from "./icons";
+import { IconChevron, IconSearch } from "./icons";
 import { useCallback, useEffect, useState } from "react";
 import { api, AuthError, type AppDetail, type AppItem } from "./api";
 import { errorText } from "./Chat";
@@ -85,39 +85,26 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
   );
   const warn = (a: AppItem) => a.status === "needs_reconnect" && <div className="small warn">{a.auth === "token" ? "Token stopped working. Please update it." : "Access expired. Please reconnect."}</div>;
   const fix = (a: AppItem) => <button className="primary small" onClick={() => a.auth === "token" ? openToken(a.app) : connect(a.app)}>{a.auth === "token" ? "Update token" : "Reconnect"}</button>;
-  // Connected: one row per app, the account it uses, a labeled switch and Manage.
-  const row = (a: AppItem) => {
+  // One grid for every portal: the switch already says which ones Simp uses, so no Connected/Available split.
+  // A connected app shows its account instead of the description, and a chevron to its page.
+  const tile = (a: AppItem) => {
     const acc = a.accounts ?? [];
+    if (tokenFor === a.app) return <li key={a.app} className="app-tile editing" aria-label={a.label}><strong>{a.label}</strong>{tokenForm(a)}</li>;
     return (
-      <li key={a.app} className="app-row" aria-label={a.label} onClick={open(a)}>
+      <li key={a.app} className={`app-tile ${a.enabled ? "on" : ""}`} aria-label={a.label} onClick={open(a)}>
         <AppIcon name={a.icon} />
-        <div className="app-text">
-          <strong>{a.label}</strong>
-          <div className="muted small">{acc[0]?.email ?? a.description}{acc.length > 1 && <span className="more">+{acc.length - 1} account{acc.length > 2 ? "s" : ""}</span>}</div>
-          {warn(a)}
-        </div>
-        {a.status === "needs_reconnect" ? fix(a) : sw(a, "Use in chats")}
-        <button className="ghost small app-open" aria-label={`${a.label} details`} onClick={() => setDetail(a.app)}>Manage</button>
+        <div className="app-text"><strong>{a.label}</strong>
+          <div className="muted small app-desc">{acc[0]?.email
+            ? <>{acc[0].email}{acc.length > 1 && <span className="more">+{acc.length - 1}</span>}</>
+            : a.description}</div>
+          {warn(a)}</div>
+        {a.status === "needs_reconnect" ? fix(a)
+          : a.connected || !a.auth ? sw(a)
+          : <button className="ghost small" aria-label={`Connect ${a.label}`} onClick={() => a.auth === "token" ? openToken(a.app) : connect(a.app)}>{a.auth === "token" ? "Add token" : "Connect"}</button>}
+        {a.connected && a.auth && <button className="ghost icon app-open" aria-label={`${a.label} details`} title="Manage" onClick={() => setDetail(a.app)}><IconChevron size={16} /></button>}
       </li>
     );
   };
-  // Available: a compact tile with one plain action.
-  const tile = (a: AppItem) => tokenFor === a.app ? (
-    <li key={a.app} className="app-tile editing" aria-label={a.label}><strong>{a.label}</strong>{tokenForm(a)}</li>
-  ) : (
-    <li key={a.app} className="app-tile" aria-label={a.label} onClick={open(a)}>
-      <AppIcon name={a.icon} />
-      <div className="app-text"><strong>{a.label}</strong><div className="muted small app-desc">{a.description}</div>{warn(a)}</div>
-      {a.status === "needs_reconnect" ? fix(a)
-        : a.connected || !a.auth ? sw(a)
-        : <button className="ghost small" aria-label={`Connect ${a.label}`} onClick={() => a.auth === "token" ? openToken(a.app) : connect(a.app)}>{a.auth === "token" ? "Add token" : "Connect"}</button>}
-    </li>
-  );
-  const section = (title: string, list: AppItem[], on: boolean) => list.length > 0 && (
-    <section aria-label={title}><h2>{title}</h2>
-      {on ? <ul className="app-rows">{list.map(row)}</ul> : <ul className="app-tiles">{list.map(tile)}</ul>}
-    </section>
-  );
   if (detail) return <Detail app={detail} onBack={() => { setDetail(""); load(); }} fail={fail} menuButton={menuButton} />;
 
   return (
@@ -149,8 +136,7 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
             const needle = q.trim().toLowerCase();
             const shown = needle ? items.filter((a) => `${a.label} ${a.description}`.toLowerCase().includes(needle)) : items;
             return shown.length === 0 ? <p className="muted">No portals match “{q.trim()}”.</p> : <>
-              {section("Connected", shown.filter((a) => a.enabled), true)}
-              {section("Available", shown.filter((a) => !a.enabled), false)}
+              <ul className="app-tiles" aria-label="Portals">{shown.map(tile)}</ul>
             </>;
           })()}
         </>}

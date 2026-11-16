@@ -31,22 +31,24 @@ test("apps: connect state, toggle drive off/on, disconnect (mocked API)", async 
   await expect(page.getByRole("heading", { level: 1, name: "Crafts" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Portals", selected: true })).toBeVisible();
   await expect(page.getByText("Apps the agent can use")).toHaveCount(0);
-  const available = page.getByRole("region", { name: "Available" });
-  await expect(available.getByRole("listitem")).toHaveCount(3);
-  await expect(page.getByRole("region", { name: "Connected" })).toHaveCount(0);
+  // one grid for all portals; the switch shows which ones are in use
+  const grid = page.getByRole("list", { name: "Portals" });
+  await expect(grid.getByRole("listitem")).toHaveCount(3);
+  await expect(grid.getByRole("switch", { checked: true })).toHaveCount(0);
+  const available = grid, on = grid;
 
   connected = true;  // the fake OAuth "start" url returns straight to #apps?ok=google
   await available.getByRole("button", { name: "Connect Gmail" }).click();
-  await expect(page.getByRole("status")).toHaveCount(0);  // no success note; the card moves to Connected
-  const on = page.getByRole("region", { name: "Connected" });
-  await expect(on.getByRole("listitem")).toHaveCount(3);
+  await expect(page.getByRole("status")).toHaveCount(0);  // no success note; the cards turn on in place
+  await expect(grid.getByRole("switch", { checked: true })).toHaveCount(3);
+  await expect(grid.getByRole("listitem", { name: "Gmail" })).toContainText("me@example.com");
   await page.screenshot({ path: "test-results/crafts-portals.png" });
   await page.getByRole("tab", { name: "Skills" }).click();
   await expect(page.getByRole("tab", { name: "Skills", selected: true })).toBeVisible();
   await expect(page.getByText("Skills are coming soon.")).toBeVisible();
   await page.screenshot({ path: "test-results/crafts-skills.png" });
   await page.getByRole("tab", { name: "Portals" }).click();
-  await expect(page.getByRole("region", { name: "Connected" })).toBeVisible();
+  await expect(grid).toBeVisible();
 
   await on.getByRole("switch", { name: "Use Google Drive" }).click();
   const drive = available.getByRole("switch", { name: "Use Google Drive" });
@@ -83,14 +85,14 @@ test("no-auth app: switch only, toggles on and off without a login", async ({ pa
     return r.fulfill({ json: { ok: true } });
   });
   await login(page, "#apps");
-  const card = page.getByRole("region", { name: "Available" }).getByRole("listitem", { name: "DeepWiki" });
+  const card = page.getByRole("list", { name: "Portals" }).getByRole("listitem", { name: "DeepWiki" });
   await expect(card.getByRole("button", { name: /Connect/ })).toHaveCount(0);
   await card.getByRole("switch", { name: "Use DeepWiki" }).click();
-  const onCard = page.getByRole("region", { name: "Connected" }).getByRole("listitem", { name: "DeepWiki" });
+  const onCard = card;
   await expect(onCard.getByRole("switch")).toHaveAttribute("aria-checked", "true");
   await expect(page.locator(".account-line")).toHaveCount(0);
   await onCard.getByRole("switch").click();
-  await expect(page.getByRole("region", { name: "Available" }).getByRole("switch", { name: "Use DeepWiki" })).toHaveAttribute("aria-checked", "false");
+  await expect(card.getByRole("switch", { name: "Use DeepWiki" })).toHaveAttribute("aria-checked", "false");
   expect(calls).toEqual(["/api/apps/deepwiki/enable", "/api/apps/deepwiki/disable"]);
 });
 
@@ -124,7 +126,7 @@ test("token app (GitHub): paste token, server error, disconnect (mocked API)", a
   await input.fill("ghp_good");
   await card.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("status")).toHaveText("GitHub is connected.");
-  const on = page.getByRole("region", { name: "Connected" }).getByRole("listitem", { name: "GitHub" });
+  const on = page.getByRole("list", { name: "Portals" }).getByRole("listitem", { name: "GitHub" });
   await expect(on.getByRole("switch", { name: "Use GitHub" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByText("ghp_good")).toHaveCount(0);
   await expect(page.locator(".account-line")).toHaveCount(0);
@@ -137,7 +139,7 @@ test("token app (GitHub): paste token, server error, disconnect (mocked API)", a
   await expect(dis).toHaveText("Disconnect?");
   await dis.click();
   await page.getByRole("button", { name: "← Portals" }).click();
-  await expect(page.getByRole("region", { name: "Available" }).getByRole("button", { name: "Connect GitHub" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Portals" }).getByRole("button", { name: "Connect GitHub" })).toBeVisible();
   expect(calls).toEqual(['POST /api/connections/github/token {"token":"bad"}', 'POST /api/connections/github/token {"token":"ghp_good"}', "DELETE /api/connections/lnk_gh1"]);
 });
 

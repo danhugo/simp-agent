@@ -356,6 +356,13 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .sw .switch { position: relative; flex-shrink: 0; }
 .app-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--sp-2); }
 .app-tile { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3); border-radius: 12px; background: var(--panel); cursor: pointer; }
+.memory-body .app-tiles { margin-top: var(--sp-5); }
+/* the whole card opens the app's page: say so on hover (darker card, the chevron/arrow comes forward) */
+.app-tile:not(.editing):hover { background: color-mix(in srgb, var(--panel), var(--text) 6%); }
+.app-tile:not(.editing):hover .app-open { color: var(--text); }
+.app-tile:not(.editing):has(:focus-visible) { outline: 2px solid var(--text); outline-offset: 2px; }
+.app-tile .app-open { width: 28px; height: 28px; min-height: 0; padding: 0; margin-left: calc(-1 * var(--sp-2)); color: var(--muted); }
+.app-tile .more { margin-left: var(--sp-1); padding: 0 6px; border-radius: 9px; background: var(--hover); }
 .app-tile.editing { flex-direction: column; align-items: stretch; cursor: default; }
 .app-tile strong, .app-row strong { font-size: var(--fs-sm); font-weight: 600; }  /* same weight as headings */
 @media (max-width: 560px) {
