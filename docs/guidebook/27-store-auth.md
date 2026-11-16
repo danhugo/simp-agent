@@ -56,11 +56,12 @@ Who may come in is decided by one list in `settings.toml`, the **[allow-list](gl
 allowed_emails = ["ana@gmail.com", "bob@gmail.com"]
 ```
 
-The button goes to `/api/auth/google/start`. The server sends Ana's browser on to Google's sign-in page. Ana picks her account, and Google sends the browser back to `/api/auth/google/callback` with a one-time code. The server trades that code with Google for her email address. Then it asks one question: is this email in `allowed_emails`? If not, Ana gets a short "not allowed" page (HTTP 403), and nothing is written. If yes, the store's `google_login` finds the user whose name is that email. The first time, it creates that user, so there is no sign-up step: the admin adds an email to the list, and the person's first sign-in makes the account.
+The button goes to `/api/auth/google/start`. The server sends Ana's browser on to Google's sign-in page. Ana picks her account, and Google sends the browser back to `/api/auth/google/callback` with a one-time code. The server trades that code with Google for her email address. Google also says if it has checked that the email really belongs to her (`email_verified`). If not, anyone could type that address into a Google account, so the server stops with a 403 page. Then it asks one question: is this email in `allowed_emails`? If not, Ana gets a short "not allowed" page (HTTP 403), and nothing is written. If yes, the store's `google_login` finds the user whose name is that email. Names match without caring about upper or lower case, so `Ana@Gmail.com` and `ana@gmail.com` are the same user. The first time, it creates that user, so there is no sign-up step: the admin adds an email to the list, and the person's first sign-in makes the account.
 
 ```text
 google_callback(code, state):
     email = ask Google for the email behind code      // fails -> "sign-in failed" page (400)
+    IF Google did not verify email -> 403 page
     IF email not in allowed_emails -> "not allowed" page (403)
     token = store.google_login(email)                 // creates the user the first time
     IF no token -> "account revoked" page (403)
@@ -80,16 +81,20 @@ On each request, the class in the server's `auth` slot reads the header and asks
 ```text
 authenticate(request):
     token = the part after "Bearer " in the Authorization header
-    RETURN store.user_by_token(token)       // {id, name}, or nothing -> HTTP 401
+    user = store.user_by_token(token)       // {id, name}, or nothing -> HTTP 401
+    IF user is a Google user (name has "@") AND name not in allowed_emails -> HTTP 401
+    RETURN user
 
 user_by_token(token):
     find the user that is not disabled AND whose static token hash = sha(token)
                                        OR who has a device token with hash = sha(token)
 ```
 
+The `allowed_emails` line is checked by the server around the `auth` class, on every request, not only at sign-in. So when the admin takes Bob's email off the list, his old tokens stop working at once, even an open live stream. This only touches Google users; a static token for the CLI keeps working, and `revoke` is the way to stop it.
+
 `auth` and `store` are two of the three **[server slots](glossary.md#server-slot)**. A slot is a named place where the server takes one class, picked by name from `DEFAULT_PLUGINS`. The defaults are `StaticTokenAuth` and `SqliteStore`. A team with its own login system would put another class in the `auth` slot. [29](29-docker-sandbox.md) fills the third slot, `sandbox`.
 
-Real code: [server.py](../../apps/server/src/simp_server/server.py) — `google_start`, `google_callback`, `StaticTokenAuth.authenticate`, `DEFAULT_PLUGINS`; [connections.py](../../apps/server/src/simp_server/connections.py) — `Connections.login_start`, `Connections.login_callback`; [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.google_login`, `sha`, `SqliteStore.user_by_token`
+Real code: [server.py](../../apps/server/src/simp_server/server.py) — `google_start`, `google_callback`, `StaticTokenAuth.authenticate`, `authed`, `DEFAULT_PLUGINS`; [connections.py](../../apps/server/src/simp_server/connections.py) — `Connections.login_start`, `Connections.login_callback`; [store.py](../../apps/server/src/simp_server/store.py) — `SqliteStore.google_login`, `sha`, `SqliteStore.user_by_token`
 
 > **Implementation notes**
 > - The Google step uses the same `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` as the Google apps; the admin also adds the redirect URI `<public_url>/api/auth/google/callback` in Google's console. It asks only for the email (`openid` + `email`), no other Google access.

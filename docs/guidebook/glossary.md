@@ -330,7 +330,7 @@ One long-lived token per user, saved only as its sha256 in `users.token_sha256`.
 A token made by each Google sign-in and saved (as a hash) in the `tokens` table. `logout` deletes only that row. Home: [27](27-store-auth.md#google-login).
 
 ## Email allow-list
-`allowed_emails` in `settings.toml`: the only Google accounts that may sign in to the web client. The first sign-in of a listed email creates its user. Home: [27](27-store-auth.md#google-login).
+`allowed_emails` in `settings.toml`: the only Google accounts that may sign in to the web client. The first sign-in of a listed email creates its user. It is checked again on every request, so taking an email off the list cuts off that user's tokens. Home: [27](27-store-auth.md#google-login).
 
 ## WAL
 SQLite write-ahead log mode. Readers do not wait for the writer, and a crash does not break the file. Home: [27](27-store-auth.md#opening-the-store).
