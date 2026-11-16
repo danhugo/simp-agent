@@ -23,9 +23,9 @@ def client(app):
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost")
 
 
-async def google_signin(c, mgr, email):
+async def google_signin(c, mgr, email, verified=True):
     """Start -> fake Google -> callback; returns the callback response."""
-    tok = base64.urlsafe_b64encode(json.dumps({"email": email}).encode()).decode().rstrip("=")
+    tok = base64.urlsafe_b64encode(json.dumps({"email": email, "email_verified": verified}).encode()).decode().rstrip("=")
     mgr.conns.http = httpx.AsyncClient(transport=httpx.MockTransport(
         lambda req: httpx.Response(200, json={"access_token": "a", "id_token": f"h.{tok}.s"})))
     r = await c.get("/api/auth/google/start")
@@ -65,6 +65,41 @@ async def test_google_other_email_rejected(tmp_path):
             r = await google_signin(c, mgr, "eve@gmail.com")
             assert r.status_code == 403 and "eve@gmail.com is not allowed" in r.text
             assert await mgr.store.list_users() == []
+    finally:
+        await mgr.store.close()
+
+
+async def test_google_unverified_email_rejected(tmp_path):
+    app, mgr = await accounts_app(tmp_path)
+    try:
+        async with client(app) as c:
+            assert (await google_signin(c, mgr, "ann@gmail.com", verified=False)).status_code == 403
+            assert await mgr.store.list_users() == []
+    finally:
+        await mgr.store.close()
+
+
+async def test_removed_email_loses_old_token(tmp_path):
+    app, mgr = await accounts_app(tmp_path)
+    try:
+        async with client(app) as c:
+            h = {"Authorization": f"Bearer {token_of(await google_signin(c, mgr, 'ann@gmail.com'))}"}
+            cli = {"Authorization": f"Bearer {await mgr.store.add_user('bob')}"}  # CLI static token, no "@"
+            assert (await c.get("/api/me", headers=h)).status_code == 200
+            mgr.settings["allowed_emails"] = []
+            assert (await c.get("/api/me", headers=h)).status_code == 401
+            assert (await c.get("/api/me", headers=cli)).status_code == 200
+    finally:
+        await mgr.store.close()
+
+
+async def test_google_login_matches_old_capital_name(tmp_path):
+    app, mgr = await accounts_app(tmp_path)
+    try:
+        await mgr.store.add_user("Ann@gmail.com", token=False)  # older CLI-seeded name
+        async with client(app) as c:
+            token_of(await google_signin(c, mgr, "ann@gmail.com"))
+            assert len(await mgr.store.list_users()) == 1
     finally:
         await mgr.store.close()
 

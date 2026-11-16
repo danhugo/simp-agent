@@ -151,19 +151,14 @@ make dev                            # server on :8766 (DockerSandbox if docker r
 ```sh
 uv run simp-server users              # name<TAB>active|revoked
 uv run simp-server revoke --name bob  # new requests get 401, open streams end within 15s, no further LLM calls
-uv run simp-server rotate --name bob  # prints a new token once; the old one and all password logins stop working
-uv run simp-server seed --name ann --password  # also asks for a password (web "Sign in" with username + password)
-uv run simp-server passwd --name ann  # set or change a password
+uv run simp-server rotate --name bob  # prints a new token once; the old one stops working
 ```
-Accounts: `signup = "open" | "invite" | "closed"` in `settings.toml` controls "Create account" on the web login page.
-`"open"`: anyone picks a unique username (2-32 of a-z 0-9 _ -, stored lowercase, so "Ann" and "ann" are one account)
-and any non-empty password; `"invite"`: also needs `signup_code = "..."`; `"closed"`: no sign-up. Unset = `"invite"` if
-`signup_code` is set, else `"open"` (a temporary default: anyone who can reach the server can then create accounts that
-spend real API budget, up to the per-user daily limit each; set `signup = "invite"` or `"closed"` before exposing the
-server beyond localhost, e.g. through a tunnel). Only a salted scrypt hash of a password is stored. Each password sign-in gets its own token; "Sign out" ends only that one. `revoke`
-disables the user (token, password logins and password sign-in); `rotate` re-enables a revoked user.
-There is no rate limit on `/api/login` and `/api/signup`: before exposing the server through a tunnel, put one in
-front (the tunnel's or a reverse proxy's). Passwords are capped at 1024 characters and hashed off the event loop.
+Web sign-in is Google only. Put the allowed accounts in `settings.toml`: `allowed_emails = ["ann@gmail.com"]`
+(case does not matter), and `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `.env`. Google must say the email is
+verified. The first sign-in creates the user (named by the lower-case email); each sign-in gets its own token and
+"Sign out" ends only that one. Removing an email from `allowed_emails` blocks its old tokens on the next request.
+CLI users (`seed`, no "@" in the name) keep their static tokens. `revoke` disables the user (all tokens and Google
+sign-in); `rotate` re-enables a revoked user.
 Sessions are deleted from the web sidebar (`×`, click again to confirm); a running session is aborted first; its
 files stay (they belong to the user's workspace). `seed` warns when a second user would need DockerSandbox (the server refuses to start
 with LocalSandbox and several active users unless `allow_local_sandbox = true`).

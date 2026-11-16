@@ -98,7 +98,8 @@ def _email(id_token: str | None) -> str | None:
     # from the token endpoint over TLS (OIDC 3.1.3.7): the payload can be read without checking the signature
     try:
         part = id_token.split(".")[1]
-        return json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))["email"]
+        c = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
+        return c["email"] if c.get("email_verified") is True else None  # unverified = anyone could claim it
     except Exception:
         return None
 
@@ -251,7 +252,7 @@ class Connections:
         if r.status_code != 200:
             raise ValueError(f"token exchange failed ({r.status_code})")
         if not (email := _email(r.json().get("id_token"))):
-            raise ValueError("no email from Google")
+            raise PermissionError("Google did not give a verified email.")
         return email
 
     async def forget_app(self, user_id: str, app_name: str) -> None:

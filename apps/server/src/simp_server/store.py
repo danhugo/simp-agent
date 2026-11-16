@@ -183,9 +183,9 @@ class SqliteStore:
 
     async def google_login(self, email: str) -> str | None:
         """A new device token for the user named `email`, created on first sign-in. None if that user is revoked."""
-        if not await self._all("SELECT 1 FROM users WHERE name=?", email):
+        if not await self._all("SELECT 1 FROM users WHERE lower(name)=lower(?)", email):
             await self.add_user(email, token=False)
-        rows = await self._all("SELECT id FROM users WHERE name=? AND disabled=0", email)
+        rows = await self._all("SELECT id FROM users WHERE lower(name)=lower(?) AND disabled=0", email)
         if not rows:
             return None
         token = secrets.token_urlsafe(32)
