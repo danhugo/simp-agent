@@ -3,10 +3,10 @@
   --m3-hi:#ffffff; --m3-base:#fbf8f2; --m3-mid:#e9e2d7; --m3-low:#d3c9ba; --m3-out:#a39a8e; --m3-eye:#3b2f2a; --m3-blush:#f4a6a6; --m3-sweat:#9fd0ec; --m3-hot:#e86f6f;
   /* mascot (PixelAgent): light head with outline */
   --m-w:#fbf8f2; --m-o:#a39a8e; --m-s:#e9e2d7; --m-h:#ffffff; --m-b:#3b2f2a; --m-p:#f4a6a6;
-  --bg: #fbf8f2; --panel: #f3eee5; --border: #e4dccf; --text: #2b2420; --muted: #6b5f55;
-  --accent: #3b2f2a; --accent-text: #fbf8f2; --user: #efe6d8; --code: #f1ebe1;
+  --bg: #ffffff; --panel: #f5f5f5; --border: #e3e3e3; --text: #1f1f1f; --muted: #5f5f5f;
+  --accent: #1f1f1f; --accent-text: #ffffff; --user: #f0f0f0; --code: #f4f4f4;
   --ok: #3f6a2e; --warn: #774c0c; --err: #a3392b;
-  --hover: #ece5d9; --active: #e6ddcf;  /* muted text stays >= 4.5:1 on both */
+  --hover: #ededed; --active: #e6e6e6;  /* muted text stays >= 4.5:1 on both */
   --fs-xs: 12px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 18px; --fs-xl: 28px;
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
   --radius-sm: 8px; --radius: 12px; --radius-lg: 24px;
