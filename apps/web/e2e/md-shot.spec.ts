@@ -47,7 +47,7 @@ for (const theme of ["light", "dark"]) {
     await page.goto(`/#login=${token}`);
     await page.fill("textarea", MD);
     await page.keyboard.press("Enter");
-    const msg = page.locator(".msg.assistant").last();
+    const msg = page.locator(".msg.assistant:has(.md)").last();
     await msg.locator("table").waitFor();
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${process.env.SHOTS}/md-${theme}.png` });

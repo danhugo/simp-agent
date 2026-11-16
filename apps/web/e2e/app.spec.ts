@@ -82,7 +82,7 @@ test("steer shows at once as pending, then exactly once", async ({ page }) => {
   await say(page, "slow");
   await expect(page.locator(".streaming .md")).toContainText("w1 ");
   await say(page, "go right");
-  await expect(page.locator(".msg.user.pending")).toHaveText("go rightPending");
+  await expect(page.locator(".msg.user.pending")).toHaveText("go rightQueued");
   await expect(page.locator(".streaming")).toBeVisible();  // still mid-turn
   await page.screenshot({ path: "test-results/pending-steer.png" });
   await expect(badge(page)).toHaveText("idle", { timeout: 15000 });
@@ -114,7 +114,7 @@ test("budget: header shows spend", async ({ page }) => {
   await login(page);
   await say(page, "hello there");  // FakeLLM reports 1 input token -> $0.01 per call
   await expect(badge(page)).toHaveText("idle");
-  await expect(page.locator(".chat header .spend")).toHaveText(/^\$0\.(0[1-9]|[1-9]\d) \/ \$1$/);
+  await expect(page.locator(".chat header .spend")).toHaveText(/^\$0\.(0[1-9]|[1-9]\d) of \$1 today$/);
 });
 
 test("compact produces a compaction item", async ({ page }) => {

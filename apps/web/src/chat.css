@@ -39,12 +39,18 @@
   display: flex; flex-direction: column; gap: var(--sp-5);
 }
 .msg.user {
-  align-self: flex-end; background: var(--user); padding: 10px var(--sp-4); border-radius: var(--radius-lg);
+  align-self: flex-end; background: var(--user); padding: 6px 14px; border-radius: var(--radius-lg);
   max-width: 80%; white-space: pre-wrap; overflow-wrap: anywhere;
 }
+/* user text is markdown too; long or multi-block messages get a calmer corner than the short pill */
+.msg.user .md { white-space: normal; }
+.msg.user:has(.md > :nth-child(2), pre, table) { border-radius: var(--radius); }
+.msg.user .md > :last-child { margin-bottom: 0; }
+/* the header badge only speaks when something needs you; "running" is shown by the status line under the chat */
+.chat header .badge.running, .chat header .badge.idle { display: none; }
 .msg.user.pending { opacity: 0.6; }
 .msg.user.failed { opacity: 1; outline: 1px solid var(--err); }
-.msg-status { display: block; font-size: 11px; opacity: 0.8; margin-top: 2px; text-align: right; }
+.msg-status { display: block; font-size: var(--fs-xs); opacity: 0.9; margin-top: 2px; text-align: right; }
 .msg.assistant { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .md { overflow-wrap: anywhere; }
 .md > :first-child { margin-top: 0; }
@@ -259,9 +265,8 @@ details[open] > summary .chev { transform: rotate(90deg); }
 
 /* small 3D Simp at the top of the conversation, centered and sticky while scrolling;
    same look-at-cursor, blink and working bob as on the home screen */
-.chat-mascot { position: sticky; top: 0; z-index: 2; display: flex; justify-content: center; padding: var(--sp-5) 0 var(--sp-1);
-  pointer-events: none; background: linear-gradient(var(--bg) 70%, transparent); }
-.chat-mascot .mascot3d-shadow { width: 44%; height: 6px; filter: blur(3px); }
+.idle-mascot .mascot3d, .run-status .mascot3d { margin: -4px 0; }
+.idle-mascot .mascot3d-shadow, .run-status .mascot3d-shadow { width: 50%; height: 4px; filter: blur(2px); }
 
 /* ---- elapsed times ---- */
 .tool-time { margin-left: auto; padding-left: var(--sp-2); font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -283,3 +288,10 @@ details[open] > summary .chev { transform: rotate(90deg); }
   padding: var(--sp-2) var(--sp-3); border-radius: var(--radius); background: var(--panel); font-size: var(--fs-sm); }
 .composer-card.expanded .attached li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-card.expanded .attached li svg { flex: none; color: var(--muted); }
+
+/* ---- Simp playing on the message box when the chat sits idle (IdleSimp) ---- */
+.idle-simp { position: relative; height: 0; z-index: 0; }
+.idle-simp canvas { position: absolute; left: 0; bottom: -1px; will-change: transform; width: 36px; height: 36px; image-rendering: pixelated; transform-origin: 50% 100%; }
+.idle-zz { position: absolute; left: 0; bottom: 24px; font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
+.composer-card { position: relative; z-index: 1; }  /* Simp peeks from behind the box */
+.chat:has(.idle-simp.on) :is(.idle-mascot, .run-status .mascot3d) { visibility: hidden; }  /* one Simp at a time */

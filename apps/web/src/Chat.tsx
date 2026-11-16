@@ -3,18 +3,19 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "re
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api, AuthError, type ConnStatus } from "./api";
-import { Badge } from "./App";
+import { Badge, chatName } from "./App";
 import {
   IconArrowDown, IconArrowUp, IconBell, IconCheck, IconChevron, IconCompact, IconCopy, IconDownload, IconFile, IconFolder, IconMore, IconPlus,
   IconStop,
 } from "./icons";
 import type { PendingApproval, ToolCall } from "./protocol.gen";
 import { canContinue, type ChatState } from "./state";
-import { PixelAgent } from "./PixelAgent";
-import { Mascot3D } from "./Mascot3D";
+import { Mascot3D, type Mood } from "./Mascot3D";
+import { IdleSimp } from "./IdleSimp";
 
 interface Props {
   sid: string;
+  created?: number;
   state: ChatState;
   conn: ConnStatus;
   onError: (e: unknown) => void;
@@ -31,8 +32,18 @@ interface Props {
 
 interface Action { key: string; label: string; icon: ReactNode; title: string; onClick: () => void; pressed?: boolean; disabled?: boolean }
 
-export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = false, onOpenFile, notify, onToggleNotify, menuButton, firstPrompt }: Props) {
+export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesOpen = false, onOpenFile, notify, onToggleNotify, menuButton, firstPrompt }: Props) {
   const busy = state.runState !== "idle" && state.runState !== "error";
+  // the mascot's face after a run: a happy hop when it finishes, turned aside when stopped, sad on error
+  const [after, setAfter] = useState<Mood>("idle");
+  const prevRun = useRef(state.runState);
+  useEffect(() => {
+    const prev = prevRun.current; prevRun.current = state.runState;
+    if (state.runState !== "idle" || prev === "idle" || prev === "error") return setAfter("idle");
+    setAfter(prev === "aborting" ? "stopped" : "done");
+    const t = setTimeout(() => setAfter("idle"), prev === "aborting" ? 4000 : 2500);
+    return () => clearTimeout(t);
+  }, [state.runState]);
   const [cmdError, setCmdError] = useState<string>();
   useEffect(() => setCmdError(undefined), [sid]);
   // onError still sees every failure (AuthError logs out); non-auth ones are also shown above the composer.
@@ -103,19 +114,19 @@ export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = fal
     <main className="chat">
       <header>
         {menuButton}
-        <strong className="title">{state.title || sid}</strong>
+        <strong className="title">{chatName({ title: state.title, created })}</strong>
         <Badge state={state.runState} />
         {conn !== "live" && <span className={`conn ${conn}`} role="status">{conn === "reconnecting" ? "reconnecting…" : "connecting…"}</span>}
-        {spend && <span className="spend" title="Spent today">${spend.today_usd.toFixed(2)} / ${spend.day_limit_usd}{spend.paused && " · paused"}</span>}
+        {spend?.paused && <span className="pill warn small">Paused</span>}
+        {spend && <span className="spend">${spend.today_usd.toFixed(2)} of ${spend.day_limit_usd} today</span>}
         <span className="spacer" />
         <MoreMenu actions={actions} />
       </header>
       <div className="chat-body">
         <div className="messages" ref={log} onScroll={onScroll} role="log" aria-live="polite" aria-label="Conversation">
-          <div className="chat-mascot"><Mascot3D size={48} pixels={48} working={busy} /></div>
           <div className="thread">
             {state.items.map((it) =>
-              it.kind === "user" ? <div key={it.seq} className="msg user">{it.text}</div>
+              it.kind === "user" ? <div key={it.seq} className="msg user"><Md text={it.text} /></div>
               : it.kind === "notice" ? <div key={it.seq} className={`notice ${it.level}`}>{it.text}</div>
               : (
                 <div key={it.seq} className="msg assistant">
@@ -134,10 +145,11 @@ export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = fal
                 {f.text && <Md text={f.text} />}
               </div>
             )}
-            {(busy || (!!firstPrompt && !state.items.some((i) => i.kind === "user"))) && <RunStatus sid={sid} />}
+            {busy || (!!firstPrompt && !state.items.some((i) => i.kind === "user")) ? <RunStatus sid={sid} asking={state.runState === "waiting_approval"} />
+              : <div className="msg assistant idle-mascot" aria-hidden><Mascot3D size={32} pixels={48} mood={state.runState === "error" ? "error" : after} /></div>}
             {pendingSteers.map((p) => (
               <div key={`steer-${p.id}`} className={`msg user pending ${p.failed ? "failed" : ""}`}>
-                {p.text}<span className="msg-status">{p.failed ? "Not sent" : "Pending"}</span>
+                {p.text}<span className="msg-status">{p.failed ? "Not sent" : "Queued"}</span>
               </div>
             ))}
             {state.pending && !pendingShown && <Approval p={state.pending} send={send} />}
@@ -153,7 +165,7 @@ export function Chat({ sid, state, conn, onError, onToggleFiles, filesOpen = fal
         )}
       </div>
       {cmdError && <div className="notice error cmd-error" role="alert">{cmdError}</div>}
-      <Composer busy={busy} send={composerSend} sid={sid} onError={onError} />
+      <Composer busy={busy} send={composerSend} sid={sid} onError={onError} idle />
     </main>
   );
 }
@@ -399,12 +411,14 @@ function Approval({ p, send }: { p: PendingApproval; send: Send }) {
   );
 }
 
-export function Composer({ busy, send, variant, disabled, tools, sid, onError, onQueueFiles }: {
+export function Composer({ busy, send, variant, disabled, tools, sid, onError, onQueueFiles, idle = false }: {
   busy: boolean; send: Send; variant?: "hero"; disabled?: boolean; tools?: ReactNode;
   /** With a session: show the attach button; files go to the workspace root (same as the Files panel). */
   sid?: string; onError?: (e: unknown) => void;
   /** No session yet (home): keep picked files; the caller uploads them once the session exists. */
   onQueueFiles?: (files: File[]) => void;
+  /** Let Simp come out and play on the box when the chat sits idle (chat view only). */
+  idle?: boolean;
 }) {
   const [text, setText] = useState("");
   const [attached, setAttached] = useState<string[]>([]);
@@ -451,6 +465,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
   };
   return (
     <div className={`composer ${variant ?? ""}`}>
+      {idle && <IdleSimp enabled={!busy && !disabled} />}
       <div className={`composer-card ${attached.length || uploading || text.includes("\n") ? "expanded" : ""}`}
         onClick={(e) => { if (e.target === e.currentTarget) area.current?.focus(); }}>
         {(attached.length > 0 || uploading) && (
@@ -461,7 +476,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
         )}
         <textarea
           ref={area} value={text} rows={1} autoFocus aria-label="Message" disabled={disabled}
-          placeholder={busy ? "Steer the running agent…" : "Message Simp…"}
+          placeholder={busy ? "Add to what Simp is doing…" : "Message Simp…"}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
@@ -526,7 +541,7 @@ const SIMP_WORDS = ["Simping", "Mumbling", "Bumbling", "Noodling", "Pondering", 
   "Whirring", "Scribbling", "Doodling", "Wobbling", "Murmuring", "Rummaging", "Simmering", "Bonking"];
 const runStarts = new Map<string, { start: number; word: string }>();  // one random word per run
 /** "Simping… 1m 20s" under the conversation for the whole run (client clock from when the run was first seen). */
-function RunStatus({ sid }: { sid: string }) {
+function RunStatus({ sid, asking = false }: { sid: string; asking?: boolean }) {
   const now = useNow(true);
   useEffect(() => () => { runStarts.delete(sid); }, [sid]);
   if (!runStarts.has(sid)) runStarts.set(sid, { start: now, word: SIMP_WORDS[Math.floor(Math.random() * SIMP_WORDS.length)] });
@@ -534,7 +549,7 @@ function RunStatus({ sid }: { sid: string }) {
   const ms = now - start;
   return (
     <div className="msg assistant typing run-status" role="status" aria-label={`Simp is working, ${fmtDuration(ms)}`}>
-      <PixelAgent size={20} /><span className="run-word">{word}…</span><span className="run-time">{fmtDuration(ms)}</span>
+      <Mascot3D size={32} pixels={48} working={!asking} mood={asking ? "asking" : "idle"} /><span className="run-word">{asking ? "Waiting for you" : `${word}…`}</span><span className="run-time">{fmtDuration(ms)}</span>
     </div>
   );
 }

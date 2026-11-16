@@ -18,7 +18,8 @@ export interface AppDetail extends AppItem {
   calls: { at: number; tool: string; account: string | null; ok: boolean; decision: string }[];
 }
 /** REST-only (GET /api/memories), not in the protocol schema. */
-export interface MemoryItem { id: string; scope: "global" | "agent"; agent_id: string | null; content: string; created: number; source_run_id: string | null }
+export interface MemoryItem { id: string; scope: "global" | "agent"; agent_id: string | null; content: string; created: number; source_run_id: string | null;
+  /** the chat it was saved in, if that chat still exists ("" = untitled) */ source_title?: string | null; source_created?: number | null }
 
 export class AuthError extends Error {}
 
@@ -66,6 +67,7 @@ export const api = {
   saveToken: (provider: string, token: string) => call(`/api/connections/${provider}/token`, json({ token })),
   disconnect: (linkId: string) => call(`/api/connections/${linkId}`, { method: "DELETE" }),
   memories: async (): Promise<MemoryItem[]> => (await call("/api/memories")).json(),
+  addMemory: (content: string) => call("/api/memories", json({ content })),
   editMemory: (id: string, content: string) => call(`/api/memories/${id}`, { ...json({ content }), method: "PATCH" }),
   deleteMemory: (id: string) => call(`/api/memories/${id}`, { method: "DELETE" }),
   exportMemories: async (): Promise<Blob> => (await call("/api/memories/export")).blob(),

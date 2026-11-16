@@ -78,6 +78,8 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   // A session is being created (hero composer). The hero composer is disabled meanwhile:
   // text typed into it would be lost when the chat replaces it, and Enter would create a second session.
   const [creating, setCreating] = useState(false);
+  const [hello, setHello] = useState(true);  // one happy hop when the new-chat screen opens
+  useEffect(() => { if (sid) return; setHello(true); const t = setTimeout(() => setHello(false), 1200); return () => clearTimeout(t); }, [sid]);
   const creatingRef = useRef(false);
   const ref = useRef(state);
   const [notify, setNotify] = useState(() => { try { return localStorage.getItem("simp.notify") === "1"; } catch { return false; } });
@@ -143,7 +145,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
       setState(ref.current);
       if (ev.type === "run_state" || ev.type === "snapshot" || ev.type === "session_title") refresh();
       if (ev.type === "run_state" && ["waiting_approval", "idle", "error"].includes(ev.state)) {
-        alertUser(ref.current.title || sid, ev.state, notifyRef.current);
+        alertUser(ref.current.title || "New chat", ev.state, notifyRef.current);
       }
     };
     return subscribe(sid, () => ref.current.lastSeq, apply, setConn, onLogout);
@@ -222,7 +224,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
             <div key={s.id} className={`session-row ${s.id === sid ? "active" : ""}`}>
               <button className={`session ${s.id === sid ? "active" : ""}`} onClick={() => pick(s.id)}
                 aria-current={s.id === sid ? "page" : undefined}>
-                <span className="title">{s.title || s.id}</span>
+                <span className="title">{chatName(s)}</span>
                 {s.run_state !== "idle" && <Badge state={s.run_state} />}
               </button>
               <button className={`ghost del ${confirm === s.id ? "confirm" : "icon"}`} aria-label="Delete session"
@@ -240,7 +242,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
       </aside>
       {sid ? (
         <>
-          <Chat sid={sid} state={state} conn={conn} onError={guard} onToggleFiles={() => { setFilesFocus(undefined); setShowFiles(!showFiles); }} filesOpen={showFiles}
+          <Chat sid={sid} created={sessions.find((x) => x.id === sid)?.created} state={state} conn={conn} onError={guard} onToggleFiles={() => { setFilesFocus(undefined); setShowFiles(!showFiles); }} filesOpen={showFiles}
             onOpenFile={(p) => { setFilesFocus(p); setShowFiles(true); }}
             notify={notify} onToggleNotify={toggleNotify} menuButton={menu}
             firstPrompt={first?.sid === sid ? first.text : undefined} />
@@ -251,8 +253,8 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
         <main className="home">
           <header className="home-head">{menu}<span className="brand only-mobile"><PixelAgent size={22} />Simp</span></header>
           <div className="home-hero">
-            <Mascot3D size={112} className="hero-face" working={creating} />
-            <h1>How can I help today?</h1>
+            <Mascot3D size={112} className="hero-face" working={creating} mood={hello ? "done" : "idle"} />
+            <h1>{greeting()}</h1>
             <Composer busy={false} send={start} variant="hero" onQueueFiles={(fs) => queued.current.push(...fs)} disabled={creating} tools={profiles.length > 0 && (
               <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} />
             )} />
@@ -387,4 +389,16 @@ function ModelPicker({ value, options, labels, onChange }: {
       )}
     </div>
   );
+}
+
+/** A chat's name: its title, or "New chat 16/11 14:05" until the title arrives. */
+export const chatName = (s: { title: string; created?: number }) =>
+  s.title || `New chat ${s.created ? new Date(s.created * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}`.trim();
+
+/** The new-chat headline, in Simp's voice, by time of day. */
+export function greeting(h = new Date().getHours()) {
+  if (h < 5) return "Still up? What's next?";
+  if (h < 12) return "Morning! What are we making?";
+  if (h < 18) return "Afternoon! What's on your mind?";
+  return "Evening! What should we work on?";
 }

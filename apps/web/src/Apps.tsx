@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, AuthError, type AppDetail, type AppItem } from "./api";
 import { errorText } from "./Chat";
-import { IconPlus } from "./icons";
 
 /** "#crafts?error=..." (or older "#apps" / "#connections") from the OAuth callback -> an error message; success shows in the card. */
 function oauthResult(): { ok: boolean; text: string } | null {
@@ -74,53 +73,48 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
       </div>
     </form>
   );
-  const card = (a: AppItem) => tokenFor === a.app ? (
-    <li key={a.app} className="mem app-card editing" aria-label={a.label}>
-      <strong>{a.label}</strong>
-      {tokenForm(a)}
-    </li>
-  ) : a.auth === "token" ? (
-    <li key={a.app} className="mem app-card" aria-label={a.label}>
-      <AppIcon name={a.icon} />
-      <div className="app-text">
-        <button className="link app-open" aria-label={`${a.label} details`} onClick={() => setDetail(a.app)}><strong>{a.label}</strong></button>
-        <div className="muted small app-desc">{a.description}</div>
-        {a.status === "needs_reconnect" && <div className="small warn">Token stopped working. Please update it.</div>}
-      </div>
-      {a.status === "needs_reconnect" ? <button className="primary" onClick={() => openToken(a.app)}>Update token</button>
-        : a.connected ? (
-          <div className="token-on">
-            <button className={`switch ${a.enabled ? "on" : ""}`} role="switch" aria-checked={a.enabled}
-              aria-label={`Use ${a.label}`} onClick={() => toggle(a)}><span /></button>
-            <button className={`ghost small ${confirm === a.accounts?.[0]?.link_id ? "danger" : ""}`} onClick={() => disconnect(a.accounts![0].link_id)}
-              onBlur={() => setConfirm("")}>{confirm === a.accounts?.[0]?.link_id ? "Disconnect?" : "Disconnect"}</button>
-          </div>
-        ) : (
-          <button className="ghost icon add" aria-label={`Connect ${a.label}`} title="Connect" onClick={() => openToken(a.app)}><IconPlus /></button>
-        )}
-    </li>
+  const open = (a: AppItem) => (e: React.MouseEvent) => { if (!(e.target as HTMLElement).closest("button:not(.app-open), label")) setDetail(a.app); };
+  const sw = (a: AppItem, label?: string) => (
+    <label className="sw">
+      <button className={`switch ${a.enabled ? "on" : ""}`} role="switch" aria-checked={a.enabled} aria-label={`Use ${a.label}`} onClick={() => toggle(a)}><span /></button>
+      {label}
+    </label>
+  );
+  const warn = (a: AppItem) => a.status === "needs_reconnect" && <div className="small warn">{a.auth === "token" ? "Token stopped working. Please update it." : "Access expired. Please reconnect."}</div>;
+  const fix = (a: AppItem) => <button className="primary small" onClick={() => a.auth === "token" ? openToken(a.app) : connect(a.app)}>{a.auth === "token" ? "Update token" : "Reconnect"}</button>;
+  // Connected: one row per app, the account it uses, a labeled switch and Manage.
+  const row = (a: AppItem) => {
+    const acc = a.accounts ?? [];
+    return (
+      <li key={a.app} className="app-row" aria-label={a.label} onClick={open(a)}>
+        <AppIcon name={a.icon} />
+        <div className="app-text">
+          <strong>{a.label}</strong>
+          <div className="muted small">{acc[0]?.email ?? a.description}{acc.length > 1 && <span className="more">+{acc.length - 1} account{acc.length > 2 ? "s" : ""}</span>}</div>
+          {warn(a)}
+        </div>
+        {a.status === "needs_reconnect" ? fix(a) : sw(a, "Use in chats")}
+        <button className="ghost small app-open" aria-label={`${a.label} details`} onClick={() => setDetail(a.app)}>Manage</button>
+      </li>
+    );
+  };
+  // Available: a compact tile with one plain action.
+  const tile = (a: AppItem) => tokenFor === a.app ? (
+    <li key={a.app} className="app-tile editing" aria-label={a.label}><strong>{a.label}</strong>{tokenForm(a)}</li>
   ) : (
-    <li key={a.app} className="mem app-card" aria-label={a.label}>
+    <li key={a.app} className="app-tile" aria-label={a.label} onClick={open(a)}>
       <AppIcon name={a.icon} />
-      <div className="app-text">
-        <button className="link app-open" aria-label={`${a.label} details`} onClick={() => setDetail(a.app)}><strong>{a.label}</strong></button>
-        <div className="muted small app-desc">{a.description}</div>
-        {a.status === "needs_reconnect" && <div className="small warn">Access expired. Please reconnect.</div>}
-      </div>
-      {a.status === "needs_reconnect" ? <button className="primary" onClick={() => connect(a.app)}>Reconnect</button>
-        : a.connected ? (
-          <button className={`switch ${a.enabled ? "on" : ""}`} role="switch" aria-checked={a.enabled}
-            aria-label={`Use ${a.label}`} onClick={() => toggle(a)}><span /></button>
-        ) : (
-          <button className="ghost icon add" aria-label={`Connect ${a.label}`} title="Connect" onClick={() => connect(a.app)}><IconPlus /></button>
-        )}
+      <div className="app-text"><strong>{a.label}</strong><div className="muted small app-desc">{a.description}</div>{warn(a)}</div>
+      {a.status === "needs_reconnect" ? fix(a)
+        : a.connected || !a.auth ? sw(a)
+        : <button className="ghost small" aria-label={`Connect ${a.label}`} onClick={() => a.auth === "token" ? openToken(a.app) : connect(a.app)}>{a.auth === "token" ? "Add token" : "Connect"}</button>}
     </li>
   );
-  const section = (title: string, list: AppItem[]) => list.length > 0 && (
-    <section aria-label={title}><h2>{title}</h2><ul className="app-grid">{list.map(card)}</ul></section>
+  const section = (title: string, list: AppItem[], on: boolean) => list.length > 0 && (
+    <section aria-label={title}><h2>{title}</h2>
+      {on ? <ul className="app-rows">{list.map(row)}</ul> : <ul className="app-tiles">{list.map(tile)}</ul>}
+    </section>
   );
-  // one line per linked OAuth account (Google); token apps disconnect on their card, no-auth apps have none
-  const accounts = [...new Map((items ?? []).filter((a) => a.auth === "oauth").flatMap((a) => (a.accounts ?? []).map((x) => [x.link_id, { ...x, provider: a.provider! }] as const))).values()];
   if (detail) return <Detail app={detail} onBack={() => { setDetail(""); load(); }} fail={fail} menuButton={menuButton} />;
 
   return (
@@ -135,15 +129,8 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
         {tab === "Skills" ? <p className="muted">Skills are coming soon.</p> : <>
         {note && <p className={note.ok ? "ok" : "error"} role="status">{note.text}</p>}
         {items === null ? <p className="muted">Loading…</p> : items.length === 0 ? <p className="muted">No portals are set up on this server.</p> : <>
-          {section("Connected", items.filter((a) => a.enabled))}
-          {section("Available", items.filter((a) => !a.enabled))}
-          {accounts.map((a) => (
-            <p key={a.link_id} className="muted small account-line">
-              <span>{a.provider === "google" ? "Google" : a.provider} account: {a.email ?? "connected"}</span>
-              <button className={`ghost ${confirm === a.link_id ? "danger" : ""}`} onClick={() => disconnect(a.link_id)}
-                onBlur={() => setConfirm("")}>{confirm === a.link_id ? "Disconnect?" : "Disconnect"}</button>
-            </p>
-          ))}
+          {section("Connected", items.filter((a) => a.enabled), true)}
+          {section("Available", items.filter((a) => !a.enabled), false)}
         </>}
         </>}
       </div>
@@ -165,37 +152,53 @@ function Detail({ app, onBack, fail, menuButton }: { app: string; onBack: () => 
     setConfirm("");
     try { await api.disconnect(linkId); await load(); } catch (e) { fail(e); }
   };
+  const scopeName = (u: string) => u.replace(/^https:\/\/www\.googleapis\.com\/auth\//, "").replace(/^https?:\/\//, "");
+  const [copied, setCopied] = useState(false);
+  const copyUrl = async () => { try { await navigator.clipboard.writeText(d?.url ?? ""); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ } };
   return (
     <main className="memory">
-      <header className="home-head">{menuButton}<button className="ghost" onClick={onBack}>← Portals</button><h1>{d?.label ?? app}</h1></header>
+      <header className="home-head">{menuButton}<button className="ghost" onClick={onBack}>← Portals</button></header>
       <div className="memory-body app-detail">
         {d === null ? <p className="muted">Loading…</p> : <>
-          <p className="muted">{d.description}</p>
-          {d.provider && <section aria-label="Accounts"><h2>Accounts</h2>
+          <div className="detail-hero">
+            <AppIcon name={d.icon} />
+            <div>
+              <h1>{d.label}</h1>
+              <p className="muted">{d.description}</p>
+            </div>
+            <span className={`pill ${d.enabled ? "on" : ""}`}>{d.enabled ? "In use" : "Off"}</span>
+          </div>
+          {d.provider && <section className="detail-card" aria-label="Accounts">
+            <div className="card-head"><h2>Accounts</h2>
+              {d.auth === "oauth" && <button className="ghost small" onClick={add}>+ Add account</button>}</div>
             {(d.accounts ?? []).length === 0 && <p className="muted small">No account connected.</p>}
-            <ul className="detail-list">{(d.accounts ?? []).map((x, i) => (
+            <ul className="account-list">{(d.accounts ?? []).map((x, i) => (
               <li key={x.link_id}>
-                <span>{x.email ?? "account"}{i === 0 && <span className="muted small"> (default)</span>}</span>
-                <span className={`small ${x.status === "ok" ? "muted" : "warn"}`}>{x.status === "ok" ? "connected" : "needs reconnect"} · {day(x.created)}</span>
+                <span className="avatar" aria-hidden="true">{(x.email ?? "?").slice(0, 1).toUpperCase()}</span>
+                <span className="account-main">
+                  <span className="account-email">{x.email ?? "account"}{i === 0 && <span className="pill small">Default</span>}</span>
+                  <span className={`small ${x.status === "ok" ? "muted" : "warn"}`}>{x.status === "ok" ? `Connected since ${day(x.created)}` : "Needs reconnect"}</span>
+                </span>
                 <button className={`ghost small ${confirm === x.link_id ? "danger" : ""}`} onClick={() => disconnect(x.link_id)}
                   onBlur={() => setConfirm("")}>{confirm === x.link_id ? "Disconnect?" : "Disconnect"}</button>
               </li>))}
             </ul>
-            {d.auth === "oauth" && <button className="ghost" onClick={add}>+ Add account</button>}
           </section>}
-          {d.scopes.length > 0 && <section aria-label="Scopes"><h2>Granted scopes</h2>
-            <ul className="detail-list">{d.scopes.map((s) => <li key={s}><code>{s}</code></li>)}</ul></section>}
-          <section aria-label="Tools"><h2>Tools</h2>
+          {d.scopes.length > 0 && <section className="detail-card" aria-label="Scopes"><h2>Granted scopes</h2>
+            <div className="chips">{d.scopes.map((s) => <code key={s} className="chip-code" title={s}>{scopeName(s)}</code>)}</div></section>}
+          <section className="detail-card" aria-label="Tools"><h2>Tools</h2>
             {d.tools.length === 0 ? <p className="muted small">Tools show here after a chat uses this portal.</p>
-              : <ul className="detail-list">{d.tools.map((t) => (
-                <li key={t.name}><code>{t.name}</code><span className="muted small">{t.needs_approval ? "needs approval" : "auto"}</span></li>))}</ul>}
+              : <ul className="tool-list">{d.tools.map((t) => (
+                <li key={t.name}><code>{t.name}</code><span className={`pill small ${t.needs_approval ? "warn" : ""}`}>{t.needs_approval ? "Needs approval" : "Auto"}</span></li>))}</ul>}
           </section>
-          <section aria-label="MCP URL"><h2>MCP URL</h2><p><code>{d.url}</code></p></section>
-          <section aria-label="Recent calls"><h2>Recent calls</h2>
+          {d.url && <section className="detail-card" aria-label="MCP URL"><h2>MCP URL</h2>
+            <div className="url-row"><code>{d.url}</code><button className="ghost small" onClick={copyUrl}>{copied ? "Copied" : "Copy"}</button></div></section>}
+          <section className="detail-card" aria-label="Recent calls"><h2>Recent calls</h2>
             {d.calls.length === 0 ? <p className="muted small">No calls yet.</p>
-              : <table className="detail-table"><thead><tr><th>Time</th><th>Tool</th><th>Account</th><th>OK</th></tr></thead>
+              : <table className="detail-table"><thead><tr><th>Time</th><th>Tool</th><th>Account</th><th>Result</th></tr></thead>
                 <tbody>{d.calls.map((c, i) => (
-                  <tr key={i}><td>{new Date(c.at * 1000).toLocaleString()}</td><td>{c.tool}</td><td>{c.account ?? "-"}</td><td>{c.ok ? "yes" : "no"}</td></tr>))}</tbody></table>}
+                  <tr key={i}><td className="muted">{new Date(c.at * 1000).toLocaleString()}</td><td><code>{c.tool}</code></td><td>{c.account ?? "-"}</td>
+                    <td><span className={`pill small ${c.ok ? "on" : "err"}`}>{c.ok ? "OK" : "Failed"}</span></td></tr>))}</tbody></table>}
           </section>
         </>}
       </div>

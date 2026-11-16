@@ -11,9 +11,19 @@ const deg = (r: number) => (r * 180) / Math.PI;
 const LIGHT = (() => { const v = [-0.55, 0.62, 0.56]; const n = Math.hypot(...v); return v.map((x) => x / n); })();
 const FOCUS_AFTER_MS = 2 * 60 * 1000;     // 2 min of continuous work: focused (squint, sweat, tremble)
 const OVERLOAD_AFTER_MS = 5 * 60 * 1000;  // 5 min: overloaded (> < eyes, red cheeks, steam)
+/** Short-lived or state-driven faces beyond idle/working (see public/mascot-states.html). */
+export type Mood = "idle" | "done" | "asking" | "error" | "stopped";
+export type Face = { roll?: number; h?: number; eyes?: "arc" | "round" | "flat"; sweat?: boolean; blush?: boolean; yaw?: number; pitch?: number };
+const FACES: Record<Mood, Face> = {
+  idle: {},
+  done: { h: 11 },                                            // big happy ^ ^ (plus one hop, in CSS)
+  asking: { eyes: "round", pitch: -14, sweat: true },         // round eyes looking up at you, sweat drop
+  error: { h: -6, pitch: 24, blush: false },                  // sad eyes, looking down
+  stopped: { eyes: "flat", yaw: -22, pitch: 6 },              // flat eyes, turned aside
+};
 type Pal = Record<"hi" | "base" | "mid" | "low" | "out" | "eye" | "blush" | "sweat" | "hot", [number, number, number] | null>;
 
-function readPal(): Pal {
+export function readPal(): Pal {
   const s = getComputedStyle(document.documentElement);
   const rgb = (k: string): [number, number, number] | null => {
     const v = s.getPropertyValue(`--m3-${k}`).trim();
@@ -24,10 +34,10 @@ function readPal(): Pal {
   return { hi: rgb("hi"), base: rgb("base"), mid: rgb("mid"), low: rgb("low"), out: rgb("out"), eye: rgb("eye"), blush: rgb("blush"), sweat: rgb("sweat"), hot: rgb("hot") };
 }
 
-function eyeDist(lon: number, lat: number, lonC: number, blink: number) {
+function eyeDist(lon: number, lat: number, lonC: number, blink: number, h = 8) {
   let best = 99;
   for (let i = 0; i <= 12; i++) {
-    const u = i / 12, alon = lonC + (u - 0.5) * 20, alat = -1 + Math.sin(u * Math.PI) * 8 * (1 - blink);
+    const u = i / 12, alon = lonC + (u - 0.5) * 20, alat = -1 + Math.sin(u * Math.PI) * h * (1 - blink);
     best = Math.min(best, Math.hypot((lon - alon) * Math.cos(rad(lat)), lat - alat));
   }
   return best;
@@ -45,7 +55,7 @@ function chevronDist(lon: number, lat: number, lonC: number, dir: number) {
 }
 
 /** focus 0..1: squinting eyes and a sweat drop; overload 0..1: "> <" eyes and red cheeks */
-function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: number, pitch: number, blink: number, focus = 0, overload = 0) {
+export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: number, pitch: number, blink: number, focus = 0, overload = 0, face: Face = {}) {
   const img = ctx.createImageData(N, N), R = N / 2 - 0.6, c = N / 2, eyeW = (1.4 * 24) / N + 1.6;
   for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
     const u = (px + 0.5 - c) / R, v = -(py + 0.5 - c) / R, d2 = u * u + v * v;
@@ -56,17 +66,22 @@ function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: number,
     else {
       const lit = Math.max(0, u * LIGHT[0] + v * LIGHT[1] + z * LIGHT[2]);
       col = lit > 0.93 ? pal.hi : lit > 0.62 ? pal.base : lit > 0.32 ? pal.mid : pal.low;
-      const y1 = v * Math.cos(pitch) + z * Math.sin(pitch), z1 = -v * Math.sin(pitch) + z * Math.cos(pitch);
-      const x2 = u * Math.cos(yaw) - z1 * Math.sin(yaw), z2 = u * Math.sin(yaw) + z1 * Math.cos(yaw);
+      // roll turns the painted face around the view axis (light stays put); positive = clockwise, i.e. rolling right
+      const rl = face.roll ?? 0, ru = u * Math.cos(rl) - v * Math.sin(rl), rv = u * Math.sin(rl) + v * Math.cos(rl);
+      const y1 = rv * Math.cos(pitch) + z * Math.sin(pitch), z1 = -rv * Math.sin(pitch) + z * Math.cos(pitch);
+      const x2 = ru * Math.cos(yaw) - z1 * Math.sin(yaw), z2 = ru * Math.sin(yaw) + z1 * Math.cos(yaw);
       if (z2 > 0) {
         const lon = deg(Math.atan2(x2, z2)), lat = deg(Math.asin(Math.max(-1, Math.min(1, y1))));
         const squint = Math.max(blink, focus * 0.8);  // focused: the ^ ^ flattens into narrowed eyes
         const eye = overload > 0.5
           ? Math.min(chevronDist(lon, lat, -18, 1), chevronDist(lon, lat, 18, -1))
-          : Math.min(eyeDist(lon, lat, -18, squint), eyeDist(lon, lat, 18, squint));
+          : face.eyes === "round" ? Math.min(...[-18, 18].map((c) => Math.abs(Math.hypot((lon - c) * Math.cos(rad(lat)), lat - 1) - 5 * (1 - blink))))
+          : face.eyes === "flat" ? Math.min(...[-18, 18].map((c) => Math.hypot(lon - Math.max(c - 9, Math.min(c + 9, lon)), lat)))
+          : Math.min(eyeDist(lon, lat, -18, squint, face.h), eyeDist(lon, lat, 18, squint, face.h));
         const cheek = 1 + overload * 0.5;  // cheeks grow and turn red when overloaded
         if (eye < eyeW) col = pal.eye;
-        else if (focus > 0.5 && pal.sweat && (((lon - 40) / 5) ** 2 + ((lat - 24) / (lat > 24 ? 4 : 7)) ** 2 < 1)) col = pal.sweat;  // drop on the brow
+        else if ((focus > 0.5 || face.sweat) && pal.sweat && (((lon - 40) / 5) ** 2 + ((lat - 24) / (lat > 24 ? 4 : 7)) ** 2 < 1)) col = pal.sweat;  // drop on the brow
+        else if (face.blush === false) { /* no blush */ }
         else if (((lon - 33) / (9 * cheek)) ** 2 + ((lat + 15) / (4.5 * cheek)) ** 2 < 1 || ((lon + 33) / (9 * cheek)) ** 2 + ((lat + 15) / (4.5 * cheek)) ** 2 < 1)
           col = overload > 0.5 && pal.hot ? pal.hot : pal.blush;
       }
@@ -78,13 +93,15 @@ function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: number,
   ctx.putImageData(img, 0, 0);
 }
 
-export function Mascot3D({ size = 120, pixels = 48, working = false, className }: {
-  size?: number; pixels?: number; working?: boolean; className?: string;
+export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idle", className }: {
+  size?: number; pixels?: number; working?: boolean; mood?: Mood; className?: string;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const steam = useRef<HTMLSpanElement>(null);
   const workingRef = useRef(working);
   workingRef.current = working;
+  const moodRef = useRef(mood);
+  moodRef.current = mood;
   useEffect(() => {
     const cv = canvas.current, ctx = cv?.getContext("2d");
     if (!cv || !ctx) return;
@@ -108,10 +125,13 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, className }
       const over = since > 0 && now - since > OVERLOAD_AFTER_MS;
       overload += ((over ? 1 : 0) - overload) * 0.08;
       steam.current?.classList.toggle("on", over);
-      const t = workingRef.current ? { yaw: 0, pitch: rad(20) } : target, k = reduce ? 1 : 0.12;
+      const face = workingRef.current ? {} : FACES[moodRef.current];
+      const posed = face.yaw !== undefined || face.pitch !== undefined;  // a mood with its own pose stops following the pointer
+      const t = workingRef.current ? { yaw: 0, pitch: rad(20) } : posed ? { yaw: rad(face.yaw ?? 0), pitch: rad(face.pitch ?? 0) } : target, k = reduce ? 1 : 0.12;
+      const sway = moodRef.current === "asking" && !workingRef.current && !reduce ? rad(Math.sin(now / 500) * 10) : 0;
       cur.yaw += (t.yaw - cur.yaw) * k; cur.pitch += (t.pitch - cur.pitch) * k;
       const shake = focused && !reduce ? rad(Math.sin(now / 45) * 2.2) : 0;  // straining: a tiny fast tremble
-      render(ctx, pixels, pal, cur.yaw + shake, cur.pitch, blink, focus, overload);
+      render(ctx, pixels, pal, cur.yaw + shake + sway, cur.pitch, face.eyes === "flat" ? 0 : blink, focus, overload, face);
       raf = requestAnimationFrame(frame);
     };
     const doBlink = () => {
@@ -129,7 +149,7 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, className }
     };
   }, [pixels]);
   return (
-    <span className={`mascot3d ${working ? "working" : ""} ${className ?? ""}`} style={{ width: size }} aria-hidden="true">
+    <span className={`mascot3d ${working ? "working" : `mood-${mood}`} ${className ?? ""}`} style={{ width: size, ["--s" as string]: `${size}px` }} aria-hidden="true">
       <span ref={steam} className="mascot3d-steam"><i /><i /></span>
       <canvas ref={canvas} width={pixels} height={pixels} style={{ width: size, height: size }} />
       <span className="mascot3d-shadow" />

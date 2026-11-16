@@ -20,17 +20,24 @@ test("memory page: list, edit, delete", async ({ page }) => {
   const learned = page.getByRole("region", { name: "What the agent learned" });
   await expect(about.locator(".mem-text")).toHaveText(["Likes short answers"]);
   await expect(learned.locator(".mem-text")).toHaveText(["Uses uv for Python"]);
-  await expect(learned).toContainText("from a chat");
+  await expect(learned).toContainText("from a deleted chat");  // r1 is not a chat that exists
 
-  await about.locator(".mem-text").click();
+  await about.getByRole("button", { name: "Edit memory: Likes short answers" }).click();  // the visible Edit button
+  await page.keyboard.press("Escape");
+  await about.locator(".mem-text").click();  // clicking the text works too
   await page.fill("textarea[aria-label='Memory text']", "Likes very short answers");
   await page.click("text=Save");
   await expect(about.locator(".mem-text")).toHaveText(["Likes very short answers"]);
+
+  await about.getByLabel("Add a memory").fill("Call me D");
+  await about.getByRole("button", { name: "Add" }).click();
+  await expect(about.locator(".mem-text")).toHaveText(["Call me D", "Likes very short answers"]);
+  await expect(about.getByLabel("Add a memory")).toHaveValue("");
 
   const del = learned.getByRole("button", { name: "Delete memory" });
   await del.click();
   await expect(del).toHaveText("Delete?");
   await del.click();
   await expect(learned).toContainText("The agent has not saved anything yet.");
-  expect(sql("SELECT content FROM memories").trim()).toBe("Likes very short answers");
+  expect(sql("SELECT content FROM memories ORDER BY created").trim().split("\n")).toEqual(["Likes very short answers", "Call me D"]);
 });
