@@ -541,7 +541,7 @@ function Approval({ p, send }: { p: PendingApproval; send: Send }) {
   );
 }
 
-export function Composer({ busy, send, variant, disabled, tools, sid, onError, onQueueFiles, idle = false }: {
+export function Composer({ busy, send, variant, disabled, tools, sid, onError, onQueueFiles, idle = false, prefill }: {
   busy: boolean; send: Send; variant?: "hero"; disabled?: boolean; tools?: ReactNode;
   /** With a session: show the attach button; files go to the workspace root (same as the Files panel). */
   sid?: string; onError?: (e: unknown) => void;
@@ -549,8 +549,15 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
   onQueueFiles?: (files: File[]) => void;
   /** Let Simp come out and play on the box when the chat sits idle (chat view only). */
   idle?: boolean;
+  /** Put this text in the box to edit before sending (a suggestion was picked); n changes on every pick. */
+  prefill?: { text: string; n: number };
 }) {
   const [text, setText] = useState("");
+  useEffect(() => {
+    if (!prefill) return;
+    setText(prefill.text);
+    requestAnimationFrame(() => { const el = area.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
+  }, [prefill?.n]);
   const [attached, setAttached] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);

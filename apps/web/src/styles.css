@@ -12,6 +12,7 @@
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
   --radius-sm: 8px; --radius: 12px; --radius-lg: 24px;
   --shadow-sm: 0 1px 2px rgb(0 0 0 / .06); --shadow-md: 0 4px 16px rgb(0 0 0 / .08);
+  --font-display: "Nunito Variable", ui-sans-serif, system-ui, sans-serif;  /* round, like Simp's head: headings and the logo */
   --sidebar-w: 260px;
   --rail-w: 56px;
   font: var(--fs-md)/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -225,10 +226,11 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .home-hero .hero-face { align-self: center; margin-bottom: var(--sp-1); }
 .home-hero h1 { margin: 0 0 var(--sp-2); font-size: 27px; font-weight: 450; text-align: center; letter-spacing: -.01em; }
 /* compact profile picker inside the hero composer, next to send */
-.suggestions { list-style: none; margin: 0; padding: 0 var(--sp-4); display: flex; flex-direction: column; gap: 2px; }
+/* suggestions: small chips in a row right under the box (not a menu-like list) */
+.suggestions { list-style: none; margin: var(--sp-3) 0 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); }
 .suggestion {
-  display: flex; align-items: center; gap: var(--sp-3); width: 100%; text-align: left; border: 0; background: transparent;
-  padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); font-size: var(--fs-sm); color: var(--muted);
+  display: inline-flex; align-items: center; gap: var(--sp-2); border: 1px solid var(--border); background: transparent;
+  padding: 6px var(--sp-3); border-radius: 99px; font-size: var(--fs-sm); color: var(--muted); white-space: nowrap;
 }
 .suggestion svg { flex: none; }
 .suggestion:hover:not(:disabled) { background: var(--hover); color: var(--text); }
@@ -260,7 +262,6 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
   .chat, .home { min-height: 0; }
   .home-hero { padding: 0 var(--sp-3) var(--sp-8); }
   .home-hero h1 { font-size: 24px; }
-  .suggestions { padding: 0; }
   .login { padding: var(--sp-6) var(--sp-4); }
 }
 
@@ -361,3 +362,10 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
   .app-row { flex-wrap: wrap; } .app-row .sw { margin-left: 64px; } }
 /* the small memory buttons stay 44px to tap on touch screens */
 @media (pointer: coarse) { .mem-meta button { position: relative; } .mem-meta button::before { content: ""; position: absolute; inset: 50% auto auto 50%; width: 44px; height: 44px; translate: -50% -50%; } }
+
+/* headings in Nunito; it runs a little light, so one step heavier than the system font */
+.page-title, .memory-body h2, .home-hero h1, .detail-hero h1, .login h1, .brand-name, .chat header .title {
+  font-family: var(--font-display); letter-spacing: 0; }
+.page-title, .home-hero h1, .detail-hero h1, .login h1 { font-weight: 750; }
+.memory-body h2, .chat header .title { font-weight: 750; }
+.brand-name { font-weight: 800; }

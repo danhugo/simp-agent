@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, AuthError, type ConnStatus, getToken, setToken, subscribe } from "./api";
 import { Chat, Composer, type Send } from "./Chat";
-import { IconCheck, IconChevron, IconCompose, IconFile, IconApps, IconLogout, IconMemory, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
+import { IconCalendar, IconChart, IconCheck, IconChevron, IconCompose, IconFile, IconSearch, IconApps, IconLogout, IconMemory, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
 import { Mascot3D } from "./Mascot3D";
 import { requestLocation, saveLocation, sharedLocation } from "./location";
@@ -45,10 +45,12 @@ function Login() {
   );
 }
 
+// Each one works with no extra context; "fill" is what goes into the box (some end open, for you to finish).
 const SUGGESTIONS = [
-  { text: "What's the weather tomorrow?", icon: <IconSun size={16} /> },
-  { text: "Summarize a file for me", icon: <IconFile size={16} /> },
-  { text: "Help me plan my week", icon: <IconCheck size={16} /> },
+  // shows the agent's reach: it searches the web, runs code in its own computer and hands back a file
+  { text: "Chart real data", fill: "Find recent data and draw a chart of: ", icon: <IconChart size={16} /> },
+  { text: "Research a topic", fill: "Find reliable sources and give me a short summary on: ", icon: <IconSearch size={16} /> },
+  { text: "Help me plan my week", fill: "Help me plan my week. My main goals are: ", icon: <IconCalendar size={16} /> },
 ];
 
 const isConnHash = () => /^#(crafts|apps|connections)\b/.test(location.hash);  // #connections: older OAuth return
@@ -77,6 +79,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   const [confirm, setConfirm] = useState("");  // session id whose delete button was clicked once
   // A session is being created (hero composer). The hero composer is disabled meanwhile:
   // text typed into it would be lost when the chat replaces it, and Enter would create a second session.
+  const [prefill, setPrefill] = useState<{ text: string; n: number }>();  // a picked suggestion goes into the box to edit
   const [creating, setCreating] = useState(false);
   const [hello, setHello] = useState(true);  // one happy hop when the new-chat screen opens
   useEffect(() => { if (sid) return; setHello(true); const t = setTimeout(() => setHello(false), 1200); return () => clearTimeout(t); }, [sid]);
@@ -255,13 +258,13 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
           <div className="home-hero">
             <Mascot3D size={112} className="hero-face" working={creating} mood={hello ? "done" : "idle"} />
             <h1>{greeting()}</h1>
-            <Composer busy={false} send={start} variant="hero" onQueueFiles={(fs) => queued.current.push(...fs)} disabled={creating} tools={profiles.length > 0 && (
+            <Composer busy={false} send={start} variant="hero" prefill={prefill} onQueueFiles={(fs) => queued.current.push(...fs)} disabled={creating} tools={profiles.length > 0 && (
               <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} />
             )} />
             <ul className="suggestions" aria-label="Suggestions">
-              {SUGGESTIONS.map(({ text, icon }) => (
+              {SUGGESTIONS.map(({ text, fill, icon }) => (
                 <li key={text}>
-                  <button className="suggestion" disabled={creating} onClick={() => start({ type: "prompt", text })}>
+                  <button className="suggestion" disabled={creating} onClick={() => setPrefill((p) => ({ text: fill, n: (p?.n ?? 0) + 1 }))}>
                     {icon}<span>{text}</span>
                   </button>
                 </li>

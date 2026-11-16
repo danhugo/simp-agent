@@ -180,3 +180,13 @@ test("model picker: pill opens a listbox, keyboard picks, Esc closes", async ({ 
   await page.mouse.click(5, 5);
   await expect(list).toBeHidden();
 });
+
+test("new chat: a suggestion goes into the box to edit, nothing is sent", async ({ page }) => {
+  await login(page);
+  await page.click("text=New session");
+  await page.getByRole("button", { name: "Help me plan my week" }).click();
+  await expect(page.locator("textarea")).toHaveValue("Help me plan my week. My main goals are: ");
+  await expect(page.locator("textarea")).toBeFocused();
+  await expect(page.locator(".msg.user")).toHaveCount(0);
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/home-suggestions.png` });
+});
