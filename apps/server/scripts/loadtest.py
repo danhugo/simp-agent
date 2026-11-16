@@ -122,6 +122,16 @@ class Sampler(threading.Thread):
                     self.samples.append((float(cpu), int(rss) / 1024))
 
 
+async def seed_users(home: Path, n: int) -> list[str]:
+    from simp_server.store import SqliteStore
+    s = SqliteStore({"data_dir": str(home)})
+    await s.open()
+    try:
+        return [await s.add_user(f"u{i}") for i in range(n)]
+    finally:
+        await s.close()
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--levels", default="10,25,50,100,200,400")
@@ -136,7 +146,7 @@ def main():
 
     home = Path(tempfile.mkdtemp(prefix="simp-load-"))
     (home / "settings.toml").write_text(
-        'signup = "open"\nallow_local_sandbox = true\nmax_open_sessions = 5000\n'
+        'allow_local_sandbox = true\nmax_open_sessions = 5000\n'
         '[profiles.fake]\napi = "fake"\nmodel = "fake"\nprice_in = 0\nprice_out = 0\ntools = []\n'
         '[budget]\nuser_day_usd = 1000000\nrun_usd = 1000000\n')
     port = a.port or free_port()
@@ -164,7 +174,7 @@ def main():
     try:
         for _ in range(100):
             try:
-                if httpx.get(base + "/api/signup-mode").status_code == 200:
+                if httpx.get(base + "/api/me").status_code == 401:
                     break
             except httpx.TransportError:
                 time.sleep(0.2)
@@ -174,10 +184,8 @@ def main():
               f"({a.ttft}s ttft + {a.tokens} tok @ {a.tps}/s); {a.workers} client processes", flush=True)
         n_users = max(levels)
         t = time.time()
-        with httpx.Client(base_url=base) as c:
-            tokens = [c.post("/api/signup", json={"name": f"u{i}", "password": "pw"}).json()["token"]
-                      for i in range(n_users)]
-        print(f"signed up {n_users} users in {time.time() - t:.0f}s\n", flush=True)
+        tokens = asyncio.run(seed_users(home, n_users))
+        print(f"seeded {n_users} users in {time.time() - t:.0f}s\n", flush=True)
         hdr = (f"{'n':>5} {'ok':>5} {'fail':>5} {'ttft p50':>9} {'ttft p95':>9} {'run p50':>8} {'run p95':>8} "
                f"{'ideal':>6} {'deltas/s':>9} {'cpu avg':>8} {'cpu max':>8} {'rss max':>8}  errors")
         print(hdr + "\n" + "-" * len(hdr), flush=True)

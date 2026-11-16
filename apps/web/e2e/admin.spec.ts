@@ -8,10 +8,8 @@ const cli = (...args: string[]) =>
     .toString().trim();
 
 async function login(p: Page, token: string) {
-  await p.goto("/");
-  await p.click("text=Use an access token instead");
-  await p.fill("input[aria-label=Token]", token);
-  await p.click("text=Sign in");
+  await p.goto("about:blank");  // a full load, like the redirect back from Google (a hash-only change keeps the page)
+  await p.goto(`/#login=${token}`);
   await expect(p.locator("text=New session")).toBeVisible();
 }
 
@@ -44,11 +42,11 @@ test("rotate then revoke: old token logged out, new one works until revoked", as
   await login(page, old);
   const fresh = cli("rotate", "--name", name);
   await page.reload();  // next API call with the old token -> 401 -> back to login
-  await expect(page.locator("input[aria-label=Username]")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeVisible();
   await login(page, fresh);
   expect(cli("users")).toContain(`${name}\tactive`);
   cli("revoke", "--name", name);
   expect(cli("users")).toContain(`${name}\trevoked`);
   await page.reload();
-  await expect(page.locator("input[aria-label=Username]")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeVisible();
 });

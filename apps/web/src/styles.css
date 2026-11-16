@@ -67,40 +67,10 @@ pre { background: var(--code); border-radius: var(--radius-sm); padding: 10px va
   border-radius: var(--radius); box-shadow: var(--shadow-md);
 }
 .login h1 { margin: 0; font-size: var(--fs-xl); text-align: center; letter-spacing: -.01em; }
-/* input borders >= 3:1 against the card (the global --border is decorative only) */
-.login { --field-border: #8f8579; }
-:root[data-theme="dark"] .login { --field-border: #7d7266; }
 .login .logo { align-self: center; margin-bottom: calc(-1 * var(--sp-1)); }
 .login .sub { margin: 0 0 var(--sp-2); text-align: center; }
-.login .field { display: flex; flex-direction: column; gap: 6px; }
-.login label { font-size: var(--fs-sm); font-weight: 600; }
-.login .hint, .login .field-error { margin: 0; }
-.login .field-error { color: var(--err); }
-.login .error { margin: 0; font-size: var(--fs-sm); }
-.login input:not([type="checkbox"]), .login button { padding: 10px var(--sp-3); border-radius: var(--radius-sm); }
-.login input:not([type="checkbox"]) { border-color: var(--field-border); }
-.login input[aria-invalid="true"] { border-color: var(--err); }
-.login .pw { position: relative; display: flex; }
-.login .pw input { flex: 1; min-width: 0; padding-right: 44px; }
-.login button.reveal { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); width: 36px; height: 36px; padding: 0; border: 0; background: transparent; }
-.login button.reveal:hover:not(:disabled) { background: var(--hover); }
-.login button.primary { margin-top: var(--sp-1); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); }
-.login button.primary:disabled { opacity: .75; cursor: progress; }
-.login .spinner {
-  width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent;
-  animation: login-spin .7s linear infinite;
-}
-@keyframes login-spin { to { transform: rotate(360deg); } }
-.login .center, .login .swap { margin: 0; text-align: center; }
-.login .center code { font-size: inherit; white-space: nowrap; }
-/* text-link buttons: secondary actions that still read as clickable */
-.login button.link {
-  border: 0; background: transparent; padding: 0; border-radius: 4px; color: var(--accent); font-weight: 600;
-  text-underline-offset: 3px;
-}
-.login button.link:hover:not(:disabled), .login button.link:focus-visible { background: transparent; text-decoration: underline; }
-.login button.link.token-toggle { align-self: center; color: var(--muted); font-weight: 400; text-decoration: underline; }
-.login button.link.token-toggle:hover:not(:disabled) { color: var(--text); }
+.login button { padding: 10px var(--sp-3); border-radius: var(--radius-sm); }
+.login button.primary { margin-top: var(--sp-1); font-weight: 600; }
 
 /* shell */
 .app { display: flex; height: 100vh; height: 100dvh; }

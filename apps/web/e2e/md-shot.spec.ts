@@ -44,10 +44,7 @@ for (const theme of ["light", "dark"]) {
     const token = readFileSync("/tmp/simp-e2e/token", "utf8").trim();
     await page.setViewportSize({ width: 900, height: 1500 });
     await page.addInitScript((t) => localStorage.setItem("simp.theme", t), theme);
-    await page.goto("/");
-    await page.click("text=Use an access token instead");
-    await page.fill("input[aria-label=Token]", token);
-    await page.click("text=Sign in");
+    await page.goto(`/#login=${token}`);
     await page.fill("textarea", MD);
     await page.keyboard.press("Enter");
     const msg = page.locator(".msg.assistant").last();

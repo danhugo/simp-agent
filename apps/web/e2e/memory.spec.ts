@@ -13,10 +13,7 @@ test("memory page: list, edit, delete", async ({ page }) => {
     `INSERT INTO memories VALUES('m1','${uid}',NULL,'global','Likes short answers',strftime('%s','now'),NULL);` +
     `INSERT INTO memories VALUES('m2','${uid}',(SELECT id FROM agents WHERE user_id='${uid}' ORDER BY created LIMIT 1),'agent','Uses uv for Python',strftime('%s','now'),'r1');`);
 
-  await page.goto("/");
-  await page.click("text=Use an access token instead");
-  await page.fill("input[aria-label=Token]", token());
-  await page.click("text=Sign in");
+  await page.goto(`/#login=${token()}`);
   await page.getByRole("button", { name: "Memory" }).click();
 
   const about = page.getByRole("region", { name: "About you" });

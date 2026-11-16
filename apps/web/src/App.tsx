@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, AuthError, type ConnStatus, type SignupMode, getToken, setToken, subscribe } from "./api";
-import { Chat, Composer, errorText, type Send } from "./Chat";
-import { IconCheck, IconChevron, IconCompose, IconEye, IconFile, IconEyeOff, IconApps, IconLogout, IconMemory, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
+import { api, AuthError, type ConnStatus, getToken, setToken, subscribe } from "./api";
+import { Chat, Composer, type Send } from "./Chat";
+import { IconCheck, IconChevron, IconCompose, IconFile, IconApps, IconLogout, IconMemory, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
 import { Mascot3D } from "./Mascot3D";
 import { requestLocation, saveLocation, sharedLocation } from "./location";
@@ -12,7 +12,12 @@ import type { SessionInfo } from "./protocol.gen";
 import { initialState, reduce, type ServerEvent } from "./state";
 
 export default function App() {
-  const [token, setTok] = useState(getToken());
+  const [token, setTok] = useState(() => {
+    // after Google sign-in the server redirects to /#login=<token>: keep it, then clean the URL
+    const m = location.hash.match(/^#login=(.+)$/);
+    if (m) { setToken(m[1]); history.replaceState(null, "", location.pathname + location.search); }
+    return getToken();
+  });
   const [theme, setTheme] = useState(() => {
     try { const t = localStorage.getItem("simp.theme"); if (t) return t; } catch { /* storage blocked */ }
     return typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -24,118 +29,17 @@ export default function App() {
     setTheme(t);
     try { localStorage.setItem("simp.theme", t); } catch { /* storage blocked: keep it for this tab */ }
   };
-  return token ? <Main onLogout={logout} onTheme={toggle} theme={theme} /> : <Login onLogin={setTok} />;
+  return token ? <Main onLogout={logout} onTheme={toggle} theme={theme} /> : <Login />;
 }
 
-type Field = "name" | "password" | "code" | "token";
-const FIELD_ID: Record<Field, string> = { name: "login-name", password: "login-password", code: "login-code", token: "login-token" };
-
-function Login({ onLogin }: { onLogin: (t: string) => void }) {
-  const [signup, setSignup] = useState(false);
-  const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
-  const [code, setCode] = useState("");
-  const [value, setValue] = useState("");  // access token (from `simp-server seed`), instead of a password
-  const [tokenMode, setTokenMode] = useState(false);  // hidden by default: username + password is the normal way in
-  const [error, setError] = useState("");
-  const [missing, setMissing] = useState<Partial<Record<Field, string>>>({});  // per-field "required" messages
-  const [busy, setBusy] = useState(false);
-  const busyRef = useRef(false);  // ignore repeated submits while a request is in flight
-  const [mode, setMode] = useState<SignupMode>("invite");
-  useEffect(() => { api.signupMode().then(setMode); }, []);
-  const invite = mode === "invite";
-  const withToken = !signup && tokenMode;
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (busyRef.current) return;
-    setError("");
-    const req: [Field, string, string][] = withToken ? [["token", value.trim(), "Enter your access token."]] : [
-      ["name", name.trim(), "Enter a username."],
-      ["password", password, "Enter a password."],
-      ...(signup && invite ? [["code", code.trim(), "Enter your invite code."] as [Field, string, string]] : []),
-    ];
-    const bad = Object.fromEntries(req.filter(([, v]) => !v).map(([f, , msg]) => [f, msg]));
-    setMissing(bad);
-    const first = req.find(([, v]) => !v);
-    if (first) { document.getElementById(FIELD_ID[first[0]])?.focus(); return; }
-    busyRef.current = true;
-    setBusy(true);
-    try {
-      const t = withToken ? value.trim()
-        : signup ? await api.signup(name.trim(), password, invite ? code.trim() : "") : await api.login(name.trim(), password);
-      setToken(t);
-      await api.hello();
-      await api.profiles(); // /api/hello needs no token; this checks it
-      onLogin(t);
-    } catch (err) {
-      setToken("");
-      setError(err instanceof AuthError ? "That token was not accepted." : errorText(err));
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-    }
-  };
-  const reset = () => { setError(""); setMissing({}); };
-  const swap = () => { setSignup(!signup); setTokenMode(false); reset(); };
-  // label + input + optional hint / "required" message, wired with htmlFor/id and aria-describedby
-  const field = (f: Field, label: string, input: (p: React.InputHTMLAttributes<HTMLInputElement>) => React.ReactNode,
-    hint?: string) => {
-    const id = FIELD_ID[f];
-    const desc = [hint && `${id}-hint`, missing[f] && `${id}-err`].filter(Boolean).join(" ") || undefined;
-    return (
-      <div className="field">
-        <label htmlFor={id}>{label}</label>
-        {input({ id, "aria-invalid": missing[f] ? true : undefined, "aria-describedby": desc })}
-        {hint && <p id={`${id}-hint`} className="muted small hint">{hint}</p>}
-        {missing[f] && <p id={`${id}-err`} className="field-error small">{missing[f]}</p>}
-      </div>
-    );
-  };
-  const clear = (f: Field) => missing[f] && setMissing({ ...missing, [f]: undefined });
+function Login() {
   return (
     <div className="login-page">
-    <form className="login" onSubmit={submit} aria-busy={busy} noValidate>
+    <form className="login" action="/api/auth/google/start" method="get">
       <PixelAgent size={56} className="logo" />
       <h1>Simp</h1>
-      <p className="muted sub">{!signup ? "Welcome." : invite ? "Join with an invite code." : "Pick a username and a password."}</p>
-      {withToken ? field("token", "Token", (p) =>
-        <input {...p} autoFocus type="password" value={value} aria-label="Token" autoComplete="off"
-          onChange={(e) => { setValue(e.target.value); clear("token"); }} />,
-      ) : (
-        <>
-          {field("name", "Username", (p) =>
-            <input {...p} autoFocus value={name} aria-label="Username" autoComplete="username" autoCapitalize="none"
-              spellCheck={false} onChange={(e) => { setName(e.target.value); clear("name"); }} />,
-            signup ? "2–32 letters, digits, _ or -" : undefined)}
-          {field("password", "Password", (p) =>
-            <div className="pw">
-              <input {...p} type={showPw ? "text" : "password"} value={password} aria-label="Password"
-                autoComplete={signup ? "new-password" : "current-password"}
-                onChange={(e) => { setPassword(e.target.value); clear("password"); }} />
-              <button type="button" className="icon reveal" aria-label={showPw ? "Hide password" : "Show password"}
-                aria-pressed={showPw} onClick={() => setShowPw(!showPw)}>
-                {showPw ? <IconEyeOff /> : <IconEye />}
-              </button>
-            </div>)}
-          {signup && invite && field("code", "Invite code", (p) =>
-            <input {...p} value={code} aria-label="Invite code" autoComplete="off" autoCapitalize="none" spellCheck={false}
-              onChange={(e) => { setCode(e.target.value); clear("code"); }} />)}
-        </>
-      )}
-      {error && <p className="error" role="alert">{error}</p>}
-      <button className="primary" disabled={busy}>
-        {busy && <span className="spinner" aria-hidden="true" />}
-        {busy ? (signup ? "Creating account…" : "Signing in…") : signup ? "Create account" : "Sign in"}
-      </button>
-      {!signup && !tokenMode && <p className="muted small center">Forgot your password? Ask the admin to run <code>simp-server passwd</code>.</p>}
-      {(signup || mode !== "closed") &&
-        <p className="swap small">{signup ? "Already have an account? " : "No account yet? "}
-          <button type="button" className="link" onClick={swap}>{signup ? "Sign in" : "Create account"}</button></p>}
-      {!signup &&
-        <button type="button" className="link muted small token-toggle" onClick={() => { setTokenMode(!tokenMode); reset(); }}>
-          {tokenMode ? "Use username and password" : "Use an access token instead"}
-        </button>}
+      <p className="muted sub">Welcome.</p>
+      <button className="primary">Sign in with Google</button>
     </form>
     </div>
   );
