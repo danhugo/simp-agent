@@ -99,7 +99,7 @@ The second line is the Vite dev server for the web client ([30](30-web-client.md
 ```sh
 export SIMP_SERVER_HOME=/tmp/simp-e2e SIMP_FAKE_DELAY=0.05
 rm -rf "$SIMP_SERVER_HOME" && mkdir -p "$SIMP_SERVER_HOME"
-printf 'signup_code = "e2e-code"\nallow_local_sandbox = true\n[profiles.fake]\napi = "fake"\nmodel = "fake"\nprice_in = 10000\nprice_out = 0\n[budget]\nuser_day_usd = 1\nrun_usd = 1\n' > "$SIMP_SERVER_HOME/settings.toml"
+printf 'allow_local_sandbox = true\n[profiles.fake]\napi = "fake"\nmodel = "fake"\nprice_in = 10000\nprice_out = 0\n[budget]\nuser_day_usd = 1\nrun_usd = 1\n' > "$SIMP_SERVER_HOME/settings.toml"
 uv run simp-server seed --name e2e > "$SIMP_SERVER_HOME/token"
 exec uv run simp-server run --port 8767 --fake-llm
 ```
@@ -108,7 +108,7 @@ The script deletes old data and writes a small `settings.toml`. The server still
 
 `reuseExistingServer: false` and `rm -rf` are on purpose. Old sessions or old budget use from a past run would change the results, so every run starts empty.
 
-The tests are in `apps/web/e2e/`: `app.spec.ts`, `accounts.spec.ts`, `admin.spec.ts` and `memory.spec.ts`. `memory.spec.ts` writes two memories straight into `simp.db` with `sqlite3`, opens the Memory page ([30](30-web-client.md#the-memory-page)), then edits one and deletes the other, and checks the database at the end. On the server side, `apps/server/tests/test_memory.py` checks that memory is shared across a user's chats but not across users, and that only the owner can use `/api/memories` ([27](27-store-auth.md#agents-and-memories)). `app.spec.ts` has small helpers. `login` reads the token from `/tmp/simp-e2e/token`, signs in and opens a new session. `say` types a message and presses Enter. `last` finds the newest assistant message.
+The tests are in `apps/web/e2e/`: `app.spec.ts`, `accounts.spec.ts`, `admin.spec.ts` and `memory.spec.ts`. `memory.spec.ts` writes two memories straight into `simp.db` with `sqlite3`, opens the Memory page ([30](30-web-client.md#the-memory-page)), then edits one and deletes the other, and checks the database at the end. On the server side, `apps/server/tests/test_memory.py` checks that memory is shared across a user's chats but not across users, and that only the owner can use `/api/memories` ([27](27-store-auth.md#agents-and-memories)). `accounts.spec.ts` checks that the login page offers only Google, with no password or sign-up form. `app.spec.ts` has small helpers. `login` reads the seeded token from `/tmp/simp-e2e/token` and opens `/#login=<token>`, the same address the Google callback sends a real user to, so the tests need no Google account; then it opens a new session. `say` types a message and presses Enter. `last` finds the newest assistant message.
 
 The test that matters most for the web client is the reload test. It is the "Ana presses reload in the middle of an answer" case from [30](30-web-client.md):
 

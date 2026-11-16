@@ -320,9 +320,6 @@ The server slot that finds the user for a request. By default `StaticTokenAuth`.
 ## Server slot
 One class the server needs (`store`, `auth` or `sandbox`), picked by name from `DEFAULT_PLUGINS` in `server.py`. Not the agent plugins of 14. Home: [27](27-store-auth.md#token-hashes).
 
-## Salt
-Random bytes mixed into a password hash, so two users with the same password get different hashes. Home: [27](27-store-auth.md#scrypt-passwords).
-
 ## Token (auth)
 A long random string sent as `Authorization: Bearer <token>`. Only its SHA-256 hash is stored. Home: [27](27-store-auth.md#token-hashes).
 
@@ -330,13 +327,13 @@ A long random string sent as `Authorization: Bearer <token>`. Only its SHA-256 h
 One long-lived token per user, saved only as its sha256 in `users.token_sha256`. The admin makes it with `seed` and changes it with `rotate`. Home: [27](27-store-auth.md).
 
 ## Per-device token
-A token made by each password login and saved in the `tokens` table. `logout` deletes only that row. Home: [27](27-store-auth.md).
+A token made by each Google sign-in and saved (as a hash) in the `tokens` table. `logout` deletes only that row. Home: [27](27-store-auth.md#google-login).
+
+## Allow-list
+`allowed_emails` in `settings.toml`: the only Google accounts that may sign in to the web client. The first sign-in of a listed email creates its user. Home: [27](27-store-auth.md#google-login).
 
 ## WAL
 SQLite write-ahead log mode. Readers do not wait for the writer, and a crash does not break the file. Home: [27](27-store-auth.md#opening-the-store).
-
-## Scrypt
-A slow, salted password hash from Python's `hashlib`. It is slow on purpose, so guessing is expensive. Home: [27](27-store-auth.md#scrypt-passwords).
 
 ## `recover`
 `Run.recover`: closes a run that was busy when the server died, and leaves a valid history. Home: [27](27-store-auth.md#recover).
