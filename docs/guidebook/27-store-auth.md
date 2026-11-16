@@ -50,7 +50,7 @@ The chapter follows this picture and solves four problems, in this order:
 
 The first problem from the list: Ana opens the web client ([30](30-web-client.md)). The server must learn who she is, and it must keep out everyone the team did not invite. We do not want to keep passwords at all: a password table is one more thing to protect, and Ana already has a Google account. So the web client has one button, "Sign in with Google", and the server lets Google check who she is.
 
-Who may come in is decided by one list in `settings.toml`, the **[allow-list](glossary.md#allow-list)**:
+Who may come in is decided by one list in `settings.toml`, the **[allow-list](glossary.md#email-allow-list)**:
 
 ```toml
 allowed_emails = ["ana@gmail.com", "bob@gmail.com"]

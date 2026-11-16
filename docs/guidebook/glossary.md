@@ -329,7 +329,7 @@ One long-lived token per user, saved only as its sha256 in `users.token_sha256`.
 ## Per-device token
 A token made by each Google sign-in and saved (as a hash) in the `tokens` table. `logout` deletes only that row. Home: [27](27-store-auth.md#google-login).
 
-## Allow-list
+## Email allow-list
 `allowed_emails` in `settings.toml`: the only Google accounts that may sign in to the web client. The first sign-in of a listed email creates its user. Home: [27](27-store-auth.md#google-login).
 
 ## WAL
