@@ -4,6 +4,7 @@ E2B_API_KEY and an S3 test bucket (SIMP_TEST_S3_ENDPOINT/BUCKET/KEY/SECRET)."""
 import asyncio
 import itertools
 import os
+import shlex
 import time
 import uuid
 from datetime import datetime, timezone
@@ -53,7 +54,7 @@ class FakeSandbox:
         if self.state != "running":
             from e2b.exceptions import SandboxNotRunningException
             raise SandboxNotRunningException("paused")
-        inner = cmd.split("' ", 1)[1].strip("'") if cmd.startswith("setsid") else cmd
+        inner = shlex.split(cmd.split("' ", 1)[1].rsplit("; c=$?", 1)[0])[0] if cmd.startswith("setsid") else cmd
         self.cloud.log.append(("run", self.sandbox_id, user, inner))
         return FakeHandle(self, inner, self.cloud.gates.get(inner), on_stdout or (lambda t: asyncio.sleep(0)))
 

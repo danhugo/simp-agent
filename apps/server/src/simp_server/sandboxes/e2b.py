@@ -22,6 +22,7 @@ import logging
 import os
 import shlex
 import time
+import uuid
 from datetime import datetime, timezone
 
 from simp_agent.coding import SANDBOX_HINT
@@ -80,24 +81,35 @@ async def _run(sbx, command: str, cwd: str, timeout, cancel, on_output=None, use
         if on_output:
             await on_output(text)
 
-    wrapped = "setsid -w sh -c 'echo $$; exec sh -c \"$0\" 2>&1' " + shlex.quote(command)
-    h = await sbx.commands.run(wrapped, background=True, cwd=cwd, user=user, envs=envs, on_stdout=out, on_stderr=out,
-                               timeout=0)
-    wait = asyncio.ensure_future(h.wait())
+    # The pid also goes to a file: the stream (start event + output) can arrive only at the end (a buffering proxy,
+    # e.g. Netskope), so the timeout clock starts before commands.run and the kill must not need the stream.
+    pidfile = f"/tmp/.simp-{uuid.uuid4().hex}.pid"
+    wrapped = (f"setsid -w sh -c 'echo $$ > {pidfile}; echo $$; exec sh -c \"$0\" 2>&1' " + shlex.quote(command)
+               + f"; c=$?; rm -f {pidfile}; exit $c")
+
+    started = list()
+
+    async def start_and_wait():
+        h = await sbx.commands.run(wrapped, background=True, cwd=cwd, user=user, envs=envs, on_stdout=out,
+                                   timeout=0)  # stderr is merged inside; outside it is only the shell's "Killed" note
+        started.append(h)
+        return await h.wait()
+    wait = asyncio.ensure_future(start_and_wait())
     stop = asyncio.ensure_future(cancel.wait())
     done, _ = await asyncio.wait({wait, stop}, timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
     stop.cancel()
     if wait not in done:
         with contextlib.suppress(Exception):
-            if head and head[0].isdigit():
-                await sbx.commands.run(f"kill -9 -- -{head[0]}", user=user, timeout=10)
-            await h.kill()
+            await sbx.commands.run(f"kill -9 -- -$(cat {pidfile}) 2>/dev/null; rm -f {pidfile}", user=user, timeout=10)
+        await asyncio.wait({wait}, timeout=5)  # killed: the stream ends and flushes the output a proxy held back
         wait.cancel()
         await asyncio.gather(wait, return_exceptions=True)
         return None, "".join(chunks)
     try:
         return wait.result().exit_code, "".join(chunks)
     except Exception as e:  # CommandExitException: a non-zero exit
+        if not started:  # could not start (e.g. paused): the caller resumes and retries, nothing ran
+            raise
         if _gone(e):
             raise SandboxLost(f"sandbox stopped while the command ran: {e}") from e
         if (code := getattr(e, "exit_code", None)) is None:

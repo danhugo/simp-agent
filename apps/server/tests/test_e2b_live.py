@@ -92,3 +92,24 @@ async def test_live_e2b_no_bucket(tmp_path):
     finally:
         for i in await sb.list_all():
             await sb._sdk.kill(i["id"], api_key=KEY)
+
+
+@pytest.mark.skipif(not os.environ.get("SIMP_LIVE_PAUSE"), reason="slow (~2 min): set SIMP_LIVE_PAUSE=1")
+async def test_live_provider_timeout_pauses(tmp_path):
+    """The safety net: a sandbox we stop touching is PAUSED by E2B at its timeout, not killed."""
+    tag = f"simp-live-{uuid.uuid4().hex[:8]}"
+    sb = NoMountE2BSandbox({"data_dir": str(tmp_path), "sandbox": {"kind": "e2b", "tag": tag, "provider_timeout_s": 30}})
+    sb.keys = {"E2B_API_KEY": KEY}
+    try:
+        env = await sb.open("s1", "u1")
+        assert (await env.exec("echo hi", ".", 30, ev()))[0] == 0
+        states = list()
+        for _ in range(24):  # up to 2 min after the 30 s timer
+            await asyncio.sleep(5)
+            states = [i["state"] for i in await sb.list_all()]
+            if states != ["running"]:
+                break
+        assert states == ["paused"], states
+    finally:
+        for i in await sb.list_all():
+            await sb._sdk.kill(i["id"], **sb._api())
