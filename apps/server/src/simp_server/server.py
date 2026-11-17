@@ -10,12 +10,14 @@ import asyncio
 import contextlib
 import dataclasses
 import functools
+import hashlib
 import html
 import sys
 import logging
 import mimetypes
 import os
 import secrets
+import tempfile
 import time
 import tomllib
 import urllib.parse
@@ -905,14 +907,53 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     preview = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.preview = preview
 
+    office_sem = asyncio.Semaphore(settings.get("web", dict()).get("office_render_concurrency", 4))
+    preview_headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+
+    async def render_office(uid: str, path: str, data: bytes) -> bytes:
+        """docx/xlsx/pptx -> HTML with `officecli view <file> html`, cached on disk by user+path+content hash."""
+        if len(data) > 20 * 2**20:
+            raise HTTPException(503, "file too large to preview")
+        key = hashlib.sha256(f"{uid}\0{path}\0{hashlib.sha256(data).hexdigest()}".encode()).hexdigest()
+        cached = Path(settings["data_dir"]) / "preview-cache" / f"{key}.html"
+        if cached.exists():
+            return cached.read_bytes()
+        async with office_sem:
+            with tempfile.TemporaryDirectory() as tmp:
+                src = Path(tmp) / f"in{Path(path).suffix.lower()}"
+                src.write_bytes(data)
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        settings.get("web", dict()).get("officecli", "officecli"), "view", str(src), "html",
+                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                except OSError:
+                    raise HTTPException(503, "preview renderer not available") from None
+                try:
+                    out, _ = await asyncio.wait_for(proc.communicate(), 20)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.wait()
+                    raise HTTPException(503, "preview render timed out") from None
+        if proc.returncode or not out:
+            raise HTTPException(503, "preview render failed")
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(out)  # ponytail: no size cap / LRU, add when the cache dir grows too big
+        return out
+
     @preview.get("/p/{token}/{path:path}")
-    async def serve_preview(token: str, path: str):
+    async def serve_preview(token: str, path: str, render: str = ""):
         uid, exp = previews.get(token, (None, 0))
         if uid is None or exp < time.time():
             raise HTTPException(404)
         data = await fs(files.read(uid, path))  # files.read refuses .., absolute and symlink escapes
-        return Response(data, media_type=mimetypes.guess_type(path)[0] or "application/octet-stream", headers={
-            "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+        if render == "html" and Path(path).suffix.lower() in (".docx", ".xlsx", ".pptx"):
+            try:
+                out = await render_office(uid, path, data)
+            except HTTPException as e:
+                return Response(e.detail, 503, media_type="text/plain", headers=preview_headers)
+            return Response(out, media_type="text/html", headers=preview_headers)
+        return Response(data, media_type=mimetypes.guess_type(path)[0] or "application/octet-stream",
+                        headers=preview_headers)
 
     @app.put("/api/sessions/{sid}/files/raw")
     async def upload(sid: str, path: str, request: Request, u=Depends(user)):

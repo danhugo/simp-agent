@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -716,3 +717,69 @@ async def test_serve_both_busy_preview_port_keeps_main():
         await asyncio.wait_for(task, 5)  # clean shutdown of both
     finally:
         busy.close()
+
+
+async def test_office_render(env, tmp_path):
+    import shutil
+    import stat
+    app, mgr, user, token, run = await env(FakeProvider())
+    h = {"Authorization": f"Bearer {token}"}
+    log = tmp_path / "runs.log"
+    fake = tmp_path / "fakeoffice"  # logs start/end so we can count runs and max overlap
+    fake.write_text(f'#!/bin/sh\necho start >> {log}\nsleep "${{SLEEP:-0}}"\necho end >> {log}\n'
+                    'echo "<p>rendered $3</p>"\n')
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    mgr.settings.setdefault("web", dict())["officecli"] = str(fake)
+    api = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost")
+    prev = httpx.AsyncClient(transport=httpx.ASGITransport(app=app.state.preview), base_url="http://localhost:8767")
+    async with api, prev:
+        for i in range(6):
+            await api.put(f"/api/sessions/{run.sid}/files/raw?path=d{i}.docx", content=f"doc{i}".encode(), headers=h)
+        path = "/" + (await api.post(f"/api/sessions/{run.sid}/preview", headers=h)).json()["base"].split("/", 3)[3]
+
+        r = await prev.get(path + "d0.docx?render=html")
+        assert r.status_code == 200 and r.content == b"<p>rendered html</p>\n"
+        assert r.headers["content-type"].startswith("text/html") and r.headers["cache-control"] == "no-store"
+        assert r.headers["x-content-type-options"] == "nosniff" and r.headers["referrer-policy"] == "no-referrer"
+        assert (await prev.get(path + "d0.docx?render=html")).content == r.content
+        assert log.read_text().count("start") == 1  # second request: cache hit
+        assert (await prev.get(path + "d0.docx")).content == b"doc0"  # no render param: raw file
+
+        log.write_text("")  # concurrency cap: 5 renders at once, never more than 4 running
+        os.environ["SLEEP"] = "0.3"
+        try:
+            rs = await asyncio.gather(*(prev.get(path + f"d{i}.docx?render=html") for i in range(1, 6)))
+        finally:
+            del os.environ["SLEEP"]
+        assert all(r.status_code == 200 for r in rs)
+        running = peak = 0
+        for line in log.read_text().split():
+            running += 1 if line == "start" else -1
+            peak = max(peak, running)
+        assert peak == 4
+
+        await api.put(f"/api/sessions/{run.sid}/files/raw?path=t.xlsx", content=b"t", headers=h)
+        import simp_server.server as srv
+        real_wait = srv.asyncio.wait_for
+        os.environ["SLEEP"] = "5"
+        srv.asyncio.wait_for = lambda aw, timeout: real_wait(aw, 0.2)  # timeout -> 503
+        try:
+            r = await prev.get(path + "t.xlsx?render=html")
+        finally:
+            srv.asyncio.wait_for = real_wait
+            del os.environ["SLEEP"]
+        assert r.status_code == 503 and r.headers["x-content-type-options"] == "nosniff"
+
+        mgr.settings["web"]["officecli"] = str(tmp_path / "missing")  # missing binary -> 503
+        assert (await prev.get(path + "t.xlsx?render=html")).status_code == 503
+
+        real = shutil.which("officecli")
+        if real:  # real binary: tiny docx made by officecli itself
+            mgr.settings["web"]["officecli"] = real
+            doc = tmp_path / "real.docx"
+            proc = await asyncio.create_subprocess_exec(real, "create", str(doc))
+            await proc.wait()
+            if doc.exists():
+                await api.put(f"/api/sessions/{run.sid}/files/raw?path=real.docx", content=doc.read_bytes(), headers=h)
+                r = await prev.get(path + "real.docx?render=html")
+                assert r.status_code == 200 and b"<" in r.content
