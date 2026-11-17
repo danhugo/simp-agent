@@ -362,9 +362,13 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .preview .preview-kind { flex: none; color: var(--muted); }
 .preview .preview-size { flex: none; font-size: var(--fs-xs); color: var(--muted); }
 /* a file name in an answer: opens the preview */
-.md .file-ref { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; color: inherit; }
-.md .file-ref code { text-decoration: underline dotted; text-underline-offset: 3px; }
-.md .file-ref:hover code { color: var(--accent); }
+.md .file-ref { display: inline-flex; align-items: center; gap: 4px; vertical-align: baseline; max-width: 100%;
+  padding: 1px 8px 1px 6px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel);
+  font: inherit; font-size: .92em; font-weight: 500; color: var(--accent); cursor: pointer; outline: none; }
+.md .file-ref span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md .file-ref svg { flex: none; }
+.md .file-ref:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.md .file-ref:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
 /* loading placeholder: a soft page with shimmering lines, centred */
 .skeleton { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-3); padding: var(--sp-6); }
 .skeleton .sheet { width: min(420px, 90%); aspect-ratio: 1 / 1.3; background: var(--bg); border-radius: 4px; box-shadow: var(--shadow-sm);
