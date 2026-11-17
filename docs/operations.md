@@ -76,13 +76,23 @@ create_event, ...) always ask for approval; "Always" is per chat. Every MCP call
 (user, session, server, tool, decision auto/allow/always/deny/aborted, ok) — no arguments, no tokens.
 
 Dev setup: in Google Cloud Console create an OAuth client of type "Web application", add the redirect URI
-`http://localhost:8766/api/connections/google/callback`, enable the Gmail/Drive/Calendar APIs and their MCP APIs, put
+`http://localhost:8766/api/connections/google/callback`, enable the Gmail/Drive/Calendar APIs, put
 your Google account under Test users (Testing mode), then add to `<data_dir>/.env`:
 
 ```
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 ```
+
+The three Google apps talk to our own MCP servers, not Google's hosted ones (`gmailmcp.googleapis.com`, ... are a
+Developer Preview that only works for Cloud projects enrolled in the Workspace Developer Preview Program). Start them
+next to the server: `make google-mcp` runs one [workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp)
+per app on `127.0.0.1:8101` (Gmail), `:8102` (Drive), `:8103` (Calendar). They check each user's Google token on every
+request and keep no login of their own. Users connected before the Calendar app asked for `calendar.readonly` must
+reconnect Google once.
+
+Office previews (docx, xlsx, pptx in the Files panel) need [OfficeCLI](https://github.com/iOfficeAI/OfficeCLI) on the
+server: `brew install officecli` (or `npm i -g @officecli/officecli`); `[web] officecli = "/path"` if it is not on PATH.
 
 Settings (all optional): `public_url = "http://localhost:8766"` (builds the redirect URI), `web_url =
 "http://localhost:5173/"` (where the browser goes after Google), `[providers.google]` to override any OAuth field

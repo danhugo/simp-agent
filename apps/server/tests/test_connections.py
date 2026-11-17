@@ -459,7 +459,7 @@ async def test_agent_picks_account_by_link_id(tmp_path):
     assert [(x["tool"], x["link_id"]) for x in audit] == [("search", "lnk_b"), ("search", "lnk_a"), ("send", "lnk_b")]
     d = (await c.get("/api/apps/gmail", headers={"Authorization": f"Bearer {ta}"})).json()  # portal detail page
     assert d["tools"] == [{"name": "search", "needs_approval": False}, {"name": "send", "needs_approval": True}]
-    assert [x["tool"] for x in d["calls"]] == ["send", "search", "search"] and d["url"].startswith("https://")
+    assert [x["tool"] for x in d["calls"]] == ["send", "search", "search"] and d["url"] == "http://127.0.0.1:8101/mcp"  # our workspace-mcp
     await run.session.shutdown()
     await mgr.store.close()
 
