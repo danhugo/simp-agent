@@ -460,3 +460,9 @@ One user's saved login to an outside provider (Google, GitHub): a `connections` 
 
 ## Link (link_id)
 The id of one linked account inside a [connection](#connection), like `lnk_3f9a01c2`; rows are keyed `(user_id, link_id)`, so one user can link two Gmail accounts. For each app, the oldest link with that app's scopes is the default. Home: [27](27-store-auth.md#connections).
+
+## Preview origin
+A second small web server on its own port (`[web] preview_port`, default 8767) that shows HTML and PDF files from the workspace. A different port is a different origin, so scripts in those files cannot read the login token of the main page. Home: [29a](29a-workspace-sandbox.md#file-preview).
+
+## Preview token
+A random string made by `POST /api/sessions/{sid}/preview`, kept in memory, bound to one user and alive 10 minutes. The preview origin serves `/p/{token}/{path}` only with a live token. Home: [29a](29a-workspace-sandbox.md#file-preview).
