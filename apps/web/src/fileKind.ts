@@ -1,9 +1,9 @@
 /** Which viewer a file opens in, by extension. "info" = file info + Download only. */
-export type Kind = "code" | "markdown" | "image" | "sheet" | "docx" | "html" | "pdf" | "info";
+export type Kind = "code" | "markdown" | "image" | "sheet" | "office" | "html" | "pdf" | "info";
 
 const KINDS: Record<string, Kind> = {
-  md: "markdown", markdown: "markdown", html: "html", htm: "html", pdf: "pdf", docx: "docx",
-  csv: "sheet", tsv: "sheet", xlsx: "sheet", xls: "sheet",
+  md: "markdown", markdown: "markdown", html: "html", htm: "html", pdf: "pdf", csv: "sheet", tsv: "sheet",
+  docx: "office", xlsx: "office", xls: "office", pptx: "office",  // rendered to HTML by the server (OfficeCLI)
   png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image", svg: "image", bmp: "image", ico: "image", avif: "image",
 };
 /** Text files shown in the code viewer. The value is the highlight.js language ("" = plain text). */
