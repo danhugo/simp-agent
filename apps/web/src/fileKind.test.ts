@@ -4,8 +4,8 @@ import { hasRaw, kindOf, tooBig } from "./fileKind";
 describe("kindOf: file type -> viewer", () => {
   it.each([
     ["src/app.py", "code"], ["a.ts", "code"], ["Makefile", "code"], ["notes.txt", "code"], ["x.yaml", "code"],
-    ["README.md", "markdown"], ["pic.PNG", "image"], ["logo.svg", "image"], ["data.csv", "sheet"], ["b.xlsx", "sheet"],
-    ["doc.docx", "docx"], ["site/index.html", "html"], ["paper.pdf", "pdf"], ["deck.pptx", "info"], ["a.zip", "info"],
+    ["README.md", "markdown"], ["pic.PNG", "image"], ["logo.svg", "image"], ["data.csv", "sheet"], ["b.xlsx", "office"],
+    ["doc.docx", "office"], ["site/index.html", "html"], ["paper.pdf", "pdf"], ["deck.pptx", "office"], ["a.zip", "info"],
   ])("%s -> %s", (name, kind) => expect(kindOf(name)).toBe(kind));
   it("Rendered/Raw only for markdown and html", () => {
     expect(hasRaw("markdown") && hasRaw("html")).toBe(true);
