@@ -25,7 +25,7 @@ export interface MemoryItem { id: string; scope: "global" | "agent"; agent_id: s
 export interface Persona { name?: string; description?: string; instruction?: string; hat?: string; bottom?: string; profile?: string }
 
 /** REST-only (/api/outfits): a saved outfit in the user's collection. */
-export interface Outfit { id: string; name: string; description: string; hat: string; bottom: string; created: number }
+export interface Outfit { id: string; kind: "outfit" | "hat" | "bottom"; name: string; description: string; hat: string; bottom: string; created: number }
 
 export class AuthError extends Error {}
 

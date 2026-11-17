@@ -29,6 +29,17 @@ function useSettled<T>(value: T, ms = 500): T {
   return v;
 }
 
+/** Camera for one piece shown alone: centered on its box, zoomed so it fills the frame while turning. */
+function framing(wear: Wear): { view: number; cy: number } {
+  const b = wear.boxes!, lo = [0, 1, 2].map((k) => Math.min(...b.map((x) => x.lo[k]))), hi = [0, 1, 2].map((k) => Math.max(...b.map((x) => x.hi[k])));
+  // boxes carry 0.2 of padding per side (for safe marching): take it off to frame what is really drawn
+  const pad = 0.18, w = Math.max(...[0, 2].map((k) => Math.max(Math.abs(lo[k] + pad), Math.abs(hi[k] - pad)))), h = (hi[1] - lo[1]) / 2 - pad;
+  return { cy: (lo[1] + hi[1]) / 2, view: Math.max(0.35, Math.min(2, Math.max(w, h) * 1.08)) };  // w: the farthest it reaches while turning
+}
+const KINDS = [["all", "All"], ["outfit", "Outfits"], ["hat", "Hats"], ["bottom", "Pants / skirts"]] as const;
+const sameAs = (o: Outfit, d: P) => o.kind === "hat" ? o.hat === (d.hat ?? "") : o.kind === "bottom" ? o.bottom === (d.bottom ?? "")
+  : o.hat === (d.hat ?? "") && o.bottom === (d.bottom ?? "");
+
 /** A collection card's picture: Simp wearing that outfit, drawn once (no animation, baked lazily when visible). */
 function OutfitThumb({ o }: { o: Outfit }) {
   const cv = useRef<HTMLCanvasElement>(null);
@@ -36,6 +47,11 @@ function OutfitThumb({ o }: { o: Outfit }) {
     const c = cv.current, ctx = c?.getContext("2d");
     if (!c || !ctx) return;
     const draw = () => {
+      if (o.kind === "hat" || o.kind === "bottom") {  // a single piece: shown alone, like on the stage
+        const w = tryCompile(o.kind === "hat" ? o.hat : o.bottom, o.kind).wear;
+        if (w) { const f = framing(w); render(ctx, 96, readPal(), 0.5, 0.35, 0, 0, 0, {}, w, true, f.view, f.cy); }
+        return;
+      }
       const w = combine([tryCompile(o.hat, "hat").wear, tryCompile(o.bottom, "bottom").wear]);
       render(ctx, 96, readPal(), 0.35, 0.15, 0, 0, 0, {}, w);
     };
@@ -47,17 +63,14 @@ function OutfitThumb({ o }: { o: Outfit }) {
 }
 
 /** One outfit object on its own (no head), slowly turning, in the same pixel style. */
-function ItemView({ wear, label }: { wear: Wear; label: string }) {
+function ItemView({ wear, label, action }: { wear: Wear; label: string; action?: React.ReactNode }) {
   const cv = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const ctx = cv.current?.getContext("2d");
     if (!ctx) return;
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches, pal = readPal(), N = 64;
     // frame the object itself: centered on its box, zoomed so its widest extent fits while it turns
-    const b = wear.boxes!, lo = [0, 1, 2].map((k) => Math.min(...b.map((x) => x.lo[k]))), hi = [0, 1, 2].map((k) => Math.max(...b.map((x) => x.hi[k])));
-    // boxes carry 0.2 of padding per side (for safe marching): take it off to frame what is really drawn
-    const pad = 0.18, w = Math.max(...[0, 2].map((k) => Math.max(Math.abs(lo[k] + pad), Math.abs(hi[k] - pad)))), h = (hi[1] - lo[1]) / 2 - pad;
-    const cy = (lo[1] + hi[1]) / 2, view = Math.max(0.35, Math.min(2, Math.max(w, h) * 1.08));  // w: the farthest it reaches while turning
+    const { view, cy } = framing(wear);
     let raf = 0, last = -1;
     const frame = (t: number) => {
       const yaw = reduce ? 0.5 : Math.round((t / 1000) * 0.8 * 40) / 40;  // turn in small steps: re-render ~20x/s
@@ -71,6 +84,7 @@ function ItemView({ wear, label }: { wear: Wear; label: string }) {
     <figure className="persona-item">
       <canvas ref={cv} width={64} height={64} aria-hidden="true" />
       <figcaption className="muted small">{label}</figcaption>
+      {action}
     </figure>
   );
 }
@@ -111,15 +125,25 @@ export function Persona({ onError, menuButton, profiles, models }: {
   const [outfits, setOutfits] = useState<Outfit[] | null>(null);
   const [confirmDel, setConfirmDel] = useState("");
   useEffect(() => { api.outfits().then(setOutfits, fail); }, [fail]);
-  const inCollection = outfits?.some((o) => o.hat === (draft.hat ?? "") && o.bottom === (draft.bottom ?? ""));
-  const keep = async () => {
+  const [kind, setKind] = useState<(typeof KINDS)[number][0]>("all");
+  const has = (k: Outfit["kind"]) => !!outfits?.some((o) => o.kind === k && sameAs(o, draft));
+  const inCollection = has("outfit");
+  /** save the whole outfit, or one piece of it (hat / bottom) on its own */
+  const keep = async (k: Outfit["kind"] = "outfit") => {
     try {
-      const o = { name: draft.name || draft.description?.slice(0, 40) || "Outfit", description: draft.description ?? "", hat: draft.hat ?? "", bottom: draft.bottom ?? "" };
+      const base = draft.name || draft.description?.slice(0, 30) || "Outfit";
+      const o = { kind: k, name: k === "outfit" ? base.slice(0, 40) : `${base.slice(0, 30)} ${k === "hat" ? "hat" : "bottom"}`,
+        description: draft.description ?? "", hat: k === "bottom" ? "" : draft.hat ?? "", bottom: k === "hat" ? "" : draft.bottom ?? "" };
       const { id } = await api.addOutfit(o);
       setOutfits((xs) => [{ ...o, id, created: Date.now() / 1000 }, ...(xs ?? [])]);
     } catch (e) { fail(e); }
   };
-  const wearOutfit = (o: Outfit) => { setDraft((d) => ({ ...d, description: o.description, hat: o.hat, bottom: o.bottom })); setSteps({}); };
+  // an outfit replaces both slots; a piece replaces only its own, so pieces mix and match
+  const wearOutfit = (o: Outfit) => {
+    setDraft((d) => o.kind === "hat" ? { ...d, hat: o.hat } : o.kind === "bottom" ? { ...d, bottom: o.bottom }
+      : { ...d, description: o.description, hat: o.hat, bottom: o.bottom });
+    setSteps((x) => (o.kind === "outfit" ? {} : { ...x, [o.kind]: undefined }));
+  };
   const removeOutfit = async (id: string) => {
     if (confirmDel !== id) return setConfirmDel(id);
     setConfirmDel("");
@@ -194,22 +218,32 @@ export function Persona({ onError, menuButton, profiles, models }: {
               {hat.wear || bottom.wear ? (
                 <>
                   <div className="persona-items" aria-label="What Simp is wearing">
-                    {hat.wear && <ItemView wear={hat.wear} label="Hat" />}
-                    {bottom.wear && <ItemView wear={bottom.wear} label="Pants / skirt" />}
+                    {hat.wear && <ItemView wear={hat.wear} label="Hat" action={
+                      <button className="ghost small" disabled={busy || has("hat")} onClick={() => keep("hat")}>{has("hat") ? "Saved" : "Save"}</button>} />}
+                    {bottom.wear && <ItemView wear={bottom.wear} label="Pants / skirt" action={
+                      <button className="ghost small" disabled={busy || has("bottom")} onClick={() => keep("bottom")}>{has("bottom") ? "Saved" : "Save"}</button>} />}
                   </div>
-                  <button className="ghost small" disabled={busy || assembling || !!inCollection || !!hat.err || !!bottom.err} onClick={keep}>
-                    {inCollection ? "Saved in your collection" : "Add to collection"}</button>
+                  <button className="ghost small" disabled={busy || assembling || !!inCollection || !!hat.err || !!bottom.err} onClick={() => keep()}>
+                    {inCollection ? "Outfit saved in your collection" : "Save whole outfit"}</button>
                 </>
               ) : <p className="muted small persona-hint">{busy ? "Drawing…" : "Describe a look to dress Simp up."}</p>}
             </section>
 
             <section aria-labelledby="persona-coll" className="persona-collection">
               <h2 id="persona-coll">Collection</h2>
+              {outfits && outfits.length > 0 && (
+                <div className="tabs persona-kinds" role="tablist" aria-label="Show">
+                  {KINDS.map(([k, label]) => (
+                    <button key={k} role="tab" aria-selected={kind === k} className="tab" onClick={() => setKind(k)}>{label}</button>
+                  ))}
+                </div>
+              )}
               {outfits === null ? <p className="muted small">Loading…</p>
-                : outfits.length === 0 ? <p className="muted small">Outfits you add show up here, ready to wear again.</p>
+                : outfits.length === 0 ? <p className="muted small">Outfits and pieces you save show up here. Pick a hat from one look and pants from another.</p>
+                : !outfits.some((o) => kind === "all" || o.kind === kind) ? <p className="muted small">Nothing saved here yet.</p>
                 : <ul className="outfit-grid">
-                    {outfits.map((o) => {
-                      const worn = o.hat === (draft.hat ?? "") && o.bottom === (draft.bottom ?? "");
+                    {outfits.filter((o) => kind === "all" || o.kind === kind).map((o) => {
+                      const worn = sameAs(o, draft);
                       return (
                         <li key={o.id} className={`outfit-card ${worn ? "worn" : ""}`}>
                           <button className="ghost outfit-pick" disabled={busy} onClick={() => wearOutfit(o)} title={o.description} aria-pressed={worn}>

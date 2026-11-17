@@ -43,3 +43,8 @@ async def test_outfit_collection(tmp_path):
         assert (await c.delete(f"/api/outfits/{oid}", headers=h)).json() == {"ok": True}
         assert (await c.delete(f"/api/outfits/{oid}", headers=h)).status_code == 404
         assert (await c.get("/api/outfits", headers=h)).json() == []
+        # a single piece keeps only its own slot
+        await c.post("/api/outfits", headers=h, json={"kind": "hat", "name": "Cap", "hat": "H", "bottom": "B"})
+        assert (await c.post("/api/outfits", headers=h, json={"kind": "bottom", "hat": "H"})).status_code == 400
+        [cap] = (await c.get("/api/outfits", headers=h)).json()
+        assert (cap["kind"], cap["hat"], cap["bottom"]) == ("hat", "H", "")

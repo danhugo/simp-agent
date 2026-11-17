@@ -138,6 +138,7 @@ class PersonaIn(BaseModel):
 
 
 class OutfitIn(BaseModel):
+    kind: str = Field("outfit", pattern="^(outfit|hat|bottom)$")  # a whole outfit, or one piece
     name: str = Field("", max_length=40)
     description: str = Field("", max_length=1000)
     hat: str = Field("", max_length=8000)
@@ -763,11 +764,13 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
 
     @app.post("/api/outfits")
     async def add_outfit(body: OutfitIn, u=Depends(user)):
+        if body.kind != "outfit":  # a piece keeps only its own slot
+            body.hat, body.bottom = (body.hat, "") if body.kind == "hat" else ("", body.bottom)
         if not (body.hat or body.bottom):
-            raise HTTPException(400, "an outfit needs a hat or a bottom")
+            raise HTTPException(400, f"a {body.kind} needs its code")
         if len(await store.outfits(u["id"])) >= 100:
             raise HTTPException(400, "the collection is full (100 outfits); delete some first")
-        return {"id": await store.add_outfit(u["id"], body.name, body.description, body.hat, body.bottom)}
+        return {"id": await store.add_outfit(u["id"], body.name, body.description, body.hat, body.bottom, body.kind)}
 
     @app.delete("/api/outfits/{oid}")
     async def delete_outfit(oid: str, u=Depends(user)):

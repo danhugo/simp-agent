@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS usage(user_id TEXT, session_id TEXT, model TEXT, inpu
     cost REAL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS agents(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT, persona TEXT, created REAL);
 CREATE TABLE IF NOT EXISTS outfits(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT, description TEXT,
-    hat TEXT, bottom TEXT, created REAL);
+    hat TEXT, bottom TEXT, created REAL, kind TEXT DEFAULT 'outfit');
 CREATE TABLE IF NOT EXISTS memories(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT, scope TEXT, content TEXT,
     created REAL, source_run_id TEXT);
 {CONNECTIONS};
@@ -79,6 +79,8 @@ class SqliteStore:
                 "INSERT INTO connections SELECT *, 'lnk_' || lower(hex(randomblob(4))) FROM connections_old;"
                 "DROP TABLE connections_old;")
             await self.db.commit()
+        if "kind" not in [r["name"] for r in await self._all("PRAGMA table_info(outfits)")]:
+            await self._do("ALTER TABLE outfits ADD COLUMN kind TEXT DEFAULT 'outfit'")  # outfit | hat | bottom (a single piece)
         if "link_id" not in [r["name"] for r in await self._all("PRAGMA table_info(mcp_audit)")]:
             await self._do("ALTER TABLE mcp_audit ADD COLUMN link_id TEXT")
         cols = [r["name"] for r in await self._all("PRAGMA table_info(sessions)")]
@@ -193,12 +195,13 @@ class SqliteStore:
 
     # outfits: the user's saved collection of generated outfits (the worn one lives in the persona)
     async def outfits(self, user_id: str) -> list[dict]:
-        return await self._all("SELECT id, name, description, hat, bottom, created FROM outfits WHERE user_id=? "
+        return await self._all("SELECT id, kind, name, description, hat, bottom, created FROM outfits WHERE user_id=? "
                                "ORDER BY created DESC", user_id)
 
-    async def add_outfit(self, user_id: str, name: str, description: str, hat: str, bottom: str) -> str:
+    async def add_outfit(self, user_id: str, name: str, description: str, hat: str, bottom: str, kind: str = "outfit") -> str:
         oid = uuid.uuid4().hex[:12]
-        await self._do("INSERT INTO outfits VALUES(?,?,?,?,?,?,?)", oid, user_id, name, description, hat, bottom, time.time())
+        await self._do("INSERT INTO outfits(id, user_id, name, description, hat, bottom, created, kind) VALUES(?,?,?,?,?,?,?,?)",
+                       oid, user_id, name, description, hat, bottom, time.time(), kind)
         return oid
 
     async def delete_outfit(self, user_id: str, oid: str) -> bool:

@@ -422,3 +422,5 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .outfit-pick canvas { width: 96px; height: 96px; image-rendering: pixelated; }
 .outfit-name { font-size: var(--fs-sm, 13px); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .outfit-card .del { position: absolute; top: 4px; right: 4px; }
+.persona-kinds { margin-bottom: var(--sp-2); flex-wrap: wrap; }
+.persona-item .ghost.small { margin-top: 2px; }
