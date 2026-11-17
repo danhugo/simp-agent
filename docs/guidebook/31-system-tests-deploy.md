@@ -21,7 +21,7 @@ Big picture of Part 5: [part-5-system](23-part-5-system.md).
 Code in this chapter (commit `2fc2776`):
 
 - `apps/server/src/simp_server/fakellm.py` — `stream` (the fake model)
-- `apps/web/e2e/serve.sh`, `apps/web/e2e/app.spec.ts`, `apps/web/e2e/accounts.spec.ts`, `apps/web/e2e/admin.spec.ts`, `apps/web/playwright.config.ts` — the end-to-end tests
+- `apps/web/e2e/serve.sh`, `apps/web/e2e/app.spec.ts`, `apps/web/e2e/accounts.spec.ts`, `apps/web/e2e/admin.spec.ts`, `apps/web/e2e/preview.spec.ts`, `apps/web/playwright.config.ts` — the end-to-end tests
 - `apps/server/src/simp_server/fake.py`, `apps/web/e2e/fake_reload.py` — an older fake server and its manual check
 - `apps/server/src/simp_server/ops.py` — `JsonFormatter`, `setup_logging`, `backup`
 - `deploy/launchd/com.simp.server.plist`, `deploy/launchd/com.simp.backup.plist` — the macOS services
@@ -108,7 +108,7 @@ The script deletes old data and writes a small `settings.toml`. The server still
 
 `reuseExistingServer: false` and `rm -rf` are on purpose. Old sessions or old budget use from a past run would change the results, so every run starts empty.
 
-The tests are in `apps/web/e2e/`: `app.spec.ts`, `accounts.spec.ts`, `admin.spec.ts` and `memory.spec.ts`. `memory.spec.ts` writes two memories straight into `simp.db` with `sqlite3`, opens the Memory page ([30](30-web-client.md#the-memory-page)), then edits one and deletes the other, and checks the database at the end. On the server side, `apps/server/tests/test_memory.py` checks that memory is shared across a user's chats but not across users, and that only the owner can use `/api/memories` ([27](27-store-auth.md#agents-and-memories)). `accounts.spec.ts` checks that the login page offers only Google, with no password or sign-up form. `app.spec.ts` has small helpers. `login` reads the seeded token from `/tmp/simp-e2e/token` and opens `/#login=<token>`, the same address the Google callback sends a real user to, so the tests need no Google account; then it opens a new session. `say` types a message and presses Enter. `last` finds the newest assistant message.
+The tests are in `apps/web/e2e/`: `app.spec.ts`, `accounts.spec.ts`, `admin.spec.ts`, `memory.spec.ts` and `preview.spec.ts`. `preview.spec.ts` opens files in the preview panel ([30](30-web-client.md#file-preview-panel)). The e2e server runs on port 8767, the same as the default `preview_port`, so in e2e the preview server cannot start (it only logs a warning) and the spec stubs the preview origin with `page.route`. On the server side, `test_file_preview` in `test_server.py` checks the preview token and route, and `test_serve_both_busy_preview_port_keeps_main` checks that a busy preview port leaves the main server running ([29a](29a-workspace-sandbox.md#file-preview-a-second-origin)). `memory.spec.ts` writes two memories straight into `simp.db` with `sqlite3`, opens the Memory page ([30](30-web-client.md#the-memory-page)), then edits one and deletes the other, and checks the database at the end. On the server side, `apps/server/tests/test_memory.py` checks that memory is shared across a user's chats but not across users, and that only the owner can use `/api/memories` ([27](27-store-auth.md#agents-and-memories)). `accounts.spec.ts` checks that the login page offers only Google, with no password or sign-up form. `app.spec.ts` has small helpers. `login` reads the seeded token from `/tmp/simp-e2e/token` and opens `/#login=<token>`, the same address the Google callback sends a real user to, so the tests need no Google account; then it opens a new session. `say` types a message and presses Enter. `last` finds the newest assistant message.
 
 The test that matters most for the web client is the reload test. It is the "Ana presses reload in the middle of an answer" case from [30](30-web-client.md):
 
@@ -225,7 +225,7 @@ From the command line, it is `simp-server backup --to DIR --keep N`. To restore,
   <key>StandardOutPath</key><string>__HOME__/.simp-server/server.log</string>
 ```
 
-`RunAtLoad` starts the server when the file is loaded, for example at login, and `KeepAlive` starts it again if it crashes. That answers "the Mac rebooted". `SIMP_SANDBOX=docker` makes the real service use the Docker sandbox ([29](29-docker-sandbox.md)), not the local one the tests use. `PATH` is set by hand, because launchd does not read your shell profile and would not find `uv` or `docker`. Both output streams go to `server.log`, so that is where the JSON log lines land.
+`RunAtLoad` starts the server when the file is loaded, for example at login, and `KeepAlive` starts it again if it crashes. That answers "the Mac rebooted". The server also opens a second port, the preview port 8767 ([29a](29a-workspace-sandbox.md#file-preview-a-second-origin)); the browser must reach it too, or HTML and PDF previews will not load. `SIMP_SANDBOX=docker` makes the real service use the Docker sandbox ([29](29-docker-sandbox.md)), not the local one the tests use. `PATH` is set by hand, because launchd does not read your shell profile and would not find `uv` or `docker`. Both output streams go to `server.log`, so that is where the JSON log lines land.
 
 `com.simp.backup.plist` runs the backup every night:
 
