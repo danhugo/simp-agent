@@ -7,12 +7,15 @@ GET /api/sessions/{id}/files?path=, GET|PUT /api/sessions/{id}/files/raw?path=  
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import functools
 import html
 import sys
 import logging
+import mimetypes
 import os
+import secrets
 import time
 import tomllib
 import urllib.parse
@@ -560,6 +563,8 @@ class SessionManager:
 
 
 # ---- app ------------------------------------------------------------------------------------------------------------
+PREVIEW_TTL = 600  # seconds a preview token lives
+
 
 def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     pl = settings["plugins"]
@@ -872,7 +877,37 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def download(sid: str, path: str, u=Depends(user)):
         await mgr.get(u, sid)
         data = await fs(files.read(u["id"], path))
-        return Response(data, media_type="application/octet-stream")
+        mt = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        # allowlist: never render active content (html/svg/xml...) on the API origin
+        if mt.startswith("text/"):
+            mt = "text/plain"
+        elif not (mt.startswith("image/") and mt != "image/svg+xml" or mt in ("application/pdf", "application/json")):
+            mt = "application/octet-stream"
+        return Response(data, media_type=mt, headers={"X-Content-Type-Options": "nosniff"})
+
+    @app.post("/api/sessions/{sid}/preview")
+    async def make_preview(sid: str, u=Depends(user)):
+        await mgr.get(u, sid)
+        now = time.time()
+        for t in [t for t, (_, exp) in previews.items() if exp < now]:
+            del previews[t]
+        token = secrets.token_urlsafe(32)
+        previews[token] = (u["id"], now + PREVIEW_TTL)
+        return {"base": f"http://localhost:{settings.get('web', dict()).get('preview_port', 8767)}/p/{token}/"}
+
+    # ponytail: tokens live in memory, lost on restart (they last 10 min anyway)
+    previews: dict[str, tuple[str, float]] = dict()  # token -> (user id, expires at)
+    preview = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    app.state.preview = preview
+
+    @preview.get("/p/{token}/{path:path}")
+    async def serve_preview(token: str, path: str):
+        uid, exp = previews.get(token, (None, 0))
+        if uid is None or exp < time.time():
+            raise HTTPException(404)
+        data = await fs(files.read(uid, path))  # files.read refuses .., absolute and symlink escapes
+        return Response(data, media_type=mimetypes.guess_type(path)[0] or "application/octet-stream", headers={
+            "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
     @app.put("/api/sessions/{sid}/files/raw")
     async def upload(sid: str, path: str, request: Request, u=Depends(user)):
@@ -932,6 +967,24 @@ async def restore_cli(a) -> None:
     store = workspace.make_store(settings, take_keys(settings))
     for key in await store.restore(await user_id_of(a.user), at, a.path):
         print("restored", key)
+
+
+async def serve_both(main, preview) -> None:
+    """Main server owns signals; preview follows it down. A preview bind failure only logs."""
+    preview.capture_signals = contextlib.nullcontext
+
+    async def run_preview():
+        try:
+            await preview.serve()
+        except SystemExit:  # uvicorn exits on bind error
+            log.warning("preview server failed to start (port %s busy?); previews unavailable", preview.config.port)
+
+    task = asyncio.create_task(run_preview())
+    try:
+        await main.serve()
+    finally:
+        preview.should_exit = True
+        await task
 
 
 def main() -> None:
@@ -997,5 +1050,9 @@ def main() -> None:
         # open SSE streams never end on their own; without the timeout uvicorn waits forever and lifespan never closes sandboxes
         ops.setup_logging()
         settings = load_settings()
-        uvicorn.run(create_app(settings, stream if a.fake_llm else ai.stream), host=settings["host"], port=a.port,
-                    timeout_graceful_shutdown=SHUTDOWN_GRACE, log_config=None)
+        app = create_app(settings, stream if a.fake_llm else ai.stream)
+        main, preview = (uvicorn.Server(uvicorn.Config(x, host=settings["host"], port=port, log_config=None,
+                                                       timeout_graceful_shutdown=SHUTDOWN_GRACE))
+                         for x, port in ((app, a.port), (app.state.preview, settings.get("web", dict()).get("preview_port", 8767))))
+        preview.config.lifespan = "off"
+        asyncio.run(serve_both(main, preview))
