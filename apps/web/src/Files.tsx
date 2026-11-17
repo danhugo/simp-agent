@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, AuthError, type FileEntry } from "./api";
 import { errorText } from "./Chat";
-import { IconClose, IconFile, IconFolder, IconRefresh, IconUpload } from "./icons";
+import { IconClose, IconFolder, IconRefresh, IconUpload, KindIcons } from "./icons";
+import { kindOf } from "./fileKind";
 
 const dirOf = (p: string) => { const i = p.replace(/^\.\//, "").lastIndexOf("/"); return i <= 0 ? (i === 0 ? "/" : ".") : p.replace(/^\.\//, "").slice(0, i); };
 const baseOf = (p: string) => p.split("/").pop() ?? p;
@@ -11,7 +12,9 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
   const [path, setPath] = useState(focus ? dirOf(focus) : ".");
   useEffect(() => { if (focus) setPath(dirOf(focus)); }, [focus]);
   const hl = focus && path === dirOf(focus) ? baseOf(focus) : undefined;
-  const [entries, setEntries] = useState<FileEntry[]>([]);
+  // the list remembers which folder it is for: a slow reply for an old folder never shows under the new one
+  const [listed, setListed] = useState<{ key: string; entries: FileEntry[] }>({ key: "", entries: [] });
+  const entries = listed.key === `${sid}:${path}` ? listed.entries : [];
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
@@ -20,7 +23,7 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
   const load = useCallback(() => {
     setLoading(true);
     return api.files(sid, path)
-      .then((es) => { setEntries(es); setError(undefined); }, fail)
+      .then((es) => { setListed({ key: `${sid}:${path}`, entries: es }); setError(undefined); }, fail)
       .finally(() => setLoading(false));
   }, [sid, path, fail]);
   useEffect(() => { load(); }, [load, focus]);
@@ -52,7 +55,16 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
         <input ref={picker} type="file" multiple hidden onChange={(e) => upload(e.target.files)} />
         <button className="icon-btn" onClick={onClose} title="Close files" aria-label="Close files"><IconClose size={16} /></button>
       </header>
-      <div className="path">{path}</div>
+      <nav className="path" aria-label="Folder">
+        {/* "work" is the workspace root (/work in the sandbox); each part opens that folder */}
+        {["work", ...path.split("/").filter((x) => x && x !== ".")].map((part, i, all) => (
+          <span key={i}>
+            {i > 0 && <span className="sep" aria-hidden>/</span>}
+            {i === all.length - 1 ? <strong aria-current="location">{part}</strong>
+              : <button onClick={() => setPath(all.slice(1, i + 1).join("/") || ".")}>{part}</button>}
+          </span>
+        ))}
+      </nav>
       {error && <div className="error" role="alert">{error}</div>}
       <ul aria-busy={loading}>
         {path !== "." && (
@@ -62,8 +74,8 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
         )}
         {entries.map((e) => (
           <li key={e.name} className={e.name === hl ? "focus" : undefined} aria-current={e.name === hl || undefined}>
-            <button onClick={() => (e.is_dir ? setPath(join(e.name)) : onPreview(join(e.name)))} title={e.is_dir ? "Open" : "Preview"}>
-              {e.is_dir ? <IconFolder size={16} /> : <IconFile size={16} />}<span>{e.name}</span>
+            <button onClick={() => (e.is_dir ? setPath(join(e.name)) : onPreview(join(e.name)))} title={e.name}>
+              {e.is_dir ? <IconFolder size={16} /> : (() => { const K = KindIcons[kindOf(e.name)]; return <K size={16} />; })()}<span>{e.name}</span>
             </button>
             {!e.is_dir && <span className="size">{fmt(e.size)}</span>}
           </li>

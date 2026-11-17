@@ -84,7 +84,16 @@ test("preview: py, md, png, csv, html", async ({ page }) => {
 
   await page.locator(".preview header").getByRole("button", { name: "Files" }).click();
   await page.screenshot({ path: "test-results/preview-files.png" });
-  await page.getByRole("complementary", { name: "Files", exact: true }).getByRole("button", { name: "site" }).click();
+  const files = page.getByRole("complementary", { name: "Files", exact: true });
+  await expect(files.getByRole("navigation", { name: "Folder" })).toHaveText("work");  // the root shows as "work", not "."
+  await expect(files.locator('li[aria-current="true"]')).toContainText("data.csv");  // the open file is marked
+  await expect(files.getByRole("button", { name: "data.csv" })).toHaveAttribute("title", "data.csv");  // full name on hover
+  await files.getByRole("button", { name: "site" }).click();
+  await expect(files.getByRole("navigation", { name: "Folder" })).toHaveText("work/site");
+  await page.screenshot({ path: "test-results/files-crumb.png" });
+  await files.getByRole("navigation", { name: "Folder" }).getByRole("button", { name: "work" }).click();  // back to the root
+  await expect(files.getByRole("navigation", { name: "Folder" })).toHaveText("work");
+  await files.getByRole("button", { name: "site" }).click();
   pv = await open(page, "index.html");
   const frame = pv.locator("iframe");
   await expect(frame).toHaveAttribute("sandbox", "allow-scripts");
