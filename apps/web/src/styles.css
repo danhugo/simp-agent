@@ -376,3 +376,18 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .page-title, .home-hero h1, .detail-hero h1, .login h1 { font-weight: 750; }
 .memory-body h2, .chat header .title { font-weight: 750; }
 .brand-name { font-weight: 800; }
+
+/* Persona page: preview on the left, the form on the right (stacked on phones) */
+.persona-grid { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; gap: var(--sp-6); margin-top: var(--sp-4); align-items: start; }
+@media (max-width: 760px) { .persona-grid { grid-template-columns: 1fr; } }
+.persona-stage { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); padding: var(--sp-5) 0; border: 1px solid var(--border); border-radius: 14px; position: sticky; top: var(--sp-3); }
+.persona-name { margin: 0; font-weight: 600; }
+.persona-form { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.persona-form textarea, .persona-form input { width: 100%; box-sizing: border-box; font: inherit; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: 10px; background: transparent; color: var(--text); }
+.persona-form textarea:focus, .persona-form input:focus { outline: none; border-color: var(--text); }
+.persona-label { font-weight: 500; margin-top: var(--sp-3); cursor: default; }
+.persona-actions { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
+.persona-actions .spacer { flex: 1; }
+.persona-ideas { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.persona-err { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.persona-code { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; margin-top: var(--sp-2); }

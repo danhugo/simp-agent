@@ -21,6 +21,9 @@ export interface AppDetail extends AppItem {
 export interface MemoryItem { id: string; scope: "global" | "agent"; agent_id: string | null; content: string; created: number; source_run_id: string | null;
   /** the chat it was saved in, if that chat still exists ("" = untitled) */ source_title?: string | null; source_created?: number | null }
 
+/** REST-only (/api/persona): Simp's personality and outfit code (see skin.ts). {} = none. */
+export interface Persona { name?: string; description?: string; instruction?: string; code?: string; profile?: string }
+
 export class AuthError extends Error {}
 
 export const getToken = () => localStorage.getItem("simp.token") ?? "";
@@ -72,6 +75,10 @@ export const api = {
   addMemory: (content: string) => call("/api/memories", json({ content })),
   editMemory: (id: string, content: string) => call(`/api/memories/${id}`, { ...json({ content }), method: "PATCH" }),
   deleteMemory: (id: string) => call(`/api/memories/${id}`, { method: "DELETE" }),
+  persona: async (): Promise<Persona> => (await call("/api/persona")).json(),
+  savePersona: (p: Persona) => call("/api/persona", { ...json(p), method: "PUT" }),
+  generatePersona: async (b: { description: string; profile: string; code?: string; error?: string }): Promise<Persona> =>
+    (await call("/api/persona/generate", json(b))).json(),
   exportMemories: async (): Promise<Blob> => (await call("/api/memories/export")).blob(),
 };
 

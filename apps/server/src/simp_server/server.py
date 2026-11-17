@@ -45,7 +45,7 @@ from simp_agent.plugins.redact_secrets import RedactSecrets
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
 
-from . import budget, ops, workspace
+from . import budget, ops, persona as persona_mod, workspace
 from . import protocol as p
 from .connections import STATE_TTL, Connections, UserMcp, providers
 from .fake import sse
@@ -126,6 +126,21 @@ class StaticTokenAuth:
     async def authenticate(self, request: Request) -> dict | None:
         h = request.headers.get("authorization", "")
         return await self.store.user_by_token(h[7:]) if h.startswith("Bearer ") else None
+
+
+class PersonaIn(BaseModel):
+    name: str = Field("", max_length=24)
+    description: str = Field("", max_length=1000)
+    instruction: str = Field("", max_length=800)
+    code: str = Field("", max_length=8000)
+    profile: str = ""
+
+
+class PersonaGen(BaseModel):
+    description: str = Field(min_length=1, max_length=1000)
+    profile: str
+    code: str = Field("", max_length=8000)   # with error: the code that failed, to be fixed
+    error: str = Field("", max_length=2000)
 
 
 class MemoryEdit(BaseModel):
@@ -222,6 +237,8 @@ class Run:
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.agent.steering_mode = "all"  # all queued steers reach the next turn
+        self.session.add_prompt_section(  # the user's persona: style only, fenced, read fresh every turn
+            "persona", lambda ctx: persona_mod.prompt_section(mgr.store.persona_sync(self.user_id)), 90)
         if (hint := getattr(mgr.sandbox, "prompt_hint", None)) and not no_tools:
             self.session.add_prompt_section("sandbox", hint + " " + PREVIEW_HINT, 5)
         self.session.subscribe(self.on_event)
@@ -720,6 +737,50 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         if not await store.delete_memory(u["id"], mid):
             raise HTTPException(404, "no such memory")
         return {"ok": True}
+
+    @app.get("/api/persona")
+    async def get_persona(u=Depends(user)):
+        return await store.persona(u["id"])
+
+    @app.put("/api/persona")
+    async def put_persona(body: PersonaIn, u=Depends(user)):
+        await store.set_persona(u["id"], body.model_dump() if (body.code or body.instruction) else dict())
+        return {"ok": True}
+
+    @app.post("/api/persona/generate")
+    async def generate_persona(body: PersonaGen, u=Depends(user)):
+        pr = settings["profiles"].get(body.profile)
+        if pr is None:
+            raise HTTPException(400, f"unknown profile {body.profile!r}")
+        model = build_model(pr)
+        model = dataclasses.replace(model, max_tokens=max(model.max_tokens or 0, 12000),
+                                    compat={**model.compat, "reasoning_effort": "low"})
+
+        async def check():
+            if mgr.paused():
+                return "budget: server paused by the admin"
+            if await store.spent(u["id"], budget.day_start()) >= mgr.limits.user_day_usd:
+                return f"budget: daily limit ${mgr.limits.user_day_usd:g} reached"
+
+        msgs = [UserMessage(f"Character description:\n{body.description}")]
+        if body.error:
+            msgs = [UserMessage(f"Character description:\n{body.description}\n\n"
+                                + persona_mod.FIX.format(error=body.error, code=body.code))]
+        msg = None
+        async for ev in budget.guard(mgr.stream_fn, check)(model, Context(persona_mod.SYSTEM, msgs, []),
+                                                            **await api_key_opts(mgr.api_key_for(model), model)):
+            if ev["type"] in ("done", "error"):
+                msg = ev["message"]
+        if msg is None or msg.stop_reason == "error":
+            raise HTTPException(502, (msg.error if msg else None) or "no response from the model")
+        usage = {"input": msg.usage.get("input", 0), "output": msg.usage.get("output", 0)}
+        await store.add_usage(u["id"], "persona", model.id, **usage, cost=budget.cost(pr, usage))
+        if not msg.text().strip():
+            raise HTTPException(502, f"the model returned no text (stop_reason={msg.stop_reason}, usage={usage})")
+        try:
+            return persona_mod.parse(msg.text())
+        except ValueError as e:
+            raise HTTPException(502, str(e))
 
     @app.get("/api/sessions")
     async def list_sessions(u=Depends(user)) -> list[p.SessionInfo]:
