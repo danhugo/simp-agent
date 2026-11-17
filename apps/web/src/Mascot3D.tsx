@@ -56,7 +56,7 @@ function chevronDist(lon: number, lat: number, lonC: number, dir: number) {
 }
 
 /** focus 0..1: squinting eyes and a sweat drop; overload 0..1: "> <" eyes and red cheeks */
-const SKIN_VIEW = 2;  // with an outfit the camera backs off so a hat or skirt fits: view = +-2 head radii
+export const SKIN_VIEW = 2;  // with an outfit the camera backs off so a hat or skirt fits: view = +-2 head radii
 const hexCache = new Map<string, [number, number, number]>();
 const hex = (h: string) => {
   let c = hexCache.get(h);
@@ -181,10 +181,12 @@ export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: 
 }
 const outfitCache: { wear: Wear | null; key: string; hits: Float32Array } = { wear: null, key: "", hits: new Float32Array(0) };
 
-export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idle", className, skin, onSkinError }: {
+export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idle", className, skin, onSkinError, fit = false }: {
   size?: number; pixels?: number; working?: boolean; mood?: Mood; className?: string;
   /** an outfit to wear; undefined = the saved persona's, null = none */
   skin?: Wear | null; onSkinError?: (msg: string) => void;
+  /** fit the outfit inside size (the head shrinks); default: the head keeps its size and the outfit overflows */
+  fit?: boolean;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const steam = useRef<HTMLSpanElement>(null);
@@ -192,6 +194,10 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
   workingRef.current = working;
   const moodRef = useRef(mood);
   moodRef.current = mood;
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
   const skinRef = useRef(skin);
   skinRef.current = skin;
   const errRef = useRef(onSkinError);
@@ -235,7 +241,12 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
         lastKey = key; lastWear = wear;
         // with an outfit the camera backs off SKIN_VIEW times: render that many more pixels, so the head keeps its density
         const n = wear ? Math.round(pixels * SKIN_VIEW) : pixels;
-        if (cv.width !== n) { cv.width = n; cv.height = n; }
+        if (cv.width !== n) {
+          cv.width = n; cv.height = n;
+          // the head keeps its size and place: the canvas grows around it (overflowing) to make room for the outfit
+          const big = wear && !fitRef.current ? sizeRef.current * SKIN_VIEW : sizeRef.current, m = (sizeRef.current - big) / 2;
+          Object.assign(cv.style, { width: `${big}px`, height: `${big}px`, margin: `${m}px` });
+        }
         try { render(ctx, n, pal, ...args, face, wear); }
         catch (e) { broken = wear; lastKey = ""; errRef.current?.(`threw while drawing: ${(e as Error).message}`); }
       }

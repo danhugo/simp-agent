@@ -150,7 +150,7 @@ export function Persona({ onError, menuButton, profiles, models }: {
         <p className="muted small">Give Simp a name and a personality, then describe a look: a model designs the hat, then the pants, in Simp's pixel 3D style.</p>
         <div className="persona-grid">
           <section className="persona-stage" aria-label="Preview">
-            <Mascot3D size={240} pixels={56} skin={wear} working={busy} onSkinError={(m) => setError(m)} />
+            <Mascot3D size={240} pixels={56} fit skin={wear} working={busy} onSkinError={(m) => setError(m)} />
             {draft.name && <p className="persona-name">{draft.name}</p>}
             {(hat.wear || bottom.wear) && (
               <div className="persona-items" aria-label="Outfit objects">
