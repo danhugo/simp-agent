@@ -57,6 +57,9 @@ HEARTBEAT = 15  # seconds between SSE ": ping" comments
 QUEUE_MAX = 1000  # events buffered per SSE client; a client that falls this far behind is dropped and reconnects
 MAX_QUEUED = 20  # steer + follow-up messages waiting per session
 OAUTH_COOKIE = "simp_oauth"  # browser nonce that binds an OAuth start to the callback
+# the web app shows files in /work itself (Preview); without this the agent makes extra "preview" copies
+PREVIEW_HINT = ("The user's app previews files in /work by itself (docx, pdf, xlsx, csv, md, html with its css/js, images, "
+                "code): don't make extra preview copies; name the file you made, e.g. `report.docx`, so the user can click it.")
 HOME = Path(os.environ.get("SIMP_SERVER_HOME", Path.home() / ".simp-server"))
 TITLE_PROMPT = "Name this conversation in 3 to 6 words, in the user's language. Reply with the title only."
 SANDBOX_KINDS = {"docker": "simp_server.sandboxes.docker:DockerSandbox", "e2b": "simp_server.sandboxes.e2b:E2BSandbox"}
@@ -210,7 +213,7 @@ class Run:
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.agent.steering_mode = "all"  # all queued steers reach the next turn
         if (hint := getattr(mgr.sandbox, "prompt_hint", None)) and not no_tools:
-            self.session.add_prompt_section("sandbox", hint, 5)
+            self.session.add_prompt_section("sandbox", hint + " " + PREVIEW_HINT, 5)
         self.session.subscribe(self.on_event)
 
     @property
