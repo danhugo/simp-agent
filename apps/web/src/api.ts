@@ -21,6 +21,12 @@ export interface AppDetail extends AppItem {
 export interface MemoryItem { id: string; scope: "global" | "agent"; agent_id: string | null; content: string; created: number; source_run_id: string | null;
   /** the chat it was saved in, if that chat still exists ("" = untitled) */ source_title?: string | null; source_created?: number | null }
 
+/** REST-only (/api/persona): Simp's personality (the user's words) and outfit slot code (see skin.ts). {} = none. */
+export interface Persona { name?: string; description?: string; instruction?: string; hat?: string; bottom?: string; profile?: string }
+
+/** REST-only (/api/outfits): a saved outfit in the user's collection. */
+export interface Outfit { id: string; kind: "outfit" | "hat" | "bottom"; name: string; description: string; hat: string; bottom: string; created: number }
+
 export class AuthError extends Error {}
 
 export const getToken = () => localStorage.getItem("simp.token") ?? "";
@@ -72,6 +78,13 @@ export const api = {
   addMemory: (content: string) => call("/api/memories", json({ content })),
   editMemory: (id: string, content: string) => call(`/api/memories/${id}`, { ...json({ content }), method: "PATCH" }),
   deleteMemory: (id: string) => call(`/api/memories/${id}`, { method: "DELETE" }),
+  persona: async (): Promise<Persona> => (await call("/api/persona")).json(),
+  savePersona: (p: Persona) => call("/api/persona", { ...json(p), method: "PUT" }),
+  generatePersona: async (b: { description: string; profile: string; slot: "hat" | "bottom"; other?: string; code?: string; error?: string }, signal?: AbortSignal): Promise<{ code: string }> =>
+    (await call("/api/persona/generate", { ...json(b), signal })).json(),
+  outfits: async (): Promise<Outfit[]> => (await call("/api/outfits")).json(),
+  addOutfit: async (o: Omit<Outfit, "id" | "created">): Promise<{ id: string }> => (await call("/api/outfits", json(o))).json(),
+  deleteOutfit: (id: string) => call(`/api/outfits/${id}`, { method: "DELETE" }),
   exportMemories: async (): Promise<Blob> => (await call("/api/memories/export")).blob(),
 };
 

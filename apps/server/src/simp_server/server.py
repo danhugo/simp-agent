@@ -45,7 +45,7 @@ from simp_agent.plugins.redact_secrets import RedactSecrets
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
 
-from . import budget, ops, workspace
+from . import budget, ops, persona as persona_mod, workspace
 from . import protocol as p
 from .connections import STATE_TTL, Connections, UserMcp, providers
 from .fake import sse
@@ -58,6 +58,7 @@ SHUTDOWN_GRACE = 2  # seconds
 HEARTBEAT = 15  # seconds between SSE ": ping" comments
 QUEUE_MAX = 1000  # events buffered per SSE client; a client that falls this far behind is dropped and reconnects
 MAX_QUEUED = 20  # steer + follow-up messages waiting per session
+MAX_OUTFITS = 10  # saved items per kind (outfit, hat, bottom) in a user's collection
 OAUTH_COOKIE = "simp_oauth"  # browser nonce that binds an OAuth start to the callback
 # the web app shows files in /work itself (Preview); without this the agent makes extra "preview" copies
 PREVIEW_HINT = ("Every file the user asked for or should see (documents, reports, images, data, code) must be saved in /work; "
@@ -126,6 +127,32 @@ class StaticTokenAuth:
     async def authenticate(self, request: Request) -> dict | None:
         h = request.headers.get("authorization", "")
         return await self.store.user_by_token(h[7:]) if h.startswith("Bearer ") else None
+
+
+class PersonaIn(BaseModel):
+    name: str = Field("", max_length=24)
+    description: str = Field("", max_length=1000)
+    instruction: str = Field("", max_length=800)   # the user's own words: tone only (fenced in the prompt)
+    hat: str = Field("", max_length=8000)           # outfit slots: JS bodies of wear(p, H), see persona.py
+    bottom: str = Field("", max_length=8000)
+    profile: str = ""
+
+
+class OutfitIn(BaseModel):
+    kind: str = Field("outfit", pattern="^(outfit|hat|bottom)$")  # a whole outfit, or one piece
+    name: str = Field("", max_length=40)
+    description: str = Field("", max_length=1000)
+    hat: str = Field("", max_length=8000)
+    bottom: str = Field("", max_length=8000)
+
+
+class PersonaGen(BaseModel):
+    description: str = Field(min_length=1, max_length=1000)
+    profile: str
+    slot: str = Field(pattern="^(hat|bottom)$")
+    other: str = Field("", max_length=8000)  # the slot already designed, for matching style
+    code: str = Field("", max_length=8000)   # with error: the code that failed a check, to be fixed
+    error: str = Field("", max_length=2000)
 
 
 class MemoryEdit(BaseModel):
@@ -222,6 +249,8 @@ class Run:
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.agent.steering_mode = "all"  # all queued steers reach the next turn
+        self.session.add_prompt_section(  # the user's persona: style only, fenced, read fresh every turn
+            "persona", lambda ctx: persona_mod.prompt_section(mgr.store.persona_sync(self.user_id)), 90)
         if (hint := getattr(mgr.sandbox, "prompt_hint", None)) and not no_tools:
             self.session.add_prompt_section("sandbox", hint + " " + PREVIEW_HINT, 5)
         self.session.subscribe(self.on_event)
@@ -720,6 +749,69 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         if not await store.delete_memory(u["id"], mid):
             raise HTTPException(404, "no such memory")
         return {"ok": True}
+
+    @app.get("/api/persona")
+    async def get_persona(u=Depends(user)):
+        return await store.persona(u["id"])
+
+    @app.put("/api/persona")
+    async def put_persona(body: PersonaIn, u=Depends(user)):
+        await store.set_persona(u["id"], body.model_dump() if (body.hat or body.bottom or body.instruction) else dict())
+        return {"ok": True}
+
+    @app.get("/api/outfits")
+    async def list_outfits(u=Depends(user)):
+        return await store.outfits(u["id"])
+
+    @app.post("/api/outfits")
+    async def add_outfit(body: OutfitIn, u=Depends(user)):
+        if body.kind != "outfit":  # a piece keeps only its own slot
+            body.hat, body.bottom = (body.hat, "") if body.kind == "hat" else ("", body.bottom)
+        if not (body.hat or body.bottom):
+            raise HTTPException(400, f"a {body.kind} needs its code")
+        if sum(o["kind"] == body.kind for o in await store.outfits(u["id"])) >= MAX_OUTFITS:
+            raise HTTPException(400, f"the collection is full ({MAX_OUTFITS} {body.kind}s); delete one first")
+        return {"id": await store.add_outfit(u["id"], body.name, body.description, body.hat, body.bottom, body.kind)}
+
+    @app.delete("/api/outfits/{oid}")
+    async def delete_outfit(oid: str, u=Depends(user)):
+        if not await store.delete_outfit(u["id"], oid):
+            raise HTTPException(404, "no such outfit")
+        return {"ok": True}
+
+    @app.post("/api/persona/generate")
+    async def generate_persona(body: PersonaGen, u=Depends(user)):
+        pr = settings["profiles"].get(body.profile)
+        if pr is None:
+            raise HTTPException(400, f"unknown profile {body.profile!r}")
+        model = build_model(pr)
+        model = dataclasses.replace(model, max_tokens=max(model.max_tokens or 0, 12000),
+                                    compat={**model.compat, "reasoning_effort": "low"})
+
+        async def check():
+            if mgr.paused():
+                return "budget: server paused by the admin"
+            if await store.spent(u["id"], budget.day_start()) >= mgr.limits.user_day_usd:
+                return f"budget: daily limit ${mgr.limits.user_day_usd:g} reached"
+
+        ctx = Context(persona_mod.system(body.slot), [UserMessage(persona_mod.user_message(
+            body.description, body.other, body.code, body.error))], [])
+        problem = ""
+        for _ in range(2):  # one retry when the answer has no code (cut off, or prose instead of code)
+            msg = None
+            async for ev in budget.guard(mgr.stream_fn, check)(model, ctx, **await api_key_opts(mgr.api_key_for(model), model)):
+                if ev["type"] in ("done", "error"):
+                    msg = ev["message"]
+            if msg is None or msg.stop_reason == "error":
+                raise HTTPException(502, (msg.error if msg else None) or "no response from the model")
+            usage = {"input": msg.usage.get("input", 0), "output": msg.usage.get("output", 0)}
+            await store.add_usage(u["id"], "persona", model.id, **usage, cost=budget.cost(pr, usage))
+            try:
+                return {"code": persona_mod.parse(msg.text())}
+            except ValueError as e:
+                problem = f"{e} (stop_reason={msg.stop_reason})"
+                log.warning("persona: %s", problem)
+        raise HTTPException(502, problem)
 
     @app.get("/api/sessions")
     async def list_sessions(u=Depends(user)) -> list[p.SessionInfo]:

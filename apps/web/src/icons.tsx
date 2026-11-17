@@ -2,8 +2,8 @@
 // Soft 1.5px strokes, currentColor, decorative by default (give the button an aria-label or text).
 import type { LucideIcon, LucideProps } from "lucide-react";
 import {
-  ArrowDown, ArrowUp, Bell, Brain, CalendarDays, ChartColumn, Check, ChevronRight, Copy, Download, Ellipsis, Eye, File, FileCode, FileImage, FileSpreadsheet, FileText, FileType, Globe, Presentation, Folder, LayoutGrid, LogOut, Menu, Moon,
-  PanelLeft, Pencil, Plus, Search, RefreshCw, Shrink, Square, SquarePen, Sun, Trash, Upload, X,
+  ArrowDown, Bookmark, WandSparkles, ArrowUp, Bell, Brain, CalendarDays, ChartColumn, Check, ChevronRight, Copy, Download, Ellipsis, Eye, File, FileCode, FileImage, FileSpreadsheet, FileText, FileType, Globe, Presentation, Folder, LayoutGrid, LogOut, Menu, Moon,
+  PanelLeft, Pencil, Plus, Search, RefreshCw, Smile, Shrink, Square, SquarePen, Sun, Trash, Upload, X,
 } from "lucide-react";
 
 type P = LucideProps & { size?: number };
@@ -12,6 +12,7 @@ const wrap = (I: LucideIcon, extra: LucideProps = {}) => ({ size = 16, ...rest }
 );
 
 export const IconPlus = wrap(Plus);
+export const IconPersona = wrap(Smile);
 export const IconCompose = wrap(SquarePen);
 export const IconMenu = wrap(Menu);
 export const IconSidebar = wrap(PanelLeft);
@@ -29,6 +30,11 @@ export const IconArrowDown = wrap(ArrowDown);
 export const IconStop = wrap(Square, { fill: "currentColor" });
 export const IconCopy = wrap(Copy);
 export const IconCheck = wrap(Check);
+export const IconX = wrap(X);
+export const IconWand = wrap(WandSparkles);
+export const IconRedo = wrap(RefreshCw);
+export const IconBookmark = wrap(Bookmark);
+export const IconBookmarked = wrap(Bookmark, { fill: "currentColor" });
 export const IconFolder = wrap(Folder);
 export const IconFile = wrap(FileText);
 // one icon per preview kind (fileKind.ts)

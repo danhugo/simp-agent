@@ -376,3 +376,127 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .page-title, .home-hero h1, .detail-hero h1, .login h1 { font-weight: 750; }
 .memory-body h2, .chat header .title { font-weight: 750; }
 .brand-name { font-weight: 800; }
+
+/* Persona page: sticky preview left, form right; collection full width below; save bar pinned to the bottom */
+.persona-grid { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: var(--sp-8); margin-top: var(--sp-5); align-items: stretch; }
+@media (max-width: 760px) { .persona-grid { grid-template-columns: 1fr; gap: var(--sp-6); } }
+.persona-side { display: flex; flex-direction: column; gap: var(--sp-5); min-width: 0; }
+.persona-stage { flex: 1; display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); padding: var(--sp-6) var(--sp-4) var(--sp-4); border-radius: 18px; background: var(--panel); }
+.persona-lede { max-width: 60ch; margin: 0; }
+.persona-part { display: flex; flex-direction: column; gap: var(--sp-2); }
+.persona-part + .persona-part { margin-top: var(--sp-6); }
+.memory-body .persona-part h2, .memory-body .persona-collection h2 { margin: 0 0 var(--sp-1); }
+.persona-note-inline { margin: 0; }
+.persona-name { margin: 0 0 var(--sp-2); font-weight: 600; font-size: var(--fs-lg); }
+.persona-form { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.persona textarea, .persona input { width: 100%; box-sizing: border-box; font: inherit; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: 10px; background: transparent; color: var(--text); }
+.persona textarea:focus, .persona input:focus { outline: none; border-color: var(--text); }
+.persona-label { font-weight: 500; margin-top: var(--sp-2); cursor: default; color: var(--muted); }
+.persona-actions { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); flex-wrap: wrap; }
+.persona-actions .spacer { flex: 1; }
+.persona .bordered { border: 1px solid var(--border); }
+.persona-keep { width: 100%; margin-top: var(--sp-1); background: var(--bg); gap: var(--sp-1); }
+.persona .persona-composer { max-width: none; margin: 0; padding: 0; }
+.persona .persona-composer textarea { border: 0; border-radius: 0; padding: 6px var(--sp-2); min-height: 3em; }
+.persona .persona-composer .composer-card { padding: var(--sp-2); border-radius: 18px; }
+.persona-go { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: var(--accent); color: var(--accent-text); cursor: pointer; }
+.persona-go:disabled { background: color-mix(in srgb, var(--accent) 22%, var(--bg)); color: var(--bg); cursor: not-allowed; }
+.persona-go.stop { background: var(--text); color: var(--bg); }
+.persona-ideas { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.persona-error { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-3); padding: var(--sp-3); border-radius: 10px; color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }
+.persona-error p { margin: 0; flex: 1; overflow-wrap: anywhere; }
+.persona-items { list-style: none; margin: auto 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); width: 100%; }
+.persona-piece { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: var(--sp-2); border-radius: 12px; background: var(--bg); min-width: 0; text-align: center; }
+.persona-piece.failed { box-shadow: inset 0 0 0 1px var(--err); }
+.persona-item, .persona-piece-empty { width: 80px; height: 80px; image-rendering: pixelated; }
+.persona-piece-empty { display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.persona-piece-acts { display: flex; justify-content: center; gap: 2px; margin-top: 2px; }
+.persona-piece-acts .icon { width: 28px; height: 28px; min-height: 0; padding: 0; color: var(--muted); }
+.persona-piece-acts .icon:hover:not(:disabled) { color: var(--text); }
+.persona-piece-acts .icon[aria-pressed="true"]:disabled { color: var(--text); opacity: 1; }
+.persona-piece-label { font-weight: 500; }
+.persona-note { color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.persona-piece.failed .persona-note { color: var(--err); }
+.persona-dot { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--text); border-top-color: transparent; animation: persona-spin .8s linear infinite; }
+@keyframes persona-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .persona-dot { animation: none; } }
+.persona-coll-head { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-3); }
+.persona-collection .outfit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--sp-2); list-style: none; margin: 0; padding: 0; }
+.outfit-card { position: relative; border-radius: 12px; background: var(--panel); }
+.outfit-card.worn { box-shadow: inset 0 0 0 2px var(--text); }
+.outfit-pick { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; padding: var(--sp-2); border-radius: 12px; }
+.outfit-pick canvas { width: 80px; height: 80px; image-rendering: pixelated; }
+.outfit-name { font-size: var(--fs-sm, 13px); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outfit-card .del { position: absolute; top: 4px; right: 4px; }
+.persona-kinds { flex-wrap: wrap; }
+/* closes the form: right edge, lined up with the card bottom on the left */
+
+/* collection: a drawer from the right; it covers the form, never Simp, so trying things on shows right away */
+.persona-scrim { position: fixed; inset: 0; z-index: 20; background: rgb(0 0 0 / .08); }
+.persona-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 21; width: min(420px, 100vw); overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5) var(--sp-6); background: var(--bg); border-left: 1px solid var(--border); box-shadow: var(--shadow-md); animation: persona-in .18s ease-out; }
+.persona-drawer .persona-coll-head { margin: 0; }
+.persona-drawer h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; }
+.persona-drawer .persona-coll-head .spacer { flex: 1; }
+.persona-drawer .outfit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: var(--sp-2); list-style: none; margin: var(--sp-2) 0 0; padding: 0; }
+@keyframes persona-in { from { transform: translateX(24px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .persona-drawer { animation: none; } }
+.persona-piece-pic { padding: 0; border-radius: 10px; cursor: pointer; }
+.persona-piece-pic:hover:not(:disabled) { background: var(--hover); }
+/* quick picker: a small popover under the piece card, saved pieces of that slot only */
+.persona-stage { position: relative; }
+.persona-items .persona-piece { position: static; }
+/* opens beside the card (over the form), bottom-aligned with the pieces: stays on screen and Simp stays in view */
+.persona-picker { position: absolute; left: calc(100% + var(--sp-3)); bottom: var(--sp-4); z-index: 10; width: 300px; padding: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-1);
+  background: var(--bg); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-md); text-align: left; }
+@media (max-width: 760px) { .persona-picker { left: var(--sp-3); right: var(--sp-3); bottom: auto; top: 100%; width: auto; } }
+.persona-picker-all { align-self: flex-start; }
+.persona-piece-pic:focus:not(:focus-visible) { outline: none; box-shadow: none; }
+.persona-picker p { margin: 0; padding: var(--sp-1); }
+.persona-picker ul { list-style: none; margin: var(--sp-1) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: var(--sp-1); max-height: 240px; overflow-y: auto; }
+.persona-picker li button { width: 100%; padding: 4px; border-radius: 10px; background: var(--panel); }
+.persona-picker li button.on { box-shadow: inset 0 0 0 2px var(--text); }
+.persona-picker canvas { width: 56px; height: 56px; image-rendering: pixelated; }
+.persona-stage > :first-child { margin-top: auto; }  /* Simp sits centered in the space the taller form leaves */
+.persona-piece.empty { background: transparent; outline: 1.5px dashed var(--border); outline-offset: -1.5px; }
+.persona-piece.empty .persona-piece-empty { color: var(--border); }
+.persona-piece.empty .persona-piece-pic:hover .persona-piece-empty { color: var(--muted); }
+.persona-picker .persona-picker-design { display: flex; flex-direction: column; align-items: flex-start; gap: 0; width: 100%; padding: var(--sp-2); border-radius: 10px; text-align: left; font-weight: 500; }
+.persona-picker-design:hover:not(:disabled) { background: var(--hover); }
+.persona-lede-row { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; }
+.persona-lede-row .persona-lede { flex: 1; min-width: 240px; }
+.persona-lede-row > button { margin-left: auto; }
+/* the form fills the column so its bottom meets the bottom of Simp's card: the outfit box takes the extra height */
+.persona-form > .persona-part:last-of-type { flex: 1; }
+.persona-form > .persona-part:last-of-type .persona-composer { flex: 1; display: flex; }
+.persona .persona-composer .composer-card { flex: 1; }
+.persona .persona-composer textarea { flex: 1; max-height: none; }
+.persona-simp { height: 270px; display: flex; align-items: center; justify-content: center; }  /* same box dressed or bare, so nothing below moves */
+.persona-form { padding: var(--sp-5); border: 1px solid var(--border); border-radius: 18px; }  /* one board for personality + outfit, same corners as Simp's card */
+.persona-form { background: var(--panel); border-color: transparent; }
+.persona-form input, .persona-form textarea:not(.persona-composer textarea) { background: var(--bg); }
+/* Simp's card on the right: form first, the try-on beside it */
+.persona-grid { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
+.persona-side { order: 2; }
+.persona-form { order: 1; }
+@media (max-width: 760px) { .persona-grid { grid-template-columns: 1fr; } .persona-side { order: 0; } }
+/* the quick picker and the collection drawer open on the form's side, never over Simp */
+.persona-picker { left: auto; right: calc(100% + var(--sp-3)); }
+@media (max-width: 760px) { .persona-picker { right: var(--sp-3); left: var(--sp-3); } }
+.persona-drawer { right: auto; left: 0; border-left: 0; border-right: 1px solid var(--border); }
+@keyframes persona-in { from { transform: translateX(-24px); opacity: 0; } }
+.persona-grid { gap: var(--sp-4); }  /* two boards side by side: a small gutter so they read as one pair */
+.persona-form { background: transparent; border-color: var(--border); }
+.persona-save-btn { min-width: 128px; justify-content: center; gap: 4px; }  /* same width for Save / Saving… / Saved */
+.persona-save-btn.saved:disabled { opacity: 1; cursor: default; background: var(--bg); color: var(--text); border: 1px solid var(--border); }  /* outlined when nothing to save; fills black once something changes */
+.persona-full { margin: 0; padding: var(--sp-2) var(--sp-3); border-radius: 10px; color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }
+/* name + talk fields look like the chat box (and the outfit box): white card, soft shadow, rounder corners */
+.persona-form input, .persona-form textarea:not(.persona-composer textarea) {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-md); padding: 10px var(--sp-3); }
+.persona-form input:focus, .persona-form textarea:not(.persona-composer textarea):focus { border-color: var(--border); box-shadow: var(--shadow-md), 0 1px 3px rgb(0 0 0 / .06); }
+.persona-stage .persona-keep { color: var(--bg); background: var(--text); font-weight: 500; border-color: transparent; }
+.persona-stage .persona-keep { transition: background .12s; }
+.persona-stage .persona-keep:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 78%, var(--bg)); }
+/* saved count per kind, top-right of the piece card; in flow with zero height (the card stays static so the picker can anchor to Simp's card) */
+.persona-count { align-self: flex-end; height: 0; overflow: visible; font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1; }
+.persona-count.full { color: var(--err); }

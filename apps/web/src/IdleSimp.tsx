@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { type Face, readPal, render } from "./Mascot3D";
+import { type Face, readPal, render, SKIN_VIEW } from "./Mascot3D";
+import { getSkin } from "./skin";
 
 /**
  * When the chat sits idle, Simp hops down from the end of the conversation onto the top edge of the message box
@@ -71,6 +72,15 @@ export function IdleSimp({ enabled }: { enabled: boolean }) {
     const c = cv.current, ctx = c?.getContext("2d"), b = box.current;
     if (!c || !ctx || !b) return;
     const pal = readPal(), start = performance.now();
+    // the persona's outfit: render SKIN_VIEW times more pixels on a canvas that grows around the head,
+    // so the head keeps its size and its feet stay where the games put them
+    const wear = getSkin(), n = wear ? N * SKIN_VIEW : N;
+    c.width = c.height = n;
+    if (wear) {
+      const big = SIZE * SKIN_VIEW, m = (SIZE - big) / 2;
+      Object.assign(c.style, { width: `${big}px`, height: `${big}px`, marginLeft: `${m}px`, marginBottom: `${m}px`,
+        transformOrigin: `50% ${50 + 50 / SKIN_VIEW}%` });  // squash around the head's bottom, not the canvas's
+    }
     let napFrom: number | null = null, raf = 0, blink = 0, napStart = start, cyStart = start;
     // each trip down picks one game and keeps playing it until Simp goes home
     const game = (["stroll", "peek", "nap"] as const)[Math.floor(Math.random() * 3)];
@@ -90,7 +100,7 @@ export function IdleSimp({ enabled }: { enabled: boolean }) {
       if (j) {  // hopping down or home
         const k = Math.min(1, (now - j.t0) / HOP_MS), ps = jumpPose(k, j);
         cur.yaw += (rad(ps.yaw ?? 0) - cur.yaw) * 0.25; cur.pitch += (rad(ps.pitch ?? 0) - cur.pitch) * 0.25;
-        render(ctx, N, pal, cur.yaw, cur.pitch, blink, 0, 0, ps.face);
+        render(ctx, n, pal, cur.yaw, cur.pitch, blink, 0, 0, ps.face, wear);
         c.style.transform = `translate(${ps.x}px, ${ps.y}px) scale(${ps.sx ?? 1}, ${ps.sy ?? 1})`;
         if (zz.current) zz.current.textContent = "";
         if (k >= 1) { jump.current = null; j.done?.(); }
@@ -125,7 +135,7 @@ export function IdleSimp({ enabled }: { enabled: boolean }) {
       }
       pos.current = { x, y };
       cur.yaw += (rad(yaw) - cur.yaw) * 0.15; cur.pitch += (rad(pitch) - cur.pitch) * 0.15;
-      render(ctx, N, pal, cur.yaw, cur.pitch, face.eyes === "flat" ? 0 : blink, 0, 0, face);
+      render(ctx, n, pal, cur.yaw, cur.pitch, face.eyes === "flat" ? 0 : blink, 0, 0, face, wear);
       c.style.transform = `translate(${x}px, ${y + hide * SIZE}px)`;
       if (zz.current) { zz.current.textContent = zzz; zz.current.style.transform = `translate(${x + SIZE - 4}px, ${-((t * 8) % 14)}px)`; }
     };

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { getSkin, onSkin, type Wear } from "./skin";
 
 /**
  * Simp's head as a real 3D sphere rendered into a small pixel grid (default 48x48) and scaled up crisply.
@@ -55,21 +56,97 @@ function chevronDist(lon: number, lat: number, lonC: number, dir: number) {
 }
 
 /** focus 0..1: squinting eyes and a sweat drop; overload 0..1: "> <" eyes and red cheeks */
-export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: number, pitch: number, blink: number, focus = 0, overload = 0, face: Face = {}) {
-  const img = ctx.createImageData(N, N), R = N / 2 - 0.6, c = N / 2, eyeW = (1.4 * 24) / N + 1.6;
+export const SKIN_VIEW = 2;  // with an outfit the camera backs off so a hat or skirt fits: view = +-2 head radii
+const hexCache = new Map<string, [number, number, number]>();
+const hex = (h: string) => {
+  let c = hexCache.get(h);
+  if (!c) { const n = parseInt(h.slice(1), 16); c = [n >> 16, (n >> 8) & 255, n & 255]; hexCache.set(h, c); }
+  return c;
+};
+// the head's 4 tones, applied to an outfit color: highlight, base, mid, low
+const tone = (c: [number, number, number], lit: number): [number, number, number] => {
+  const k = lit > 0.93 ? 1.28 : lit > 0.62 ? 1 : lit > 0.32 ? 0.76 : 0.55;
+  return k > 1 ? c.map((x) => Math.round(x + (255 - x) * (k - 1))) as [number, number, number]
+    : c.map((x) => Math.round(x * k)) as [number, number, number];
+};
+
+/** focus 0..1: squinting eyes and a sweat drop; overload 0..1: "> <" eyes and red cheeks; skin: a persona outfit */
+export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: number, pitch: number, blink: number, focus = 0, overload = 0, face: Face = {}, skin: Wear | null = null, bare = false, view = SKIN_VIEW, centerY = 0) {
+  const img = ctx.createImageData(N, N), S = skin ? view : 1, R = (N / 2 - 0.6) / S, c = N / 2, eyeW = (1.4 * 24) / (N / S) + 1.6;  // by the head's own pixel size, so eyes look the same with an outfit
+  const rl = face.roll ?? 0, cr = Math.cos(rl), sr = Math.sin(rl), cp = Math.cos(pitch), sp = Math.sin(pitch), cy = Math.cos(yaw), sy = Math.sin(yaw);
+  // view space (u right, v up, z toward the viewer) -> head space, the same turn the painted face gets
+  const toHead = (u: number, v: number, z: number) => {
+    const ru = u * cr - v * sr, rv = u * sr + v * cr, y1 = rv * cp + z * sp, z1 = -rv * sp + z * cp;
+    return [ru * cy - z1 * sy, y1, ru * sy + z1 * cy];
+  };
+  const dist = (u: number, v: number, z: number) => skin!(toHead(u, v, z))?.[0] ?? 1;
+  // the outfit's boxes (head space): a ray is marched only over the stretches where it is inside one
+  const boxes = skin?.boxes ?? [{ lo: [-2, -2, -2], hi: [2, 2, 2] }];
+  const B = toHead(0, 0, 1);  // the view ray's direction in head space (same for every pixel)
+  // per frame: the outfit only changes with the pose, so a blink-only frame reuses the last outfit pass
+  const key = skin ? `${N}|${yaw}|${pitch}|${rl}|${bare}|${view}|${centerY}` : "";
+  const cached = skin && outfitCache.wear === skin && outfitCache.key === key ? outfitCache : null;
+  const hits = cached ? cached.hits : skin ? new Float32Array(N * N * 4).fill(-1) : null;  // z, r, g, b per pixel
+  const mask = skin ? new Uint8Array(N * N) : null;  // 1 = head, 2 = outfit (for the outfit's outline)
   for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
-    const u = (px + 0.5 - c) / R, v = -(py + 0.5 - c) / R, d2 = u * u + v * v;
-    if (d2 > 1) continue;
-    const z = Math.sqrt(1 - d2);
+    const u = (px + 0.5 - c) / R, v = -(py + 0.5 - c) / R + centerY, d2 = u * u + v * v;  // centerY: frame centered higher/lower
+    const zHead = !bare && d2 <= 1 ? Math.sqrt(1 - d2) : -Infinity;  // bare: the outfit alone, no head
+    if (skin && hits) {
+      const o = (py * N + px) * 4;
+      if (!cached) {
+        // ray p(z) = A + z*B in head space; march each box's stretch, nearest first, until a hit
+        const A = toHead(u, v, 0), spans: [number, number][] = [];
+        for (const bx of boxes) {
+          let zIn = SKIN_VIEW + 0.3, zOut = zHead;
+          for (let k = 0; k < 3 && zIn > zOut; k++) {
+            if (Math.abs(B[k]) < 1e-9) { if (A[k] < bx.lo[k] || A[k] > bx.hi[k]) zIn = -Infinity; continue; }
+            const t1 = (bx.lo[k] - A[k]) / B[k], t2 = (bx.hi[k] - A[k]) / B[k];
+            zIn = Math.min(zIn, Math.max(t1, t2)); zOut = Math.max(zOut, Math.min(t1, t2));
+          }
+          if (zIn > zOut) spans.push([zIn, zOut]);
+        }
+        spans.sort((x, y) => y[0] - x[0]);
+        let z = -Infinity, part = null as ReturnType<Wear>;
+        for (const [zIn, zOut] of spans) {
+          if (zIn <= z) continue;
+          z = zIn;
+          for (let i = 0; i < 32 && z > zOut; i++) {
+            part = skin(toHead(u, v, z));
+            const d = part?.[0] ?? 1;
+            if (d < 0.02) break;
+            part = null;
+            z -= Math.max(d, 0.02);  // baked distances are smooth: full steps are safe
+          }
+          if (part) break;
+        }
+        {
+          if (part && z > zHead) {
+            // normal from 4 samples (tetrahedron), lit like the head
+            const e = 0.025, k1 = dist(u + e, v - e, z - e), k2 = dist(u - e, v - e, z + e), k3 = dist(u - e, v + e, z - e), k4 = dist(u + e, v + e, z + e);
+            const nx = k1 - k2 - k3 + k4, ny = -k1 - k2 + k3 + k4, nz = -k1 + k2 - k3 + k4;
+            const nl = Math.hypot(nx, ny, nz) || 1, lit = Math.max(0, (nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]) / nl);
+            const col = tone(hex(part[1]), lit);
+            hits[o] = z; hits[o + 1] = col[0]; hits[o + 2] = col[1]; hits[o + 3] = col[2];
+          }
+        }
+      }
+      if (hits[o] !== -1 && hits[o] > zHead) {
+        const i = (py * N + px) * 4;
+        img.data[i] = hits[o + 1]; img.data[i + 1] = hits[o + 2]; img.data[i + 2] = hits[o + 3]; img.data[i + 3] = 255;
+        mask![py * N + px] = 2;
+        continue;
+      }
+    }
+    if (d2 > 1 || bare) continue;
+    if (mask) mask[py * N + px] = 1;
+    const z = zHead;
     let col: [number, number, number] | null;
     if (pal.out && d2 > (1 - 1.4 / R) ** 2) col = pal.out;
     else {
       const lit = Math.max(0, u * LIGHT[0] + v * LIGHT[1] + z * LIGHT[2]);
       col = lit > 0.93 ? pal.hi : lit > 0.62 ? pal.base : lit > 0.32 ? pal.mid : pal.low;
       // roll turns the painted face around the view axis (light stays put); positive = clockwise, i.e. rolling right
-      const rl = face.roll ?? 0, ru = u * Math.cos(rl) - v * Math.sin(rl), rv = u * Math.sin(rl) + v * Math.cos(rl);
-      const y1 = rv * Math.cos(pitch) + z * Math.sin(pitch), z1 = -rv * Math.sin(pitch) + z * Math.cos(pitch);
-      const x2 = ru * Math.cos(yaw) - z1 * Math.sin(yaw), z2 = ru * Math.sin(yaw) + z1 * Math.cos(yaw);
+      const [x2, y1, z2] = toHead(u, v, z);
       if (z2 > 0) {
         const lon = deg(Math.atan2(x2, z2)), lat = deg(Math.asin(Math.max(-1, Math.min(1, y1))));
         const squint = Math.max(blink, focus * 0.8);  // focused: the ^ ^ flattens into narrowed eyes
@@ -90,11 +167,26 @@ export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: 
     const i = (py * N + px) * 4;
     img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
   }
+  // outfit outline: an outfit pixel next to anything that is not outfit gets the outline color, like the head's rim
+  if (mask && pal.out) for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
+    if (mask[py * N + px] !== 2) continue;
+    const edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
+      const x = px + dx, y = py + dy;
+      return x < 0 || y < 0 || x >= N || y >= N || mask[y * N + x] === 0;
+    });
+    if (edge) { const i = (py * N + px) * 4; img.data[i] = pal.out[0]; img.data[i + 1] = pal.out[1]; img.data[i + 2] = pal.out[2]; }
+  }
+  if (skin && hits && !cached) { outfitCache.wear = skin; outfitCache.key = key; outfitCache.hits = hits; }
   ctx.putImageData(img, 0, 0);
 }
+const outfitCache: { wear: Wear | null; key: string; hits: Float32Array } = { wear: null, key: "", hits: new Float32Array(0) };
 
-export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idle", className }: {
+export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idle", className, skin, onSkinError, fit = false }: {
   size?: number; pixels?: number; working?: boolean; mood?: Mood; className?: string;
+  /** an outfit to wear; undefined = the saved persona's, null = none */
+  skin?: Wear | null; onSkinError?: (msg: string) => void;
+  /** fit the outfit inside size (the head shrinks); default: the head keeps its size and the outfit overflows */
+  fit?: boolean;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const steam = useRef<HTMLSpanElement>(null);
@@ -102,11 +194,21 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
   workingRef.current = working;
   const moodRef = useRef(mood);
   moodRef.current = mood;
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
+  const skinRef = useRef(skin);
+  skinRef.current = skin;
+  const errRef = useRef(onSkinError);
+  errRef.current = onSkinError;
   useEffect(() => {
     const cv = canvas.current, ctx = cv?.getContext("2d");
     if (!cv || !ctx) return;
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let pal = readPal(), blink = 0, raf = 0, timer = 0, since = 0, focus = 0, overload = 0;
+    let lastKey = "", lastWear: Wear | null = null, broken: Wear | null = null;
+    const offSkin = onSkin(() => { lastKey = ""; });
     const target = { yaw: 0, pitch: 0 }, cur = { yaw: 0, pitch: 0 };
     const onMove = (e: PointerEvent) => {
       const b = cv.getBoundingClientRect();
@@ -131,7 +233,23 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
       const sway = moodRef.current === "asking" && !workingRef.current && !reduce ? rad(Math.sin(now / 500) * 10) : 0;
       cur.yaw += (t.yaw - cur.yaw) * k; cur.pitch += (t.pitch - cur.pitch) * k;
       const shake = focused && !reduce ? rad(Math.sin(now / 45) * 2.2) : 0;  // straining: a tiny fast tremble
-      render(ctx, pixels, pal, cur.yaw + shake + sway, cur.pitch, face.eyes === "flat" ? 0 : blink, focus, overload, face);
+      let wear = skinRef.current === undefined ? getSkin() : skinRef.current;
+      if (wear && wear === broken) wear = null;
+      const args = [cur.yaw + shake + sway, cur.pitch, face.eyes === "flat" ? 0 : blink, focus, overload] as const;
+      const key = `${args.map((x) => x.toFixed(4))}|${JSON.stringify(face)}|${pal.base}`;
+      if (key !== lastKey || wear !== lastWear) {  // an outfit is costly to march: skip frames where nothing moved
+        lastKey = key; lastWear = wear;
+        // with an outfit the camera backs off SKIN_VIEW times: render that many more pixels, so the head keeps its density
+        const n = wear ? Math.round(pixels * SKIN_VIEW) : pixels;
+        if (cv.width !== n) {
+          cv.width = n; cv.height = n;
+          // the head keeps its size and place: the canvas grows around it (overflowing) to make room for the outfit
+          const big = wear && !fitRef.current ? sizeRef.current * SKIN_VIEW : sizeRef.current, m = (sizeRef.current - big) / 2;
+          Object.assign(cv.style, { width: `${big}px`, height: `${big}px`, margin: `${m}px` });
+        }
+        try { render(ctx, n, pal, ...args, face, wear); }
+        catch (e) { broken = wear; lastKey = ""; errRef.current?.(`threw while drawing: ${(e as Error).message}`); }
+      }
       raf = requestAnimationFrame(frame);
     };
     const doBlink = () => {
@@ -144,7 +262,7 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
     loop();
     raf = requestAnimationFrame(frame);
     return () => {
-      cancelAnimationFrame(raf); clearTimeout(timer); themeObs.disconnect();
+      cancelAnimationFrame(raf); clearTimeout(timer); themeObs.disconnect(); offSkin();
       removeEventListener("pointermove", onMove); document.removeEventListener("pointerleave", onLeave);
     };
   }, [pixels]);

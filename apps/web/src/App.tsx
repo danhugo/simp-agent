@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, AuthError, type ConnStatus, getToken, setToken, subscribe } from "./api";
 import { Chat, Composer, type Send, writtenFile } from "./Chat";
-import { IconCalendar, IconChart, IconCheck, IconChevron, IconCompose, IconFile, IconSearch, IconApps, IconLogout, IconMemory, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
+import { IconCalendar, IconChart, IconCheck, IconChevron, IconCompose, IconFile, IconSearch, IconApps, IconLogout, IconMemory, IconMenu, IconPersona, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
 import { Mascot3D } from "./Mascot3D";
 import { requestLocation, saveLocation, sharedLocation } from "./location";
@@ -9,6 +9,7 @@ import { Files } from "./Files";
 import { Preview } from "./Preview";
 import { Memory } from "./Memory";
 import { Apps } from "./Apps";
+import { Persona, loadSavedSkin } from "./Persona";
 import type { SessionInfo } from "./protocol.gen";
 import { initialState, reduce, type ServerEvent } from "./state";
 
@@ -128,14 +129,15 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
     return () => window.removeEventListener("keydown", onKey);
   }, [drawer]);
   // Memory / Apps page (only when no session is picked); "#crafts?..." (aliases "#apps", "#connections") is the OAuth return
-  const [page, setPage] = useState<"" | "memory" | "apps">(() => (isConnHash() ? "apps" : ""));
+  const [page, setPage] = useState<"" | "memory" | "apps" | "persona">(() => (isConnHash() ? "apps" : ""));
   const pick = (id: string) => { setSid(id); setPage(""); setDrawer(false); };
-  const open = (p: "memory" | "apps") => { pick(""); setPage(p); };
+  const open = (p: "memory" | "apps" | "persona") => { pick(""); setPage(p); };
 
   useEffect(() => {
     refresh();
     api.profiles().then((p) => { setProfiles(p); setProfile(p[0] ?? ""); }).catch(() => {});
     api.models().then(setModels).catch(() => {});
+    loadSavedSkin();
   }, [refresh]);
 
   // Follow hash changes (pasted deep link, back/forward, same-document navigation to /#id).
@@ -232,6 +234,9 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
         <button className={`ghost item new ${page === "apps" && !sid ? "active" : ""}`} onClick={() => open("apps")}
           aria-current={page === "apps" && !sid ? "page" : undefined} aria-label={rail ? "Crafts" : undefined} title={rail ? "Crafts" : undefined}>
           <IconApps /><span className="label">Crafts</span></button>
+        <button className={`ghost item new ${page === "persona" && !sid ? "active" : ""}`} onClick={() => open("persona")}
+          aria-current={page === "persona" && !sid ? "page" : undefined} aria-label={rail ? "Persona" : undefined} title={rail ? "Persona" : undefined}>
+          <IconPersona /><span className="label">Persona</span></button>
         <nav aria-label="Sessions">
           <h2 className="section-label">Recent</h2>
           {sessions.map((s) => (
@@ -269,7 +274,8 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
           ) : showFiles && <Files sid={sid} onError={guard} focus={filesFocus} onPreview={(p) => { setPreview(p); setShowFiles(false); }} onClose={() => setShowFiles(false)} />}
         </>
       ) : page === "memory" ? <Memory onError={guard} menuButton={menu} />
-        : page === "apps" ? <Apps onError={guard} menuButton={menu} /> : (
+        : page === "apps" ? <Apps onError={guard} menuButton={menu} />
+        : page === "persona" ? <Persona onError={guard} menuButton={menu} profiles={profiles} models={models} /> : (
         <main className="home">
           <header className="home-head">{menu}<span className="brand only-mobile"><PixelAgent size={22} />Simp</span></header>
           <div className="home-hero">
@@ -369,7 +375,7 @@ function alertUser(title: string, state: string, on: boolean) {
 }
 
 /** Model picker: a themed popover listbox instead of the native <select> (whose menu follows the OS look). */
-function ModelPicker({ value, options, labels, onChange }: {
+export function ModelPicker({ value, options, labels, onChange }: {
   value: string; options: string[]; labels: Record<string, string>; onChange: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
