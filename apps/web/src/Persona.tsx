@@ -55,7 +55,9 @@ function ItemView({ wear, label }: { wear: Wear; label: string }) {
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches, pal = readPal(), N = 64;
     // frame the object itself: centered on its box, zoomed so its widest extent fits while it turns
     const b = wear.boxes!, lo = [0, 1, 2].map((k) => Math.min(...b.map((x) => x.lo[k]))), hi = [0, 1, 2].map((k) => Math.max(...b.map((x) => x.hi[k])));
-    const cy = (lo[1] + hi[1]) / 2, half = Math.max(hi[1] - lo[1], Math.hypot(hi[0] - lo[0], hi[2] - lo[2])) / 2, view = Math.min(2, half * 1.15);
+    // boxes carry 0.2 of padding per side (for safe marching): take it off to frame what is really drawn
+    const pad = 0.18, w = Math.max(...[0, 2].map((k) => Math.max(Math.abs(lo[k] + pad), Math.abs(hi[k] - pad)))), h = (hi[1] - lo[1]) / 2 - pad;
+    const cy = (lo[1] + hi[1]) / 2, view = Math.max(0.35, Math.min(2, Math.max(w, h) * 1.08));  // w: the farthest it reaches while turning
     let raf = 0, last = -1;
     const frame = (t: number) => {
       const yaw = reduce ? 0.5 : Math.round((t / 1000) * 0.8 * 40) / 40;  // turn in small steps: re-render ~20x/s
