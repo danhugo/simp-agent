@@ -180,7 +180,7 @@ Safety and concurrency of the mirror:
 
 ### File preview: a second origin
 
-The Files panel can now *show* a file, not only download it (the viewers are in [30](30-web-client.md#file-preview-panel)). Most kinds are safe: the page fetches the bytes and draws them itself. HTML is different. The agent can write `report.html`, and that file may contain JavaScript. The web page keeps Ana's login token in `localStorage` (`simp.token`, see [30](30-web-client.md#every-call-carries-anas-token)). Any script that runs on the same origin as the page can read it. So a file the agent wrote, maybe after it read a harmful web page, could steal Ana's login.
+The Files panel can now *show* a file, not only download it (the viewers are in [30](30-web-client.md#file-preview-panel)). Most kinds are safe: the page fetches the bytes and draws them itself. HTML is different. The agent can write `report.html`, and that file may contain JavaScript. The web page keeps Ana's login token in `localStorage` (`simp.token`, see [30](30-web-client.md#every-call-carries-anas-token)). An **[origin](glossary.md#origin)** is scheme + host + port, like `http://localhost:8766`. A script can read only the `localStorage` of its own origin, so any script that runs on the same origin as the page can read the token. So a file the agent wrote, maybe after it read a harmful web page, could steal Ana's login.
 
 **Naive try.** Serve the file from `GET .../files/raw` with type `text/html` and put it in an iframe. It works, and that is the problem: `/files/raw` lives on the main origin, so the HTML runs next to the token. An `<svg>` file can carry a `<script>` too, so the same is true for `image/svg+xml`.
 
@@ -200,7 +200,7 @@ async def make_preview(sid: str, u=Depends(user)):
     return {"base": f"http://localhost:{preview_port}/p/{token}/"}
 ```
 
-This **[preview token](glossary.md#preview-token)** is a random string kept in a plain dict in memory, bound to Ana's user id and alive for 10 minutes. The preview app has exactly one route, `GET /p/{token}/{path}`. It looks up the token, returns 404 if it is missing or expired, and reads the file with `files.read(uid, path)`, the same store call as the Files panel, so `..`, absolute paths and symlinks are refused. The answer has `nosniff`, `Cache-Control: no-store` (no copy left in the cache) and `Referrer-Policy: no-referrer` (the token never leaks in a `Referer` header when the HTML loads a link).
+This **[preview token](glossary.md#preview-token)** is a random string kept in a plain dict in memory, bound to Ana's user id and alive for 10 minutes. The preview app has exactly one route, `GET /p/{token}/{path}`. It looks up the token, returns 404 if it is missing or expired, and reads the file with `files.read(uid, path)`, the same store call as the Files panel, so `..`, absolute paths outside `/work`, and symlinks are refused. The answer has `nosniff`, `Cache-Control: no-store` (no copy left in the cache) and `Referrer-Policy: no-referrer` (the token never leaks in a `Referer` header when the HTML loads a link).
 
 Why a token in the URL and not the login token? Because the file's own scripts can see the URL. If they find a preview token, the worst they can do is read Ana's own files for 10 minutes; they cannot chat, spend money or change anything. Note the token is bound to the *user*, not the session: it opens any file in Ana's workspace, and a relative link like `<img src="chart.png">` inside `report.html` works because it resolves under the same `/p/{token}/` base.
 

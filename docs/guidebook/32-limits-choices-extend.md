@@ -149,19 +149,21 @@ The cut ([20](20-compaction.md)) only lands on a user or assistant message. So i
 
 **3. Three provider APIs.** `_PROVIDERS` holds `anthropic-messages`, `openai-completions` and `openai-responses`. Others need `register_provider`, the provider socket from [02](02-pick-clean.md#1-pick-_providers-register_provider).
 
-The other six limits are at the edges, in the server and in how it is run.
+The other seven limits are at the edges, in the server and in how it is run.
 
 **4. One machine.** The server uses SQLite and runs on one machine with launchd ([31](31-system-tests-deploy.md)). The roadmap says Postgres, replicas and session leases are "dropped while on one machine".
 
-**5. Budgets are soft.** The budget is checked **before** each LLM call ([28](28-limits.md)). So if Ana has $0.01 left, one more call still runs and can take her over the limit. A profile with no prices costs $0 and never hits a budget; the server only warns at startup.
+**5. Preview is for localhost only.** The preview base URL is hard-coded to `localhost`, and preview tokens live in a dict in memory, so they are lost on restart and not shared between servers ([29a](29a-workspace-sandbox.md#file-preview-a-second-origin)).
 
-**6. No rate limit on sign-in.** The server has no rate limit on its routes, including the Google sign-in routes `/api/auth/google/start` and `/api/auth/google/callback` ([27](27-store-auth.md#google-login)). The README says to put one in front before exposing the server through a tunnel. Only emails in `allowed_emails` can get an account, so a stranger cannot sign up, but nothing slows down many requests.
+**6. Budgets are soft.** The budget is checked **before** each LLM call ([28](28-limits.md)). So if Ana has $0.01 left, one more call still runs and can take her over the limit. A profile with no prices costs $0 and never hits a budget; the server only warns at startup.
 
-**7. `LocalSandbox` is not isolation.** Its docstring says: *"Not isolation: DockerSandbox replaces it."* The server refuses to start with `LocalSandbox` when there is more than one user in the store (`check_sandbox`), unless `allow_local_sandbox = true` is set ([29](29-docker-sandbox.md)).
+**7. No rate limit on sign-in.** The server has no rate limit on its routes, including the Google sign-in routes `/api/auth/google/start` and `/api/auth/google/callback` ([27](27-store-auth.md#google-login)). The README says to put one in front before exposing the server through a tunnel. Only emails in `allowed_emails` can get an account, so a stranger cannot sign up, but nothing slows down many requests.
 
-**8. No lock on the user workspace.** All of Ana's sessions share one folder, `workspaces/<user_id>/` ([29](29-docker-sandbox.md#close-close_all)). Each session has its own container, but there is no per-user lock. So if two of her sessions edit `notes.md` at the same time, the last write wins and the other change is lost. Deleting a session keeps its files, so the folder only grows until she cleans it up herself.
+**8. `LocalSandbox` is not isolation.** Its docstring says: *"Not isolation: DockerSandbox replaces it."* The server refuses to start with `LocalSandbox` when there is more than one user in the store (`check_sandbox`), unless `allow_local_sandbox = true` is set ([29](29-docker-sandbox.md)).
 
-**9. Missing tools and features.** No skills, no sub-agents. (Simple memory exists as a plugin, [22](22-profiles-plugins.md#memory-remember-across-sessions); the server has web search and fetch tools, [22](22-profiles-plugins.md#who-uses-them); and an MCP client exists as a plugin, [22a](22a-mcp.md).) All of these are on the roadmap as later work: "capabilities via plugins".
+**9. No lock on the user workspace.** All of Ana's sessions share one folder, `workspaces/<user_id>/` ([29](29-docker-sandbox.md#close-close_all)). Each session has its own container, but there is no per-user lock. So if two of her sessions edit `notes.md` at the same time, the last write wins and the other change is lost. Deleting a session keeps its files, so the folder only grows until she cleans it up herself.
+
+**10. Missing tools and features.** No skills, no sub-agents. (Simple memory exists as a plugin, [22](22-profiles-plugins.md#memory-remember-across-sessions); the server has web search and fetch tools, [22](22-profiles-plugins.md#who-uses-them); and an MCP client exists as a plugin, [22a](22a-mcp.md).) All of these are on the roadmap as later work: "capabilities via plugins".
 
 Notice the pattern. Only three limits are in the core, and each is a shortcut with a known fix. Most are at the edges or on the "later" list, and most later features (skills, sub-agents) would be new plugins, as web tools and MCP already are, not changes to the loop. That is the point of a small core: its limits are easy to see and easy to fix in one place.
 

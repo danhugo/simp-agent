@@ -3,6 +3,11 @@
 Changes to this book, newest first. Each entry names the project commit the text was checked against.
 
 
+## 2026-11-17
+
+- Preview review fixes (code 3eaa0c9): ch29a defines origin, path rule says "absolute paths outside /work"; ch31 adds preview.spec.ts, test_file_preview, test_serve_both_busy_preview_port_keeps_main, the e2e port 8767 = default preview_port note, and the second port in deploy; ch32 new limit 5 (preview is localhost-only, tokens in memory), limits renumbered 6-10; README 29a line; glossary: Origin.
+
+
 ## 2026-11-16
 
 - Connections + many accounts (code 1fbedcf): ch27 new section "Who is the agent acting for? Connections" (one Gmail: OAuth, encrypted tokens, refresh, needs_reconnect; then two accounts: link_id, default = oldest, login_hint, disconnect); ch22a stale "server does not fill mcp" fixed, new part "On the server: one MCP plugin per user" (one session per link, optional link_id enum, audit, approval email); ch30 portal detail page + light theme sentence; glossary: Connection, Link (link_id).
