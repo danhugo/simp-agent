@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, AuthError, type FileEntry } from "./api";
 import { errorText } from "./Chat";
-import { IconClose, IconFolder, IconRefresh, IconUpload, KindIcons } from "./icons";
+import { IconClose, IconFolder, IconRefresh, IconUpload, fileIcon } from "./icons";
 import { kindOf } from "./fileKind";
 
 const dirOf = (p: string) => { const i = p.replace(/^\.\//, "").lastIndexOf("/"); return i <= 0 ? (i === 0 ? "/" : ".") : p.replace(/^\.\//, "").slice(0, i); };
@@ -75,7 +75,7 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
         {entries.map((e) => (
           <li key={e.name} className={e.name === hl ? "focus" : undefined} aria-current={e.name === hl || undefined}>
             <button onClick={() => (e.is_dir ? setPath(join(e.name)) : onPreview(join(e.name)))} title={e.name}>
-              {e.is_dir ? <IconFolder size={16} /> : (() => { const K = KindIcons[kindOf(e.name)]; return <K size={16} />; })()}<span>{e.name}</span>
+              {e.is_dir ? <IconFolder size={16} /> : (() => { const K = fileIcon(e.name, kindOf(e.name)); return <K size={16} />; })()}<span>{e.name}</span>
             </button>
             {!e.is_dir && <span className="size">{fmt(e.size)}</span>}
           </li>

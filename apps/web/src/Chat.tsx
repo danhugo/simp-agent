@@ -7,7 +7,7 @@ import { api, AuthError, type ConnStatus } from "./api";
 import { Badge, chatName } from "./App";
 import {
   IconArrowDown, IconArrowUp, IconBell, IconCheck, IconChevron, IconClose, IconCompact, IconCopy, IconDownload, IconEye, IconFile, IconFolder, IconMore, IconPlus, IconRefresh,
-  IconStop,
+  IconStop, fileIcon,
 } from "./icons";
 import type { PendingApproval, ToolCall } from "./protocol.gen";
 import { canContinue, type ChatState } from "./state";
@@ -321,7 +321,7 @@ export const Md = ({ text, onFile }: { text: string; onFile?: (path: string) => 
     ...mdComponents,
     code: ({ className, children }) => {
       const t = String(children), p = !className && !t.includes("\n") ? fileRef(t) : undefined;
-      return p ? <button className="file-ref" onClick={() => onFile(p)} title={`Preview ${p}`}><code>{children}</code></button>
+      return p ? <button className="file-ref" onClick={() => onFile(p)} title={`Preview ${p}`}>{(() => { const I = fileIcon(p, kindOf(p)); return <I size={14} />; })()}<span>{children}</span></button>
         : <code className={className}>{children}</code>;
     },
   }, [onFile]);
