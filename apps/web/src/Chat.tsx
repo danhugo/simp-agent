@@ -357,7 +357,9 @@ const FILE_TOOLS = new Set(["write", "edit"]);
 /** The file a tool call wrote, once its result came back without error; otherwise undefined. */
 export function writtenFile(call: ToolCall, result?: { is_error: boolean }): string | undefined {
   const path = call.arguments.path;
-  return FILE_TOOLS.has(call.name) && result && !result.is_error && typeof path === "string" && path ? path : undefined;
+  // only /work is the user's (the Files panel and preview read it); /tmp etc. live in the sandbox alone: no card
+  const outside = typeof path === "string" && path.startsWith("/") && path !== "/work" && !path.startsWith("/work/");
+  return FILE_TOOLS.has(call.name) && result && !result.is_error && typeof path === "string" && path && !outside ? path : undefined;
 }
 
 export async function downloadFile(sid: string, path: string) {

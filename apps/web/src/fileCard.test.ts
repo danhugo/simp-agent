@@ -11,6 +11,9 @@ describe("writtenFile: which tool calls get a file card", () => {
   });
   it("not before the result, not on error", () => {
     expect(writtenFile(call("write", { path: "a" }))).toBeUndefined();
+    expect(writtenFile(call("write", { path: "/tmp/x.py", content: "x" }), ok)).toBeUndefined();  // not the user's files
+    expect(writtenFile(call("write", { path: "/home/user/repos/a/b.py", content: "x" }), ok)).toBeUndefined();
+    expect(writtenFile(call("write", { path: "/work/r.docx", content: "x" }), ok)).toBe("/work/r.docx");
     expect(writtenFile(call("write", { path: "a" }), err)).toBeUndefined();
   });
   it("not for other tools or a missing path", () => {
