@@ -183,108 +183,115 @@ export function Persona({ onError, menuButton, profiles, models }: {
       <header className="home-head">{menuButton}</header>
       <div className="memory-body">
         <h1 className="page-title">Persona</h1>
-        <p className="muted small">Give Simp a name and a personality, then describe a look: a model designs the hat, then the pants, in Simp's pixel 3D style.</p>
+        <p className="muted persona-lede">Choose who Simp is and what it wears. The look is drawn for you from a short description.</p>
         <div className="persona-grid">
-          <section className="persona-stage" aria-label="Preview">
-            <Mascot3D size={240} pixels={56} fit skin={wear} working={busy} onSkinError={(m) => setError(m)} />
-            {draft.name && <p className="persona-name">{draft.name}</p>}
-            {(hat.wear || bottom.wear) && (
-              <div className="persona-items" aria-label="Outfit objects">
-                {hat.wear && <ItemView wear={hat.wear} label="Hat" />}
-                {bottom.wear && <ItemView wear={bottom.wear} label="Pants / skirt" />}
+          <div className="persona-side">
+            <section className="persona-stage" aria-label="Preview">
+              <Mascot3D size={240} pixels={56} fit skin={wear} working={busy} onSkinError={(m) => setError(m)} />
+              <p className="persona-name">{draft.name || "Simp"}</p>
+              {hat.wear || bottom.wear ? (
+                <>
+                  <div className="persona-items" aria-label="What Simp is wearing">
+                    {hat.wear && <ItemView wear={hat.wear} label="Hat" />}
+                    {bottom.wear && <ItemView wear={bottom.wear} label="Pants / skirt" />}
+                  </div>
+                  <button className="ghost small" disabled={busy || assembling || !!inCollection || !!hat.err || !!bottom.err} onClick={keep}>
+                    {inCollection ? "Saved in your collection" : "Add to collection"}</button>
+                </>
+              ) : <p className="muted small persona-hint">{busy ? "Drawing…" : "Describe a look to dress Simp up."}</p>}
+            </section>
+
+            <section aria-labelledby="persona-coll" className="persona-collection">
+              <h2 id="persona-coll">Collection</h2>
+              {outfits === null ? <p className="muted small">Loading…</p>
+                : outfits.length === 0 ? <p className="muted small">Outfits you add show up here, ready to wear again.</p>
+                : <ul className="outfit-grid">
+                    {outfits.map((o) => {
+                      const worn = o.hat === (draft.hat ?? "") && o.bottom === (draft.bottom ?? "");
+                      return (
+                        <li key={o.id} className={`outfit-card ${worn ? "worn" : ""}`}>
+                          <button className="ghost outfit-pick" disabled={busy} onClick={() => wearOutfit(o)} title={o.description} aria-pressed={worn}>
+                            <OutfitThumb o={o} />
+                            <span className="outfit-name">{o.name}</span>
+                          </button>
+                          <button className={`ghost del ${confirmDel === o.id ? "confirm" : "icon"}`} aria-label={`Delete outfit ${o.name}`}
+                            onClick={() => removeOutfit(o.id)} onBlur={() => setConfirmDel("")}>
+                            {confirmDel === o.id ? "Delete?" : <IconTrash size={14} />}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>}
+            </section>
+          </div>
+
+          <div className="persona-form">
+            <section aria-labelledby="persona-who" className="persona-part">
+              <h2 id="persona-who">Personality</h2>
+              <label className="persona-label" htmlFor="persona-name">Name</label>
+              <input id="persona-name" maxLength={24} value={draft.name ?? ""} onChange={set("name")} placeholder="Simp" />
+              <label className="persona-label" htmlFor="persona-inst">How Simp talks</label>
+              <textarea id="persona-inst" rows={3} maxLength={800} value={draft.instruction ?? ""} onChange={set("instruction")} aria-describedby="persona-inst-note"
+                placeholder="You talk like a sleepy old wizard: slow, cozy, a little forgetful." />
+              <p id="persona-inst-note" className="muted small persona-note-inline">Changes Simp's tone only. What Simp may do, and when it asks you first, stay the same.</p>
+            </section>
+
+            <section aria-labelledby="persona-look" className="persona-part">
+              <h2 id="persona-look">Outfit</h2>
+              <label className="persona-label" htmlFor="persona-desc">Look</label>
+              <textarea id="persona-desc" rows={2} maxLength={1000} value={draft.description ?? ""} disabled={busy} onChange={set("description")}
+                placeholder="A purple pointy wizard hat with yellow stars and a blue skirt"
+                onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generate(); }} />
+              {!draft.description && (
+                <div className="persona-ideas" aria-label="Ideas">
+                  {IDEAS.map((t) => <button key={t} className="suggestion" onClick={() => setDraft((d) => ({ ...d, description: t }))}>{t}</button>)}
+                </div>
+              )}
+              <div className="row persona-actions">
+                {profiles.length > 0 && <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} />}
+                <span className="spacer" />
+                {busy ? <button className="ghost" onClick={() => { stop.current = true; }}>Stop</button>
+                  : <button className="primary" disabled={!draft.description?.trim() || !profile} onClick={() => generate()}>
+                      {draft.hat || draft.bottom ? "Redesign outfit" : "Design outfit"}</button>}
               </div>
-            )}
-            {(hat.wear || bottom.wear) && (
-              <p className="muted small persona-assembled" role="status">
-                {assembling ? "Assembling into one object…" : wear?.grid ? `Assembled: one ${wear.grid.join("×")} grid` : ""}
-              </p>
-            )}
-          </section>
-          <section className="persona-form">
-            <label className="persona-label" htmlFor="persona-name">Name</label>
-            <input id="persona-name" maxLength={24} value={draft.name ?? ""} onChange={set("name")} placeholder="Simp" />
-            <label className="persona-label" htmlFor="persona-inst">Personality <span className="muted small">(tone only: it never changes what Simp may do)</span></label>
-            <textarea id="persona-inst" rows={3} maxLength={800} value={draft.instruction ?? ""} onChange={set("instruction")}
-              placeholder="e.g. You talk like a sleepy old wizard: slow, cozy, a little forgetful." />
-
-            <label className="persona-label" htmlFor="persona-desc">Look</label>
-            <textarea id="persona-desc" rows={2} maxLength={1000} value={draft.description ?? ""} disabled={busy} onChange={set("description")}
-              placeholder="e.g. purple pointy wizard hat with yellow stars, blue skirt"
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generate(); }} />
-            {!draft.description && (
-              <div className="persona-ideas">
-                {IDEAS.map((t) => <button key={t} className="suggestion" onClick={() => setDraft((d) => ({ ...d, description: t }))}>{t}</button>)}
-              </div>
-            )}
-            <div className="row persona-actions">
-              {profiles.length > 0 && <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} />}
-              <span className="spacer" />
-              {busy ? <button className="ghost" onClick={() => { stop.current = true; }}>Stop</button>
-                : <button className="primary" disabled={!draft.description?.trim() || !profile} onClick={() => generate()}>
-                    {draft.hat || draft.bottom ? "Redesign outfit" : "Design outfit"}</button>}
-            </div>
-            {error && <p className="error" role="alert">{error}</p>}
-
-            <ol className="persona-steps" aria-label="Outfit">
-              {SLOTS.map(({ slot, label }) => {
-                const st = steps[slot], c = compiled[slot], code = draft[slot];
-                const state = st?.state ?? (code ? (c.err ? "failed" : "done") : undefined);
-                return (
-                  <li key={slot} className={`persona-step ${state ?? "empty"}`}>
-                    <div className="persona-step-head">
-                      <span className="persona-dot" aria-hidden="true">{state === "done" ? <IconCheck size={14} /> : null}</span>
-                      <b>{label}</b>
-                      <span className="muted small" role="status">
-                        {state ? STATE_TEXT[state] : "Not designed"}{st?.tries ? ` (fix ${st.tries}/${FIX_TRIES})` : ""}
-                      </span>
-                      <span className="spacer" />
-                      {!busy && draft.description?.trim() && <button className="ghost small" onClick={() => generate(slot)}>{code ? "Redo" : "Design"}</button>}
-                      {!busy && code && <button className="ghost small" onClick={() => { setDraft((d) => ({ ...d, [slot]: "" })); setSteps((x) => ({ ...x, [slot]: undefined })); }}>Remove</button>}
-                    </div>
-                    {(st?.note || (state === "failed" && c.err)) && <p className="persona-note small">{st?.state === "failed" || !st ? "Problem: " : "Fixing: "}{st?.note || c.err}</p>}
-                    {code && (
-                      <details>
-                        <summary className="muted small">Code</summary>
-                        <textarea className="persona-code" rows={10} spellCheck={false} value={code} onChange={set(slot)} aria-label={`${label} code`} />
-                        {!busy && c.err && <button className="ghost small" onClick={() => generate(slot)}>Ask the model to fix it</button>}
-                      </details>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
-
-            <div className="row persona-actions">
-              <button className="primary" disabled={!dirty || busy || assembling || !!hat.err || !!bottom.err} onClick={save}>Save persona</button>
-              {(draft.hat || draft.bottom) && <button className="ghost" disabled={busy || !!inCollection || !!hat.err || !!bottom.err} onClick={keep}>
-                {inCollection ? "In collection" : "Add to collection"}</button>}
-              {saved && (saved.hat || saved.bottom || saved.instruction) && <button className="ghost" onClick={reset}>Back to plain Simp</button>}
-            </div>
-          </section>
-        </div>
-
-        <section aria-label="Collection" className="persona-collection">
-          <h2>Collection</h2>
-          {outfits === null ? <p className="muted small">Loading…</p>
-            : outfits.length === 0 ? <p className="muted small">Outfits you add to the collection show up here, to wear again any time.</p>
-            : <ul className="outfit-grid">
-                {outfits.map((o) => {
-                  const worn = o.hat === (draft.hat ?? "") && o.bottom === (draft.bottom ?? "");
+              {error && <p className="error" role="alert">{error}</p>}
+              <ol className="persona-steps" aria-label="Outfit">
+                {SLOTS.map(({ slot, label }) => {
+                  const st = steps[slot], c = compiled[slot], code = draft[slot];
+                  const state = st?.state ?? (code ? (c.err ? "failed" : "done") : undefined);
                   return (
-                    <li key={o.id} className={`outfit-card ${worn ? "worn" : ""}`}>
-                      <button className="ghost outfit-pick" disabled={busy} onClick={() => wearOutfit(o)} title={o.description} aria-pressed={worn}>
-                        <OutfitThumb o={o} />
-                        <span className="outfit-name">{o.name}</span>
-                      </button>
-                      <button className={`ghost del ${confirmDel === o.id ? "confirm" : "icon"}`} aria-label={`Delete outfit ${o.name}`}
-                        onClick={() => removeOutfit(o.id)} onBlur={() => setConfirmDel("")}>
-                        {confirmDel === o.id ? "Delete?" : <IconTrash size={14} />}
-                      </button>
+                    <li key={slot} className={`persona-step ${state ?? "empty"}`}>
+                      <div className="persona-step-head">
+                        <span className="persona-dot" aria-hidden="true">{state === "done" ? <IconCheck size={14} /> : null}</span>
+                        <b>{label}</b>
+                        <span className="muted small" role="status">
+                          {state ? STATE_TEXT[state] : "Not designed"}{st?.tries ? ` (fix ${st.tries}/${FIX_TRIES})` : ""}
+                        </span>
+                        <span className="spacer" />
+                        {!busy && draft.description?.trim() && <button className="ghost small" onClick={() => generate(slot)}>{code ? "Redo" : "Design"}</button>}
+                        {!busy && code && <button className="ghost small" onClick={() => { setDraft((d) => ({ ...d, [slot]: "" })); setSteps((x) => ({ ...x, [slot]: undefined })); }}>Remove</button>}
+                      </div>
+                      {(st?.note || (state === "failed" && c.err)) && <p className="persona-note small">{st?.state === "failed" || !st ? "Problem: " : "Fixing: "}{st?.note || c.err}</p>}
+                      {code && (
+                        <details>
+                          <summary className="muted small">Code</summary>
+                          <textarea className="persona-code" rows={10} spellCheck={false} value={code} onChange={set(slot)} aria-label={`${label} code`} />
+                          {!busy && c.err && <button className="ghost small" onClick={() => generate(slot)}>Ask the model to fix it</button>}
+                        </details>
+                      )}
                     </li>
                   );
                 })}
-              </ul>}
-        </section>
+              </ol>
+            </section>
+
+            <div className="row persona-actions persona-save">
+              <button className="primary" disabled={!dirty || busy || assembling || !!hat.err || !!bottom.err} onClick={save}>Save persona</button>
+              {saved && (saved.hat || saved.bottom || saved.instruction) && <button className="ghost" onClick={reset}>Back to plain Simp</button>}
+              {!dirty && saved && (saved.hat || saved.bottom || saved.instruction) && <span className="muted small">Simp is using this persona.</span>}
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   );

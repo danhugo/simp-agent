@@ -378,14 +378,22 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .brand-name { font-weight: 800; }
 
 /* Persona page: preview on the left, the form on the right (stacked on phones) */
-.persona-grid { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; gap: var(--sp-6); margin-top: var(--sp-4); align-items: start; }
-@media (max-width: 760px) { .persona-grid { grid-template-columns: 1fr; } }
-.persona-stage { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); padding: var(--sp-5) 0; border: 1px solid var(--border); border-radius: 14px; position: sticky; top: var(--sp-3); }
+.persona-grid { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: var(--sp-8); margin-top: var(--sp-5); align-items: start; }
+@media (max-width: 760px) { .persona-grid { grid-template-columns: 1fr; gap: var(--sp-6); } .persona-side { position: static; } }
+.persona-side { position: sticky; top: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-5); }
+.persona-stage { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); padding: var(--sp-6) var(--sp-4) var(--sp-4); border-radius: 18px; background: var(--panel); }
+.persona-hint { margin: 0; }
+.persona-lede { max-width: 60ch; margin: 0; }
+.persona-part { display: flex; flex-direction: column; gap: var(--sp-2); }
+.persona-part + .persona-part { margin-top: var(--sp-6); padding-top: var(--sp-5); border-top: 1px solid var(--border); }
+.persona-part h2, .persona-collection h2 { font-size: var(--fs-lg); font-weight: 600; margin: 0 0 var(--sp-1); }
+.persona-note-inline { margin: 0; }
+.persona-save { margin-top: var(--sp-6) !important; padding-top: var(--sp-4); border-top: 1px solid var(--border); }
 .persona-name { margin: 0; font-weight: 600; }
 .persona-form { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .persona-form textarea, .persona-form input { width: 100%; box-sizing: border-box; font: inherit; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: 10px; background: transparent; color: var(--text); }
 .persona-form textarea:focus, .persona-form input:focus { outline: none; border-color: var(--text); }
-.persona-label { font-weight: 500; margin-top: var(--sp-3); cursor: default; }
+.persona-label { font-weight: 500; margin-top: var(--sp-2); cursor: default; }
 .persona-actions { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
 .persona-actions .spacer { flex: 1; }
 .persona-ideas { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
@@ -402,12 +410,12 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .persona-note { margin: var(--sp-1) 0 0 26px; color: var(--muted); overflow-wrap: anywhere; }
 .persona-step.failed .persona-note { color: #c0392b; }
 .persona-code { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; margin-top: var(--sp-2); }
-.persona-items { display: flex; gap: var(--sp-3); justify-content: center; padding-top: var(--sp-2); border-top: 1px dashed var(--border); width: 100%; }
+.persona-items { display: flex; gap: var(--sp-4); justify-content: center; }
 .persona-item { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .persona-item canvas { width: 80px; height: 80px; image-rendering: pixelated; }
 .persona-assembled { margin: 0; min-height: 1.2em; }
-.persona-collection { margin-top: var(--sp-6); }
-.outfit-grid { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--sp-3); }
+.persona-collection { }
+.persona-collection .outfit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--sp-2); list-style: none; margin: 0; padding: 0; }
 .outfit-card { position: relative; border: 1px solid var(--border); border-radius: 12px; }
 .outfit-card.worn { border-color: var(--text); }
 .outfit-pick { display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); width: 100%; padding: var(--sp-2); border-radius: 12px; }
