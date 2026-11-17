@@ -209,7 +209,11 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .files > header { padding-right: var(--sp-2); }
 .files > header strong { font-size: var(--fs-md); }
 .files .upload { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); padding: 4px var(--sp-3); }
-.files .path { padding: var(--sp-2) var(--sp-4) 0; font-size: var(--fs-xs); color: var(--muted); overflow-wrap: anywhere; }
+.files .path { padding: var(--sp-2) var(--sp-4) 0; font-size: var(--fs-xs); color: var(--muted); overflow-wrap: anywhere; display: flex; flex-wrap: wrap; align-items: baseline; }
+.files .path button { background: none; border: 0; padding: 0; font: inherit; color: var(--muted); cursor: pointer; }
+.files .path button:hover { color: var(--text); text-decoration: underline; }
+.files .path strong { color: var(--text); font-weight: 600; }
+.files .path .sep { margin: 0 4px; }
 .files .error { padding: var(--sp-2) var(--sp-4) 0; font-size: var(--fs-sm); }
 .files ul { list-style: none; margin: 0; padding: var(--sp-2); overflow-y: auto; flex: 1; }
 .files li { display: flex; align-items: center; gap: var(--sp-2); border-radius: var(--radius-sm); padding-right: var(--sp-2); }
