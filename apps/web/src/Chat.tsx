@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import { api, AuthError, type ConnStatus } from "./api";
 import { Badge, chatName } from "./App";
 import {
-  IconArrowDown, IconArrowUp, IconBell, IconCheck, IconChevron, IconClose, IconCompact, IconCopy, IconDownload, IconFile, IconFolder, IconMore, IconPlus, IconRefresh,
+  IconArrowDown, IconArrowUp, IconBell, IconCheck, IconChevron, IconClose, IconCompact, IconCopy, IconDownload, IconEye, IconFile, IconFolder, IconMore, IconPlus, IconRefresh,
   IconStop,
 } from "./icons";
 import type { PendingApproval, ToolCall } from "./protocol.gen";
@@ -23,6 +23,7 @@ interface Props {
   filesOpen?: boolean;
   /** Open the Files panel at this file's folder, with the file highlighted. */
   onOpenFile?: (path: string) => void;
+  onPreviewFile?: (path: string) => void;
   notify: boolean;
   onToggleNotify: () => void;
   menuButton?: ReactNode;
@@ -32,7 +33,7 @@ interface Props {
 
 interface Action { key: string; label: string; icon: ReactNode; title: string; onClick: () => void; pressed?: boolean; disabled?: boolean }
 
-export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesOpen = false, onOpenFile, notify, onToggleNotify, menuButton, firstPrompt }: Props) {
+export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesOpen = false, onOpenFile, onPreviewFile, notify, onToggleNotify, menuButton, firstPrompt }: Props) {
   const busy = state.runState !== "idle" && state.runState !== "error";
   // the mascot's face after a run: a happy hop when it finishes, turned aside when stopped, sad on error
   const [after, setAfter] = useState<Mood>("idle");
@@ -170,7 +171,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
                   {it.msg.text && <Md text={it.msg.text} />}
                   {it.msg.error && it.msg.error !== "aborted" && <div className="notice error">{it.msg.error}</div>}
                   {(groupCalls.get(it.seq)?.length ?? 0) > 0 &&
-                    <ToolGroup calls={groupCalls.get(it.seq)!} state={state} send={send} sid={sid} onOpenFile={onOpenFile} onError={onError} />}
+                    <ToolGroup calls={groupCalls.get(it.seq)!} state={state} send={send} sid={sid} onOpenFile={onOpenFile} onPreviewFile={onPreviewFile} onError={onError} />}
                   {/* copy only the answer, not an in-between step that called tools (its button landed under the tool) */}
                   {((it.msg.text && it.msg.tool_calls.length === 0) || it.msg.error === "aborted") && (
                     <div className={`msg-actions ${it.seq === lastAnswer || it.msg.error === "aborted" ? "last" : ""}`}>
@@ -346,11 +347,13 @@ export async function downloadFile(sid: string, path: string) {
   URL.revokeObjectURL(url);
 }
 
-function FileCard({ path, sid, onOpen, onError }: { path: string; sid: string; onOpen?: (p: string) => void; onError: (e: unknown) => void }) {
+function FileCard({ path, sid, onOpen, onPreview, onError }: { path: string; sid: string; onOpen?: (p: string) => void; onPreview?: (p: string) => void; onError: (e: unknown) => void }) {
   return (
     <div className="file-card">
       <IconFile size={16} />
       <span className="file-path" title={path}>{path}</span>
+      {onPreview && <button type="button" className="hbtn" aria-label={`Preview ${path}`} onClick={() => onPreview(path)}>
+        <IconEye size={16} /><span>Preview</span></button>}
       {onOpen && <button type="button" className="hbtn" aria-label={`Open ${path} in Files`} onClick={() => onOpen(path)}>
         <IconFolder size={16} /><span>Open</span></button>}
       <button type="button" className="hbtn" aria-label={`Download ${path}`}
@@ -359,7 +362,7 @@ function FileCard({ path, sid, onOpen, onError }: { path: string; sid: string; o
   );
 }
 
-type ToolProps = { state: ChatState; send: Send; sid: string; onOpenFile?: (p: string) => void; onError: (e: unknown) => void };
+type ToolProps = { state: ChatState; send: Send; sid: string; onOpenFile?: (p: string) => void; onPreviewFile?: (p: string) => void; onError: (e: unknown) => void };
 
 /** A few calls show as rows; more fold into one summary line. Calls still running or waiting for you stay visible. */
 function ToolGroup({ calls, ...p }: ToolProps & { calls: ToolCall[] }) {
@@ -407,8 +410,8 @@ export function groupSummary(calls: ToolCall[]): string {
   return out.charAt(0).toUpperCase() + out.slice(1);
 }
 
-function Tool({ call, state, send, sid, onOpenFile, onError }: {
-  call: ToolCall; state: ChatState; send: Send; sid: string; onOpenFile?: (p: string) => void; onError: (e: unknown) => void;
+function Tool({ call, state, send, sid, onOpenFile, onPreviewFile, onError }: {
+  call: ToolCall; state: ChatState; send: Send; sid: string; onOpenFile?: (p: string) => void; onPreviewFile?: (p: string) => void; onError: (e: unknown) => void;
 }) {
   const result = state.results[call.id];
   const output = result?.content ?? state.toolOutputs[call.id];
@@ -435,7 +438,7 @@ function Tool({ call, state, send, sid, onOpenFile, onError }: {
     {/* the question stands on its own under the row, not nested in the tool's output */}
     {state.pending?.call_id === call.id && <Approval p={state.pending} send={send} />}
     {result?.is_error && output && <p className="tool-err small">{oneLine(output)}</p>}
-    {file && <FileCard path={file} sid={sid} onOpen={onOpenFile} onError={onError} />}
+    {file && <FileCard path={file} sid={sid} onOpen={onOpenFile} onPreview={onPreviewFile} onError={onError} />}
     </>
   );
 }

@@ -117,7 +117,8 @@ test("file upload, list, download", async ({ page }) => {
   await page.setInputFiles(".files input[type=file]", { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
   await expect(page.locator(".files")).toContainText("notes.txt");
   const dl = page.waitForEvent("download");
-  await page.locator(".files").getByRole("button", { name: "notes.txt" }).click();
+  await page.locator(".files").getByRole("button", { name: "notes.txt" }).click();  // opens the preview
+  await page.getByRole("complementary", { name: "Preview notes.txt" }).getByRole("button", { name: "Download" }).click();
   expect(readFileSync(await (await dl).path()!, "utf8")).toBe("hello");
 });
 

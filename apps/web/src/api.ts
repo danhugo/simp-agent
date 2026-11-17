@@ -58,6 +58,8 @@ export const api = {
   /** path is relative to the workspace root. */
   upload: (sid: string, path: string, data: Blob) =>
     call(`/api/sessions/${sid}/files/raw?path=${encodeURIComponent(path)}`, { method: "PUT", body: data }),
+  /** html/pdf preview: base URL on the separate preview origin; iframe src = base + path. */
+  preview: async (sid: string): Promise<{ base: string }> => (await call(`/api/sessions/${sid}/preview`, { method: "POST" })).json(),
   apps: async (): Promise<AppItem[]> => (await call("/api/apps")).json(),
   setApp: (app: string, on: boolean) => call(`/api/apps/${app}/${on ? "enable" : "disable"}`, { method: "POST" }),
   appDetail: async (app: string): Promise<AppDetail> => (await call(`/api/apps/${app}`)).json(),
