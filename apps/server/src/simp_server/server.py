@@ -12,7 +12,9 @@ import functools
 import html
 import sys
 import logging
+import mimetypes
 import os
+import secrets
 import time
 import tomllib
 import urllib.parse
@@ -560,6 +562,8 @@ class SessionManager:
 
 
 # ---- app ------------------------------------------------------------------------------------------------------------
+PREVIEW_TTL = 600  # seconds a preview token lives
+
 
 def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     pl = settings["plugins"]
@@ -872,7 +876,34 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def download(sid: str, path: str, u=Depends(user)):
         await mgr.get(u, sid)
         data = await fs(files.read(u["id"], path))
-        return Response(data, media_type="application/octet-stream")
+        mt = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        if mt in ("text/html", "application/xhtml+xml", "image/svg+xml"):  # never render active content on the API origin
+            mt = "text/plain" if mt == "text/html" else "application/octet-stream"
+        return Response(data, media_type=mt, headers={"X-Content-Type-Options": "nosniff"})
+
+    @app.post("/api/sessions/{sid}/preview")
+    async def make_preview(sid: str, u=Depends(user)):
+        await mgr.get(u, sid)
+        now = time.time()
+        for t in [t for t, (_, exp) in previews.items() if exp < now]:
+            del previews[t]
+        token = secrets.token_urlsafe(32)
+        previews[token] = (u["id"], now + PREVIEW_TTL)
+        return {"base": f"http://localhost:{settings.get('web', dict()).get('preview_port', 8767)}/p/{token}/"}
+
+    # ponytail: tokens live in memory, lost on restart (they last 10 min anyway)
+    previews: dict[str, tuple[str, float]] = dict()  # token -> (user id, expires at)
+    preview = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    app.state.preview = preview
+
+    @preview.get("/p/{token}/{path:path}")
+    async def serve_preview(token: str, path: str):
+        uid, exp = previews.get(token, (None, 0))
+        if uid is None or exp < time.time():
+            raise HTTPException(404)
+        data = await fs(files.read(uid, path))  # files.read refuses .., absolute and symlink escapes
+        return Response(data, media_type=mimetypes.guess_type(path)[0] or "application/octet-stream", headers={
+            "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
     @app.put("/api/sessions/{sid}/files/raw")
     async def upload(sid: str, path: str, request: Request, u=Depends(user)):
@@ -997,5 +1028,12 @@ def main() -> None:
         # open SSE streams never end on their own; without the timeout uvicorn waits forever and lifespan never closes sandboxes
         ops.setup_logging()
         settings = load_settings()
-        uvicorn.run(create_app(settings, stream if a.fake_llm else ai.stream), host=settings["host"], port=a.port,
-                    timeout_graceful_shutdown=SHUTDOWN_GRACE, log_config=None)
+        app = create_app(settings, stream if a.fake_llm else ai.stream)
+        servers = [uvicorn.Server(uvicorn.Config(x, host=settings["host"], port=port, log_config=None,
+                                                 timeout_graceful_shutdown=SHUTDOWN_GRACE))
+                   for x, port in ((app, a.port), (app.state.preview, settings.get("web", dict()).get("preview_port", 8767)))]
+        servers[1].config.lifespan = "off"
+
+        async def both():
+            await asyncio.gather(*(s.serve() for s in servers))
+        asyncio.run(both())

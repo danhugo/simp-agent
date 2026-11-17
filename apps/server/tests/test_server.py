@@ -643,3 +643,42 @@ async def test_new_session_keeps_approx_location_across_reload(env):
     del mgr.runs[sid]  # like a restart: reload from SQLite
     prompt = await (await mgr.get(user, sid)).session._build_prompt()
     assert "User location (approx., shared by the user): 37.6, 127.0\n" in prompt
+
+
+async def test_file_preview(env):
+    app, mgr, user, token, run = await env(FakeProvider())
+    other = await mgr.store.user_by_token(await mgr.store.add_user("b"))
+    other_sid = (await mgr.store.add_session(other["id"], "test", "t"))["id"]
+    h = {"Authorization": f"Bearer {token}"}
+    api = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost")
+    prev = httpx.AsyncClient(transport=httpx.ASGITransport(app=app.state.preview), base_url="http://localhost:8767")
+    async with api, prev:
+        for name, body in (("a.html", b"<h1>hi</h1>"), ("i.svg", b"<svg/>"), ("s.css", b"a{}")):
+            assert (await api.put(f"/api/sessions/{run.sid}/files/raw?path={name}", content=body, headers=h)).status_code == 200
+        raw = {n: await api.get(f"/api/sessions/{run.sid}/files/raw?path={n}", headers=h) for n in ("a.html", "i.svg", "s.css")}
+        assert raw["a.html"].headers["content-type"].startswith("text/plain")
+        assert raw["i.svg"].headers["content-type"] == "application/octet-stream"
+        assert raw["s.css"].headers["content-type"].startswith("text/css")
+        assert all(r.headers["x-content-type-options"] == "nosniff" for r in raw.values())
+
+        assert (await api.post(f"/api/sessions/{other_sid}/preview", headers=h)).status_code == 404  # B's session
+        base = (await api.post(f"/api/sessions/{run.sid}/preview", headers=h)).json()["base"]
+        assert base.startswith("http://localhost:8767/p/")
+        path = "/" + base.split("/", 3)[3]
+        r = await prev.get(path + "a.html")
+        assert r.status_code == 200 and r.content == b"<h1>hi</h1>" and r.headers["content-type"].startswith("text/html")
+        assert r.headers["cache-control"] == "no-store" and r.headers["referrer-policy"] == "no-referrer"
+        assert (await prev.get(path + "i.svg")).headers["content-type"] == "image/svg+xml"
+        for bad in ("../b/a.html", "%2e%2e/%2e%2e/etc/passwd", "/etc/passwd"):
+            assert (await prev.get(path + bad)).status_code in (403, 404)
+        (Path(mgr.settings["data_dir"]) / "workspaces" / user["id"] / "out").symlink_to("/etc/hosts")
+        assert (await prev.get(path + "out")).status_code in (403, 404)  # symlink escape
+        assert (await prev.get("/p/nope/a.html")).status_code == 404
+        assert (await prev.get(f"/api/sessions/{run.sid}/files/raw?path=a.html", headers=h)).status_code == 404  # preview origin: /p only
+        import simp_server.server as srv  # token expiry: move the clock past the TTL
+        real = srv.time.time
+        srv.time.time = lambda: real() + srv.PREVIEW_TTL + 1
+        try:
+            assert (await prev.get(path + "a.html")).status_code == 404
+        finally:
+            srv.time.time = real
