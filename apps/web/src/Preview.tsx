@@ -34,12 +34,14 @@ export function Preview({ sid, path, writes, onClose, onError }: {
       const r: Loaded = { entry };
       if (!tooBig(kind, entry.size)) {
         if (kind === "code" || raw) r.text = await (await api.download(sid, path)).text();
-        else if (kind === "html" || kind === "pdf") {
-          r.src = (await api.preview(sid)).base + path.split("/").map(encodeURIComponent).join("/") + `?v=${n + writes}`;
+        else if (kind === "html" || kind === "pdf" || ext(path) === "svg") {
+          // svg can hold scripts: load it from the preview origin, never as a blob on our origin
+          const url = (await api.preview(sid)).base + path.split("/").map(encodeURIComponent).join("/") + `?v=${n + writes}`;
+          if (kind === "image") r.img = url; else r.src = url;
         } else if (kind === "image") {
-          // our own type, never the server's: an image/svg+xml blob is only ever used as <img src> (no scripts run there)
+          // our own raster type, never the server's; svg never comes here (see above)
           const b = await api.download(sid, path);
-          r.img = img = URL.createObjectURL(new Blob([b], { type: `image/${({ svg: "svg+xml", jpg: "jpeg" } as Record<string, string>)[ext(path)] ?? ext(path)}` }));
+          r.img = img = URL.createObjectURL(new Blob([b], { type: `image/${({ jpg: "jpeg" } as Record<string, string>)[ext(path)] ?? ext(path)}` }));
         } else if (kind === "markdown") r.text = await (await api.download(sid, path)).text();
         else if (kind !== "info") r.data = await (await api.download(sid, path)).arrayBuffer();
       }
