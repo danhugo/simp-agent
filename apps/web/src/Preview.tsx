@@ -9,7 +9,7 @@ import { ext, hasRaw, kindOf, LANGS, tooBig } from "./fileKind";
 const Code = lazy(() => import("./viewers/Code"));
 const Sheet = lazy(() => import("./viewers/Sheet"));
 
-type Loaded = { entry?: FileEntry; text?: string; data?: ArrayBuffer; img?: string; src?: string; noRender?: boolean };
+type Loaded = { entry?: FileEntry; text?: string; data?: ArrayBuffer; img?: string; src?: string };
 
 /** One file, read-only. `writes` goes up each time the chat shows the agent wrote this file: then it reloads. */
 export function Preview({ sid, path, writes, onClose, onError, filesOpen, onToggleFiles, children }: {
@@ -38,9 +38,8 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
         else if (kind === "html" || kind === "pdf" || kind === "office" || ext(path) === "svg") {
           // svg can hold scripts: load it from the preview origin, never as a blob on our origin
           const url = (await api.preview(sid)).base + path.split("/").map(encodeURIComponent).join("/") + `?${kind === "office" ? "render=html&" : ""}v=${n + writes}`;
-          // ponytail: renders twice (probe + iframe); the probe needs CORS on the preview origin, without it we just show the iframe
-          if (kind === "office" && (await fetch(url).catch(() => undefined))?.status === 503) r.noRender = true;
-          else if (kind === "image") r.img = url; else r.src = url;
+          // a failed office render comes back as a short page inside the frame (the header has Download)
+          if (kind === "image") r.img = url; else r.src = url;
         } else if (kind === "image") {
           // our own raster type, never the server's; svg never comes here (see above)
           const b = await api.download(sid, path);
@@ -55,11 +54,11 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
 
   const e = got?.entry;
   const body = error ? <div className="error pad" role="alert">{error}</div>
-    : !got ? <p className="muted small pad">Loading…</p>
-    : e && (tooBig(kind, e.size) || kind === "info" || got.noRender) ? (
+    : !got ? <Skeleton kind={kind} />
+    : e && (tooBig(kind, e.size) || kind === "info") ? (
       <div className="preview-info pad">
         <p><strong>{name}</strong> · {fmt(e.size)}</p>
-        <p className="muted small">{kind === "info" || got.noRender ? "No preview for this file type." : "This file is too big to preview."}</p>
+        <p className="muted small">{kind === "info" ? "No preview for this file type." : "This file is too big to preview."}</p>
         <button onClick={() => downloadFile(sid, path).catch(fail)}><IconDownload size={16} /> Download</button>
       </div>
     )
@@ -67,8 +66,8 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
     : got.text !== undefined ? <div className="pad"><Md text={got.text} /></div>
     : got.img ? <div className="image-view"><img src={got.img} alt={name} /></div>
     : got.src ? <>
-      {shown !== got.src && <p className="muted small pad">Loading…</p>}
-      <iframe className="frame" title={name} src={got.src} onLoad={() => setShown(got.src)} hidden={shown !== got.src}
+      {shown !== got.src && <Skeleton kind={kind} />}
+      <iframe className="frame fade-in" title={name} src={got.src} onLoad={() => setShown(got.src)} hidden={shown !== got.src}
         sandbox={kind === "html" || kind === "office" ? "allow-scripts" : undefined} />
     </>
     : got.data && kind === "sheet" ? <Sheet data={got.data} tsv={ext(path) === "tsv"} /> : null;
@@ -96,7 +95,20 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
       {children && (
         <div className="files-pop" id="preview-files" onKeyDown={(e) => { if (e.key === "Escape") onToggleFiles?.(); }}>{children}</div>
       )}
-      <div className="preview-body"><Suspense fallback={<p className="muted small pad">Loading…</p>}>{body}</Suspense></div>
+      <div className="preview-body"><Suspense fallback={<Skeleton kind={kind} />}>{body}</Suspense></div>
     </aside>
+  );
+}
+
+/** A page-shaped placeholder while a preview loads; after 1.5 s it says the first render can take a moment. */
+function Skeleton({ kind }: { kind: string }) {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setSlow(true), 1500); return () => clearTimeout(t); }, []);
+  const shape = kind === "office" || kind === "pdf" || kind === "html" ? "page" : kind === "sheet" ? "grid" : "lines";
+  return (
+    <div className={`skeleton ${shape}`} role="status" aria-label="Loading preview">
+      <div className="sheet">{Array.from({ length: 7 }, (_, i) => <i key={i} />)}</div>
+      {slow && <p className="muted small">Đang chuẩn bị bản xem…</p>}
+    </div>
   );
 }
