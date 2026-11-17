@@ -5,7 +5,9 @@
  * that risk; we only hide the obvious globals and check the result's shape before using it.
  */
 export type Part = [number, string] | null;
-export type Wear = (p: number[]) => Part;
+export type Box = { lo: number[]; hi: number[] };
+/** An outfit; `boxes` (head space) hold all of it, one per slot, so the renderer marches only where a ray is inside one. */
+export type Wear = ((p: number[]) => Part) & { boxes?: Box[] };
 type V = number[];
 
 const len = (x: number, y: number, z: number) => Math.hypot(x, y, z);
@@ -109,15 +111,59 @@ export function compileSkin(code: string, slot?: Slot): Wear {
   if (slot && misplaced / inside > 0.08) throw new Error(slot === "hat"
     ? `${Math.round((misplaced / inside) * 100)}% of the hat is below y = 0.4, over the face; a hat stays above y = 0.55 (use H.above). ${seen}`
     : `${Math.round((misplaced / inside) * 100)}% of the bottom is above y = -0.15, over the face; it stays below y = -0.3 (use H.below). ${seen}`);
+  // sampled extent, padded by a few sample spacings so thin edges between samples stay inside
+  wear.boxes = [{ lo: lo.map((v) => v - 0.2), hi: hi.map((v) => v + 0.2) }];
   if (report.volume < 0.02) throw new Error(`it is too small to see at 48 pixels (volume ${report.volume}); make the parts chunkier. ${seen}`);
   return wear;
 }
 
-/** The outfit: all slots worn together. */
+/** The outfit: all slots worn together, baked into a grid so each frame only looks values up. */
 export const combine = (ws: (Wear | null)[]): Wear | null => {
   const list = ws.filter((w): w is Wear => !!w);
-  return list.length ? (p) => H.union(...list.map((w) => w(p))) : null;
+  if (!list.length) return null;
+  const w: Wear = (p) => H.union(...list.map((x) => x(p)));
+  if (!list.every((x) => x.boxes)) return w;
+  w.boxes = list.flatMap((x) => x.boxes!);
+  return bake(w);
 };
+
+const CELL = 0.05;  // grid spacing in head units; a screen pixel is ~0.036 at the outfit view
+
+/**
+ * Sample an outfit once on a grid over its boxes; the result answers with trilinear distance and the nearest
+ * sample's color. The model's code can be slow (it is called ~30k times a frame otherwise): this makes the cost
+ * one-off (~100k calls when the outfit changes) and each frame cheap.
+ */
+export function bake(w: Wear): Wear {
+  const boxes = w.boxes!;
+  const lo = [0, 1, 2].map((k) => Math.max(-2, Math.min(...boxes.map((b) => b.lo[k]))));
+  const hi = [0, 1, 2].map((k) => Math.min(2.1, Math.max(...boxes.map((b) => b.hi[k]))));
+  const n = lo.map((v, k) => Math.max(2, Math.ceil((hi[k] - v) / CELL) + 1));
+  const [nx, ny, nz] = n, dist = new Float32Array(nx * ny * nz), col = new Uint8Array(nx * ny * nz), colors: string[] = [];
+  const colorIdx = new Map<string, number>();
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) for (let k = 0; k < nz; k++) {
+    const out = w([lo[0] + i * CELL, lo[1] + j * CELL, lo[2] + k * CELL]), at = (i * ny + j) * nz + k;
+    dist[at] = out ? out[0] : 1;
+    if (out) {
+      let c = colorIdx.get(out[1]);
+      if (c === undefined) { c = colors.length; colors.push(out[1]); colorIdx.set(out[1], c); }
+      col[at] = Math.min(c, 255);
+    }
+  }
+  const baked: Wear = (p) => {
+    const fx = (p[0] - lo[0]) / CELL, fy = (p[1] - lo[1]) / CELL, fz = (p[2] - lo[2]) / CELL;
+    if (fx < 0 || fy < 0 || fz < 0 || fx > nx - 1 || fy > ny - 1 || fz > nz - 1) return null;
+    const i = Math.min(nx - 2, fx | 0), j = Math.min(ny - 2, fy | 0), k = Math.min(nz - 2, fz | 0);
+    const x = fx - i, y = fy - j, z = fz - k, a = (i * ny + j) * nz + k, sy = nz, sx = ny * nz;
+    const c00 = dist[a] * (1 - z) + dist[a + 1] * z, c01 = dist[a + sy] * (1 - z) + dist[a + sy + 1] * z;
+    const c10 = dist[a + sx] * (1 - z) + dist[a + sx + 1] * z, c11 = dist[a + sx + sy] * (1 - z) + dist[a + sx + sy + 1] * z;
+    const d = (c00 * (1 - y) + c01 * y) * (1 - x) + (c10 * (1 - y) + c11 * y) * x;
+    const near = a + (x > 0.5 ? sx : 0) + (y > 0.5 ? sy : 0) + (z > 0.5 ? 1 : 0);
+    return [d, colors[col[near]] ?? colors[0] ?? "#888888"];
+  };
+  baked.boxes = boxes;
+  return baked;
+}
 
 // the saved persona's outfit, shown by every Mascot3D unless one is passed explicitly
 let current: Wear | null = null;

@@ -80,22 +80,59 @@ export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: 
     return [ru * cy - z1 * sy, y1, ru * sy + z1 * cy];
   };
   const dist = (u: number, v: number, z: number) => skin!(toHead(u, v, z))?.[0] ?? 1;
+  // the outfit's boxes (head space): a ray is marched only over the stretches where it is inside one
+  const boxes = skin?.boxes ?? [{ lo: [-2, -2, -2], hi: [2, 2, 2] }];
+  const B = toHead(0, 0, 1);  // the view ray's direction in head space (same for every pixel)
+  // per frame: the outfit only changes with the pose, so a blink-only frame reuses the last outfit pass
+  const key = skin ? `${N}|${yaw}|${pitch}|${rl}` : "";
+  const cached = skin && outfitCache.wear === skin && outfitCache.key === key ? outfitCache : null;
+  const hits = cached ? cached.hits : skin ? new Float32Array(N * N * 4).fill(-1) : null;  // z, r, g, b per pixel
   const mask = skin ? new Uint8Array(N * N) : null;  // 1 = head, 2 = outfit (for the outfit's outline)
   for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
     const u = (px + 0.5 - c) / R, v = -(py + 0.5 - c) / R, d2 = u * u + v * v;
     const zHead = d2 <= 1 ? Math.sqrt(1 - d2) : -Infinity;
-    if (skin) {
-      let z = SKIN_VIEW + 0.2, hit = false;
-      for (let i = 0; i < 56 && z > -SKIN_VIEW - 0.2 && z > zHead; i++) {
-        const d = dist(u, v, z);
-        if (d < 0.012) { hit = true; break; }
-        z -= Math.max(d * 0.85, 0.012);
+    if (skin && hits) {
+      const o = (py * N + px) * 4;
+      if (!cached) {
+        // ray p(z) = A + z*B in head space; march each box's stretch, nearest first, until a hit
+        const A = toHead(u, v, 0), spans: [number, number][] = [];
+        for (const bx of boxes) {
+          let zIn = SKIN_VIEW + 0.3, zOut = zHead;
+          for (let k = 0; k < 3 && zIn > zOut; k++) {
+            if (Math.abs(B[k]) < 1e-9) { if (A[k] < bx.lo[k] || A[k] > bx.hi[k]) zIn = -Infinity; continue; }
+            const t1 = (bx.lo[k] - A[k]) / B[k], t2 = (bx.hi[k] - A[k]) / B[k];
+            zIn = Math.min(zIn, Math.max(t1, t2)); zOut = Math.max(zOut, Math.min(t1, t2));
+          }
+          if (zIn > zOut) spans.push([zIn, zOut]);
+        }
+        spans.sort((x, y) => y[0] - x[0]);
+        let z = -Infinity, part = null as ReturnType<Wear>;
+        for (const [zIn, zOut] of spans) {
+          if (zIn <= z) continue;
+          z = zIn;
+          for (let i = 0; i < 32 && z > zOut; i++) {
+            part = skin(toHead(u, v, z));
+            const d = part?.[0] ?? 1;
+            if (d < 0.02) break;
+            part = null;
+            z -= Math.max(d, 0.02);  // baked distances are smooth: full steps are safe
+          }
+          if (part) break;
+        }
+        {
+          if (part && z > zHead) {
+            // normal from 4 samples (tetrahedron), lit like the head
+            const e = 0.025, k1 = dist(u + e, v - e, z - e), k2 = dist(u - e, v - e, z + e), k3 = dist(u - e, v + e, z - e), k4 = dist(u + e, v + e, z + e);
+            const nx = k1 - k2 - k3 + k4, ny = -k1 - k2 + k3 + k4, nz = -k1 + k2 - k3 + k4;
+            const nl = Math.hypot(nx, ny, nz) || 1, lit = Math.max(0, (nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]) / nl);
+            const col = tone(hex(part[1]), lit);
+            hits[o] = z; hits[o + 1] = col[0]; hits[o + 2] = col[1]; hits[o + 3] = col[2];
+          }
+        }
       }
-      if (hit && z > zHead) {
-        const e = 0.02, nx = dist(u + e, v, z) - dist(u - e, v, z), ny = dist(u, v + e, z) - dist(u, v - e, z), nz = dist(u, v, z + e) - dist(u, v, z - e);
-        const nl = Math.hypot(nx, ny, nz) || 1, lit = Math.max(0, (nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]) / nl);
-        const col = tone(hex(skin(toHead(u, v, z))?.[1] ?? "#888888"), lit), i = (py * N + px) * 4;
-        img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
+      if (hits[o] !== -1 && hits[o] > zHead) {
+        const i = (py * N + px) * 4;
+        img.data[i] = hits[o + 1]; img.data[i + 1] = hits[o + 2]; img.data[i + 2] = hits[o + 3]; img.data[i + 3] = 255;
         mask![py * N + px] = 2;
         continue;
       }
@@ -139,8 +176,10 @@ export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: 
     });
     if (edge) { const i = (py * N + px) * 4; img.data[i] = pal.out[0]; img.data[i + 1] = pal.out[1]; img.data[i + 2] = pal.out[2]; }
   }
+  if (skin && hits && !cached) { outfitCache.wear = skin; outfitCache.key = key; outfitCache.hits = hits; }
   ctx.putImageData(img, 0, 0);
 }
+const outfitCache: { wear: Wear | null; key: string; hits: Float32Array } = { wear: null, key: "", hits: new Float32Array(0) };
 
 export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idle", className, skin, onSkinError }: {
   size?: number; pixels?: number; working?: boolean; mood?: Mood; className?: string;
