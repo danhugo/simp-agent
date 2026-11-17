@@ -35,7 +35,7 @@
 .chat-body { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
 .messages { flex: 1; min-height: 0; overflow-y: auto; }
 .thread {
-  max-width: 768px; margin: 0 auto; padding: var(--sp-6) var(--sp-5) var(--sp-8);
+  max-width: 768px; margin: 0 auto; padding: var(--sp-6) var(--sp-5) calc(var(--sp-8) + 40px);  /* room for the idle Simp walking over it */
   display: flex; flex-direction: column; gap: var(--sp-5);
 }
 .msg.user {
@@ -227,7 +227,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 @media (max-width: 767px) {
   .chat > header { padding: var(--sp-1) var(--sp-2); gap: var(--sp-1); }
   .chat > header .spend { display: none; }
-  .thread { padding: var(--sp-4) var(--sp-3) var(--sp-6); gap: var(--sp-4); }
+  .thread { padding: var(--sp-4) var(--sp-3) calc(var(--sp-6) + 40px); gap: var(--sp-4); }
   .composer { padding: 0 var(--sp-3) var(--sp-3); }
   .msg.user { max-width: 90%; }
   .files { position: fixed; inset: 0 0 0 auto; z-index: 20; width: min(320px, 90vw); box-shadow: var(--shadow-md); }
@@ -319,7 +319,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .msg-actions .stopped { align-self: center; margin-right: var(--sp-1); font-size: var(--fs-xs); color: var(--muted); }
 
 /* ---- file preview panel ---- */
-.files.preview { width: auto; flex: 0 1 640px; min-width: 280px; }
+.files.preview { width: auto; flex: 0 1 640px; min-width: 280px; position: relative; }
 @media (min-width: 768px) { .chat { min-width: 360px; } }
 .preview .preview-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .preview .seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
@@ -350,4 +350,8 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .sheet-view table { border-collapse: collapse; font-size: var(--fs-xs); }
 .sheet-view :is(th, td) { border: 1px solid var(--border); padding: 4px var(--sp-2); text-align: left; white-space: nowrap; }
 .sheet-view th { background: var(--hover); position: sticky; top: 0; }
-@media (max-width: 767px) { .files.preview { inset: 0; width: 100vw; z-index: 22; box-shadow: none; } }
+@media (max-width: 767px) { .files.preview { position: fixed; inset: 0; width: 100vw; z-index: 22; box-shadow: none; } }
+
+/* Files as a list inside the preview panel (one side panel, not two columns) */
+.files-pop { position: absolute; top: 52px;  /* under the 52px panel header */ left: var(--sp-2); bottom: var(--sp-2); z-index: 6; width: min(300px, calc(100% - 2 * var(--sp-2))); }
+.files-pop > .files { position: static; width: 100%; height: 100%; border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-md); }

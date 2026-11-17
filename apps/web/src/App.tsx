@@ -68,7 +68,6 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
     m.addEventListener("change", on);
     return () => m.removeEventListener("change", on);
   }, []);
-  const rail = collapsed && desktop;  // the collapsed rail only exists on desktop; mobile always uses the drawer
   const [profiles, setProfiles] = useState<string[]>([]);
   const [models, setModels] = useState<Record<string, string>>({});
   const [profile, setProfile] = useState("");
@@ -79,6 +78,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   const [filesFocus, setFilesFocus] = useState<string>();
   const [preview, setPreview] = useState<string>();
   useEffect(() => setPreview(undefined), [sid]);
+  useEffect(() => { if (!preview) setPinOpen(false); }, [preview]);
   // how many times the chat shows the agent wrote the previewed file: each new write reloads the preview
   const writes = preview ? state.items.flatMap((i) => (i.kind === "assistant" ? i.msg.tool_calls : []))
     .filter((c) => writtenFile(c, state.results[c.id]) === preview).length : 0;
@@ -102,7 +102,12 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
     setNotify(on);
     try { localStorage.setItem("simp.notify", on ? "1" : "0"); } catch { /* storage blocked: keep it for this tab */ }
   };
+  // a preview needs the room: the sidebar folds while it is open, unless the user opens it again (not saved)
+  const [pinOpen, setPinOpen] = useState(false);
+  const folded = preview ? !pinOpen : collapsed;
+  const rail = folded && desktop;  // the collapsed rail only exists on desktop; mobile always uses the drawer
   const toggleCollapsed = () => {
+    if (preview) return setPinOpen(!pinOpen);  // during a preview: open/fold for this preview only, nothing saved
     const c = !collapsed;
     setCollapsed(c);
     try { localStorage.setItem("simp.sidebar", c ? "0" : "1"); } catch { /* storage blocked: keep it for this tab */ }
@@ -202,7 +207,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   );
 
   return (
-    <div className={`app ${drawer ? "drawer" : ""} ${collapsed ? "collapsed" : ""}`}>
+    <div className={`app ${drawer ? "drawer" : ""} ${folded ? "collapsed" : ""}`}>
       {(drawer || (sid && showFiles)) && (
         <div className="backdrop" aria-hidden="true" onClick={() => (drawer ? setDrawer(false) : setShowFiles(false))} />
       )}
@@ -255,8 +260,13 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
             onOpenFile={(p) => { setFilesFocus(p); setShowFiles(true); }} onPreviewFile={setPreview}
             notify={notify} onToggleNotify={toggleNotify} menuButton={menu}
             firstPrompt={first?.sid === sid ? first.text : undefined} />
-          {preview && <Preview sid={sid} path={preview} writes={writes} onError={guard} onClose={() => setPreview(undefined)} />}
-          {showFiles && <Files sid={sid} onError={guard} focus={filesFocus} onPreview={setPreview} onClose={() => setShowFiles(false)} />}
+          {preview ? (
+            // one side panel: with a preview open, Files is a list inside it (opened from its header)
+            <Preview sid={sid} path={preview} writes={writes} onError={guard} onClose={() => setPreview(undefined)}
+              filesOpen={showFiles} onToggleFiles={() => setShowFiles(!showFiles)}>
+              {showFiles && <Files sid={sid} onError={guard} focus={preview} onPreview={(p) => { setPreview(p); setShowFiles(false); }} onClose={() => setShowFiles(false)} />}
+            </Preview>
+          ) : showFiles && <Files sid={sid} onError={guard} focus={filesFocus} onPreview={(p) => { setPreview(p); setShowFiles(false); }} onClose={() => setShowFiles(false)} />}
         </>
       ) : page === "memory" ? <Memory onError={guard} menuButton={menu} />
         : page === "apps" ? <Apps onError={guard} menuButton={menu} /> : (

@@ -34,7 +34,11 @@ async function setup(p: Page) {
   await p.getByRole("menu", { name: "Session actions" }).getByRole("menuitemcheckbox", { name: "Files" }).click();
 }
 const open = async (p: Page, name: string) => {
-  await p.locator(".files").getByRole("button", { name, exact: true }).click();
+  const list = p.getByRole("complementary", { name: "Files", exact: true });
+  if (!(await list.isVisible())) {  // a preview is open: Files is a list inside it, opened from its header
+    await p.locator(".preview header").getByRole("button", { name: "Files" }).click();
+  }
+  await list.getByRole("button", { name, exact: true }).click();
   return p.getByRole("complementary", { name: `Preview ${name}` });
 };
 
@@ -42,6 +46,8 @@ test("preview: py, md, png, csv, html", async ({ page }) => {
   await setup(page);
 
   let pv = await open(page, "app.py");
+  await expect(page.locator(".app")).toHaveClass(/collapsed/);  // the sidebar folds to give the preview room
+  await expect(page.getByRole("complementary", { name: "Files", exact: true })).toHaveCount(0);  // one side panel
   await expect(pv.locator(".code-view .gutter")).toHaveText("1\n2\n3\n4");
   await expect(pv.locator(".hljs-keyword").first()).toHaveText("def");
   await page.screenshot({ path: "test-results/preview-py.png" });
@@ -66,7 +72,9 @@ test("preview: py, md, png, csv, html", async ({ page }) => {
   await expect(pv.locator("tr").nth(2)).toHaveText("Bo42");
   await page.screenshot({ path: "test-results/preview-csv.png" });
 
-  await page.locator(".files").getByRole("button", { name: "site" }).click();
+  await page.locator(".preview header").getByRole("button", { name: "Files" }).click();
+  await page.screenshot({ path: "test-results/preview-files.png" });
+  await page.getByRole("complementary", { name: "Files", exact: true }).getByRole("button", { name: "site" }).click();
   pv = await open(page, "index.html");
   const frame = pv.locator("iframe");
   await expect(frame).toHaveAttribute("sandbox", "allow-scripts");
@@ -77,4 +85,5 @@ test("preview: py, md, png, csv, html", async ({ page }) => {
 
   await pv.getByRole("button", { name: "Close preview" }).click();
   await expect(pv).toHaveCount(0);
+  await expect(page.locator(".app")).not.toHaveClass(/collapsed/);  // back as it was
 });

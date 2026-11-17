@@ -1,8 +1,8 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, AuthError, type FileEntry } from "./api";
 import { downloadFile, errorText, Md } from "./Chat";
 import { fmt } from "./Files";
-import { IconClose, IconDownload, IconRefresh } from "./icons";
+import { IconClose, IconDownload, IconFolder, IconRefresh } from "./icons";
 import { ext, hasRaw, kindOf, LANGS, tooBig } from "./fileKind";
 
 // each viewer is its own chunk, loaded only when a file needs it
@@ -13,8 +13,9 @@ const Docx = lazy(() => import("./viewers/Docx"));
 type Loaded = { entry?: FileEntry; text?: string; data?: ArrayBuffer; img?: string; src?: string };
 
 /** One file, read-only. `writes` goes up each time the chat shows the agent wrote this file: then it reloads. */
-export function Preview({ sid, path, writes, onClose, onError }: {
+export function Preview({ sid, path, writes, onClose, onError, filesOpen, onToggleFiles, children }: {
   sid: string; path: string; writes: number; onClose: () => void; onError: (e: unknown) => void;
+  filesOpen?: boolean; onToggleFiles?: () => void; children?: ReactNode;  // children: the Files list, shown over the body
 }) {
   const name = path.split("/").pop() || path, kind = kindOf(path);
   const [raw, setRaw] = useState(false);
@@ -70,6 +71,9 @@ export function Preview({ sid, path, writes, onClose, onError }: {
   return (
     <aside className="files preview" aria-label={`Preview ${name}`}>
       <header>
+        {onToggleFiles && (
+          <button className="icon-btn" onClick={onToggleFiles} aria-expanded={!!filesOpen} aria-controls="preview-files" title="Files" aria-label="Files"><IconFolder size={16} /></button>
+        )}
         <strong className="preview-name" title={path}>{name}</strong>
         <span className="spacer" />
         {hasRaw(kind) && (
@@ -82,6 +86,9 @@ export function Preview({ sid, path, writes, onClose, onError }: {
         <button className="icon-btn" onClick={() => downloadFile(sid, path).catch(fail)} title="Download" aria-label="Download"><IconDownload size={16} /></button>
         <button className="icon-btn" onClick={onClose} title="Close preview" aria-label="Close preview"><IconClose size={16} /></button>
       </header>
+      {children && (
+        <div className="files-pop" id="preview-files" onKeyDown={(e) => { if (e.key === "Escape") onToggleFiles?.(); }}>{children}</div>
+      )}
       <div className="preview-body"><Suspense fallback={<p className="muted small pad">Loading…</p>}>{body}</Suspense></div>
     </aside>
   );
