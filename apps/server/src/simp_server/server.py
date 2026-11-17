@@ -137,6 +137,13 @@ class PersonaIn(BaseModel):
     profile: str = ""
 
 
+class OutfitIn(BaseModel):
+    name: str = Field("", max_length=40)
+    description: str = Field("", max_length=1000)
+    hat: str = Field("", max_length=8000)
+    bottom: str = Field("", max_length=8000)
+
+
 class PersonaGen(BaseModel):
     description: str = Field(min_length=1, max_length=1000)
     profile: str
@@ -748,6 +755,24 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     @app.put("/api/persona")
     async def put_persona(body: PersonaIn, u=Depends(user)):
         await store.set_persona(u["id"], body.model_dump() if (body.hat or body.bottom or body.instruction) else dict())
+        return {"ok": True}
+
+    @app.get("/api/outfits")
+    async def list_outfits(u=Depends(user)):
+        return await store.outfits(u["id"])
+
+    @app.post("/api/outfits")
+    async def add_outfit(body: OutfitIn, u=Depends(user)):
+        if not (body.hat or body.bottom):
+            raise HTTPException(400, "an outfit needs a hat or a bottom")
+        if len(await store.outfits(u["id"])) >= 100:
+            raise HTTPException(400, "the collection is full (100 outfits); delete some first")
+        return {"id": await store.add_outfit(u["id"], body.name, body.description, body.hat, body.bottom)}
+
+    @app.delete("/api/outfits/{oid}")
+    async def delete_outfit(oid: str, u=Depends(user)):
+        if not await store.delete_outfit(u["id"], oid):
+            raise HTTPException(404, "no such outfit")
         return {"ok": True}
 
     @app.post("/api/persona/generate")

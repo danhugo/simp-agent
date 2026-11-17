@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, AuthError, type Persona as P } from "./api";
+import { api, AuthError, type Outfit, type Persona as P } from "./api";
 import { ModelPicker } from "./App";
 import { errorText } from "./Chat";
-import { IconCheck } from "./icons";
+import { IconCheck, IconTrash } from "./icons";
 import { Mascot3D, readPal, render } from "./Mascot3D";
 import { combine, compileSkin, item, setSkin, type Slot, type Wear } from "./skin";
 
@@ -27,6 +27,23 @@ function useSettled<T>(value: T, ms = 500): T {
   const [v, setV] = useState(value);
   useEffect(() => { const t = setTimeout(() => setV(value), ms); return () => clearTimeout(t); }, [value, ms]);
   return v;
+}
+
+/** A collection card's picture: Simp wearing that outfit, drawn once (no animation, baked lazily when visible). */
+function OutfitThumb({ o }: { o: Outfit }) {
+  const cv = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const c = cv.current, ctx = c?.getContext("2d");
+    if (!c || !ctx) return;
+    const draw = () => {
+      const w = combine([tryCompile(o.hat, "hat").wear, tryCompile(o.bottom, "bottom").wear]);
+      render(ctx, 96, readPal(), 0.35, 0.15, 0, 0, 0, {}, w);
+    };
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); setTimeout(draw, 0); } });
+    io.observe(c);
+    return () => io.disconnect();
+  }, [o]);
+  return <canvas ref={cv} width={96} height={96} aria-hidden="true" />;
 }
 
 /** One outfit object on its own (no head), slowly turning, in the same pixel style. */
@@ -87,6 +104,25 @@ export function Persona({ onError, menuButton, profiles, models }: {
     const t = setTimeout(() => { { const w = combine([hat.wear, bottom.wear]); setWear(() => w); }; setAssembling(false); }, 30);  // let "Assembling…" paint
     return () => clearTimeout(t);
   }, [hat.wear, bottom.wear]);
+
+  // the collection: saved outfits to pick from
+  const [outfits, setOutfits] = useState<Outfit[] | null>(null);
+  const [confirmDel, setConfirmDel] = useState("");
+  useEffect(() => { api.outfits().then(setOutfits, fail); }, [fail]);
+  const inCollection = outfits?.some((o) => o.hat === (draft.hat ?? "") && o.bottom === (draft.bottom ?? ""));
+  const keep = async () => {
+    try {
+      const o = { name: draft.name || draft.description?.slice(0, 40) || "Outfit", description: draft.description ?? "", hat: draft.hat ?? "", bottom: draft.bottom ?? "" };
+      const { id } = await api.addOutfit(o);
+      setOutfits((xs) => [{ ...o, id, created: Date.now() / 1000 }, ...(xs ?? [])]);
+    } catch (e) { fail(e); }
+  };
+  const wearOutfit = (o: Outfit) => { setDraft((d) => ({ ...d, description: o.description, hat: o.hat, bottom: o.bottom })); setSteps({}); };
+  const removeOutfit = async (id: string) => {
+    if (confirmDel !== id) return setConfirmDel(id);
+    setConfirmDel("");
+    try { await api.deleteOutfit(id); setOutfits((xs) => (xs ?? []).filter((o) => o.id !== id)); } catch (e) { fail(e); }
+  };
 
   const setStep = (slot: Slot, s: Step) => setSteps((x) => ({ ...x, [slot]: s }));
 
@@ -220,10 +256,35 @@ export function Persona({ onError, menuButton, profiles, models }: {
 
             <div className="row persona-actions">
               <button className="primary" disabled={!dirty || busy || assembling || !!hat.err || !!bottom.err} onClick={save}>Save persona</button>
+              {(draft.hat || draft.bottom) && <button className="ghost" disabled={busy || !!inCollection || !!hat.err || !!bottom.err} onClick={keep}>
+                {inCollection ? "In collection" : "Add to collection"}</button>}
               {saved && (saved.hat || saved.bottom || saved.instruction) && <button className="ghost" onClick={reset}>Back to plain Simp</button>}
             </div>
           </section>
         </div>
+
+        <section aria-label="Collection" className="persona-collection">
+          <h2>Collection</h2>
+          {outfits === null ? <p className="muted small">Loading…</p>
+            : outfits.length === 0 ? <p className="muted small">Outfits you add to the collection show up here, to wear again any time.</p>
+            : <ul className="outfit-grid">
+                {outfits.map((o) => {
+                  const worn = o.hat === (draft.hat ?? "") && o.bottom === (draft.bottom ?? "");
+                  return (
+                    <li key={o.id} className={`outfit-card ${worn ? "worn" : ""}`}>
+                      <button className="ghost outfit-pick" disabled={busy} onClick={() => wearOutfit(o)} title={o.description} aria-pressed={worn}>
+                        <OutfitThumb o={o} />
+                        <span className="outfit-name">{o.name}</span>
+                      </button>
+                      <button className={`ghost del ${confirmDel === o.id ? "confirm" : "icon"}`} aria-label={`Delete outfit ${o.name}`}
+                        onClick={() => removeOutfit(o.id)} onBlur={() => setConfirmDel("")}>
+                        {confirmDel === o.id ? "Delete?" : <IconTrash size={14} />}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>}
+        </section>
       </div>
     </main>
   );

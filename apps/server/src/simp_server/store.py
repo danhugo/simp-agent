@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS entries(session_id TEXT, user_id TEXT, seq INTEGER, t
 CREATE TABLE IF NOT EXISTS usage(user_id TEXT, session_id TEXT, model TEXT, input INTEGER, output INTEGER, at REAL,
     cost REAL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS agents(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT, persona TEXT, created REAL);
+CREATE TABLE IF NOT EXISTS outfits(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT, description TEXT,
+    hat TEXT, bottom TEXT, created REAL);
 CREATE TABLE IF NOT EXISTS memories(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, agent_id TEXT, scope TEXT, content TEXT,
     created REAL, source_run_id TEXT);
 {CONNECTIONS};
@@ -188,6 +190,21 @@ class SqliteStore:
     async def set_persona(self, user_id: str, persona: dict) -> None:
         await self._do("UPDATE agents SET persona=? WHERE id=?", json.dumps(persona) if persona else "",
                        await self.default_agent(user_id))
+
+    # outfits: the user's saved collection of generated outfits (the worn one lives in the persona)
+    async def outfits(self, user_id: str) -> list[dict]:
+        return await self._all("SELECT id, name, description, hat, bottom, created FROM outfits WHERE user_id=? "
+                               "ORDER BY created DESC", user_id)
+
+    async def add_outfit(self, user_id: str, name: str, description: str, hat: str, bottom: str) -> str:
+        oid = uuid.uuid4().hex[:12]
+        await self._do("INSERT INTO outfits VALUES(?,?,?,?,?,?,?)", oid, user_id, name, description, hat, bottom, time.time())
+        return oid
+
+    async def delete_outfit(self, user_id: str, oid: str) -> bool:
+        before = len(await self._all("SELECT 1 FROM outfits WHERE id=? AND user_id=?", oid, user_id))
+        await self._do("DELETE FROM outfits WHERE id=? AND user_id=?", oid, user_id)
+        return before > 0
 
     def persona_sync(self, user_id: str) -> dict:
         """For the prompt section, rebuilt every turn (sync), so an edited persona reaches open chats at once."""

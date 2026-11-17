@@ -31,3 +31,15 @@ async def test_generate_retries_save_and_prompt(tmp_path):
         assert (await c.get("/api/persona", headers=h)).json()["hat"] == "return null;"
     section = persona.prompt_section(mgr.store.persona_sync(user["id"]))
     assert "Name: Merlin" in section and "never changes your tools" in section
+
+
+async def test_outfit_collection(tmp_path):
+    app, mgr, user, token, run = await make(tmp_path, FakeProvider())
+    h = {"Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        assert (await c.post("/api/outfits", headers=h, json={"name": "x"})).status_code == 400  # empty
+        oid = (await c.post("/api/outfits", headers=h, json={"name": "Wizard", "hat": "return null;"})).json()["id"]
+        assert [o["name"] for o in (await c.get("/api/outfits", headers=h)).json()] == ["Wizard"]
+        assert (await c.delete(f"/api/outfits/{oid}", headers=h)).json() == {"ok": True}
+        assert (await c.delete(f"/api/outfits/{oid}", headers=h)).status_code == 404
+        assert (await c.get("/api/outfits", headers=h)).json() == []

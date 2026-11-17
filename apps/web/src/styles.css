@@ -406,3 +406,11 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .persona-item { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .persona-item canvas { width: 80px; height: 80px; image-rendering: pixelated; }
 .persona-assembled { margin: 0; min-height: 1.2em; }
+.persona-collection { margin-top: var(--sp-6); }
+.outfit-grid { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--sp-3); }
+.outfit-card { position: relative; border: 1px solid var(--border); border-radius: 12px; }
+.outfit-card.worn { border-color: var(--text); }
+.outfit-pick { display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); width: 100%; padding: var(--sp-2); border-radius: 12px; }
+.outfit-pick canvas { width: 96px; height: 96px; image-rendering: pixelated; }
+.outfit-name { font-size: var(--fs-sm, 13px); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outfit-card .del { position: absolute; top: 4px; right: 4px; }

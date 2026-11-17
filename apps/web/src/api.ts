@@ -24,6 +24,9 @@ export interface MemoryItem { id: string; scope: "global" | "agent"; agent_id: s
 /** REST-only (/api/persona): Simp's personality (the user's words) and outfit slot code (see skin.ts). {} = none. */
 export interface Persona { name?: string; description?: string; instruction?: string; hat?: string; bottom?: string; profile?: string }
 
+/** REST-only (/api/outfits): a saved outfit in the user's collection. */
+export interface Outfit { id: string; name: string; description: string; hat: string; bottom: string; created: number }
+
 export class AuthError extends Error {}
 
 export const getToken = () => localStorage.getItem("simp.token") ?? "";
@@ -79,6 +82,9 @@ export const api = {
   savePersona: (p: Persona) => call("/api/persona", { ...json(p), method: "PUT" }),
   generatePersona: async (b: { description: string; profile: string; slot: "hat" | "bottom"; other?: string; code?: string; error?: string }): Promise<{ code: string }> =>
     (await call("/api/persona/generate", json(b))).json(),
+  outfits: async (): Promise<Outfit[]> => (await call("/api/outfits")).json(),
+  addOutfit: async (o: Omit<Outfit, "id" | "created">): Promise<{ id: string }> => (await call("/api/outfits", json(o))).json(),
+  deleteOutfit: (id: string) => call(`/api/outfits/${id}`, { method: "DELETE" }),
   exportMemories: async (): Promise<Blob> => (await call("/api/memories/export")).blob(),
 };
 
