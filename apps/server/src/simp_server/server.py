@@ -64,6 +64,12 @@ PREVIEW_HINT = ("Every file the user asked for or should see (documents, reports
                 "/tmp is scratch only, the user cannot see or open it, so if you built something in /tmp, copy the final file "
                 "to /work. The user's app previews files in /work by itself (docx, pdf, xlsx, csv, md, html with its css/js, images, "
                 "code): don't make extra preview copies; name the file you made, e.g. `report.docx`, so the user can click it.")
+# OfficeCLI xlsx: frozen cells are position:sticky with a transparent background, so scrolled text shows through them.
+# ponytail: unfreeze while viewing (row/column headers stay sticky); a real freeze needs OfficeCLI to fix its widths
+FREEZE_OFF = b"<style>td[style*=sticky]{position:static!important}th.col-header{left:auto!important}</style>"
+RENDER_FAILED = ("<!doctype html><meta charset=utf-8><body style=\"font:14px system-ui;color:#555;display:grid;place-items:center;"
+                 "height:90vh;margin:0;text-align:center\"><div><p>Kh\u00f4ng xem tr\u01b0\u1edbc \u0111\u01b0\u1ee3c file n\u00e0y "
+                 "({why}).</p><p>D\u00f9ng n\u00fat T\u1ea3i v\u1ec1 \u1edf tr\u00ean.</p></div>")
 HOME = Path(os.environ.get("SIMP_SERVER_HOME", Path.home() / ".simp-server"))
 TITLE_PROMPT = "Name this conversation in 3 to 6 words, in the user's language. Reply with the title only."
 SANDBOX_KINDS = {"docker": "simp_server.sandboxes.docker:DockerSandbox", "e2b": "simp_server.sandboxes.e2b:E2BSandbox"}
@@ -936,6 +942,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
                     raise HTTPException(503, "preview render timed out") from None
         if proc.returncode or not out:
             raise HTTPException(503, "preview render failed")
+        if Path(path).suffix.lower() == ".xlsx":  # OfficeCLI's frozen panes overlap the scrolled cells: scroll as one table
+            out = out.replace(b"</head>", FREEZE_OFF + b"</head>", 1)
         cached.parent.mkdir(parents=True, exist_ok=True)
         cached.write_bytes(out)  # ponytail: no size cap / LRU, add when the cache dir grows too big
         return out
@@ -949,8 +957,9 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         if render == "html" and Path(path).suffix.lower() in (".docx", ".xlsx", ".pptx"):
             try:
                 out = await render_office(uid, path, data)
-            except HTTPException as e:
-                return Response(e.detail, 503, media_type="text/plain", headers=preview_headers)
+            except HTTPException as e:  # shown inside the preview frame; the panel header has Download
+                return Response(RENDER_FAILED.replace("{why}", html.escape(str(e.detail))), 503, media_type="text/html",
+                                headers=preview_headers)
             return Response(out, media_type="text/html", headers=preview_headers)
         return Response(data, media_type=mimetypes.guess_type(path)[0] or "application/octet-stream",
                         headers=preview_headers)

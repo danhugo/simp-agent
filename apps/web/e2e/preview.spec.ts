@@ -28,7 +28,7 @@ async function setup(p: Page) {
     const u = new URL(r.request().url()), path = u.pathname.replace("/__preview/tok/", "");
     // stub of OfficeCLI (server task): ?render=html -> HTML; old.pptx -> 503 (no renderer)
     if (u.searchParams.get("render") === "html") return r.fulfill(path === "old.pptx"
-      ? { status: 503, body: "no renderer", headers: { "access-control-allow-origin": "*" } }
+      ? { status: 503, contentType: "text/html", body: "<p>preview renderer not available</p>" }
       : { body: `<h1>Rendered ${path}</h1>`, contentType: "text/html", headers: { "access-control-allow-origin": "*" } });
     r.fulfill({ body: FILES[path], contentType: path.endsWith(".css") ? "text/css" : path.endsWith(".svg") ? "image/svg+xml" : "text/html" });
   });
@@ -81,9 +81,9 @@ test("preview: py, md, png, office, csv, html", async ({ page }) => {
     await expect(doc.contentFrame().getByText(`Rendered ${f}`)).toBeVisible();
     await page.screenshot({ path: `test-results/preview-${f.split(".")[1]}.png` });
   }
-  pv = await open(page, "old.pptx");  // 503: no renderer on the server
-  await expect(pv.getByText("No preview for this file type.")).toBeVisible();
-  await expect(pv.locator(".preview-info").getByRole("button", { name: "Download" })).toBeVisible();
+  pv = await open(page, "old.pptx");  // 503: the server's short page shows inside the frame; Download stays in the header
+  await expect(pv.locator("iframe").contentFrame().getByText("preview renderer not available")).toBeVisible();
+  await expect(pv.locator("header").getByRole("button", { name: "Download" })).toBeVisible();
   await page.screenshot({ path: "test-results/preview-503.png" });
 
   pv = await open(page, "data.csv");

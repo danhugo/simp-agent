@@ -769,6 +769,7 @@ async def test_office_render(env, tmp_path):
             srv.asyncio.wait_for = real_wait
             del os.environ["SLEEP"]
         assert r.status_code == 503 and r.headers["x-content-type-options"] == "nosniff"
+        assert r.headers["content-type"].startswith("text/html") and "timed out" in r.text  # a page inside the frame
 
         mgr.settings["web"]["officecli"] = str(tmp_path / "missing")  # missing binary -> 503
         assert (await prev.get(path + "t.xlsx?render=html")).status_code == 503
