@@ -46,13 +46,14 @@ NO_EXPIRY = 1e18  # expires_at for pasted tokens: never refreshed
 APPS = {  # the app name is also the MCP server name, so its tools are "<app>__<tool>"
     "gmail": {"label": "Gmail", "description": "Search, read, label and draft email.", "icon": "gmail",
               "provider": "google", "scopes": ["https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/gmail.send"],
-              "url": "https://gmailmcp.googleapis.com/mcp/v1"},
+              "url": "http://127.0.0.1:8101/mcp"},  # our workspace-mcp (simp_server.google_mcp), not Google's preview MCP
     "drive": {"label": "Google Drive", "description": "Find, read and create files in Drive.", "icon": "drive",
               "provider": "google", "scopes": ["https://www.googleapis.com/auth/drive"],
-              "url": "https://drivemcp.googleapis.com/mcp/v1"},
+              "url": "http://127.0.0.1:8102/mcp"},
     "calendar": {"label": "Google Calendar", "description": "See and manage calendar events.", "icon": "calendar",
-                 "provider": "google", "scopes": ["https://www.googleapis.com/auth/calendar.events"],
-                 "url": "https://calendarmcp.googleapis.com/mcp/v1"},
+                 "provider": "google", "scopes": ["https://www.googleapis.com/auth/calendar.events",
+                                                 "https://www.googleapis.com/auth/calendar.readonly"],  # listing calendars
+                 "url": "http://127.0.0.1:8103/mcp"},
     # no login (provider None): off until the user turns them on, so new users don't get many extra tools
     "github": {"label": "GitHub", "description": "Issues, pull requests, code and CI", "icon": "github",
                "provider": "github", "url": "https://api.githubcopilot.com/mcp/"},

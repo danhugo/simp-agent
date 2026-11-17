@@ -15,6 +15,10 @@ minio:
 minio-stop:
 	uv run python -m simp_server.devminio stop
 
+# Gmail / Drive / Calendar MCP servers (workspace-mcp on 127.0.0.1:8101-8103); run next to `make dev`
+google-mcp:
+	uv run python -m simp_server.google_mcp
+
 e2e:
 	cd apps/web && pnpm e2e
 
