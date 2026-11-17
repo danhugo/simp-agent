@@ -1,5 +1,6 @@
 import "./chat.css";
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ext, kindOf } from "./fileKind";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api, AuthError, type ConnStatus } from "./api";
@@ -168,7 +169,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
               : (
                 <div key={it.seq} className="msg assistant">
                   {turnOf.has(it.seq) && turnThinking(turnOf.get(it.seq)!, turnOf.get(it.seq) === turn)}
-                  {it.msg.text && <Md text={it.msg.text} />}
+                  {it.msg.text && <Md text={it.msg.text} onFile={onPreviewFile} />}
                   {it.msg.error && it.msg.error !== "aborted" && <div className="notice error">{it.msg.error}</div>}
                   {(groupCalls.get(it.seq)?.length ?? 0) > 0 &&
                     <ToolGroup calls={groupCalls.get(it.seq)!} state={state} send={send} sid={sid} onOpenFile={onOpenFile} onPreviewFile={onPreviewFile} onError={onError} />}
@@ -307,7 +308,25 @@ const mdComponents: Components = {
   a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
 };
-export const Md = ({ text }: { text: string }) => <div className="md"><Markdown remarkPlugins={[remarkGfm]} components={mdComponents}>{text}</Markdown></div>;
+const OTHER_FILES = new Set(["pptx", "ppt", "doc", "xls", "zip", "odt", "ods", "mp3", "mp4", "wav"]);
+/** `report.docx` or `/work/a/b.py` in an answer: a workspace file name (one line, has an extension) */
+export const fileRef = (t: string) => {
+  const p = t.trim().replace(/^\/work\//, "");
+  const known = kindOf(p) !== "info" || OTHER_FILES.has(ext(p));  // `os.path`, `np.array` are code, not files
+  return known && /^[^\s/][^\n<>|*?"]*\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(p) && !/^[a-z]+:\/\//i.test(p) && !p.split("/").includes("..") ? p : undefined;
+};
+export const Md = ({ text, onFile }: { text: string; onFile?: (path: string) => void }) => {
+  // with onFile, inline code that names a file becomes a button that opens the preview (a missing file says so there)
+  const components = useMemo<Components>(() => !onFile ? mdComponents : {
+    ...mdComponents,
+    code: ({ className, children }) => {
+      const t = String(children), p = !className && !t.includes("\n") ? fileRef(t) : undefined;
+      return p ? <button className="file-ref" onClick={() => onFile(p)} title={`Preview ${p}`}><code>{children}</code></button>
+        : <code className={className}>{children}</code>;
+    },
+  }, [onFile]);
+  return <div className="md"><Markdown remarkPlugins={[remarkGfm]} components={components}>{text}</Markdown></div>;
+};
 
 /** "Thinking…" while the model thinks, then "Thought for 4s" (or "Thoughts" when the time isn't known, e.g. after a reload). */
 function Thinking({ text, live = false, ms }: { text: string; live?: boolean; ms?: number }) {

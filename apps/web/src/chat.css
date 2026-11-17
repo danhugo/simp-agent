@@ -363,3 +363,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .preview .preview-size { flex: none; font-size: var(--fs-xs); color: var(--muted); }
 .docx-fit { flex: 1; min-height: 0; height: 100%; overflow: hidden; background: #f1f3f4; }
 .docx-fit > .frame { display: block; height: 100%; }
+/* a file name in an answer: opens the preview */
+.md .file-ref { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; color: inherit; }
+.md .file-ref code { text-decoration: underline dotted; text-underline-offset: 3px; }
+.md .file-ref:hover code { color: var(--accent); }
