@@ -48,3 +48,17 @@ async def test_outfit_collection(tmp_path):
         assert (await c.post("/api/outfits", headers=h, json={"kind": "bottom", "hat": "H"})).status_code == 400
         [cap] = (await c.get("/api/outfits", headers=h)).json()
         assert (cap["kind"], cap["hat"], cap["bottom"]) == ("hat", "H", "")
+
+
+async def test_collection_holds_ten_per_kind(tmp_path):
+    app, mgr, user, token, run = await make(tmp_path, FakeProvider())
+    h = {"Authorization": f"Bearer {token}"}
+    piece = {"kind": "hat", "name": "h", "description": "", "hat": "return null;", "bottom": ""}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
+        for _ in range(10):
+            assert (await c.post("/api/outfits", headers=h, json=piece)).status_code == 200
+        r = await c.post("/api/outfits", headers=h, json=piece)
+        assert r.status_code == 400 and "full" in r.text
+        # the limit is per kind: hats being full does not block a bottom
+        bottom = {**piece, "kind": "bottom", "hat": "", "bottom": "return null;"}
+        assert (await c.post("/api/outfits", headers=h, json=bottom)).status_code == 200

@@ -58,6 +58,7 @@ SHUTDOWN_GRACE = 2  # seconds
 HEARTBEAT = 15  # seconds between SSE ": ping" comments
 QUEUE_MAX = 1000  # events buffered per SSE client; a client that falls this far behind is dropped and reconnects
 MAX_QUEUED = 20  # steer + follow-up messages waiting per session
+MAX_OUTFITS = 10  # saved items per kind (outfit, hat, bottom) in a user's collection
 OAUTH_COOKIE = "simp_oauth"  # browser nonce that binds an OAuth start to the callback
 # the web app shows files in /work itself (Preview); without this the agent makes extra "preview" copies
 PREVIEW_HINT = ("Every file the user asked for or should see (documents, reports, images, data, code) must be saved in /work; "
@@ -768,8 +769,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             body.hat, body.bottom = (body.hat, "") if body.kind == "hat" else ("", body.bottom)
         if not (body.hat or body.bottom):
             raise HTTPException(400, f"a {body.kind} needs its code")
-        if len(await store.outfits(u["id"])) >= 100:
-            raise HTTPException(400, "the collection is full (100 outfits); delete some first")
+        if sum(o["kind"] == body.kind for o in await store.outfits(u["id"])) >= MAX_OUTFITS:
+            raise HTTPException(400, f"the collection is full ({MAX_OUTFITS} {body.kind}s); delete one first")
         return {"id": await store.add_outfit(u["id"], body.name, body.description, body.hat, body.bottom, body.kind)}
 
     @app.delete("/api/outfits/{oid}")
