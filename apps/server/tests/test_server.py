@@ -653,12 +653,14 @@ async def test_file_preview(env):
     api = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost")
     prev = httpx.AsyncClient(transport=httpx.ASGITransport(app=app.state.preview), base_url="http://localhost:8767")
     async with api, prev:
-        for name, body in (("a.html", b"<h1>hi</h1>"), ("i.svg", b"<svg/>"), ("s.css", b"a{}")):
+        names = ("a.html", "i.svg", "s.css", "x.xml", "y.xsl", "p.png", "d.pdf", "j.json")
+        for name, body in (("a.html", b"<h1>hi</h1>"), ("i.svg", b"<svg/>"), ("s.css", b"a{}")) + tuple((n, b"x") for n in names[3:]):
             assert (await api.put(f"/api/sessions/{run.sid}/files/raw?path={name}", content=body, headers=h)).status_code == 200
-        raw = {n: await api.get(f"/api/sessions/{run.sid}/files/raw?path={n}", headers=h) for n in ("a.html", "i.svg", "s.css")}
-        assert raw["a.html"].headers["content-type"].startswith("text/plain")
-        assert raw["i.svg"].headers["content-type"] == "application/octet-stream"
-        assert raw["s.css"].headers["content-type"].startswith("text/css")
+        raw = {n: await api.get(f"/api/sessions/{run.sid}/files/raw?path={n}", headers=h) for n in names}
+        ct = {n: r.headers["content-type"].split(";")[0] for n, r in raw.items()}
+        assert ct == {"a.html": "text/plain", "i.svg": "application/octet-stream", "s.css": "text/plain",
+                      "x.xml": "application/octet-stream", "y.xsl": "application/octet-stream",
+                      "p.png": "image/png", "d.pdf": "application/pdf", "j.json": "application/json"}
         assert all(r.headers["x-content-type-options"] == "nosniff" for r in raw.values())
 
         assert (await api.post(f"/api/sessions/{other_sid}/preview", headers=h)).status_code == 404  # B's session
@@ -682,3 +684,35 @@ async def test_file_preview(env):
             assert (await prev.get(path + "a.html")).status_code == 404
         finally:
             srv.time.time = real
+
+
+async def test_serve_both_busy_preview_port_keeps_main():
+    import socket
+    import uvicorn
+    from simp_server.server import serve_both
+
+    async def ok(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    busy = socket.socket()
+    busy.bind(("127.0.0.1", 0))
+    busy.listen()
+    free = socket.socket()
+    free.bind(("127.0.0.1", 0))
+    port = free.getsockname()[1]
+    free.close()
+    main = uvicorn.Server(uvicorn.Config(ok, host="127.0.0.1", port=port, lifespan="off", log_config=None))
+    preview = uvicorn.Server(uvicorn.Config(ok, host="127.0.0.1", port=busy.getsockname()[1], lifespan="off", log_config=None))
+    task = asyncio.create_task(serve_both(main, preview))
+    try:
+        for _ in range(100):
+            if main.started:
+                break
+            await asyncio.sleep(0.05)
+        async with httpx.AsyncClient() as c:
+            assert (await c.get(f"http://127.0.0.1:{port}/")).text == "ok"
+        main.should_exit = True
+        await asyncio.wait_for(task, 5)  # clean shutdown of both
+    finally:
+        busy.close()

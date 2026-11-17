@@ -7,6 +7,7 @@ GET /api/sessions/{id}/files?path=, GET|PUT /api/sessions/{id}/files/raw?path=  
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import functools
 import html
@@ -877,8 +878,11 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         await mgr.get(u, sid)
         data = await fs(files.read(u["id"], path))
         mt = mimetypes.guess_type(path)[0] or "application/octet-stream"
-        if mt in ("text/html", "application/xhtml+xml", "image/svg+xml"):  # never render active content on the API origin
-            mt = "text/plain" if mt == "text/html" else "application/octet-stream"
+        # allowlist: never render active content (html/svg/xml...) on the API origin
+        if mt.startswith("text/"):
+            mt = "text/plain"
+        elif not (mt.startswith("image/") and mt != "image/svg+xml" or mt in ("application/pdf", "application/json")):
+            mt = "application/octet-stream"
         return Response(data, media_type=mt, headers={"X-Content-Type-Options": "nosniff"})
 
     @app.post("/api/sessions/{sid}/preview")
@@ -965,6 +969,24 @@ async def restore_cli(a) -> None:
         print("restored", key)
 
 
+async def serve_both(main, preview) -> None:
+    """Main server owns signals; preview follows it down. A preview bind failure only logs."""
+    preview.capture_signals = contextlib.nullcontext
+
+    async def run_preview():
+        try:
+            await preview.serve()
+        except SystemExit:  # uvicorn exits on bind error
+            log.warning("preview server failed to start (port %s busy?); previews unavailable", preview.config.port)
+
+    task = asyncio.create_task(run_preview())
+    try:
+        await main.serve()
+    finally:
+        preview.should_exit = True
+        await task
+
+
 def main() -> None:
     import argparse
 
@@ -1029,11 +1051,8 @@ def main() -> None:
         ops.setup_logging()
         settings = load_settings()
         app = create_app(settings, stream if a.fake_llm else ai.stream)
-        servers = [uvicorn.Server(uvicorn.Config(x, host=settings["host"], port=port, log_config=None,
-                                                 timeout_graceful_shutdown=SHUTDOWN_GRACE))
-                   for x, port in ((app, a.port), (app.state.preview, settings.get("web", dict()).get("preview_port", 8767)))]
-        servers[1].config.lifespan = "off"
-
-        async def both():
-            await asyncio.gather(*(s.serve() for s in servers))
-        asyncio.run(both())
+        main, preview = (uvicorn.Server(uvicorn.Config(x, host=settings["host"], port=port, log_config=None,
+                                                       timeout_graceful_shutdown=SHUTDOWN_GRACE))
+                         for x, port in ((app, a.port), (app.state.preview, settings.get("web", dict()).get("preview_port", 8767))))
+        preview.config.lifespan = "off"
+        asyncio.run(serve_both(main, preview))
