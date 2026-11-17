@@ -60,8 +60,13 @@ export const H = {
 const HIDDEN = ["window", "document", "globalThis", "self", "fetch", "XMLHttpRequest", "WebSocket", "localStorage",
   "sessionStorage", "indexedDB", "navigator", "location", "importScripts", "Function"];
 
-/** Compile and check the model's code. Throws a message the model can act on. */
-export function compileSkin(code: string): Wear {
+export type Slot = "hat" | "bottom";
+
+/** What a slot's code actually draws, measured by sampling: what the model gets back to "see" its work. */
+export interface Report { bbox: [number[], number[]]; colors: string[]; touchesHead: boolean; volume: number }
+
+/** Compile and check one slot's code. Throws a message the model can act on (with the measured report). */
+export function compileSkin(code: string, slot?: Slot): Wear {
   let fn: (...a: unknown[]) => unknown;
   try {
     fn = new Function("p", "H", ...HIDDEN, `"use strict";\n${code}`) as typeof fn;
@@ -69,30 +74,50 @@ export function compileSkin(code: string): Wear {
     throw new Error(`syntax error: ${(e as Error).message}`);
   }
   const wear: Wear = (p) => fn(p, H) as Part;
-  // shape and speed check on random points in the allowed box
+  // shape and speed check on random points in the allowed box, measuring what is drawn
   let rnd = 12345;
   const r = () => ((rnd = (rnd * 16807) % 2147483647) / 2147483647);
   const t0 = performance.now();
-  let inside = 0;
-  for (let i = 0; i < 3000; i++) {
-    const p = [r() * 3.2 - 1.6, r() * 3.5 - 1.6, r() * 3.2 - 1.6];
+  const lo = [9, 9, 9], hi = [-9, -9, -9], colors = new Set<string>();
+  let inside = 0, touches = false, misplaced = 0;
+  const N = 4000;
+  for (let i = 0; i < N; i++) {
+    const p = [r() * 3.6 - 1.8, r() * 3.8 - 1.9, r() * 3.6 - 1.8];
     let out: unknown;
     try { out = wear(p); } catch (e) { throw new Error(`threw at p=${JSON.stringify(p.map((v) => +v.toFixed(2)))}: ${(e as Error).message}`); }
     if (out === null || out === undefined) continue;
     if (!Array.isArray(out) || typeof out[0] !== "number" || !Number.isFinite(out[0]) || typeof out[1] !== "string" || !/^#[0-9a-f]{6}$/i.test(out[1]))
       throw new Error(`must return null or [finiteNumber, "#rrggbb"], got ${JSON.stringify(out)?.slice(0, 120)}`);
-    if (out[0] < 0) inside++;
+    if (out[0] >= 0) continue;
+    inside++; colors.add(out[1].toLowerCase());
+    p.forEach((v, k) => { lo[k] = Math.min(lo[k], v); hi[k] = Math.max(hi[k], v); });
+    if (Math.hypot(p[0], p[1], p[2]) < 1.2) touches = true;
+    if ((slot === "hat" && p[1] < 0.4) || (slot === "bottom" && p[1] > -0.15)) misplaced++;
   }
   const ms = performance.now() - t0;
-  if (ms > 120) throw new Error(`too slow: 3000 calls took ${ms.toFixed(0)} ms (budget 120 ms); simplify the code`);
-  if (!inside) throw new Error("the outfit is empty: no sampled point was inside any part (distance < 0)");
+  if (ms > 160) throw new Error(`too slow: ${N} calls took ${ms.toFixed(0)} ms (budget 160 ms); simplify the code`);
+  if (!inside) throw new Error("it is empty: no sampled point was inside any part (distance < 0). Parts are probably too thin (< 0.05) or outside the allowed box");
+  const f = (v: number) => +v.toFixed(2);
+  const report: Report = { bbox: [lo.map(f), hi.map(f)], colors: [...colors].slice(0, 8), touchesHead: touches, volume: f((inside / N) * 3.6 * 3.8 * 3.6) };
+  const seen = `Measured: it fills x ${report.bbox[0][0]}..${report.bbox[1][0]}, y ${report.bbox[0][1]}..${report.bbox[1][1]}, z ${report.bbox[0][2]}..${report.bbox[1][2]}; colors ${report.colors.join(" ")}; volume ${report.volume}; ${touches ? "touches" : "does NOT touch"} the head.`;
   // the face must stay visible: nothing may cover the eyes (just in front of the sphere)
   for (const x of [-0.31, 0.31]) {
     const out = wear([x, 0.02, 1.0]);
-    if (out && out[0] < 0) throw new Error(`the outfit covers the eyes: point [${x}, 0.02, 1.0] is inside the ${out[1]} part; keep the face (y between -0.45 and 0.5 on the front, z > 0.6) clear`);
+    if (out && out[0] < 0) throw new Error(`it covers the eyes: point [${x}, 0.02, 1.0] is inside the ${out[1]} part; keep the face (front, y between -0.45 and 0.5) clear. ${seen}`);
   }
+  if (slot && !touches) throw new Error(`it floats: no part touches the head (sphere of radius 1). ${seen}`);
+  if (slot && misplaced / inside > 0.08) throw new Error(slot === "hat"
+    ? `${Math.round((misplaced / inside) * 100)}% of the hat is below y = 0.4, over the face; a hat stays above y = 0.55 (use H.above). ${seen}`
+    : `${Math.round((misplaced / inside) * 100)}% of the bottom is above y = -0.15, over the face; it stays below y = -0.3 (use H.below). ${seen}`);
+  if (report.volume < 0.02) throw new Error(`it is too small to see at 48 pixels (volume ${report.volume}); make the parts chunkier. ${seen}`);
   return wear;
 }
+
+/** The outfit: all slots worn together. */
+export const combine = (ws: (Wear | null)[]): Wear | null => {
+  const list = ws.filter((w): w is Wear => !!w);
+  return list.length ? (p) => H.union(...list.map((w) => w(p))) : null;
+};
 
 // the saved persona's outfit, shown by every Mascot3D unless one is passed explicitly
 let current: Wear | null = null;

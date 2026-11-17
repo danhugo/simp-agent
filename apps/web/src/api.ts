@@ -21,8 +21,8 @@ export interface AppDetail extends AppItem {
 export interface MemoryItem { id: string; scope: "global" | "agent"; agent_id: string | null; content: string; created: number; source_run_id: string | null;
   /** the chat it was saved in, if that chat still exists ("" = untitled) */ source_title?: string | null; source_created?: number | null }
 
-/** REST-only (/api/persona): Simp's personality and outfit code (see skin.ts). {} = none. */
-export interface Persona { name?: string; description?: string; instruction?: string; code?: string; profile?: string }
+/** REST-only (/api/persona): Simp's personality (the user's words) and outfit slot code (see skin.ts). {} = none. */
+export interface Persona { name?: string; description?: string; instruction?: string; hat?: string; bottom?: string; profile?: string }
 
 export class AuthError extends Error {}
 
@@ -77,7 +77,7 @@ export const api = {
   deleteMemory: (id: string) => call(`/api/memories/${id}`, { method: "DELETE" }),
   persona: async (): Promise<Persona> => (await call("/api/persona")).json(),
   savePersona: (p: Persona) => call("/api/persona", { ...json(p), method: "PUT" }),
-  generatePersona: async (b: { description: string; profile: string; code?: string; error?: string }): Promise<Persona> =>
+  generatePersona: async (b: { description: string; profile: string; slot: "hat" | "bottom"; other?: string; code?: string; error?: string }): Promise<{ code: string }> =>
     (await call("/api/persona/generate", json(b))).json(),
   exportMemories: async (): Promise<Blob> => (await call("/api/memories/export")).blob(),
 };

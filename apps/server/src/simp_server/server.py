@@ -131,15 +131,18 @@ class StaticTokenAuth:
 class PersonaIn(BaseModel):
     name: str = Field("", max_length=24)
     description: str = Field("", max_length=1000)
-    instruction: str = Field("", max_length=800)
-    code: str = Field("", max_length=8000)
+    instruction: str = Field("", max_length=800)   # the user's own words: tone only (fenced in the prompt)
+    hat: str = Field("", max_length=8000)           # outfit slots: JS bodies of wear(p, H), see persona.py
+    bottom: str = Field("", max_length=8000)
     profile: str = ""
 
 
 class PersonaGen(BaseModel):
     description: str = Field(min_length=1, max_length=1000)
     profile: str
-    code: str = Field("", max_length=8000)   # with error: the code that failed, to be fixed
+    slot: str = Field(pattern="^(hat|bottom)$")
+    other: str = Field("", max_length=8000)  # the slot already designed, for matching style
+    code: str = Field("", max_length=8000)   # with error: the code that failed a check, to be fixed
     error: str = Field("", max_length=2000)
 
 
@@ -744,7 +747,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
 
     @app.put("/api/persona")
     async def put_persona(body: PersonaIn, u=Depends(user)):
-        await store.set_persona(u["id"], body.model_dump() if (body.code or body.instruction) else dict())
+        await store.set_persona(u["id"], body.model_dump() if (body.hat or body.bottom or body.instruction) else dict())
         return {"ok": True}
 
     @app.post("/api/persona/generate")
@@ -762,25 +765,24 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             if await store.spent(u["id"], budget.day_start()) >= mgr.limits.user_day_usd:
                 return f"budget: daily limit ${mgr.limits.user_day_usd:g} reached"
 
-        msgs = [UserMessage(f"Character description:\n{body.description}")]
-        if body.error:
-            msgs = [UserMessage(f"Character description:\n{body.description}\n\n"
-                                + persona_mod.FIX.format(error=body.error, code=body.code))]
-        msg = None
-        async for ev in budget.guard(mgr.stream_fn, check)(model, Context(persona_mod.SYSTEM, msgs, []),
-                                                            **await api_key_opts(mgr.api_key_for(model), model)):
-            if ev["type"] in ("done", "error"):
-                msg = ev["message"]
-        if msg is None or msg.stop_reason == "error":
-            raise HTTPException(502, (msg.error if msg else None) or "no response from the model")
-        usage = {"input": msg.usage.get("input", 0), "output": msg.usage.get("output", 0)}
-        await store.add_usage(u["id"], "persona", model.id, **usage, cost=budget.cost(pr, usage))
-        if not msg.text().strip():
-            raise HTTPException(502, f"the model returned no text (stop_reason={msg.stop_reason}, usage={usage})")
-        try:
-            return persona_mod.parse(msg.text())
-        except ValueError as e:
-            raise HTTPException(502, str(e))
+        ctx = Context(persona_mod.system(body.slot), [UserMessage(persona_mod.user_message(
+            body.description, body.other, body.code, body.error))], [])
+        problem = ""
+        for _ in range(2):  # one retry when the answer has no code (cut off, or prose instead of code)
+            msg = None
+            async for ev in budget.guard(mgr.stream_fn, check)(model, ctx, **await api_key_opts(mgr.api_key_for(model), model)):
+                if ev["type"] in ("done", "error"):
+                    msg = ev["message"]
+            if msg is None or msg.stop_reason == "error":
+                raise HTTPException(502, (msg.error if msg else None) or "no response from the model")
+            usage = {"input": msg.usage.get("input", 0), "output": msg.usage.get("output", 0)}
+            await store.add_usage(u["id"], "persona", model.id, **usage, cost=budget.cost(pr, usage))
+            try:
+                return {"code": persona_mod.parse(msg.text())}
+            except ValueError as e:
+                problem = f"{e} (stop_reason={msg.stop_reason})"
+                log.warning("persona: %s", problem)
+        raise HTTPException(502, problem)
 
     @app.get("/api/sessions")
     async def list_sessions(u=Depends(user)) -> list[p.SessionInfo]:
