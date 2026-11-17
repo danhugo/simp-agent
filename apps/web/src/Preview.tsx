@@ -8,9 +8,8 @@ import { ext, hasRaw, kindOf, LANGS, tooBig } from "./fileKind";
 // each viewer is its own chunk, loaded only when a file needs it
 const Code = lazy(() => import("./viewers/Code"));
 const Sheet = lazy(() => import("./viewers/Sheet"));
-const Docx = lazy(() => import("./viewers/Docx"));
 
-type Loaded = { entry?: FileEntry; text?: string; data?: ArrayBuffer; img?: string; src?: string };
+type Loaded = { entry?: FileEntry; text?: string; data?: ArrayBuffer; img?: string; src?: string; noRender?: boolean };
 
 /** One file, read-only. `writes` goes up each time the chat shows the agent wrote this file: then it reloads. */
 export function Preview({ sid, path, writes, onClose, onError, filesOpen, onToggleFiles, children }: {
@@ -22,6 +21,7 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
   const [n, setN] = useState(0);  // refresh counter
   const [got, setGot] = useState<Loaded>();
   const [error, setError] = useState<string>();
+  const [shown, setShown] = useState<string>();  // the iframe src that finished loading
   const fail = useCallback((e: unknown) => { onError(e); if (!(e instanceof AuthError)) setError(errorText(e)); }, [onError]);
   useEffect(() => setRaw(false), [path]);
 
@@ -35,10 +35,12 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
       const r: Loaded = { entry };
       if (!tooBig(kind, entry.size)) {
         if (kind === "code" || raw) r.text = await (await api.download(sid, path)).text();
-        else if (kind === "html" || kind === "pdf" || ext(path) === "svg") {
+        else if (kind === "html" || kind === "pdf" || kind === "office" || ext(path) === "svg") {
           // svg can hold scripts: load it from the preview origin, never as a blob on our origin
-          const url = (await api.preview(sid)).base + path.split("/").map(encodeURIComponent).join("/") + `?v=${n + writes}`;
-          if (kind === "image") r.img = url; else r.src = url;
+          const url = (await api.preview(sid)).base + path.split("/").map(encodeURIComponent).join("/") + `?${kind === "office" ? "render=html&" : ""}v=${n + writes}`;
+          // ponytail: renders twice (probe + iframe); the probe needs CORS on the preview origin, without it we just show the iframe
+          if (kind === "office" && (await fetch(url).catch(() => undefined))?.status === 503) r.noRender = true;
+          else if (kind === "image") r.img = url; else r.src = url;
         } else if (kind === "image") {
           // our own raster type, never the server's; svg never comes here (see above)
           const b = await api.download(sid, path);
@@ -54,19 +56,22 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
   const e = got?.entry;
   const body = error ? <div className="error pad" role="alert">{error}</div>
     : !got ? <p className="muted small pad">Loading…</p>
-    : e && (tooBig(kind, e.size) || kind === "info") ? (
+    : e && (tooBig(kind, e.size) || kind === "info" || got.noRender) ? (
       <div className="preview-info pad">
         <p><strong>{name}</strong> · {fmt(e.size)}</p>
-        <p className="muted small">{kind === "info" ? "No preview for this file type." : "This file is too big to preview."}</p>
+        <p className="muted small">{kind === "info" || got.noRender ? "No preview for this file type." : "This file is too big to preview."}</p>
         <button onClick={() => downloadFile(sid, path).catch(fail)}><IconDownload size={16} /> Download</button>
       </div>
     )
     : got.text !== undefined && (raw || kind === "code") ? <Code text={got.text} lang={LANGS[ext(path)] ?? ""} />
     : got.text !== undefined ? <div className="pad"><Md text={got.text} /></div>
     : got.img ? <div className="image-view"><img src={got.img} alt={name} /></div>
-    : got.src ? <iframe className="frame" title={name} src={got.src} sandbox={kind === "html" ? "allow-scripts" : undefined} />
-    : got.data && kind === "sheet" ? <Sheet data={got.data} csv={ext(path) === "csv" || ext(path) === "tsv"} />
-    : got.data && kind === "docx" ? <Docx data={got.data} onError={fail} /> : null;
+    : got.src ? <>
+      {shown !== got.src && <p className="muted small pad">Loading…</p>}
+      <iframe className="frame" title={name} src={got.src} onLoad={() => setShown(got.src)} hidden={shown !== got.src}
+        sandbox={kind === "html" || kind === "office" ? "allow-scripts" : undefined} />
+    </>
+    : got.data && kind === "sheet" ? <Sheet data={got.data} tsv={ext(path) === "tsv"} /> : null;
 
   return (
     <aside className="files preview" aria-label={`Preview ${name}`}>

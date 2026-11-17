@@ -34,7 +34,7 @@ export const IconFile = wrap(FileText);
 // one icon per preview kind (fileKind.ts)
 export const KindIcons = {
   code: wrap(FileCode), markdown: wrap(FileText), image: wrap(FileImage), sheet: wrap(FileSpreadsheet),
-  docx: wrap(FileType), html: wrap(Globe), pdf: wrap(FileText), info: wrap(File),
+  office: wrap(FileType), html: wrap(Globe), pdf: wrap(FileText), info: wrap(File),
 };
 export const IconEye = wrap(Eye);
 export const IconUpload = wrap(Upload);

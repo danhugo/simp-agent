@@ -13,6 +13,7 @@ const FILES: Record<string, Buffer> = {
   "site/index.html": Buffer.from('<link rel="stylesheet" href="style.css"><h1>Hello page</h1>'),
   "site/style.css": Buffer.from("h1 { color: rgb(255, 0, 0); }"),
   "wide.docx": readFileSync(new URL("./fixtures/wide.docx", import.meta.url)),  // a 12.5 in wide page
+  "deck.pptx": Buffer.from("pptx"), "book.xlsx": Buffer.from("xlsx"), "old.pptx": Buffer.from("pptx"),  // the server renders these (stubbed)
 };
 
 async function setup(p: Page) {
@@ -24,7 +25,11 @@ async function setup(p: Page) {
   // stub of the preview API (server task t_5b969dab): a fake preview origin that serves the workspace files
   await p.route(`**/api/sessions/${s.id}/preview`, (r) => r.fulfill({ json: { base: "http://127.0.0.1:5198/__preview/tok/" } }));
   await p.route("**/__preview/tok/**", (r) => {
-    const path = new URL(r.request().url()).pathname.replace("/__preview/tok/", "");
+    const u = new URL(r.request().url()), path = u.pathname.replace("/__preview/tok/", "");
+    // stub of OfficeCLI (server task): ?render=html -> HTML; old.pptx -> 503 (no renderer)
+    if (u.searchParams.get("render") === "html") return r.fulfill(path === "old.pptx"
+      ? { status: 503, body: "no renderer", headers: { "access-control-allow-origin": "*" } }
+      : { body: `<h1>Rendered ${path}</h1>`, contentType: "text/html", headers: { "access-control-allow-origin": "*" } });
     r.fulfill({ body: FILES[path], contentType: path.endsWith(".css") ? "text/css" : path.endsWith(".svg") ? "image/svg+xml" : "text/html" });
   });
   await p.emulateMedia({ colorScheme: "light" });
@@ -43,7 +48,7 @@ const open = async (p: Page, name: string) => {
   return p.getByRole("complementary", { name: `Preview ${name}` });
 };
 
-test("preview: py, md, png, csv, html", async ({ page }) => {
+test("preview: py, md, png, office, csv, html", async ({ page }) => {
   await setup(page);
 
   let pv = await open(page, "app.py");
@@ -68,14 +73,18 @@ test("preview: py, md, png, csv, html", async ({ page }) => {
   await expect(pv.locator("img")).toHaveAttribute("src", /^http:\/\/127\.0\.0\.1:5198\/__preview\/tok\/pic\.svg\?v=/);
   await expect(pv.locator("img")).toHaveJSProperty("naturalWidth", 4);
 
-  pv = await open(page, "wide.docx");
-  await expect(pv.locator(".preview-size")).toHaveText(/KB|B$/);
-  const doc = pv.locator(".docx-fit iframe");
-  await expect(doc.contentFrame().getByText("Wide page title")).toBeVisible();
-  await expect(doc).toHaveCSS("transform", /matrix\(0\./);  // the 1200px page is scaled down to fit the panel
-  const box = (await pv.locator(".docx-fit").boundingBox())!, fb = (await doc.boundingBox())!;
-  expect(fb.width).toBeLessThanOrEqual(box.width + 1);  // no horizontal overflow
-  await page.screenshot({ path: "test-results/preview-docx.png" });
+  for (const f of ["wide.docx", "deck.pptx", "book.xlsx"]) {  // office files: the server's HTML, sandboxed
+    pv = await open(page, f);
+    const doc = pv.locator("iframe");
+    await expect(doc).toHaveAttribute("sandbox", "allow-scripts");
+    await expect(doc).toHaveAttribute("src", new RegExp(`/__preview/tok/${f.replace(".", "\\.")}\\?render=html&v=`));
+    await expect(doc.contentFrame().getByText(`Rendered ${f}`)).toBeVisible();
+    await page.screenshot({ path: `test-results/preview-${f.split(".")[1]}.png` });
+  }
+  pv = await open(page, "old.pptx");  // 503: no renderer on the server
+  await expect(pv.getByText("No preview for this file type.")).toBeVisible();
+  await expect(pv.locator(".preview-info").getByRole("button", { name: "Download" })).toBeVisible();
+  await page.screenshot({ path: "test-results/preview-503.png" });
 
   pv = await open(page, "data.csv");
   await expect(pv.locator("th")).toHaveText(["name", "age"]);
