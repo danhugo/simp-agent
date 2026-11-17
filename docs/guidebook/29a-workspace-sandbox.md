@@ -174,7 +174,37 @@ Safety and concurrency of the mirror:
 
 ### The Files panel goes through the store
 
-`GET /api/sessions/{sid}/files`, `.../files/raw` (GET, PUT) call `files.list/read/write` on the store made by `workspace.make_store`. They check ownership with `mgr.get` and never call `ensure`. Browsing your files never starts (or pays for) compute, and works while the sandbox is paused. Paths go through `rel()`, which maps `/work/...` to the workspace root and refuses `..` escapes.
+`GET /api/sessions/{sid}/files`, `.../files/raw` (GET, PUT) call `files.list/read/write` on the store made by `workspace.make_store`. They check ownership with `mgr.get` and never call `ensure`. Browsing your files never starts (or pays for) compute, and works while the sandbox is paused ([preview](#file-preview) too). Paths go through `rel()`, which maps `/work/...` to the workspace root and refuses `..` escapes.
+
+<a id="file-preview"></a>
+
+### File preview: a second origin
+
+The Files panel can now *show* a file, not only download it (the viewers are in [30](30-web-client.md#file-preview-panel)). Most kinds are safe: the page fetches the bytes and draws them itself. HTML is different. The agent can write `report.html`, and that file may contain JavaScript. The web page keeps Ana's login token in `localStorage` (`simp.token`, see [30](30-web-client.md#every-call-carries-anas-token)). Any script that runs on the same origin as the page can read it. So a file the agent wrote, maybe after it read a harmful web page, could steal Ana's login.
+
+**Naive try.** Serve the file from `GET .../files/raw` with type `text/html` and put it in an iframe. It works, and that is the problem: `/files/raw` lives on the main origin, so the HTML runs next to the token. An `<svg>` file can carry a `<script>` too, so the same is true for `image/svg+xml`.
+
+**The fix has two halves.** First, `/files/raw` never sends active content. It uses an allowlist: any `text/*` type becomes `text/plain`; raster images, `application/pdf` and `application/json` keep their type; everything else, SVG included, becomes `application/octet-stream`. Every answer has `X-Content-Type-Options: nosniff`, so the browser does not guess a more dangerous type.
+
+Second, HTML and PDF are shown from a **[preview origin](glossary.md#preview-origin)**: a second small FastAPI app, `app.state.preview`, on its own port (`[web] preview_port`, default 8767). A different port is a different origin, so a script there cannot read the main page's `localStorage`. `serve_both` runs both uvicorn servers in one process: the main server owns Ctrl-C and stops the preview server when it stops; if the preview port is busy, it only logs a warning and previews are off.
+
+The preview server has no login and no cookies, so how does it know whose file to send? The page asks the main server first:
+
+```python
+@app.post("/api/sessions/{sid}/preview")
+async def make_preview(sid: str, u=Depends(user)):
+    await mgr.get(u, sid)                      # ownership check
+    ...                                        # drop expired tokens
+    token = secrets.token_urlsafe(32)
+    previews[token] = (u["id"], now + PREVIEW_TTL)   # 600 s
+    return {"base": f"http://localhost:{preview_port}/p/{token}/"}
+```
+
+This **[preview token](glossary.md#preview-token)** is a random string kept in a plain dict in memory, bound to Ana's user id and alive for 10 minutes. The preview app has exactly one route, `GET /p/{token}/{path}`. It looks up the token, returns 404 if it is missing or expired, and reads the file with `files.read(uid, path)`, the same store call as the Files panel, so `..`, absolute paths and symlinks are refused. The answer has `nosniff`, `Cache-Control: no-store` (no copy left in the cache) and `Referrer-Policy: no-referrer` (the token never leaks in a `Referer` header when the HTML loads a link).
+
+Why a token in the URL and not the login token? Because the file's own scripts can see the URL. If they find a preview token, the worst they can do is read Ana's own files for 10 minutes; they cannot chat, spend money or change anything. Note the token is bound to the *user*, not the session: it opens any file in Ana's workspace, and a relative link like `<img src="chart.png">` inside `report.html` works because it resolves under the same `/p/{token}/` base.
+
+Limits, plainly: tokens live in memory, so a restart drops them (they last 10 minutes anyway); expired tokens are removed only when a new one is made; the base URL is hard-coded to `localhost`, so the preview port must be reachable from Ana's browser on the same machine. A remote deploy would need a real preview host name.
 
 ### Costs and limits
 
