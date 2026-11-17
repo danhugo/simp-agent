@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, AuthError, type ConnStatus, getToken, setToken, subscribe } from "./api";
-import { Chat, Composer, type Send } from "./Chat";
+import { Chat, Composer, type Send, writtenFile } from "./Chat";
 import { IconCalendar, IconChart, IconCheck, IconChevron, IconCompose, IconFile, IconSearch, IconApps, IconLogout, IconMemory, IconMenu, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
 import { Mascot3D } from "./Mascot3D";
 import { requestLocation, saveLocation, sharedLocation } from "./location";
 import { Files } from "./Files";
+import { Preview } from "./Preview";
 import { Memory } from "./Memory";
 import { Apps } from "./Apps";
 import type { SessionInfo } from "./protocol.gen";
@@ -76,6 +77,11 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   const [conn, setConn] = useState<ConnStatus>("connecting");
   const [showFiles, setShowFiles] = useState(false);
   const [filesFocus, setFilesFocus] = useState<string>();
+  const [preview, setPreview] = useState<string>();
+  useEffect(() => setPreview(undefined), [sid]);
+  // how many times the chat shows the agent wrote the previewed file: each new write reloads the preview
+  const writes = preview ? state.items.flatMap((i) => (i.kind === "assistant" ? i.msg.tool_calls : []))
+    .filter((c) => writtenFile(c, state.results[c.id]) === preview).length : 0;
   const [confirm, setConfirm] = useState("");  // session id whose delete button was clicked once
   // A session is being created (hero composer). The hero composer is disabled meanwhile:
   // text typed into it would be lost when the chat replaces it, and Enter would create a second session.
@@ -246,10 +252,11 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
       {sid ? (
         <>
           <Chat sid={sid} created={sessions.find((x) => x.id === sid)?.created} state={state} conn={conn} onError={guard} onToggleFiles={() => { setFilesFocus(undefined); setShowFiles(!showFiles); }} filesOpen={showFiles}
-            onOpenFile={(p) => { setFilesFocus(p); setShowFiles(true); }}
+            onOpenFile={(p) => { setFilesFocus(p); setShowFiles(true); }} onPreviewFile={setPreview}
             notify={notify} onToggleNotify={toggleNotify} menuButton={menu}
             firstPrompt={first?.sid === sid ? first.text : undefined} />
-          {showFiles && <Files sid={sid} onError={guard} focus={filesFocus} onClose={() => setShowFiles(false)} />}
+          {preview && <Preview sid={sid} path={preview} writes={writes} onError={guard} onClose={() => setPreview(undefined)} />}
+          {showFiles && <Files sid={sid} onError={guard} focus={filesFocus} onPreview={setPreview} onClose={() => setShowFiles(false)} />}
         </>
       ) : page === "memory" ? <Memory onError={guard} menuButton={menu} />
         : page === "apps" ? <Apps onError={guard} menuButton={menu} /> : (

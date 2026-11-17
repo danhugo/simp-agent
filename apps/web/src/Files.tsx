@@ -7,7 +7,7 @@ const dirOf = (p: string) => { const i = p.replace(/^\.\//, "").lastIndexOf("/")
 const baseOf = (p: string) => p.split("/").pop() ?? p;
 
 /** `focus`: a file path to start at (its folder) and highlight. */
-export function Files({ sid, onError, onClose, focus }: { sid: string; onError: (e: unknown) => void; onClose: () => void; focus?: string }) {
+export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string; onError: (e: unknown) => void; onClose: () => void; onPreview: (path: string) => void; focus?: string }) {
   const [path, setPath] = useState(focus ? dirOf(focus) : ".");
   useEffect(() => { if (focus) setPath(dirOf(focus)); }, [focus]);
   const hl = focus && path === dirOf(focus) ? baseOf(focus) : undefined;
@@ -27,13 +27,6 @@ export function Files({ sid, onError, onClose, focus }: { sid: string; onError: 
   const picker = useRef<HTMLInputElement>(null);
   const join = (name: string) => (path === "." ? name : `${path}/${name}`);
 
-  const download = async (name: string) => {
-    try {
-      const url = URL.createObjectURL(await api.download(sid, join(name)));
-      Object.assign(document.createElement("a"), { href: url, download: name }).click();
-      URL.revokeObjectURL(url);
-    } catch (e) { fail(e); }
-  };
   const upload = async (files: FileList | null) => {
     setUploading(true);
     try {
@@ -69,7 +62,7 @@ export function Files({ sid, onError, onClose, focus }: { sid: string; onError: 
         )}
         {entries.map((e) => (
           <li key={e.name} className={e.name === hl ? "focus" : undefined} aria-current={e.name === hl || undefined}>
-            <button onClick={() => (e.is_dir ? setPath(join(e.name)) : download(e.name))} title={e.is_dir ? "Open" : "Download"}>
+            <button onClick={() => (e.is_dir ? setPath(join(e.name)) : onPreview(join(e.name)))} title={e.is_dir ? "Open" : "Preview"}>
               {e.is_dir ? <IconFolder size={16} /> : <IconFile size={16} />}<span>{e.name}</span>
             </button>
             {!e.is_dir && <span className="size">{fmt(e.size)}</span>}
@@ -81,4 +74,4 @@ export function Files({ sid, onError, onClose, focus }: { sid: string; onError: 
   );
 }
 
-const fmt = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+export const fmt = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
