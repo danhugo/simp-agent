@@ -8,6 +8,7 @@ const FILES: Record<string, Buffer> = {
   "app.py": Buffer.from('def hello(name: str) -> str:\n    """Say hi."""\n    return f"hi {name}"  # greet\n'),
   "README.md": Buffer.from("# Title\n\nSome **bold** text.\n\n- one\n- two\n"),
   "dot.png": PNG,
+  "pic.svg": Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="red"/></svg>'),
   "data.csv": Buffer.from("name,age\nAnn,31\nBo,42\n"),
   "site/index.html": Buffer.from('<link rel="stylesheet" href="style.css"><h1>Hello page</h1>'),
   "site/style.css": Buffer.from("h1 { color: rgb(255, 0, 0); }"),
@@ -23,7 +24,7 @@ async function setup(p: Page) {
   await p.route(`**/api/sessions/${s.id}/preview`, (r) => r.fulfill({ json: { base: "http://127.0.0.1:5198/__preview/tok/" } }));
   await p.route("**/__preview/tok/**", (r) => {
     const path = new URL(r.request().url()).pathname.replace("/__preview/tok/", "");
-    r.fulfill({ body: FILES[path], contentType: path.endsWith(".css") ? "text/css" : "text/html" });
+    r.fulfill({ body: FILES[path], contentType: path.endsWith(".css") ? "text/css" : path.endsWith(".svg") ? "image/svg+xml" : "text/html" });
   });
   await p.emulateMedia({ colorScheme: "light" });
   await p.goto(`/#login=${token()}`);
@@ -54,6 +55,11 @@ test("preview: py, md, png, csv, html", async ({ page }) => {
   pv = await open(page, "dot.png");
   await expect(pv.locator("img")).toHaveJSProperty("naturalWidth", 1);
   await page.screenshot({ path: "test-results/preview-png.png" });
+
+  // svg can hold scripts: it must come from the preview origin, never a blob on our origin
+  pv = await open(page, "pic.svg");
+  await expect(pv.locator("img")).toHaveAttribute("src", /^http:\/\/127\.0\.0\.1:5198\/__preview\/tok\/pic\.svg\?v=/);
+  await expect(pv.locator("img")).toHaveJSProperty("naturalWidth", 4);
 
   pv = await open(page, "data.csv");
   await expect(pv.locator("th")).toHaveText(["name", "age"]);
