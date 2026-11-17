@@ -72,7 +72,7 @@ const tone = (c: [number, number, number], lit: number): [number, number, number
 
 /** focus 0..1: squinting eyes and a sweat drop; overload 0..1: "> <" eyes and red cheeks; skin: a persona outfit */
 export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: number, pitch: number, blink: number, focus = 0, overload = 0, face: Face = {}, skin: Wear | null = null) {
-  const img = ctx.createImageData(N, N), S = skin ? SKIN_VIEW : 1, R = (N / 2 - 0.6) / S, c = N / 2, eyeW = ((1.4 * 24) / N + 1.6) * S;
+  const img = ctx.createImageData(N, N), S = skin ? SKIN_VIEW : 1, R = (N / 2 - 0.6) / S, c = N / 2, eyeW = (1.4 * 24) / (N / S) + 1.6;  // by the head's own pixel size, so eyes look the same with an outfit
   const rl = face.roll ?? 0, cr = Math.cos(rl), sr = Math.sin(rl), cp = Math.cos(pitch), sp = Math.sin(pitch), cy = Math.cos(yaw), sy = Math.sin(yaw);
   // view space (u right, v up, z toward the viewer) -> head space, the same turn the painted face gets
   const toHead = (u: number, v: number, z: number) => {
@@ -194,7 +194,10 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
       const key = `${args.map((x) => x.toFixed(4))}|${JSON.stringify(face)}|${pal.base}`;
       if (key !== lastKey || wear !== lastWear) {  // an outfit is costly to march: skip frames where nothing moved
         lastKey = key; lastWear = wear;
-        try { render(ctx, pixels, pal, ...args, face, wear); }
+        // with an outfit the camera backs off SKIN_VIEW times: render that many more pixels, so the head keeps its density
+        const n = wear ? Math.round(pixels * SKIN_VIEW) : pixels;
+        if (cv.width !== n) { cv.width = n; cv.height = n; }
+        try { render(ctx, n, pal, ...args, face, wear); }
         catch (e) { broken = wear; lastKey = ""; errRef.current?.(`threw while drawing: ${(e as Error).message}`); }
       }
       raf = requestAnimationFrame(frame);
