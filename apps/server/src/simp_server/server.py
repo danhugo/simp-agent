@@ -58,7 +58,9 @@ QUEUE_MAX = 1000  # events buffered per SSE client; a client that falls this far
 MAX_QUEUED = 20  # steer + follow-up messages waiting per session
 OAUTH_COOKIE = "simp_oauth"  # browser nonce that binds an OAuth start to the callback
 # the web app shows files in /work itself (Preview); without this the agent makes extra "preview" copies
-PREVIEW_HINT = ("The user's app previews files in /work by itself (docx, pdf, xlsx, csv, md, html with its css/js, images, "
+PREVIEW_HINT = ("Every file the user asked for or should see (documents, reports, images, data, code) must be saved in /work; "
+                "/tmp is scratch only, the user cannot see or open it, so if you built something in /tmp, copy the final file "
+                "to /work. The user's app previews files in /work by itself (docx, pdf, xlsx, csv, md, html with its css/js, images, "
                 "code): don't make extra preview copies; name the file you made, e.g. `report.docx`, so the user can click it.")
 HOME = Path(os.environ.get("SIMP_SERVER_HOME", Path.home() / ".simp-server"))
 TITLE_PROMPT = "Name this conversation in 3 to 6 words, in the user's language. Reply with the title only."
