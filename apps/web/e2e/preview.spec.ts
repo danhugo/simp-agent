@@ -12,6 +12,7 @@ const FILES: Record<string, Buffer> = {
   "data.csv": Buffer.from("name,age\nAnn,31\nBo,42\n"),
   "site/index.html": Buffer.from('<link rel="stylesheet" href="style.css"><h1>Hello page</h1>'),
   "site/style.css": Buffer.from("h1 { color: rgb(255, 0, 0); }"),
+  "wide.docx": readFileSync(new URL("./fixtures/wide.docx", import.meta.url)),  // a 12.5 in wide page
 };
 
 async function setup(p: Page) {
@@ -66,6 +67,15 @@ test("preview: py, md, png, csv, html", async ({ page }) => {
   pv = await open(page, "pic.svg");
   await expect(pv.locator("img")).toHaveAttribute("src", /^http:\/\/127\.0\.0\.1:5198\/__preview\/tok\/pic\.svg\?v=/);
   await expect(pv.locator("img")).toHaveJSProperty("naturalWidth", 4);
+
+  pv = await open(page, "wide.docx");
+  await expect(pv.locator(".preview-size")).toHaveText(/KB|B$/);
+  const doc = pv.locator(".docx-fit iframe");
+  await expect(doc.contentFrame().getByText("Wide page title")).toBeVisible();
+  await expect(doc).toHaveCSS("transform", /matrix\(0\./);  // the 1200px page is scaled down to fit the panel
+  const box = (await pv.locator(".docx-fit").boundingBox())!, fb = (await doc.boundingBox())!;
+  expect(fb.width).toBeLessThanOrEqual(box.width + 1);  // no horizontal overflow
+  await page.screenshot({ path: "test-results/preview-docx.png" });
 
   pv = await open(page, "data.csv");
   await expect(pv.locator("th")).toHaveText(["name", "age"]);
