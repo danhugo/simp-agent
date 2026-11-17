@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from
 import { api, AuthError, type FileEntry } from "./api";
 import { downloadFile, errorText, Md } from "./Chat";
 import { fmt } from "./Files";
-import { IconClose, IconDownload, IconFolder, IconRefresh, fileIcon } from "./icons";
+import { IconClose, IconDownload, IconFolder, IconRefresh } from "./icons";
 import { ext, hasRaw, kindOf, LANGS, tooBig } from "./fileKind";
 
 // each viewer is its own chunk, loaded only when a file needs it
@@ -78,7 +78,6 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
         {onToggleFiles && (
           <button className="icon-btn" onClick={onToggleFiles} aria-expanded={!!filesOpen} aria-controls="preview-files" title="Files" aria-label="Files"><IconFolder size={16} /></button>
         )}
-        {(() => { const K = fileIcon(path, kind); return <K size={18} className="preview-kind" />; })()}
         <strong className="preview-name" title={path}>{name}</strong>
         {got?.entry && <span className="preview-size">{fmt(got.entry.size)}</span>}
         <span className="spacer" />
