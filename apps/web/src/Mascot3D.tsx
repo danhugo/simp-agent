@@ -71,8 +71,8 @@ const tone = (c: [number, number, number], lit: number): [number, number, number
 };
 
 /** focus 0..1: squinting eyes and a sweat drop; overload 0..1: "> <" eyes and red cheeks; skin: a persona outfit */
-export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: number, pitch: number, blink: number, focus = 0, overload = 0, face: Face = {}, skin: Wear | null = null) {
-  const img = ctx.createImageData(N, N), S = skin ? SKIN_VIEW : 1, R = (N / 2 - 0.6) / S, c = N / 2, eyeW = (1.4 * 24) / (N / S) + 1.6;  // by the head's own pixel size, so eyes look the same with an outfit
+export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: number, pitch: number, blink: number, focus = 0, overload = 0, face: Face = {}, skin: Wear | null = null, bare = false, view = SKIN_VIEW, centerY = 0) {
+  const img = ctx.createImageData(N, N), S = skin ? view : 1, R = (N / 2 - 0.6) / S, c = N / 2, eyeW = (1.4 * 24) / (N / S) + 1.6;  // by the head's own pixel size, so eyes look the same with an outfit
   const rl = face.roll ?? 0, cr = Math.cos(rl), sr = Math.sin(rl), cp = Math.cos(pitch), sp = Math.sin(pitch), cy = Math.cos(yaw), sy = Math.sin(yaw);
   // view space (u right, v up, z toward the viewer) -> head space, the same turn the painted face gets
   const toHead = (u: number, v: number, z: number) => {
@@ -84,13 +84,13 @@ export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: 
   const boxes = skin?.boxes ?? [{ lo: [-2, -2, -2], hi: [2, 2, 2] }];
   const B = toHead(0, 0, 1);  // the view ray's direction in head space (same for every pixel)
   // per frame: the outfit only changes with the pose, so a blink-only frame reuses the last outfit pass
-  const key = skin ? `${N}|${yaw}|${pitch}|${rl}` : "";
+  const key = skin ? `${N}|${yaw}|${pitch}|${rl}|${bare}|${view}|${centerY}` : "";
   const cached = skin && outfitCache.wear === skin && outfitCache.key === key ? outfitCache : null;
   const hits = cached ? cached.hits : skin ? new Float32Array(N * N * 4).fill(-1) : null;  // z, r, g, b per pixel
   const mask = skin ? new Uint8Array(N * N) : null;  // 1 = head, 2 = outfit (for the outfit's outline)
   for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
-    const u = (px + 0.5 - c) / R, v = -(py + 0.5 - c) / R, d2 = u * u + v * v;
-    const zHead = d2 <= 1 ? Math.sqrt(1 - d2) : -Infinity;
+    const u = (px + 0.5 - c) / R, v = -(py + 0.5 - c) / R + centerY, d2 = u * u + v * v;  // centerY: frame centered higher/lower
+    const zHead = !bare && d2 <= 1 ? Math.sqrt(1 - d2) : -Infinity;  // bare: the outfit alone, no head
     if (skin && hits) {
       const o = (py * N + px) * 4;
       if (!cached) {
@@ -137,7 +137,7 @@ export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: 
         continue;
       }
     }
-    if (d2 > 1) continue;
+    if (d2 > 1 || bare) continue;
     if (mask) mask[py * N + px] = 1;
     const z = zHead;
     let col: [number, number, number] | null;

@@ -7,7 +7,7 @@
 export type Part = [number, string] | null;
 export type Box = { lo: number[]; hi: number[] };
 /** An outfit; `boxes` (head space) hold all of it, one per slot, so the renderer marches only where a ray is inside one. */
-export type Wear = ((p: number[]) => Part) & { boxes?: Box[] };
+export type Wear = ((p: number[]) => Part) & { boxes?: Box[]; grid?: number[] };
 type V = number[];
 
 const len = (x: number, y: number, z: number) => Math.hypot(x, y, z);
@@ -117,7 +117,10 @@ export function compileSkin(code: string, slot?: Slot): Wear {
   return wear;
 }
 
-/** The outfit: all slots worn together, baked into a grid so each frame only looks values up. */
+/** One slot's code as a standalone object: checked, then baked into its own grid. Throws like compileSkin. */
+export const item = (code: string, slot: Slot): Wear => bake(compileSkin(code, slot));
+
+/** Assemble: all objects merged into ONE grid (one unified 3D object), built once. Cheap on baked items. */
 export const combine = (ws: (Wear | null)[]): Wear | null => {
   const list = ws.filter((w): w is Wear => !!w);
   if (!list.length) return null;
@@ -162,6 +165,7 @@ export function bake(w: Wear): Wear {
     return [d, colors[col[near]] ?? colors[0] ?? "#888888"];
   };
   baked.boxes = boxes;
+  baked.grid = n;
   return baked;
 }
 

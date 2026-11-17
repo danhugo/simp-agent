@@ -3,8 +3,8 @@ import { api, AuthError, type Persona as P } from "./api";
 import { ModelPicker } from "./App";
 import { errorText } from "./Chat";
 import { IconCheck } from "./icons";
-import { Mascot3D } from "./Mascot3D";
-import { combine, compileSkin, setSkin, type Slot, type Wear } from "./skin";
+import { Mascot3D, readPal, render } from "./Mascot3D";
+import { combine, compileSkin, item, setSkin, type Slot, type Wear } from "./skin";
 
 const SLOTS: { slot: Slot; label: string }[] = [{ slot: "hat", label: "Hat" }, { slot: "bottom", label: "Pants / skirt" }];
 const FIX_TRIES = 3;  // the model gets the check's error (with what it measured) back this many times
@@ -15,9 +15,45 @@ const STATE_TEXT: Record<Step["state"], string> = {
   waiting: "Waiting", designing: "Designing…", checking: "Checking…", fixing: "Fixing…", done: "Done", failed: "Failed",
 };
 
+/** A slot's code as a standalone object (checked + baked into its own grid), or its error. */
 function tryCompile(code: string | undefined, slot: Slot): { wear: Wear | null; err: string } {
   if (!code) return { wear: null, err: "" };
-  try { return { wear: compileSkin(code, slot), err: "" }; } catch (e) { return { wear: null, err: (e as Error).message }; }
+  try { return { wear: item(code, slot), err: "" }; } catch (e) { return { wear: null, err: (e as Error).message }; }
+}
+const check = (code: string, slot: Slot) => { try { compileSkin(code, slot); return ""; } catch (e) { return (e as Error).message; } };
+
+/** value, but only after it stopped changing for ms (hand edits in a code box rebake once, not per keystroke) */
+function useSettled<T>(value: T, ms = 500): T {
+  const [v, setV] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setV(value), ms); return () => clearTimeout(t); }, [value, ms]);
+  return v;
+}
+
+/** One outfit object on its own (no head), slowly turning, in the same pixel style. */
+function ItemView({ wear, label }: { wear: Wear; label: string }) {
+  const cv = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const ctx = cv.current?.getContext("2d");
+    if (!ctx) return;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches, pal = readPal(), N = 64;
+    // frame the object itself: centered on its box, zoomed so its widest extent fits while it turns
+    const b = wear.boxes!, lo = [0, 1, 2].map((k) => Math.min(...b.map((x) => x.lo[k]))), hi = [0, 1, 2].map((k) => Math.max(...b.map((x) => x.hi[k])));
+    const cy = (lo[1] + hi[1]) / 2, half = Math.max(hi[1] - lo[1], Math.hypot(hi[0] - lo[0], hi[2] - lo[2])) / 2, view = Math.min(2, half * 1.15);
+    let raf = 0, last = -1;
+    const frame = (t: number) => {
+      const yaw = reduce ? 0.5 : Math.round((t / 1000) * 0.8 * 40) / 40;  // turn in small steps: re-render ~20x/s
+      if (yaw !== last) { last = yaw; render(ctx, N, pal, yaw, 0.35, 0, 0, 0, {}, wear, true, view, cy); }
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [wear]);
+  return (
+    <figure className="persona-item">
+      <canvas ref={cv} width={64} height={64} aria-hidden="true" />
+      <figcaption className="muted small">{label}</figcaption>
+    </figure>
+  );
 }
 
 /** Persona: the user writes the personality; a model draws the outfit one slot at a time (hat, then bottom). */
@@ -39,10 +75,18 @@ export function Persona({ onError, menuButton, profiles, models }: {
   useEffect(() => { if (!profile && profiles.length) setProfile(profiles[0]); }, [profiles, profile]);
   useEffect(() => () => { stop.current = true; }, []);
 
-  const hat = useMemo(() => tryCompile(draft.hat, "hat"), [draft.hat]);
-  const bottom = useMemo(() => tryCompile(draft.bottom, "bottom"), [draft.bottom]);
+  // each slot is its own object (baked alone); "assemble" then merges them into one grid Simp wears
+  const hatCode = useSettled(draft.hat), bottomCode = useSettled(draft.bottom);
+  const hat = useMemo(() => tryCompile(hatCode, "hat"), [hatCode]);
+  const bottom = useMemo(() => tryCompile(bottomCode, "bottom"), [bottomCode]);
   const compiled = { hat, bottom };
-  const wear = useMemo(() => combine([hat.wear, bottom.wear]), [hat.wear, bottom.wear]);
+  const [wear, setWear] = useState<Wear | null>(null);
+  const [assembling, setAssembling] = useState(false);
+  useEffect(() => {
+    setAssembling(true);
+    const t = setTimeout(() => { { const w = combine([hat.wear, bottom.wear]); setWear(() => w); }; setAssembling(false); }, 30);  // let "Assembling…" paint
+    return () => clearTimeout(t);
+  }, [hat.wear, bottom.wear]);
 
   const setStep = (slot: Slot, s: Step) => setSteps((x) => ({ ...x, [slot]: s }));
 
@@ -57,7 +101,7 @@ export function Persona({ onError, menuButton, profiles, models }: {
       last = code ?? "";
       setDraft((d) => ({ ...d, [slot]: last }));  // show every attempt in the preview, good or not
       setStep(slot, { state: "checking", tries: i });
-      const { err } = tryCompile(last, slot);
+      const err = check(last, slot);
       if (!err) { setStep(slot, { state: "done", tries: i }); return last; }
       req = { code: last, error: err };
     }
@@ -108,6 +152,17 @@ export function Persona({ onError, menuButton, profiles, models }: {
           <section className="persona-stage" aria-label="Preview">
             <Mascot3D size={240} pixels={56} skin={wear} working={busy} onSkinError={(m) => setError(m)} />
             {draft.name && <p className="persona-name">{draft.name}</p>}
+            {(hat.wear || bottom.wear) && (
+              <div className="persona-items" aria-label="Outfit objects">
+                {hat.wear && <ItemView wear={hat.wear} label="Hat" />}
+                {bottom.wear && <ItemView wear={bottom.wear} label="Pants / skirt" />}
+              </div>
+            )}
+            {(hat.wear || bottom.wear) && (
+              <p className="muted small persona-assembled" role="status">
+                {assembling ? "Assembling into one object…" : wear?.grid ? `Assembled: one ${wear.grid.join("×")} grid` : ""}
+              </p>
+            )}
           </section>
           <section className="persona-form">
             <label className="persona-label" htmlFor="persona-name">Name</label>
@@ -164,7 +219,7 @@ export function Persona({ onError, menuButton, profiles, models }: {
             </ol>
 
             <div className="row persona-actions">
-              <button className="primary" disabled={!dirty || busy || !!hat.err || !!bottom.err} onClick={save}>Save persona</button>
+              <button className="primary" disabled={!dirty || busy || assembling || !!hat.err || !!bottom.err} onClick={save}>Save persona</button>
               {saved && (saved.hat || saved.bottom || saved.instruction) && <button className="ghost" onClick={reset}>Back to plain Simp</button>}
             </div>
           </section>
