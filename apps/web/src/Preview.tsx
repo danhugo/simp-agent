@@ -54,7 +54,7 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
 
   const e = got?.entry;
   const body = error ? <div className="error pad" role="alert">{error}</div>
-    : !got ? <Skeleton kind={kind} />
+    : !got ? <Skeleton name={path} />
     : e && (tooBig(kind, e.size) || kind === "info") ? (
       <div className="preview-info pad">
         <p><strong>{name}</strong> · {fmt(e.size)}</p>
@@ -66,7 +66,7 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
     : got.text !== undefined ? <div className="pad"><Md text={got.text} /></div>
     : got.img ? <div className="image-view"><img src={got.img} alt={name} /></div>
     : got.src ? <>
-      {shown !== got.src && <Skeleton kind={kind} />}
+      {shown !== got.src && <Skeleton name={path} />}
       <iframe className="frame fade-in" title={name} src={got.src} onLoad={() => setShown(got.src)} hidden={shown !== got.src}
         sandbox={kind === "html" || kind === "office" ? "allow-scripts" : undefined} />
     </>
@@ -95,19 +95,28 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
       {children && (
         <div className="files-pop" id="preview-files" onKeyDown={(e) => { if (e.key === "Escape") onToggleFiles?.(); }}>{children}</div>
       )}
-      <div className="preview-body"><Suspense fallback={<Skeleton kind={kind} />}>{body}</Suspense></div>
+      <div className="preview-body"><Suspense fallback={<Skeleton name={path} />}>{body}</Suspense></div>
     </aside>
   );
 }
 
-/** A page-shaped placeholder while a preview loads; after 1.5 s it says the first render can take a moment. */
-function Skeleton({ kind }: { kind: string }) {
+/** A placeholder shaped like the file while it loads; after 1.5 s it says the first render can take a moment. */
+function Skeleton({ name }: { name: string }) {
   const [slow, setSlow] = useState(false);
   useEffect(() => { const t = setTimeout(() => setSlow(true), 1500); return () => clearTimeout(t); }, []);
-  const shape = kind === "office" || kind === "pdf" || kind === "html" ? "page" : kind === "sheet" ? "grid" : "lines";
+  const x = ext(name), k = kindOf(name);
+  const shape = ["pptx", "ppt", "key", "odp"].includes(x) ? "slide"
+    : ["xlsx", "xls", "ods", "csv", "tsv"].includes(x) ? "grid"
+    : k === "image" ? "image" : k === "code" || k === "markdown" ? "lines" : "page";
   return (
     <div className={`skeleton ${shape}`} role="status" aria-label="Loading preview">
-      <div className="sheet">{Array.from({ length: 7 }, (_, i) => <i key={i} />)}</div>
+      {shape === "grid" ? (
+        <div className="sheet">{Array.from({ length: 48 }, (_, i) => <i key={i} />)}</div>
+      ) : shape === "slide" ? (
+        <>{[0, 1].map((n) => <div key={n} className="sheet"><i /><i /><i /></div>)}</>
+      ) : (
+        <div className="sheet">{Array.from({ length: shape === "image" ? 0 : 7 }, (_, i) => <i key={i} />)}</div>
+      )}
       {slow && <p className="muted small">Đang chuẩn bị bản xem…</p>}
     </div>
   );
