@@ -145,8 +145,8 @@ class DockerEnv(LocalEnv):
         self.box.active += 1  # before any await: stop_idle sees it even while we wait for the start lock
         try:
             if self.box.over:  # set by the tick (M8); cleared once the budget resets
-                if await self.sandbox.compute.over(self.box.user_id):
-                    raise SandboxLimit(self.sandbox.compute.over_msg)
+                if msg := await self.sandbox.compute.over_reason(self.box.user_id):
+                    raise SandboxLimit(msg)
                 self.box.over = False
             await self.sandbox.ensure(self.box)
             await self.sandbox.fresh_creds(self.box, need_s)
@@ -432,7 +432,7 @@ class DockerSandbox:
                     with contextlib.suppress(Exception):
                         await self.fresh_creds(box, 2 * CREDS_MARGIN_S)  # M2: refresh at an idle point
                 if not box.over and await self.compute.over(box.user_id):
-                    log.warning("sandbox daily budget used up: stopping after the current call",
+                    log.warning("sandbox budget used up (daily minutes or points): stopping after the current call",
                                 extra={"user": box.user_id})
                     box.over = True  # M8: no new calls; stopped on the next tick with active == 0
 

@@ -54,11 +54,24 @@ class Compute:
         return (f"sandbox: daily compute budget of {self.day_minutes:g} minutes used up. Commands and file tools are off "
                 "until tomorrow; chat still works.")
 
-    async def over(self, user_id: str) -> bool:
+    async def out_of_points(self, user_id: str) -> bool:
+        return bool(self.billing[0] and self.db is not None
+                    and (await self.db.credits(user_id, self.billing[1]))["balance"] <= 0)
+
+    async def over_reason(self, user_id: str) -> str | None:
+        """Why a running box must stop taking calls (paused on the next idle tick), or None."""
+        if await self.out_of_points(user_id):
+            from simp_server.budget import OUT_OF_POINTS
+            return OUT_OF_POINTS
         if not self.day_minutes or self.db is None:
-            return False
+            return None
         from simp_server.budget import day_start
-        return await self.db.sandbox_seconds(user_id, day_start()) >= self.day_minutes * 60
+        if await self.db.sandbox_seconds(user_id, day_start()) >= self.day_minutes * 60:
+            return self.over_msg
+        return None
+
+    async def over(self, user_id: str) -> bool:
+        return await self.over_reason(user_id) is not None
 
     async def reserve(self, box, running) -> None:
         """Check the limits and take a running slot (box.starting = True; the caller clears it once the box runs or
@@ -69,7 +82,7 @@ class Compute:
             box.starting = True
 
     async def check(self, user_id: str, running: int) -> None:
-        if self.billing[0] and self.db is not None and (await self.db.credits(user_id, self.billing[1]))["balance"] <= 0:
+        if await self.out_of_points(user_id):
             from simp_server.budget import OUT_OF_POINTS
             raise SandboxLimit(OUT_OF_POINTS)
         if running >= self.max_running:

@@ -1122,7 +1122,7 @@ async def credit_cli(a) -> None:
             for u in await s.list_users():
                 print(f"{u['name']}\t{(await s.credits(u['id'], rate))['balance']}")
             return
-        uid = next((u["id"] for u in await s.list_users() if u["name"].lower() == a.email.lower()), None)
+        uid = next((u["id"] for u in await s.list_users() if u["name"] == a.email.lower()), None)
         if uid is None:
             raise SystemExit(f"no user with email {a.email}")
         if a.credit == "add":

@@ -555,3 +555,23 @@ async def test_live_e2b(tmp_path):
     finally:
         for i in await sb.list_all():
             await sb._sdk.kill(i["id"])
+
+
+async def test_running_box_paused_when_points_run_out(cloud):
+    """Billing on: once the balance is <= 0 the tick marks the box over, pauses it when idle, and calls are refused."""
+    sb = make(cloud)
+    balance = [5]
+
+    async def credits(user_id, rate):
+        return {"balance": balance[0]}
+    sb.compute.db.credits, sb.compute.billing = credits, (True, 1000.0)
+    env = await sb.open("s1", "u1")
+    await go(env)
+    balance[0] = 0
+    await sb.stop_idle(now=env.box.last + 1)  # marks it over
+    await sb.stop_idle(now=env.box.last + 1)  # next tick: paused
+    assert env.box.over and env.box.state == "paused"
+    with pytest.raises(SandboxLimit, match="out of points"):
+        await go(env)
+    balance[0] = 10
+    await go(env)  # credit added: works again

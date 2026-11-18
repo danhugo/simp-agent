@@ -28,6 +28,8 @@ def billing(settings: dict) -> tuple[bool, float]:
     return bool(b.get("enabled", False)), float(b.get("points_per_usd", 1000))
 
 
+# Soft limit: points are checked before an LLM call or sandbox start and charged after, so concurrent sessions
+# (or a call in flight) can overdraw a little below 0. Accepted; the next call is refused.
 async def out_of_points(settings: dict, store, user_id: str) -> str | None:
     on, rate = billing(settings)
     if on and (await store.credits(user_id, rate))["balance"] <= 0:
