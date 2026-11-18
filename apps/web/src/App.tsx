@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, AuthError, type ConnStatus, getToken, setToken, subscribe } from "./api";
 import { Chat, Composer, type Send, writtenFile } from "./Chat";
 import { IconCalendar, IconChart, IconCheck, IconChevron, IconCompose, IconFile, IconSearch, IconApps, IconLogout, IconMemory, IconMenu, IconPersona, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
@@ -379,6 +379,7 @@ export function ModelPicker({ value, options, labels, onChange }: {
   value: string; options: string[]; labels: Record<string, string>; onChange: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [up, setUp] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const label = (p: string) => labels[p] ?? p;
@@ -388,6 +389,12 @@ export function ModelPicker({ value, options, labels, onChange }: {
     document.addEventListener("mousedown", away);
     (box.current?.querySelector('[aria-selected="true"]') as HTMLElement | null)?.focus();
     return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+  // no room below the button (e.g. Persona's draw box) → open upward, before the first paint
+  useLayoutEffect(() => {
+    if (!open) return setUp(false);
+    const b = btn.current!.getBoundingClientRect(), h = box.current!.querySelector("ul")!.offsetHeight + 6;
+    setUp(b.bottom + h > innerHeight && b.top > innerHeight - b.bottom);
   }, [open]);
   const pick = (p: string) => { onChange(p); setOpen(false); btn.current?.focus(); };
   const keys = (e: React.KeyboardEvent) => {
@@ -404,7 +411,7 @@ export function ModelPicker({ value, options, labels, onChange }: {
         <span>{label(value)}</span><IconChevron size={14} className="chev" />
       </button>
       {open && (
-        <ul className="model-menu" role="listbox" aria-label="Model">
+        <ul className={up ? "model-menu up" : "model-menu"} role="listbox" aria-label="Model">
           {options.map((p) => (
             <li key={p} role="option" aria-selected={p === value} tabIndex={-1}
               onClick={() => pick(p)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(p); } }}>

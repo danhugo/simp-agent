@@ -268,6 +268,11 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .model-btn .chev { transform: rotate(90deg); }
 .model-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 240px; width: max-content; max-width: min(480px, 92vw); max-height: 60vh; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-md); }
+@media (min-width: 768px) {
+  .model-menu.up { top: auto; bottom: calc(100% + 6px); animation: menu-up .12s ease-out; }
+  @keyframes menu-up { from { opacity: 0; transform: translateY(4px); } }
+  @media (prefers-reduced-motion: reduce) { .model-menu.up { animation: none; } }
+}
 .model-menu li { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: 8px var(--sp-3);
   border-radius: var(--radius-sm); font-size: var(--fs-sm); color: var(--text); cursor: pointer; }
 .model-menu li:hover, .model-menu li:focus-visible { background: var(--hover); outline: none; }
