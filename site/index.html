@@ -15,7 +15,6 @@
   --blush:#f08aa0; --violet:#8a68f2;
   --display:"Nunito",ui-rounded,system-ui,sans-serif;
   --text:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
-  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
 }
 *{box-sizing:border-box}
 html{background:var(--ground)}
@@ -44,8 +43,6 @@ h1{font:900 clamp(40px,5.6vw,68px)/1.02 var(--display);letter-spacing:-.025em;ma
 .lede{margin:0 0 26px;color:var(--mute);font-size:19px;max-width:30em}
 .actions{display:flex;flex-wrap:wrap;gap:12px}
 .btn{font:800 16px var(--display);text-decoration:none;padding:12px 22px;border-radius:999px;background:var(--ink);color:var(--paper);border:0;cursor:pointer}
-.btn.ghost{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--line)}
-.btn.ghost:hover{box-shadow:inset 0 0 0 1.5px var(--ink)}
 
 /* films: one per row, the picture is the content */
 .film{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:40px;align-items:center;padding:40px 0}
@@ -64,13 +61,6 @@ h2{font:900 clamp(28px,3.2vw,38px)/1.1 var(--display);letter-spacing:-.02em;marg
 .shots img{display:block;width:100%;border-radius:14px;border:1px solid var(--line);background:var(--paper)}
 .shots figcaption{margin-top:10px;color:var(--mute);font-size:15px}
 
-/* try it */
-.try{padding:72px 0 96px;text-align:center}
-.try p{color:var(--mute);margin:0 auto 22px;max-width:34em}
-.cmd{display:flex;align-items:center;gap:12px;max-width:860px;margin:0 auto 18px;background:var(--ink);color:#f2f2f2;border-radius:16px;padding:14px 14px 14px 22px;text-align:left}
-.cmd code{flex:1;font:14.5px/1.5 var(--mono);overflow-x:auto;white-space:nowrap}
-.cmd button{flex:none;font:800 14px var(--display);border:0;border-radius:999px;padding:8px 16px;background:var(--paper);color:var(--ink);cursor:pointer}
-.links{display:flex;justify-content:center;gap:22px;font:700 16px var(--display)}
 footer{border-top:1px solid var(--line);padding:26px 0 40px;color:var(--mute);font-size:14px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
 
 @media (max-width:820px){
@@ -98,8 +88,7 @@ footer{border-top:1px solid var(--line);padding:26px 0 40px;color:var(--mute);fo
         <h1>You talk. It does the rest.</h1>
         <p class="lede">Simp is a personal agent. Ask in plain words and it plans, writes, and works in your mail, calendar, Drive and GitHub. It asks before doing anything big.</p>
         <div class="actions">
-          <a class="btn" href="#try">Try it</a>
-          <a class="btn ghost" href="https://github.com/danhugo/simp-agent">Star on GitHub</a>
+          <a class="btn" href="https://github.com/danhugo/simp-agent">Star on GitHub</a>
         </div>
       </div>
     </section>
@@ -129,23 +118,9 @@ footer{border-top:1px solid var(--line);padding:26px 0 40px;color:var(--mute);fo
       </div>
     </section>
 
-    <section class="try" id="try" aria-labelledby="t">
-      <h2 id="t">Run it on your machine</h2>
-      <p>One line starts Simp with a fake model, so you can look around without an API key.</p>
-      <div class="cmd"><code id="cmd">git clone https://github.com/danhugo/simp-agent &amp;&amp; cd simp-agent &amp;&amp; make dev ARGS=--fake-llm</code><button type="button" id="copy">Copy</button></div>
-      <div class="links"><a href="https://github.com/danhugo/simp-agent/blob/master/docs/operations.md">Self-host guide</a><a href="https://github.com/danhugo/simp-agent">Source on GitHub</a></div>
-    </section>
   </main>
 
   <footer><span>Simp is open source under the <a href="https://github.com/danhugo/simp-agent/blob/master/LICENSE">Apache 2.0 license</a>.</span><a href="https://github.com/danhugo/simp-agent">github.com/danhugo/simp-agent</a></footer>
 </div>
-<script>
-const b = document.getElementById('copy');
-b.addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText(document.getElementById('cmd').textContent); b.textContent = 'Copied'; }
-  catch { b.textContent = 'Select and copy'; }
-  setTimeout(() => (b.textContent = 'Copy'), 1600);
-});
-</script>
 </body>
 </html>

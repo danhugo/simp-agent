@@ -6,7 +6,7 @@
 
 Your own AI assistant — one that knows you, works the way you do, and feels like yours.
 
-[Website](https://danhugo.github.io/simp-agent/) · [Self-host guide](docs/operations.md) · [License](LICENSE)
+[Website](https://danhugo.github.io/simp-agent/) · [License](LICENSE)
 
 <br>
 
