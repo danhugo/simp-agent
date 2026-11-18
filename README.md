@@ -20,6 +20,7 @@ Your own AI assistant — one that knows you, works the way you do, and feels li
 - **Works with any tool.** Plug in MCP servers for the apps you use, and teach it skills for how you work.
 - **Asks before anything big.** Big actions wait for your OK.
 - **Feels like yours.** Give it a name, a way of talking and a look.
+- **Shows how it's doing.** One look at its face tells you if it's thinking, waiting for you, done or stuck.
 - **Remembers you.** What you tell it and what it learns from your tasks carry over to next time.
 
 ## Make it yours
@@ -33,6 +34,10 @@ Your own AI assistant — one that knows you, works the way you do, and feels li
 ## Plug in any MCP, teach it any skill
 
 <a href="docs/assets/crafts-film.mp4"><img src="docs/assets/crafts-film.gif" width="720" alt="MCP portals pour tools into Simp's bag, skill cards show how to use them, and Simp writes a skill of its own"></a>
+
+## One look and you know how it's doing
+
+<a href="docs/assets/moods-film.mp4"><img src="docs/assets/moods-film.gif" width="720" alt="Simp follows the pointer, thinks, asks, cheers, overheats, stops, then naps on the message box until you type"></a>
 
 ## License
 
