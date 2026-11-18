@@ -18,6 +18,12 @@
 
 <br><br>
 
+<a href="docs/assets/memory-film.mp4"><img src="docs/assets/memory-film.gif" width="900" alt="Memory: what you tell Simp becomes a connected web of memories"></a>
+
+<sub>Memory: Simp remembers, so you don't repeat yourself.</sub>
+
+<br><br>
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/chat-dark.png">
   <img src="docs/assets/chat-light.png" alt="Simp plans a week" width="900">
