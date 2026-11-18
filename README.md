@@ -63,4 +63,6 @@ git clone https://github.com/danhugo/simp-agent && cd simp-agent && make dev ARG
 
 [Self-host guide](docs/operations.md) · ⭐ Star if you want more
 
+<sub>Licensed under [Apache 2.0](LICENSE).</sub>
+
 </div>
