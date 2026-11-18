@@ -2,6 +2,10 @@
 export SIMP_SERVER_HOME ?= $(HOME)/.simp-server
 PORT ?= 8766
 
+# make setup: first run on a new machine (install, local config, login link), then make dev
+setup:
+	@scripts/setup.sh
+
 dev:
 	@mkdir -p $(SIMP_SERVER_HOME)
 	@if docker info >/dev/null 2>&1; then uv run simp-server build-sandbox >/dev/null; export SIMP_SANDBOX=docker; fi; \
@@ -22,4 +26,4 @@ google-mcp:
 e2e:
 	cd apps/web && pnpm e2e
 
-.PHONY: dev e2e minio minio-stop
+.PHONY: setup dev e2e minio minio-stop

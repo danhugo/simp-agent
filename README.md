@@ -39,6 +39,17 @@ Your own AI assistant — one that knows you, works the way you do, and feels li
 
 <a href="docs/assets/moods-film.mp4"><img src="docs/assets/moods-film.gif" width="720" alt="Simp follows the pointer, thinks, asks, cheers, overheats, stops, then naps on the message box until you type"></a>
 
+## Run it on your machine
+
+You need [uv](https://docs.astral.sh/uv/) and [pnpm](https://pnpm.io/installation).
+
+```sh
+git clone https://github.com/danhugo/simp-agent && cd simp-agent && make setup
+```
+
+It asks for an Anthropic API key (press Enter to try a fake model with no key), then prints a link to open.
+Your settings and keys live in `~/.simp-server`.
+
 ## License
 
 [Apache 2.0](LICENSE)
