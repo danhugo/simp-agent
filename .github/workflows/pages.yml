@@ -1,0 +1,33 @@
+# Publish site/ (plus the films and screenshots in docs/assets) to GitHub Pages.
+# One-time setup: repo Settings → Pages → Source: GitHub Actions.
+name: pages
+
+on:
+  push:
+    branches: [master]
+    paths: [site/**, docs/assets/**, .github/workflows/pages.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: mkdir -p _site/assets && cp -r site/. _site/ && cp docs/assets/*.mp4 docs/assets/*.png docs/assets/mascot.svg _site/assets/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
