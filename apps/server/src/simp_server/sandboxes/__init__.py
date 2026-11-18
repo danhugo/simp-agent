@@ -42,7 +42,7 @@ class Compute:
     def __init__(self, settings: dict, kind: str):
         s = settings.get("sandbox", dict())
         cloud = kind == "e2b"
-        self.kind, self.db = kind, None
+        self.kind, self.db, self.billing = kind, None, (False, 1000.0)  # billing (enabled, points_per_usd): create_app
         self.price_vcpu_s = s.get("price_vcpu_s", 0.000014 if cloud else 0.0)
         self.price_gib_s = s.get("price_gib_s", 0.0000045 if cloud else 0.0)
         self.max_running = s.get("max_running", 10)  # E2B Hobby: 20 concurrent; keep headroom
@@ -69,6 +69,9 @@ class Compute:
             box.starting = True
 
     async def check(self, user_id: str, running: int) -> None:
+        if self.billing[0] and self.db is not None and (await self.db.credits(user_id, self.billing[1]))["balance"] <= 0:
+            from simp_server.budget import OUT_OF_POINTS
+            raise SandboxLimit(OUT_OF_POINTS)
         if running >= self.max_running:
             raise SandboxLimit(f"sandbox: {running} sandboxes are running, the server limit is {self.max_running}. "
                                "Try again in a few minutes.")

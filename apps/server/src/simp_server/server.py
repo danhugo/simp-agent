@@ -433,6 +433,8 @@ class Run:
             msg = "budget: server paused by the admin"
         elif not await store.user_active(self.user_id):
             msg = "budget: user revoked"
+        elif m := await budget.out_of_points(self.mgr.settings, store, self.user_id):
+            msg = m
         elif await store.spent(self.user_id, budget.day_start()) >= lim.user_day_usd:
             msg = f"budget: daily limit ${lim.user_day_usd:g} reached"
         elif await store.spent(self.user_id, self.run_start, self.sid) >= lim.run_usd:
@@ -628,6 +630,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     files = workspace.make_store(settings, mgr.keys)  # the Files panel's view of /work: never wakes a sandbox
     if hasattr(sandbox, "compute"):
         sandbox.store, sandbox.compute.db = files, store
+        sandbox.compute.billing = budget.billing(settings)
         sandbox.keys = mgr.keys
 
     @asynccontextmanager
@@ -720,10 +723,14 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def models(u=Depends(user)) -> dict[str, str]:  # profile name -> model id, for display
         return {name: pr.get("model", name) for name, pr in settings["profiles"].items()}
 
+    billing = budget.billing(settings)
+
     @app.get("/api/usage")
     async def usage(u=Depends(user)):
         return {"today_usd": round(await store.spent(u["id"], budget.day_start()), 4),
-                "day_limit_usd": mgr.limits.user_day_usd, "paused": mgr.paused()}
+                "day_limit_usd": mgr.limits.user_day_usd, "paused": mgr.paused(),
+                "billing_enabled": billing[0], "points_balance": (await store.credits(u["id"], billing[1]))["balance"]
+                if billing[0] else None}
 
     @app.get("/api/memories")
     async def list_memories(u=Depends(user)):
@@ -793,6 +800,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
                 return "budget: server paused by the admin"
             if await store.spent(u["id"], budget.day_start()) >= mgr.limits.user_day_usd:
                 return f"budget: daily limit ${mgr.limits.user_day_usd:g} reached"
+            return await budget.out_of_points(settings, store, u["id"])
 
         ctx = Context(persona_mod.system(body.slot), [UserMessage(persona_mod.user_message(
             body.description, body.other, body.code, body.error))], [])
@@ -1106,6 +1114,25 @@ async def sandboxes_cli(a) -> None:
             print(f"{names.get(r['user_id'], r['user_id'])}\t{r['state']}\t{age // 3600}h{age % 3600 // 60:02d}m\t{r['id']}")
 
 
+async def credit_cli(a) -> None:
+    rate = budget.billing(load_settings())[1]
+
+    async def run(s):
+        if a.credit == "list":
+            for u in await s.list_users():
+                print(f"{u['name']}\t{(await s.credits(u['id'], rate))['balance']}")
+            return
+        uid = next((u["id"] for u in await s.list_users() if u["name"].lower() == a.email.lower()), None)
+        if uid is None:
+            raise SystemExit(f"no user with email {a.email}")
+        if a.credit == "add":
+            await s.add_credit(uid, a.points, a.note)
+        c = await s.credits(uid, rate)
+        print(f"granted {c['granted']}\tspent {c['spent']}\tbalance {c['balance']}")
+
+    await with_store(run)
+
+
 async def restore_cli(a) -> None:
     from datetime import datetime
     settings = load_settings()
@@ -1161,7 +1188,16 @@ def main() -> None:
     wr.add_argument("--user", required=True, help="name or id")
     wr.add_argument("--at", required=True, help="ISO time, e.g. 2026-11-16T09:30:00+09:00 (no zone = local)")
     wr.add_argument("--path", default="", help="only this file or dir")
+    cr = sub.add_parser("credit", help="billing points: add, show, list").add_subparsers(dest="credit", required=True)
+    ca = cr.add_parser("add", help="grant points (negative to correct)")
+    ca.add_argument("--email", required=True)
+    ca.add_argument("--points", type=int, required=True)
+    ca.add_argument("--note", default="")
+    cr.add_parser("show", help="granted, spent, balance").add_argument("--email", required=True)
+    cr.add_parser("list", help="every user's balance")
     a = ap.parse_args()
+    if a.mode == "credit":
+        return asyncio.run(credit_cli(a))
     if a.mode in ("pause", "resume"):
         f = Path(load_settings()["data_dir"]) / "PAUSED"
         f.touch() if a.mode == "pause" else f.unlink(missing_ok=True)

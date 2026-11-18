@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS app_off(user_id TEXT NOT NULL, app TEXT NOT NULL, PRI
 CREATE TABLE IF NOT EXISTS app_on(user_id TEXT NOT NULL, app TEXT NOT NULL, PRIMARY KEY(user_id, app));
 CREATE TABLE IF NOT EXISTS mcp_audit(user_id TEXT, session_id TEXT, server TEXT, tool TEXT, decision TEXT, ok INTEGER,
     at REAL, link_id TEXT);
+CREATE TABLE IF NOT EXISTS credit_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, points INTEGER,
+    note TEXT, created REAL);
 """
 def _persona(raw: str | None) -> dict:
     try:
@@ -342,6 +344,16 @@ class SqliteStore:
         """Sandbox compute seconds since `since`: usage rows with model "sandbox:<kind>" keep seconds in `input`."""
         return (await self._all("SELECT COALESCE(SUM(input), 0) AS s FROM usage WHERE user_id=? AND at>=? AND model LIKE "
                                 "'sandbox:%'", user_id, since))[0]["s"]
+
+    # billing: points granted by the admin (append-only); balance = granted - all usage cost (LLM + sandbox) in points
+    async def add_credit(self, user_id: str, points: int, note: str = "") -> None:
+        await self._do("INSERT INTO credit_ledger(user_id, points, note, created) VALUES(?,?,?,?)",
+                       user_id, int(points), note, time.time())
+
+    async def credits(self, user_id: str, points_per_usd: float) -> dict:
+        granted = (await self._all("SELECT COALESCE(SUM(points), 0) AS p FROM credit_ledger WHERE user_id=?", user_id))[0]["p"]
+        spent = round(await self.spent(user_id, 0) * points_per_usd)
+        return {"granted": granted, "spent": spent, "balance": granted - spent}
 
     async def usage(self, user_id: str) -> list[dict]:
         return await self._all("SELECT * FROM usage WHERE user_id=?", user_id)

@@ -19,6 +19,22 @@ def limits(settings: dict) -> Limits:
     return Limits(**settings.get("budget", dict()))
 
 
+OUT_OF_POINTS = "budget: out of points. Ask the admin for more."
+
+
+def billing(settings: dict) -> tuple[bool, float]:
+    """[billing] enabled (default off: local / self-host, no points), points_per_usd."""
+    b = settings.get("billing", dict())
+    return bool(b.get("enabled", False)), float(b.get("points_per_usd", 1000))
+
+
+async def out_of_points(settings: dict, store, user_id: str) -> str | None:
+    on, rate = billing(settings)
+    if on and (await store.credits(user_id, rate))["balance"] <= 0:
+        return OUT_OF_POINTS
+    return None
+
+
 def cost(profile: dict, usage: dict) -> float:
     return (usage.get("input", 0) * profile.get("price_in", 0) + usage.get("output", 0) * profile.get("price_out", 0)) / 1e6
 

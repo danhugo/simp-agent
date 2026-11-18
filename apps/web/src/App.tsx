@@ -308,6 +308,7 @@ function AccountMenu({ theme, onTheme, onLogout }: { theme: string; onTheme: () 
   const trigger = useRef<HTMLButtonElement>(null);
   const [shareLoc, setShareLoc] = useState(() => sharedLocation() !== null);
   const [locNote, setLocNote] = useState("");
+  const [points, setPoints] = useState<number | null>(null);
   useEffect(() => { api.me().then((m) => setName(m.name)).catch(() => {}); }, []);
   const toggleLocation = () => {
     setLocNote("");
@@ -320,6 +321,7 @@ function AccountMenu({ theme, onTheme, onLogout }: { theme: string; onTheme: () 
   useEffect(() => {
     if (!open) return;
     items()[0]?.focus();
+    api.usage().then((u) => setPoints(u.billing_enabled ? u.points_balance : null)).catch(() => {});
     const away = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
     document.addEventListener("pointerdown", away);
     return () => document.removeEventListener("pointerdown", away);
@@ -340,6 +342,7 @@ function AccountMenu({ theme, onTheme, onLogout }: { theme: string; onTheme: () 
       onBlur={(e) => { if (open && !root.current?.contains(e.relatedTarget as Node)) setOpen(false); }}>
       {open && (
         <div className="menu up" role="menu" aria-label="Account">
+          {points !== null && <div className="menu-note">{points.toLocaleString("en-US")} points</div>}
           <button role="menuitem" tabIndex={-1} onClick={() => { onTheme(); close(); }}>
             {theme === "dark" ? <IconSun size={16} /> : <IconMoon size={16} />}<span>{theme === "dark" ? "Light" : "Dark"} theme</span>
           </button>
