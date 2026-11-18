@@ -2,7 +2,8 @@
 
 The Files panel goes through the store, never through the sandbox (browsing never starts compute). Sandboxes see the
 same files at /work: Docker bind-mounts a LocalStore dir; with S3Store the sandbox FUSE-mounts the user's prefix
-using `mount_creds(user_id)` (scoped to users/<user_id>/ when the store supports STS AssumeRole, e.g. AWS S3, MinIO).
+using `mount_creds(user_id)` (scoped to users/<user_id>/: STS AssumeRole on AWS S3 / MinIO, or Cloudflare R2's
+Temporary Credentials API with `mount_scope = "r2"`).
 
 Paths are relative to the user's workspace ("a/b.txt", "/work/a/b.txt" or "."); escaping it raises PermissionError,
 a missing file FileNotFoundError, like LocalEnv."""
@@ -91,6 +92,19 @@ class S3Store:
         self.scope = w.get("mount_scope", "sts")
         self.role_arn = w.get("role_arn", "arn:aws:iam::000000000000:role/simp-mount")
         self.creds_ttl = int(w.get("mount_creds_ttl_s", 3600))
+        if self.scope not in ("sts", "r2", "none"):
+            raise SystemExit(f'settings: [workspace] mount_scope must be "sts", "r2" or "none", not {self.scope!r}')
+        if self.scope == "r2":  # R2 has no STS: the Cloudflare API mints temp creds bound to a prefix
+            self.cf_account_id = w.get("cf_account_id")
+            self.cf_token = key("cf_token_env", "R2_API_TOKEN")
+            self.cf_api = w.get("cf_api", "https://api.cloudflare.com/client/v4")
+            self.cf_transport = None  # tests swap in an httpx.MockTransport
+            if not self.cf_account_id or not self.cf_token:
+                raise SystemExit('[workspace] mount_scope = "r2" needs [workspace] cf_account_id and a Cloudflare API '
+                                 f'token in <data_dir>/.env as {w.get("cf_token_env", "R2_API_TOKEN")} '
+                                 '(or set cf_token_env)')
+            if not 0 < self.creds_ttl <= 604800:
+                raise SystemExit("[workspace] mount_creds_ttl_s must be 1..604800 (R2 temporary credentials max 7 days)")
         # the endpoint as seen from inside a sandbox (Docker Desktop: the host is host.docker.internal)
         self.mount_endpoint = w.get("mount_endpoint") or (self.endpoint or "").replace("127.0.0.1", "host.docker.internal").replace(
             "localhost", "host.docker.internal")
@@ -149,6 +163,8 @@ class S3Store:
         out = {"endpoint": self.mount_endpoint, "bucket": self.bucket, "prefix": prefix, "region": self.region}
         if self.scope == "none":
             return out | {"access_key": self.access_key, "secret_key": self.secret_key, "session_token": ""}
+        if self.scope == "r2":
+            return out | await self._r2_creds(prefix)
         policy = {"Version": "2012-10-17", "Statement": [
             {"Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": [f"arn:aws:s3:::{self.bucket}"],
              "Condition": {"StringLike": {"s3:prefix": [prefix, prefix + "*"]}}},
@@ -160,10 +176,30 @@ class S3Store:
         return out | {"access_key": c["AccessKeyId"], "secret_key": c["SecretAccessKey"], "session_token": c["SessionToken"],
                       "expires_in": max(0.0, left)}  # sandboxes remount before this runs out (review M2)
 
+    async def _r2_creds(self, prefix: str) -> dict:
+        """Cloudflare R2 Temporary Credentials API: read-write creds limited to `prefix`, signed off the store key."""
+        import httpx
+
+        body = {"bucket": self.bucket, "parentAccessKeyId": self.access_key, "permission": "object-read-write",
+                "ttlSeconds": self.creds_ttl, "prefixes": [prefix]}
+        async with httpx.AsyncClient(timeout=30, transport=self.cf_transport) as http:
+            r = await http.post(f"{self.cf_api}/accounts/{self.cf_account_id}/r2/temp-access-credentials", json=body,
+                                headers={"Authorization": f"Bearer {self.cf_token}"})
+        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else dict()
+        res = data.get("result") or dict()
+        if r.status_code != 200 or not data.get("success") or not res.get("sessionToken"):
+            errs = "; ".join(e.get("message", "") for e in data.get("errors", [])) or r.text[:200]
+            raise RuntimeError(f"R2 temporary credentials failed (HTTP {r.status_code}): {errs}")
+        # the response has no expiry: count from now, a little early so the sandbox remounts in time
+        return {"access_key": res["accessKeyId"], "secret_key": res["secretAccessKey"],
+                "session_token": res["sessionToken"], "expires_in": max(0.0, self.creds_ttl - 60.0)}
+
     async def restore(self, user_id: str, at: datetime, path: str = "") -> list[str]:
         """Put every object under the user's prefix (or under `path` in it) back to its version at time `at`: objects
         changed since are overwritten with the old version, objects created since (or deleted at `at`) are deleted.
         Old versions stay (versioning), so a restore can itself be undone. Returns the keys it changed."""
+        if self.scope == "r2" or "r2.cloudflarestorage.com" in (self.endpoint or ""):
+            raise SystemExit("workspace-restore needs bucket versioning, which Cloudflare R2 does not have")
         base = self.key(user_id, path) if rel(path) else self.prefix(user_id)
 
         def run():
