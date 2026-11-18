@@ -1,68 +1,35 @@
 <div align="center">
 
-<img src="docs/assets/mascot.svg" width="96" alt="Simp">
+<img src="docs/assets/mascot.svg" width="88" alt="Simp">
 
 # Simp
 
-**You talk. It does the rest.**
+Your own AI assistant — one that knows you, works the way you do, and feels like yours.
+
+[Website](https://danhugo.github.io/simp-agent/) · [Self-host guide](docs/operations.md) · [License](LICENSE)
 
 <br>
 
-<a href="docs/assets/simp-film.mp4"><img src="docs/assets/simp-film.gif" width="900" alt="Simp: plan my week, from prompt to Allow"></a>
-
-<br><br>
-
-<a href="docs/assets/persona-film.mp4"><img src="docs/assets/persona-film.gif" width="900" alt="Persona: name Simp, give it a voice, dress it"></a>
-
-<sub>Persona: name it, dress it, make it yours.</sub>
-
-<br><br>
-
-<a href="docs/assets/memory-film.mp4"><img src="docs/assets/memory-film.gif" width="900" alt="Memory: what you tell Simp becomes a connected web of memories"></a>
-
-<sub>Memory: Simp remembers, so you don't repeat yourself.</sub>
-
-<br><br>
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/chat-dark.png">
-  <img src="docs/assets/chat-light.png" alt="Simp plans a week" width="900">
-</picture>
-
-<sub>"Help me plan my week." Done, and saved to a file.</sub>
-
-<br><br>
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/home-dark.png">
-  <img src="docs/assets/home-light.png" alt="Simp home" width="900">
-</picture>
-
-<sub>Just ask.</sub>
-
-<br><br>
-
-<img src="docs/assets/apps-light.png" alt="Connect your apps" width="900">
-
-<sub>Your mail, calendar, Drive and GitHub. One click each.</sub>
-
-<br><br>
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/approval-dark.png">
-  <img src="docs/assets/approval-light.png" alt="Simp asks first" width="900">
-</picture>
-
-<sub>It always asks before doing anything big.</sub>
-
-<br><br>
-
-```sh
-git clone https://github.com/danhugo/simp-agent && cd simp-agent && make dev ARGS=--fake-llm
-```
-
-[Self-host guide](docs/operations.md) · ⭐ Star if you want more
-
-<sub>Licensed under [Apache 2.0](LICENSE).</sub>
+<a href="docs/assets/simp-film.mp4"><img src="docs/assets/simp-film.gif" width="820" alt="Simp plans a week, from the prompt to the Allow button"></a>
 
 </div>
+
+## What Simp does
+
+- **You talk, it works.** Ask in plain words. Simp plans, writes and gets the task done.
+- **Works in your apps.** Mail, calendar, Drive and GitHub, one click each to connect.
+- **Asks before anything big.** Big actions wait for your OK.
+- **Feels like yours.** Give it a name, a way of talking and a look.
+- **Remembers you.** What you tell it and what it learns from your tasks carry over to next time.
+
+## Make it yours
+
+<a href="docs/assets/persona-film.mp4"><img src="docs/assets/persona-film.gif" width="720" alt="A grey Simp gets a name, a voice and a wizard outfit"></a>
+
+## It remembers
+
+<a href="docs/assets/memory-film.mp4"><img src="docs/assets/memory-film.gif" width="720" alt="Things you say become memories that connect into a globe"></a>
+
+## License
+
+[Apache 2.0](LICENSE)
