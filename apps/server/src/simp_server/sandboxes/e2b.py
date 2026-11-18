@@ -346,6 +346,7 @@ class E2BSandbox:
     async def _start(self, box: _Box) -> None:
         resumed = False
         if box.state == "paused" and box.sbx_id:
+            await self.compute.unpaused(box.sbx_id)  # paused time ends now: resumed, or killed below
             try:
                 box.sbx = await self._sdk.connect(box.sbx_id, timeout=self.provider_timeout_s, **self._api())
                 resumed = True
@@ -445,6 +446,7 @@ class E2BSandbox:
                     await self.snapshot(box)
                 await box.sbx.pause()
                 box.state = "paused"
+                await self.compute.paused(box.user_id, box.sbx_id, self.cpus, self.memory_gib)
             except Exception as e:
                 log.warning("sandbox pause failed, killing it: %s", e, extra={"user": box.user_id})
                 if box.mirror_failed:
@@ -537,19 +539,30 @@ class E2BSandbox:
             log.warning("listing e2b sandboxes failed: %s", e)
             return
         found.sort(key=lambda i: (i["state"] != "paused", -i["started_at"].timestamp()))
+        await self._settle_pauses({i["id"] for i in found if i["user_id"] and i["state"] == "paused"})
         for i in found:
             box = self.boxes.setdefault(i["user_id"], _Box(i["user_id"])) if i["user_id"] else None
             try:
                 if box is None or box.sbx_id:
                     log.info("killing orphan sandbox %s", i["id"])
                     await self._sdk.kill(i["id"], **self._api())
+                    await self.compute.unpaused(i["id"])
                     continue
                 if i["state"] == "running":
                     await self._sdk.pause(i["id"], **self._api())
                 box.sbx_id, box.state = i["id"], "paused"
+                await self.compute.paused(box.user_id, i["id"], self.cpus, self.memory_gib)  # kept if already paused
                 box.started = time.monotonic() - (datetime.now(timezone.utc) - i["started_at"]).total_seconds()
             except Exception as e:
                 log.warning("orphan sandbox %s: %s", i["id"], e)
+
+    async def _settle_pauses(self, keep: set[str]) -> None:
+        """Paused boxes we remember but the provider no longer has (expired, admin-killed while we were down, or an
+        orphan): charge their paused time up to now. Paused at most once per box, so never charged twice."""
+        if self.compute.db is None or self.compute.paused_ratio <= 0:
+            return
+        for sbx_id in set(await self.compute.db.pause_ids()) - keep:
+            await self.compute.unpaused(sbx_id)
 
     async def admin_kill(self, user_id: str) -> int:
         n = 0

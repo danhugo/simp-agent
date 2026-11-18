@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS mcp_audit(user_id TEXT, session_id TEXT, server TEXT,
     at REAL, link_id TEXT);
 CREATE TABLE IF NOT EXISTS credit_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, points INTEGER,
     note TEXT, created REAL);
+CREATE TABLE IF NOT EXISTS sandbox_pauses(sbx_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, paused_at REAL, cpus REAL,
+    mem_gib REAL);
 CREATE INDEX IF NOT EXISTS usage_user_at ON usage(user_id, at);
 CREATE INDEX IF NOT EXISTS credit_ledger_user ON credit_ledger(user_id);
 """
@@ -372,6 +374,18 @@ class SqliteStore:
         granted = (await self._all("SELECT COALESCE(SUM(points), 0) AS p FROM credit_ledger WHERE user_id=?", user_id))[0]["p"]
         spent = math.ceil(round(await self.spent(user_id, 0) * points_per_usd, 6))  # never under-count; 6 dp drops float noise
         return {"granted": granted, "spent": spent, "balance": granted - spent}
+
+    # paused sandboxes, kept across restarts so paused time is charged exactly once
+    async def add_pause(self, user_id: str, sbx_id: str, cpus: float, mem_gib: float) -> None:
+        await self._do("INSERT OR IGNORE INTO sandbox_pauses VALUES(?,?,?,?,?)", sbx_id, user_id, time.time(), cpus, mem_gib)
+
+    async def pop_pause(self, sbx_id: str) -> dict | None:
+        rows = await self._all("DELETE FROM sandbox_pauses WHERE sbx_id=? RETURNING *", sbx_id)
+        await self.db.commit()
+        return rows[0] if rows else None
+
+    async def pause_ids(self) -> list[str]:  # admin/maintenance: every user's paused boxes (not user data)
+        return [r["sbx_id"] for r in await self._all("SELECT sbx_id FROM sandbox_pauses")]
 
     async def usage(self, user_id: str) -> list[dict]:
         return await self._all("SELECT * FROM usage WHERE user_id=?", user_id)
