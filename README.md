@@ -17,7 +17,7 @@ Your own AI assistant — one that knows you, works the way you do, and feels li
 ## What Simp does
 
 - **You talk, it works.** Ask in plain words. Simp plans, writes and gets the task done.
-- **Works in your apps.** Mail, calendar, Drive and GitHub, one click each to connect.
+- **Works with any tool.** Plug in MCP servers for the apps you use, and teach it skills for how you work.
 - **Asks before anything big.** Big actions wait for your OK.
 - **Feels like yours.** Give it a name, a way of talking and a look.
 - **Remembers you.** What you tell it and what it learns from your tasks carry over to next time.
@@ -29,6 +29,10 @@ Your own AI assistant — one that knows you, works the way you do, and feels li
 ## It remembers
 
 <a href="docs/assets/memory-film.mp4"><img src="docs/assets/memory-film.gif" width="720" alt="Things you say become memories that connect into a globe"></a>
+
+## Plug in any MCP, teach it any skill
+
+<a href="docs/assets/crafts-film.mp4"><img src="docs/assets/crafts-film.gif" width="720" alt="MCP portals pour tools into Simp's bag, skill cards show how to use them, and Simp writes a skill of its own"></a>
 
 ## License
 
