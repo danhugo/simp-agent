@@ -112,7 +112,26 @@ export function compileSkin(code: string, slot?: Slot): Wear {
     ? `${Math.round((misplaced / inside) * 100)}% of the hat is below y = 0.4, over the face; a hat stays above y = 0.55 (use H.above). ${seen}`
     : `${Math.round((misplaced / inside) * 100)}% of the bottom is above y = -0.15, over the face; it stays below y = -0.3 (use H.below). ${seen}`);
   // sampled extent, padded by a few sample spacings so thin edges between samples stay inside
-  wear.boxes = [{ lo: lo.map((v) => v - 0.2), hi: hi.map((v) => v + 0.2) }];
+  const blo = lo.map((v) => v - 0.2), bhi = hi.map((v) => v + 0.2);
+  // random samples can miss thin parts at the edges (a brim, a feather), and whatever sticks out of the box is
+  // never drawn: push each face out while the outfit still crosses it
+  const G = 24, LIM = [[-2, 2], [-2, 2.1], [-2, 2]];
+  for (let k = 0; k < 3; k++) for (const side of [0, 1]) {
+    for (let step = 0; step < 20; step++) {
+      const b = side ? bhi : blo, i = (k + 1) % 3, j = (k + 2) % 3;
+      if (side ? b[k] >= LIM[k][1] : b[k] <= LIM[k][0]) break;
+      let crosses = false;
+      for (let a = 0; a <= G && !crosses; a++) for (let c = 0; c <= G && !crosses; c++) {
+        const p = [0, 0, 0];
+        p[k] = b[k]; p[i] = blo[i] + ((bhi[i] - blo[i]) * a) / G; p[j] = blo[j] + ((bhi[j] - blo[j]) * c) / G;
+        const out = wear(p);
+        crosses = !!out && out[0] < 0.05;
+      }
+      if (!crosses) break;
+      b[k] = side ? Math.min(LIM[k][1], b[k] + 0.15) : Math.max(LIM[k][0], b[k] - 0.15);
+    }
+  }
+  wear.boxes = [{ lo: blo, hi: bhi }];
   if (report.volume < 0.02) throw new Error(`it is too small to see at 48 pixels (volume ${report.volume}); make the parts chunkier. ${seen}`);
   return wear;
 }
