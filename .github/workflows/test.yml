@@ -17,8 +17,9 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked --package simp-server
       # Docker/FUSE sandbox tests need a dev box (FUSE, uid 1000); a dead DOCKER_HOST makes them skip here.
-      - run: uv run pytest -q packages/simp_agent/tests apps/server
+      - run: timeout -s ABRT 300 uv run pytest -q packages/simp_agent/tests apps/server
         env:
+          PYTHONFAULTHANDLER: "1"
           DOCKER_HOST: unix:///nonexistent.sock
 
   web:
