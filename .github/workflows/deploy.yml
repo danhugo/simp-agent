@@ -13,7 +13,11 @@ concurrency:
   cancel-in-progress: false  # never stop a deploy halfway
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: SSH key
