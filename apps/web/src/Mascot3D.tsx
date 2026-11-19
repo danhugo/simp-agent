@@ -5,7 +5,7 @@ import { getSkin, onSkin, type Wear } from "./skin";
  * Simp's head as a real 3D sphere rendered into a small pixel grid (default 48x48) and scaled up crisply.
  * Each pixel is lit (light from the upper left, fixed) and snapped to a 4-tone palette; the smiling eyes and blush
  * are painted on the sphere surface, so when the head turns toward the pointer they slide over the curve.
- * Colors come from the --m3-* CSS variables (light/dark). Blinks now and then; respects prefers-reduced-motion.
+ * Colors come from the --m3-* CSS variables (light/dark). Blinks now and then; animates fully even under prefers-reduced-motion.
  */
 const rad = (d: number) => (d * Math.PI) / 180;
 const deg = (r: number) => (r * 180) / Math.PI;
@@ -206,7 +206,6 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
   useEffect(() => {
     const cv = canvas.current, ctx = cv?.getContext("2d");
     if (!cv || !ctx) return;
-    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let pal = readPal(), blink = 0, raf = 0, timer = 0, since = 0, focus = 0, overload = 0;
     let lastKey = "", lastWear: Wear | null = null, broken: Wear | null = null;
     const offSkin = onSkin(() => { lastKey = ""; });
@@ -230,10 +229,10 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
       steam.current?.classList.toggle("on", over);
       const face = workingRef.current ? {} : FACES[moodRef.current];
       const posed = face.yaw !== undefined || face.pitch !== undefined;  // a mood with its own pose stops following the pointer
-      const t = workingRef.current ? { yaw: 0, pitch: rad(20) } : posed ? { yaw: rad(face.yaw ?? 0), pitch: rad(face.pitch ?? 0) } : target, k = reduce ? 1 : 0.12;
-      const sway = moodRef.current === "asking" && !workingRef.current && !reduce ? rad(Math.sin(now / 500) * 10) : 0;
+      const t = workingRef.current ? { yaw: 0, pitch: rad(20) } : posed ? { yaw: rad(face.yaw ?? 0), pitch: rad(face.pitch ?? 0) } : target, k = 0.12;
+      const sway = moodRef.current === "asking" && !workingRef.current ? rad(Math.sin(now / 500) * 10) : 0;
       cur.yaw += (t.yaw - cur.yaw) * k; cur.pitch += (t.pitch - cur.pitch) * k;
-      const shake = focused && !reduce ? rad(Math.sin(now / 45) * 2.2) : 0;  // straining: a tiny fast tremble
+      const shake = focused ? rad(Math.sin(now / 45) * 2.2) : 0;  // straining: a tiny fast tremble
       let wear = skinRef.current === undefined ? getSkin() : skinRef.current;
       if (wear && wear === broken) wear = null;
       const args = [cur.yaw + shake + sway, cur.pitch, face.eyes === "flat" ? 0 : blink, focus, overload] as const;
@@ -258,8 +257,8 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
       const step = (now: number) => { const p = (now - s) / 170; blink = p < 1 ? Math.sin(p * Math.PI) : 0; if (p < 1) requestAnimationFrame(step); };
       requestAnimationFrame(step);
     };
-    const loop = () => { timer = window.setTimeout(() => { if (!reduce) doBlink(); loop(); }, 2800 + Math.random() * 3000); };
-    if (!reduce) { addEventListener("pointermove", onMove); document.addEventListener("pointerleave", onLeave); }
+    const loop = () => { timer = window.setTimeout(() => { doBlink(); loop(); }, 2800 + Math.random() * 3000); };
+    addEventListener("pointermove", onMove); document.addEventListener("pointerleave", onLeave);
     loop();
     raf = requestAnimationFrame(frame);
     return () => {

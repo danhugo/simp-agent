@@ -5,7 +5,7 @@ import { getSkin } from "./skin";
 /**
  * When the chat sits idle, Simp hops down from the end of the conversation onto the top edge of the message box
  * and plays there. Each trip it picks one game at random (Stroll, Peek or Nap) and keeps at it until it goes home.
- * Sending a message sends it hopping back home; typing, mouse moves and scrolling leave it playing. Off with prefers-reduced-motion.
+ * Sending a message sends it hopping back home; typing, mouse moves and scrolling leave it playing. Plays even under prefers-reduced-motion.
  * The idle delay is 60s; e2e tests shorten it with localStorage "simp.idleMs".
  */
 const SIZE = 36, N = 48, R = SIZE / 2;
@@ -42,7 +42,7 @@ export function IdleSimp({ enabled }: { enabled: boolean }) {
 
   // come out when no message has been sent for a while; hop home when one is sent (enabled turns false)
   useEffect(() => {
-    if (!enabled || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (!enabled) {
       if (box.current?.classList.contains("on")) goHome(); else setOn(false);
       return;
     }
