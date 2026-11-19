@@ -96,3 +96,57 @@ async def test_s3_store_files_scoped_creds_and_restore(tmp_path, minio, s3_setti
     with pytest.raises(FileNotFoundError):
         await st.read("u1", "new.txt")
     assert await st.restore("u1", at) == []  # nothing left to change
+
+
+def _r2_settings(tmp_path, **w):
+    return {"data_dir": str(tmp_path), "workspace": {
+        "store": "s3", "bucket": "simp-ws", "endpoint": "https://acct.r2.cloudflarestorage.com", "region": "auto",
+        "mount_scope": "r2", "cf_account_id": "acct", "mount_creds_ttl_s": 900} | w}
+
+
+async def test_r2_scoped_mount_creds(tmp_path):
+    import json as _json
+
+    import httpx
+
+    seen = list()
+
+    def cf(req):
+        seen.append(req)
+        return httpx.Response(200, json={"success": True, "errors": [], "messages": [], "result": {
+            "accessKeyId": "TMPKEY", "secretAccessKey": "TMPSECRET", "sessionToken": "TMPTOKEN"}})
+
+    keys = {"S3_ACCESS_KEY_ID": "PARENTKEY", "S3_SECRET_ACCESS_KEY": "parentsecret", "R2_API_TOKEN": "cftoken"}
+    st = workspace.S3Store(_r2_settings(tmp_path), keys)
+    st.cf_transport = httpx.MockTransport(cf)
+    c = await st.mount_creds("u1")
+    req = seen[0]
+    assert req.method == "POST" and str(req.url) == \
+        "https://api.cloudflare.com/client/v4/accounts/acct/r2/temp-access-credentials"
+    assert req.headers["authorization"] == "Bearer cftoken"
+    assert _json.loads(req.content) == {"bucket": "simp-ws", "parentAccessKeyId": "PARENTKEY",
+                                        "permission": "object-read-write", "ttlSeconds": 900, "prefixes": ["users/u1/"]}
+    assert c["access_key"] == "TMPKEY" and c["secret_key"] == "TMPSECRET" and c["session_token"] == "TMPTOKEN"
+    assert c["prefix"] == "users/u1/" and c["bucket"] == "simp-ws" and 0 < c["expires_in"] <= 900
+    assert workspace.check_config({"plugins": {"sandbox": "simp_server.sandboxes.e2b:E2BSandbox"},
+                                   "workspace": {"store": "s3", "mount_scope": "r2"}}) is None
+    with pytest.raises(SystemExit, match="R2 does not have"):
+        await st.restore("u1", datetime.now(timezone.utc))
+
+    st.cf_transport = httpx.MockTransport(lambda req: httpx.Response(403, json={
+        "success": False, "errors": [{"code": 10000, "message": "Authentication error"}], "messages": [], "result": None}))
+    with pytest.raises(RuntimeError, match="Authentication error"):
+        await st.mount_creds("u1")
+
+
+def test_r2_missing_token_or_account(tmp_path, monkeypatch):
+    monkeypatch.delenv("R2_API_TOKEN", raising=False)
+    keys = {"S3_ACCESS_KEY_ID": "k", "S3_SECRET_ACCESS_KEY": "s"}
+    with pytest.raises(SystemExit, match="R2_API_TOKEN"):
+        workspace.S3Store(_r2_settings(tmp_path), keys)
+    with pytest.raises(SystemExit, match="CF_TOK"):
+        workspace.S3Store(_r2_settings(tmp_path, cf_token_env="CF_TOK"), keys)
+    with pytest.raises(SystemExit, match="cf_account_id"):
+        workspace.S3Store(_r2_settings(tmp_path, cf_account_id=""), keys | {"R2_API_TOKEN": "t"})
+    with pytest.raises(SystemExit, match="604800"):
+        workspace.S3Store(_r2_settings(tmp_path, mount_creds_ttl_s=10**6), keys | {"R2_API_TOKEN": "t"})
