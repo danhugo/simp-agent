@@ -175,7 +175,7 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .mem-search { display: flex; align-items: center; gap: var(--sp-2); width: 240px; min-width: 0; padding: 0 var(--sp-3); border-radius: 10px; background: var(--panel); color: var(--muted); }
 .mem-search input { flex: 1; min-width: 0; border: 0; background: none; padding: 7px 0; box-shadow: none; outline: none; }
 .mem-search:focus-within { outline: 2px solid var(--text); outline-offset: 1px; }
-@media (max-width: 560px) { .mem-toolbar { flex-wrap: wrap; } .mem-search { width: 100%; order: 3; } }
+@media (max-width: 560px) { .mem-toolbar { flex-wrap: wrap; } .mem-search { width: 100%; order: 3; } .mem-toolbar .new-mem { margin-left: 0; } .mem-empty { flex-direction: column; text-align: center; } }
 .mem-empty { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-3); padding: var(--sp-3) var(--sp-1); }
 .mem-empty p { margin: 0; }
 /* add: a "+" field, about one line of text long (not the full page width) */
@@ -500,3 +500,8 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 /* saved count per kind, top-right of the piece card; in flow with zero height (the card stays static so the picker can anchor to Simp's card) */
 .persona-count { align-self: flex-end; height: 0; overflow: visible; font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1; }
 .persona-count.full { color: var(--err); }
+/* phones: the fields are far below the top, so Save floats at the bottom of the screen */
+@media (max-width: 760px) {
+  .persona .memory-body { padding-bottom: 96px; }
+  .persona-save-btn { position: fixed; z-index: 10; right: var(--sp-4); bottom: calc(var(--sp-4) + env(safe-area-inset-bottom)); box-shadow: var(--shadow-md); }
+}
