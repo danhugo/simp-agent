@@ -99,8 +99,10 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
     transition: opacity .15s ease, visibility .25s; }
   .app.collapsed .sidebar { width: var(--rail-w); }
   .app.collapsed .sidebar :is(.brand-name, .collapse, .new .label, nav, .account-name) { opacity: 0; visibility: hidden; }
-  .sidebar .new, .sidebar .account-btn { white-space: nowrap; overflow: hidden; transition: width .25s ease, padding .25s ease; }
-  .app.collapsed .sidebar .new { width: 32px; height: 32px; padding: 0; gap: 0; justify-content: center; }
+  .sidebar .new { white-space: nowrap; overflow: hidden; transition: width .25s ease; }
+  .sidebar .account-btn { white-space: nowrap; overflow: hidden; transition: width .25s ease, padding .25s ease; }
+  /* keep the same padding as when open, so each icon stays exactly where it was while the rail slides */
+  .app.collapsed .sidebar .new { width: 32px; height: 32px; padding-top: 0; padding-bottom: 0; }
   .app.collapsed .sidebar .new .label { display: none; }
   .app.collapsed .sidebar .account-btn { width: 32px; height: 32px; padding: 0; gap: 0; justify-content: center; border-radius: 50%; }
   .app.collapsed .sidebar .account-name { display: none; }
@@ -113,7 +115,7 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: var(--sp-2) 10px;
 }
 .sidebar .item svg { flex-shrink: 0; }
-.sidebar .new { font-weight: 500; }
+.sidebar .new { font-weight: 500; padding-left: 7px; padding-right: 7px; }  /* 1px border + 7 + 16px icon = centred on the 32px Simp mark above */
 .sidebar .new.active { background: var(--active); }
 .sidebar nav { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; margin-top: var(--sp-3); }
 .section-label { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); margin: 0; padding: var(--sp-1) 10px var(--sp-2); }
