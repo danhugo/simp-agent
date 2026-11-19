@@ -34,8 +34,9 @@
 
 ## CI/CD (GitHub Actions)
 
-`.github/workflows/deploy.yml` deploys on every push to master (docs and site changes skip it), or by hand from the Actions tab.
-It SSHes to the box, rewrites `/srv/simp/.env` from repo secrets, pulls, and runs `docker compose up -d --build server caddy`,
+`.github/workflows/deploy.yml` deploys a release tag: `git tag v0.1.0 && git push origin v0.1.0`. Pushing to master
+(the dev branch) never deploys. Roll back = re-run an older tag from the Actions tab (Run workflow, pick the tag).
+It SSHes to the box, rewrites `/srv/simp/.env` from repo secrets, checks out the tag, and runs `docker compose up -d --build server caddy`,
 then checks `https://simpagent.app/` answers. `/srv/simp/settings.toml` stays on the box (edit it there).
 
 One-time setup:

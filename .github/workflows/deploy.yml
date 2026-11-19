@@ -1,12 +1,12 @@
-# Deploy to the Lightsail box on every push to master (or by hand from the Actions tab).
+# Deploy to the Lightsail box when a release tag is pushed: git tag v0.1.0 && git push origin v0.1.0
+# (master is the dev branch, so a plain push never deploys). Re-run a tag by hand from the Actions tab.
 # One-time setup: see "CI/CD" in docs/deploy-plan.md (repo secrets + port 22 open + /srv/simp/settings.toml on the box).
 name: deploy
 
 on:
   push:
-    branches: [master]
-    paths-ignore: [docs/**, site/**, "**.md", .github/workflows/pages.yml]
-  workflow_dispatch:
+    tags: ["v*"]
+  workflow_dispatch:  # pick the tag in "Use workflow from"; a branch is refused below
 
 concurrency:
   group: deploy
@@ -18,6 +18,7 @@ jobs:
     steps:
       - name: SSH key
         run: |
+          [ "${{ github.ref_type }}" = tag ] || { echo "deploy a tag (v*), not a branch"; exit 1; }
           install -m 700 -d ~/.ssh
           printf '%s\n' "${{ secrets.SSH_KEY }}" > ~/.ssh/key && chmod 600 ~/.ssh/key
           printf 'Host box\n  HostName %s\n  User ubuntu\n  IdentityFile ~/.ssh/key\n  StrictHostKeyChecking accept-new\n' "${{ secrets.SSH_HOST }}" > ~/.ssh/config
@@ -41,7 +42,7 @@ jobs:
 
       - name: Pull and restart
         run: |
-          ssh box 'set -e; cd ~/simp-agent && git fetch -q origin master && git reset -q --hard origin/master
+          ssh box 'set -e; cd ~/simp-agent && git fetch -q --tags --force origin && git reset -q --hard ${{ github.ref_name }}
             echo DOMAIN=simpagent.app > .env
             docker compose up -d --build --remove-orphans server caddy
             docker image prune -f >/dev/null'
