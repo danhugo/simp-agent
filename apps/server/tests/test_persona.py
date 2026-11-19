@@ -31,6 +31,7 @@ async def test_generate_retries_save_and_prompt(tmp_path):
         assert (await c.get("/api/persona", headers=h)).json()["hat"] == "return null;"
     section = persona.prompt_section(mgr.store.persona_sync(user["id"]))
     assert "Name: Merlin" in section and "never changes your tools" in section
+    await mgr.store.close()
 
 
 async def test_outfit_collection(tmp_path):
@@ -48,6 +49,7 @@ async def test_outfit_collection(tmp_path):
         assert (await c.post("/api/outfits", headers=h, json={"kind": "bottom", "hat": "H"})).status_code == 400
         [cap] = (await c.get("/api/outfits", headers=h)).json()
         assert (cap["kind"], cap["hat"], cap["bottom"]) == ("hat", "H", "")
+    await mgr.store.close()
 
 
 async def test_collection_holds_ten_per_kind(tmp_path):
@@ -62,3 +64,4 @@ async def test_collection_holds_ten_per_kind(tmp_path):
         # the limit is per kind: hats being full does not block a bottom
         bottom = {**piece, "kind": "bottom", "hat": "", "bottom": "return null;"}
         assert (await c.post("/api/outfits", headers=h, json=bottom)).status_code == 200
+    await mgr.store.close()
