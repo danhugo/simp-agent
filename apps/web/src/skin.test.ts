@@ -15,6 +15,11 @@ describe("compileSkin", () => {
     expect(w([0, 0.7, 0])![0]).toBeLessThan(0);             // inside the cap
     expect(w([0, -0.9, 0.42])?.[1]).toBe("#3463c9");        // shorts on the lower half
   });
+  it("boxes hold thin edge parts that random samples miss (else they are cut off when drawn)", () => {
+    const w = compileSkin(`return H.union(H.above([H.sphere(p,[0,0.1,0],1.08),"#d02020"],p,0.55), [H.box(p,[-1.1,1.2,0],[0.4,0.03,0.03]),"#111111"]);`, "hat");
+    expect(w([-1.48, 1.2, 0])![0]).toBeLessThan(0);   // the feather's far tip is part of the hat...
+    expect(w.boxes![0].lo[0]).toBeLessThan(-1.5);      // ...and inside its box
+  });
   it("gives the model actionable errors", () => {
     expect(() => compileSkin("return [")).toThrow(/syntax/);
     expect(() => compileSkin("return [1, 'red']")).toThrow(/#rrggbb/);
