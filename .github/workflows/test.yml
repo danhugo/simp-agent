@@ -1,0 +1,34 @@
+# Tests for what the webapp ships: simp_agent + apps/server (Python) and apps/web.
+# CLI and evals are not deployed, so they are not run here. deploy.yml calls this before deploying.
+name: test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_call:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --package simp-server
+      - run: uv run pytest -q packages/simp_agent/tests apps/server
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable && pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm build
