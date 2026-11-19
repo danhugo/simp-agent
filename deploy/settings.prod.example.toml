@@ -1,0 +1,35 @@
+# Copy to /srv/simp/settings.toml. Change simpagent.app if your domain differs.
+host = "0.0.0.0"                               # inside the container; Caddy is the only way in
+allowed_hosts = ["simpagent.app"]           # Caddy keeps the browser's Host header
+public_url = "https://simpagent.app"        # OAuth redirect URIs: <public_url>/api/auth/google/callback, /api/connections/<app>/callback
+web_url = "https://simpagent.app/"          # where sign-in sends the browser back
+allowed_emails = ["you@gmail.com"]
+default_profile = "main"
+
+[profiles.main]
+api = "openai-responses"
+model = "openai/gpt-..."
+base_url = "https://.../v1"
+context_window = 200000
+max_tokens = 32000
+price_in = 3                                   # USD per 1M tokens, for points
+price_out = 15
+api_key_env = "OPENAI_API_KEY"
+
+[web]
+preview_url = "https://preview.simpagent.app"  # DNS A record "preview" -> same server; Caddy serves it from server:8767
+
+[billing]
+enabled = true
+# points_per_usd = 1000
+
+[sandbox]
+kind = "e2b"
+
+[workspace]
+store = "s3"
+endpoint = "https://<cf_account_id>.r2.cloudflarestorage.com"
+region = "auto"
+bucket = "simp"
+mount_scope = "r2"
+cf_account_id = "<cf_account_id>"

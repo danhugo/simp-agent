@@ -18,16 +18,16 @@
 | 2 | Store key handed to every sandbox | ✅ R2 temporary credentials per user (PR #6) |
 | 3 | Secrets | ✅ Decided: `.env` on the server, `chmod 600` |
 | 4 | Backups | ⏸ Daily Lightsail snapshots for now; Litestream later |
-| 5 | HTTPS, domain, built web | ⏳ Caddy + domain (domain not bought yet) |
+| 5 | HTTPS, domain, built web | ✅ `simpagent.app` + `preview.simpagent.app` (Cloudflare proxy on, SSL Full strict); Caddy + compose written |
 | 6 | Google OAuth redirect URIs | ⏳ After the domain: add `https://<domain>/...`, keep Testing mode (up to 100 users) |
-| 7 | Keep processes running | ⏳ Docker Compose |
+| 7 | Keep processes running | ✅ Docker Compose (server, caddy; google_mcp later) |
 | 8 | Monitoring | ⏳ UptimeRobot (free) |
 
 ## Next steps
 
-1. Buy a domain and point it at 43.200.82.250.
+1. ✅ Domain `simpagent.app` (Cloudflare), A records `@` and `preview` -> 43.200.82.250. For the first certificate: proxy off (grey) and "Always Use HTTPS" off until Caddy has it, then proxy on.
 2. Code: `docker-compose.yml`, `Caddyfile`, production `settings.toml` (`billing.enabled = true`, `mount_scope = "r2"`, `public_url`).
-3. Server: install Docker, clone the repo, put `.env` in place (new R2 token, not the ones pasted in chat), `docker compose up -d`.
+3. Server: add 2 GB swap first (building the images on 2 GB RAM can run out of memory: `sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile && echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab`), install Docker, clone the repo, put `.env` in place (new R2 token, not the ones pasted in chat), `docker compose up -d`.
 4. Google Cloud Console: add the redirect URIs and the test users.
 5. Check sign-in, chat, an s3fs mount inside E2B with the temporary credentials, and granting points.
 6. Set up UptimeRobot.

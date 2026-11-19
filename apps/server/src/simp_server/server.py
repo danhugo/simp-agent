@@ -1006,7 +1006,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             del previews[t]
         token = secrets.token_urlsafe(32)
         previews[token] = (u["id"], now + PREVIEW_TTL)
-        return {"base": f"http://localhost:{settings.get('web', dict()).get('preview_port', 8767)}/p/{token}/"}
+        web = settings.get("web", dict())  # preview_url: the preview origin behind a proxy, e.g. https://preview.example.com
+        return {"base": f"{web.get('preview_url') or f'http://localhost:{web.get('preview_port', 8767)}'}/p/{token}/"}
 
     # ponytail: tokens live in memory, lost on restart (they last 10 min anyway)
     previews: dict[str, tuple[str, float]] = dict()  # token -> (user id, expires at)

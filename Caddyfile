@@ -1,0 +1,18 @@
+# DOMAIN from .env (e.g. simp.example.com; ":80" for a local test without HTTPS)
+{$DOMAIN} {
+	# SSE: Caddy flushes text/event-stream responses at once, no flush_interval needed
+	handle /api* {
+		reverse_proxy server:8766
+	}
+	handle {
+		encode gzip
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# file preview: its own origin, so user HTML can't reach the app's cookies or API ([web] preview_url in settings.toml)
+preview.{$DOMAIN} {
+	reverse_proxy server:8767
+}

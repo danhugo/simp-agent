@@ -667,6 +667,9 @@ async def test_file_preview(env):
         assert (await api.post(f"/api/sessions/{other_sid}/preview", headers=h)).status_code == 404  # B's session
         base = (await api.post(f"/api/sessions/{run.sid}/preview", headers=h)).json()["base"]
         assert base.startswith("http://localhost:8767/p/")
+        mgr.settings["web"] = {"preview_url": "https://preview.example.com"}
+        assert (await api.post(f"/api/sessions/{run.sid}/preview", headers=h)).json()["base"].startswith("https://preview.example.com/p/")
+        del mgr.settings["web"]
         path = "/" + base.split("/", 3)[3]
         r = await prev.get(path + "a.html")
         assert r.status_code == 200 and r.content == b"<h1>hi</h1>" and r.headers["content-type"].startswith("text/html")
