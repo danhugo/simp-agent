@@ -5,7 +5,7 @@ import { getSkin, onSkin, type Wear } from "./skin";
  * Simp's head as a real 3D sphere rendered into a small pixel grid (default 48x48) and scaled up crisply.
  * Each pixel is lit (light from the upper left, fixed) and snapped to a 4-tone palette; the smiling eyes and blush
  * are painted on the sphere surface, so when the head turns toward the pointer they slide over the curve.
- * Colors come from the --m3-* CSS variables (light/dark). Blinks now and then; respects prefers-reduced-motion.
+ * Colors come from the --m3-* CSS variables (light/dark). Blinks now and then; prefers-reduced-motion only drops the big moves (sway, shake, bob, hop).
  */
 const rad = (d: number) => (d * Math.PI) / 180;
 const deg = (r: number) => (r * 180) / Math.PI;
@@ -230,7 +230,7 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
       steam.current?.classList.toggle("on", over);
       const face = workingRef.current ? {} : FACES[moodRef.current];
       const posed = face.yaw !== undefined || face.pitch !== undefined;  // a mood with its own pose stops following the pointer
-      const t = workingRef.current ? { yaw: 0, pitch: rad(20) } : posed ? { yaw: rad(face.yaw ?? 0), pitch: rad(face.pitch ?? 0) } : target, k = reduce ? 1 : 0.12;
+      const t = workingRef.current ? { yaw: 0, pitch: rad(20) } : posed ? { yaw: rad(face.yaw ?? 0), pitch: rad(face.pitch ?? 0) } : target, k = 0.12;
       const sway = moodRef.current === "asking" && !workingRef.current && !reduce ? rad(Math.sin(now / 500) * 10) : 0;
       cur.yaw += (t.yaw - cur.yaw) * k; cur.pitch += (t.pitch - cur.pitch) * k;
       const shake = focused && !reduce ? rad(Math.sin(now / 45) * 2.2) : 0;  // straining: a tiny fast tremble
@@ -258,8 +258,9 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
       const step = (now: number) => { const p = (now - s) / 170; blink = p < 1 ? Math.sin(p * Math.PI) : 0; if (p < 1) requestAnimationFrame(step); };
       requestAnimationFrame(step);
     };
-    const loop = () => { timer = window.setTimeout(() => { if (!reduce) doBlink(); loop(); }, 2800 + Math.random() * 3000); };
-    if (!reduce) { addEventListener("pointermove", onMove); document.addEventListener("pointerleave", onLeave); }
+    const loop = () => { timer = window.setTimeout(() => { doBlink(); loop(); }, 2800 + Math.random() * 3000); };
+    // blink + gaze stay on under reduced motion: small and pointer-driven; only sway/shake/bob/hop are cut
+    addEventListener("pointermove", onMove); document.addEventListener("pointerleave", onLeave);
     loop();
     raf = requestAnimationFrame(frame);
     return () => {
