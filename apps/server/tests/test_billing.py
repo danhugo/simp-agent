@@ -46,7 +46,7 @@ async def test_billing_on_blocks_until_credit_and_spending_reduces(tmp_path):
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as cl:
         u = (await cl.get("/api/usage", headers={"Authorization": f"Bearer {token}"})).json()
-    assert u["billing_enabled"] is True and u["points_balance"] == 10
+    assert u["billing_enabled"] is True and u["points_balance"] == 10 and u["points_granted"] == 25
 
     await mgr.store.add_credit(user["id"], -10, "fix")
     with pytest.raises(SandboxLimit, match="out of points"):

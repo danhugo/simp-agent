@@ -732,10 +732,10 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
 
     @app.get("/api/usage")
     async def usage(u=Depends(user)):
+        c = await store.credits(u["id"], billing[1]) if billing[0] else {}
         return {"today_usd": round(await store.spent(u["id"], budget.day_start()), 4),
                 "day_limit_usd": mgr.limits.user_day_usd, "paused": mgr.paused(),
-                "billing_enabled": billing[0], "points_balance": (await store.credits(u["id"], billing[1]))["balance"]
-                if billing[0] else None}
+                "billing_enabled": billing[0], "points_balance": c.get("balance"), "points_granted": c.get("granted")}
 
     @app.get("/api/memories")
     async def list_memories(u=Depends(user)):
