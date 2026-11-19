@@ -99,12 +99,12 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
     transition: opacity .15s ease, visibility .25s; }
   .app.collapsed .sidebar { width: var(--rail-w); }
   .app.collapsed .sidebar :is(.brand-name, .collapse, .new .label, nav, .account-name) { opacity: 0; visibility: hidden; }
-  .sidebar .new { white-space: nowrap; overflow: hidden; transition: width .25s ease; }
+  .sidebar .new { white-space: nowrap; overflow: hidden; transition: width .25s ease; height: 32px; padding-top: 0; padding-bottom: 0; }  /* same row height open and collapsed, so icons don't jump vertically */
   .sidebar .account-btn { white-space: nowrap; overflow: hidden; transition: width .25s ease, padding .25s ease; }
   /* keep the same padding as when open, so each icon stays exactly where it was while the rail slides */
-  .app.collapsed .sidebar .new { width: 32px; height: 32px; padding-top: 0; padding-bottom: 0; }
+  .app.collapsed .sidebar .new { width: 32px; }
   .app.collapsed .sidebar .new .label { display: none; }
-  .app.collapsed .sidebar .account-btn { width: 32px; height: 32px; padding: 0; gap: 0; justify-content: center; border-radius: 50%; }
+  .app.collapsed .sidebar .account-btn { width: 40px; gap: 0; border-radius: 50%; }  /* same padding as open: avatar stays put */
   .app.collapsed .sidebar .account-name { display: none; }
   .app.collapsed .sidebar .foot { border-top-color: transparent; }
   /* the rail clips overflow, so the account menu escapes it as a fixed popover */
@@ -149,7 +149,8 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .credit-bar i.low { background: var(--warn); }
 .credit-bar i.out { background: var(--err); }
 .account-pts.out { color: var(--err); }
-.app.collapsed .sidebar :is(.account-pts, .credit-bar) { display: none; }
+.app.collapsed .sidebar .account-pts { display: none; }
+.app.collapsed .sidebar .credit-bar { visibility: hidden; }  /* keep its space so the avatar doesn't jump */
 .account .menu.up { top: auto; bottom: calc(100% + var(--sp-1)); left: 0; right: 0; min-width: 0; }
 
 /* empty state */
