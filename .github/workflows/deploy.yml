@@ -1,6 +1,6 @@
 # Deploy to the Lightsail box when a release tag is pushed: git tag v0.1.0 && git push origin v0.1.0
 # (master is the dev branch, so a plain push never deploys). Re-run a tag by hand from the Actions tab.
-# One-time setup: see "CI/CD" in docs/deploy-plan.md (repo secrets + port 22 open + /srv/simp/settings.toml on the box).
+# One-time setup: see "CI/CD" in docs/deploy-plan.md (repo secrets incl. SETTINGS_TOML + port 22 open).
 name: deploy
 
 on:
@@ -39,6 +39,15 @@ jobs:
           names="OPENROUTER_API_KEY SIMP_SECRET_KEY E2B_API_KEY S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY R2_API_TOKEN GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET"
           for n in $names; do [ -n "${!n}" ] || { echo "missing repo secret: $n"; exit 1; }; done
           for n in $names; do printf '%s=%s\n' "$n" "${!n}"; done | ssh box 'umask 077; cat > /srv/simp/.env'
+
+      # settings.toml (models, bucket, allowed_emails...) is one repo secret, not in this public repo
+      - name: Write /srv/simp/settings.toml
+        env:
+          SETTINGS_TOML: ${{ secrets.SETTINGS_TOML }}
+        run: |
+          [ -n "$SETTINGS_TOML" ] || { echo "missing repo secret: SETTINGS_TOML"; exit 1; }
+          printf '%s\n' "$SETTINGS_TOML" | python3 -c 'import sys, tomllib; tomllib.loads(sys.stdin.read())'
+          printf '%s\n' "$SETTINGS_TOML" | ssh box 'umask 077; cat > /srv/simp/settings.toml'
 
       - name: Pull and restart
         run: |

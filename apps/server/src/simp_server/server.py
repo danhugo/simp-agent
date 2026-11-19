@@ -398,8 +398,12 @@ class Run:
         """One extra small LLM call to name the session. Any failure leaves the title empty."""
         try:
             first = next(e["text"] for e in self.log if e["type"] == "user_message")[:2000]
-            # reasoning models think before answering: leave room, and use the lowest effort all of them accept
-            model = dataclasses.replace(self.model, max_tokens=200, compat={**self.model.compat, "reasoning_effort": "low"})
+            # title_profile (e.g. deepseek over openrouter): a model that can turn reasoning off, so "none".
+            # Else the chat model: reasoning models think before answering, so leave room and use "low"
+            # ("none" is refused by some, e.g. openai/gpt-6.1-sol: "Reasoning is mandatory"; "low" works everywhere)
+            pr = self.mgr.settings["profiles"].get(self.mgr.settings.get("title_profile", ""))
+            base, effort = (build_model(pr), "none") if pr else (self.model, "low")
+            model = dataclasses.replace(base, max_tokens=2000, compat={**base.compat, "reasoning_effort": effort})
             msg = None
             async for ev in self.guarded_stream(model, Context(TITLE_PROMPT, [UserMessage(first)], []),
                                                 **await api_key_opts(self.mgr.api_key_for(model), model)):
@@ -408,8 +412,8 @@ class Run:
             if msg is None or msg.stop_reason == "error":
                 raise RuntimeError(msg.error if msg else "no response")
             u = {"input": msg.usage.get("input", 0), "output": msg.usage.get("output", 0)}
-            await self.mgr.store.add_usage(self.user_id, self.sid, self.model.id, **u, cost=budget.cost(self.profile, u))
-            title = " ".join(msg.text().replace('"', "").replace("'", "").split())[:60]
+            await self.mgr.store.add_usage(self.user_id, self.sid, model.id, **u, cost=budget.cost(pr or self.profile, u))
+            title =" ".join(msg.text().replace('"', "").replace("'", "").split())[:60]
             if not title:
                 raise RuntimeError(f"empty title (stop_reason={msg.stop_reason}, usage={u})")
             self.info.title = title
@@ -417,6 +421,7 @@ class Run:
             await self.durable(p.SessionTitle, title=title)
         except Exception as e:
             log.warning("session title failed: %s", e, extra={"session": self.sid})
+            self.title_task = None  # the next assistant message tries again
 
     async def start(self, text, fresh: bool = True) -> None:  # text: a prompt, or a coroutine factory (continue_, compact)
         if fresh:  # a queued follow-up stays inside the same run budget

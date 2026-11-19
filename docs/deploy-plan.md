@@ -37,7 +37,9 @@
 `.github/workflows/deploy.yml` deploys a release tag: `git tag v0.1.0 && git push origin v0.1.0`. Pushing to master
 (the dev branch) never deploys. Roll back = re-run an older tag from the Actions tab (Run workflow, pick the tag).
 It SSHes to the box, rewrites `/srv/simp/.env` from repo secrets, checks out the tag, and runs `docker compose up -d --build server caddy`,
-then checks `https://simpagent.app/` answers. `/srv/simp/settings.toml` stays on the box (edit it there).
+then checks `https://simpagent.app/` answers. `/srv/simp/settings.toml` is rewritten too, from the `SETTINGS_TOML`
+repo secret (the whole file; this repo is public, so models, bucket and `allowed_emails` stay out of it).
+To change settings: edit the secret, then re-run the tag. Keep your own copy: a secret cannot be read back.
 
 One-time setup:
 1. Lightsail firewall: SSH (22) open to any IP (GitHub runners have no fixed IP). Login is key-only.
