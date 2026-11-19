@@ -234,6 +234,14 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .files li .size { flex: none; font-size: var(--fs-xs); color: var(--muted); }
 .files li.empty { padding: var(--sp-2); font-size: var(--fs-sm); color: var(--muted); }
 .files li.empty:hover { background: none; }
+.files li .del { flex: none; width: auto; padding: 2px 6px; color: var(--muted); opacity: 0; font-size: var(--fs-xs); }
+.files li:hover .del, .files li .del:focus-visible, .files li .del.armed { opacity: 1; }
+.files li .del:hover { color: var(--err); }
+.files li .del.armed { color: var(--err); font-weight: 600; }
+@media (hover: none) { .files li .del { opacity: 1; } }
+.files .storage { padding: var(--sp-2) var(--sp-4) var(--sp-3); border-top: 1px solid var(--border); font-size: var(--fs-xs); color: var(--muted); }
+.files .storage .credit-bar { margin: 0 0 var(--sp-1); }
+.files .storage p { margin: var(--sp-1) 0 0; }
 
 @media (max-width: 767px) {
   .chat > header { padding: var(--sp-1) var(--sp-2); gap: var(--sp-1); }

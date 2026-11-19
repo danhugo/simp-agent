@@ -147,7 +147,7 @@ class FakeE2B:
 class FakeStore:
     expires_in = None
 
-    async def mount_creds(self, user_id):
+    async def mount_creds(self, user_id, read_only=False):
         return {"endpoint": "http://s3", "bucket": "b", "prefix": f"users/{user_id}/", "region": "r",
                 "access_key": "k", "secret_key": "s", "session_token": "t", "expires_in": self.expires_in}
 
@@ -226,10 +226,10 @@ async def test_idle_pause_then_resume_remounts_when_mount_is_dead(cloud):
     snap = [r for r in cloud.runs() if "zstd -q -f" in r]
     assert snap, "home snapshot at pause"
     cloud.codes["mountpoint -q /work && ls /work >/dev/null"] = 1  # the mount died while paused
-    n_mounts = len(cloud.runs("s3fs"))
+    n_mounts = len(cloud.runs("exec s3fs"))
     await go(env, "echo hi")
     assert cloud.kinds("connect") and len(cloud.kinds("create")) == 1  # resumed, not recreated
-    assert len(cloud.runs("s3fs")) == n_mounts + 1  # remounted (fresh creds)
+    assert len(cloud.runs("exec s3fs")) == n_mounts + 1  # remounted (fresh creds)
     assert cloud.runs("echo hi")
 
 
@@ -470,7 +470,7 @@ async def test_mount_credential_refreshed_before_it_expires(cloud):
     sb.store.expires_in = 3600
     env = await sb.open("s1", "u1")
     await go(env)
-    mounts = lambda: len(cloud.runs("s3fs"))  # noqa: E731
+    mounts = lambda: len(cloud.runs("exec s3fs"))  # noqa: E731
     n = mounts()
     await env.exec("short", ".", 60, asyncio.Event())
     assert mounts() == n  # plenty left

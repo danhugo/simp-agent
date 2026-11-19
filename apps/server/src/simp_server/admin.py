@@ -33,6 +33,10 @@ class Credit(Reason):
     confirm: bool = False
 
 
+class QuotaIn(Reason):
+    quota_mb: float | None = Field(default=None, ge=0, le=1e7)  # None: back to the global workspace.quota_mb
+
+
 class SettingIn(Reason):
     value: object = None
 
@@ -65,14 +69,16 @@ def editable(settings: dict) -> dict:
     """key -> validator. Never secrets, buckets, endpoints, domains, mount scope or ADMIN_EMAILS."""
     keys = {"default_profile": _profile, "allowed_emails": _emails,
             "budget.user_day_usd": _num(0, 10_000), "budget.run_usd": _num(0, 10_000),
-            "billing.points_per_usd": _num(0, 1e9, lo_open=True), "sandbox.paused_price_ratio": _num(0, 1)}
+            "billing.points_per_usd": _num(0, 1e9, lo_open=True), "sandbox.paused_price_ratio": _num(0, 1),
+            "workspace.quota_mb": _num(0, 1e7)}
     for name in settings["profiles"]:
         keys[f"profiles.{name}.price_in"] = keys[f"profiles.{name}.price_out"] = _num(0, 10_000)
     return keys
 
 
 DEFAULTS = {"budget.user_day_usd": budget.Limits.user_day_usd, "budget.run_usd": budget.Limits.run_usd,
-            "billing.points_per_usd": 1000.0, "sandbox.paused_price_ratio": 0.1, "allowed_emails": []}
+            "billing.points_per_usd": 1000.0, "sandbox.paused_price_ratio": 0.1, "allowed_emails": [],
+            "workspace.quota_mb": 2048.0}
 
 
 def get_key(settings: dict, key: str):
@@ -196,7 +202,7 @@ def mount(app: FastAPI, settings: dict, mgr, user) -> None:
         usage = await store._all("SELECT model, COUNT(*) AS calls, SUM(input) AS input, SUM(output) AS output, "
                                  "ROUND(SUM(cost), 4) AS cost_usd FROM usage WHERE user_id=? AND at>=? GROUP BY model "
                                  "ORDER BY cost_usd DESC", uid, time.time() - 30 * 86400)
-        return {**shape(row), "ledger": ledger, "usage_30d": usage}
+        return {**shape(row), "ledger": ledger, "usage_30d": usage, "workspace": await store.ws_usage(uid)}
 
     @app.post("/api/admin/users/{uid}/credit")
     async def credit(uid: str, body: Credit, u=Depends(admin_user)):
@@ -225,6 +231,14 @@ def mount(app: FastAPI, settings: dict, mgr, user) -> None:
             await store._do("UPDATE users SET disabled=0 WHERE id=?", uid)
         await audit(u["id"], "revoke" if revoke else "unrevoke", uid, {"reason": body.reason})
         return {"revoked": revoke}
+
+    @app.put("/api/admin/users/{uid}/quota")
+    async def set_quota(uid: str, body: QuotaIn, u=Depends(admin_user)):
+        await target(uid)
+        before = (await store.ws_usage(uid) or {}).get("quota_mb")
+        await store.ws_set_quota(uid, body.quota_mb)
+        await audit(u["id"], "quota", uid, {"before_mb": before, "after_mb": body.quota_mb, "reason": body.reason})
+        return {"quota_mb": body.quota_mb}
 
     @app.post("/api/admin/users/{uid}/revoke")
     async def revoke(uid: str, body: Reason, u=Depends(admin_user)):

@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS admin_audit(id INTEGER PRIMARY KEY AUTOINCREMENT, act
 CREATE TABLE IF NOT EXISTS settings_kv(key TEXT PRIMARY KEY, value TEXT, updated REAL, updated_by TEXT);
 CREATE TABLE IF NOT EXISTS settings_history(id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, old TEXT, new TEXT,
     actor TEXT, reason TEXT, created REAL);
+CREATE TABLE IF NOT EXISTS workspace_usage(user_id TEXT PRIMARY KEY, bytes INTEGER NOT NULL DEFAULT 0, counted REAL,
+    quota_mb REAL);
 CREATE INDEX IF NOT EXISTS usage_user_at ON usage(user_id, at);
 CREATE INDEX IF NOT EXISTS credit_ledger_user ON credit_ledger(user_id);
 """
@@ -391,6 +393,22 @@ class SqliteStore:
 
     async def pause_ids(self) -> list[str]:  # admin/maintenance: every user's paused boxes (not user data)
         return [r["sbx_id"] for r in await self._all("SELECT sbx_id FROM sandbox_pauses")]
+
+    # workspace storage: bytes used (counted from the store, plus server-side writes since), per-user quota override
+    async def ws_usage(self, user_id: str) -> dict | None:
+        rows = await self._all("SELECT bytes, counted, quota_mb FROM workspace_usage WHERE user_id=?", user_id)
+        return rows[0] if rows else None
+
+    async def ws_counted(self, user_id: str, nbytes: int) -> None:
+        await self._do("INSERT INTO workspace_usage(user_id, bytes, counted) VALUES(?,?,?) ON CONFLICT(user_id) DO "
+                       "UPDATE SET bytes=excluded.bytes, counted=excluded.counted", user_id, int(nbytes), time.time())
+
+    async def ws_add(self, user_id: str, delta: int) -> None:
+        await self._do("UPDATE workspace_usage SET bytes=MAX(0, bytes+?) WHERE user_id=?", int(delta), user_id)
+
+    async def ws_set_quota(self, user_id: str, quota_mb: float | None) -> None:
+        await self._do("INSERT INTO workspace_usage(user_id, quota_mb) VALUES(?,?) ON CONFLICT(user_id) DO "
+                       "UPDATE SET quota_mb=excluded.quota_mb", user_id, quota_mb)
 
     async def usage(self, user_id: str) -> list[dict]:
         return await self._all("SELECT * FROM usage WHERE user_id=?", user_id)

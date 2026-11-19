@@ -115,7 +115,8 @@ async def test_settings_validate_persist_take_effect_and_rollback(tmp_path):
     s = {x["key"]: x for x in (await call(c, "get", "/api/admin/settings", t)).json()}
     assert s["budget.user_day_usd"]["value"] == 0.5 and s["budget.user_day_usd"]["source"] == "db"
     assert s["budget.run_usd"]["source"] == "file" and "profiles.test.price_in" in s
-    assert not any(k.startswith(("plugins", "workspace")) or "ADMIN" in k for k in s)
+    # never buckets/endpoints/mount scope; the storage quota is the one workspace key an admin may change
+    assert not any(k.startswith(("plugins", "workspace")) and k != "workspace.quota_mb" or "ADMIN" in k for k in s)
 
     hist = (await call(c, "get", "/api/admin/settings/history?key=budget.user_day_usd", t)).json()
     assert len(hist) == 1 and hist[0]["old"] == 100 and hist[0]["new"] == 0.5 and hist[0]["reason"] == "tighten"

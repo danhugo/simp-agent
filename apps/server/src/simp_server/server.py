@@ -46,6 +46,7 @@ from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
 
 from . import admin, budget, health, ops, persona as persona_mod, workspace
+from .quota import Quota
 from . import protocol as p
 from .connections import STATE_TTL, Connections, UserMcp, providers
 from .fake import sse
@@ -639,8 +640,11 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         return u
     mgr = SessionManager(settings, store, sandbox, stream_fn)
     files = workspace.make_store(settings, mgr.keys)  # the Files panel's view of /work: never wakes a sandbox
+    quota = Quota(settings, files, store)
     if hasattr(sandbox, "compute"):
         sandbox.store, sandbox.compute.db = files, store
+        if hasattr(sandbox, "quota"):
+            sandbox.quota = quota
         sandbox.compute.billing = budget.billing(settings)
         sandbox.keys = mgr.keys
 
@@ -1100,8 +1104,23 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             data += chunk
             if len(data) > limit:
                 raise HTTPException(413, f"file larger than {limit} bytes")
+        if not await quota.fits(u["id"], len(data)):
+            raise HTTPException(507, "workspace full: delete some files first")
         await fs(files.write(u["id"], path, bytes(data)))
+        await quota.added(u["id"], len(data))
         return {"ok": True}
+
+    @app.delete("/api/sessions/{sid}/files")
+    async def delete_file(sid: str, path: str, u=Depends(user)):
+        """A file or a folder. Works while the workspace is full (that is how the user makes room)."""
+        await mgr.get(u, sid)
+        await fs(files.delete(u["id"], path))
+        await quota.recount(u["id"])  # the next sandbox call remounts /work read-write if there is room now
+        return await quota.usage(u["id"])
+
+    @app.get("/api/workspace")
+    async def workspace_usage(u=Depends(user)):
+        return await quota.usage(u["id"])
 
     return app
 

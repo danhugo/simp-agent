@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, AuthError, type FileEntry } from "./api";
+import { api, AuthError, type FileEntry, type WorkspaceUsage } from "./api";
 import { errorText } from "./Chat";
-import { IconClose, IconFolder, IconRefresh, IconUpload, fileIcon } from "./icons";
+import { IconClose, IconFolder, IconRefresh, IconTrash, IconUpload, fileIcon } from "./icons";
 import { kindOf } from "./fileKind";
 
 const dirOf = (p: string) => { const i = p.replace(/^\.\//, "").lastIndexOf("/"); return i <= 0 ? (i === 0 ? "/" : ".") : p.replace(/^\.\//, "").slice(0, i); };
@@ -18,6 +18,8 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
+  const [usage, setUsage] = useState<WorkspaceUsage>();
+  const [armed, setArmed] = useState<string>();  // the entry whose delete button asks "Delete?" (second click deletes)
   // onError still sees every failure (AuthError logs out); non-auth ones are also shown in the panel.
   const fail = useCallback((e: unknown) => { onError(e); if (!(e instanceof AuthError)) setError(errorText(e)); }, [onError]);
   const load = useCallback(() => {
@@ -26,7 +28,9 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
       .then((es) => { setListed({ key: `${sid}:${path}`, entries: es }); setError(undefined); }, fail)
       .finally(() => setLoading(false));
   }, [sid, path, fail]);
-  useEffect(() => { load(); }, [load, focus]);
+  const loadUsage = useCallback(() => { api.workspace().then(setUsage, () => {}); }, []);
+  useEffect(() => { load(); loadUsage(); }, [load, focus, loadUsage]);
+  useEffect(() => setArmed(undefined), [path]);
   const picker = useRef<HTMLInputElement>(null);
   const join = (name: string) => (path === "." ? name : `${path}/${name}`);
 
@@ -40,7 +44,15 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
       setUploading(false);
       if (picker.current) picker.current.value = "";  // so picking the same file again fires onChange
       load();
+      loadUsage();
     }
+  };
+
+  const remove = async (name: string) => {
+    if (armed !== name) { setArmed(name); return; }
+    setArmed(undefined);
+    try { setUsage(await api.deleteFile(sid, join(name))); setError(undefined); } catch (e) { fail(e); }
+    load();
   };
 
   return (
@@ -48,7 +60,7 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
       <header>
         <strong>Files</strong>
         <span className="spacer" />
-        <button className="icon-btn" onClick={load} title="Refresh" aria-label="Refresh"><IconRefresh size={16} /></button>
+        <button className="icon-btn" onClick={() => { load(); loadUsage(); }} title="Refresh" aria-label="Refresh"><IconRefresh size={16} /></button>
         <button className="upload" onClick={() => picker.current?.click()} disabled={uploading}>
           <IconUpload size={16} />{uploading ? "Uploading…" : "Upload"}
         </button>
@@ -78,12 +90,34 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
               {e.is_dir ? <IconFolder size={16} /> : (() => { const K = fileIcon(e.name, kindOf(e.name)); return <K size={16} />; })()}<span>{e.name}</span>
             </button>
             {!e.is_dir && <span className="size">{fmt(e.size)}</span>}
+            <button className={`del${armed === e.name ? " armed" : ""}`} onClick={() => remove(e.name)} onBlur={() => armed === e.name && setArmed(undefined)}
+              title={armed === e.name ? `Click again to delete ${e.name}${e.is_dir ? " and everything in it" : ""}` : `Delete ${e.name}`}
+              aria-label={armed === e.name ? `Confirm delete ${e.name}` : `Delete ${e.name}`}>
+              {armed === e.name ? "Delete?" : <IconTrash size={14} />}
+            </button>
           </li>
         ))}
         {entries.length === 0 && <li className="empty">{loading ? "Loading…" : error ? "" : "Empty"}</li>}
       </ul>
+      {usage && usage.state !== "off" && <Storage u={usage} />}
     </aside>
   );
 }
 
-export const fmt = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+/** Storage used of the quota: amber at 80% (warn), red at 95% (full: the agent can no longer write to /work). */
+function Storage({ u }: { u: WorkspaceUsage }) {
+  const pct = Math.min(100, (u.used / u.quota) * 100);
+  const text = `${fmt(u.used)} of ${fmt(u.quota)} used`;
+  return (
+    <footer className="storage">
+      <div className="credit-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)} aria-valuetext={text} title={text}>
+        <i className={u.state === "full" ? "out" : u.state === "warn" ? "low" : undefined} style={{ width: `${pct}%` }} />
+      </div>
+      <span>{text}</span>
+      {u.state === "full" && <p className="warn" role="status">Storage full: the agent can't save files. Delete some to free space.</p>}
+      {u.state === "warn" && <p className="warn">Storage almost full.</p>}
+    </footer>
+  );
+}
+
+export const fmt = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(2)} GB`);
