@@ -640,7 +640,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         return u
     mgr = SessionManager(settings, store, sandbox, stream_fn)
     files = workspace.make_store(settings, mgr.keys)  # the Files panel's view of /work: never wakes a sandbox
-    quota = Quota(settings, files, store)
+    quota = mgr.quota = Quota(settings, files, store)  # mgr.quota: the admin user page shows usage
     if hasattr(sandbox, "compute"):
         sandbox.store, sandbox.compute.db = files, store
         if hasattr(sandbox, "quota"):

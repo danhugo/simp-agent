@@ -202,7 +202,9 @@ def mount(app: FastAPI, settings: dict, mgr, user) -> None:
         usage = await store._all("SELECT model, COUNT(*) AS calls, SUM(input) AS input, SUM(output) AS output, "
                                  "ROUND(SUM(cost), 4) AS cost_usd FROM usage WHERE user_id=? AND at>=? GROUP BY model "
                                  "ORDER BY cost_usd DESC", uid, time.time() - 30 * 86400)
-        return {**shape(row), "ledger": ledger, "usage_30d": usage, "workspace": await store.ws_usage(uid)}
+        ws = await mgr.quota.usage(uid)  # {used, quota, state}; counts the bucket once if never counted
+        override = (await store.ws_usage(uid) or {}).get("quota_mb")
+        return {**shape(row), "ledger": ledger, "usage_30d": usage, "workspace": {**ws, "quota_mb_override": override}}
 
     @app.post("/api/admin/users/{uid}/credit")
     async def credit(uid: str, body: Credit, u=Depends(admin_user)):
