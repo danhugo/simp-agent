@@ -242,6 +242,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .files .storage { padding: var(--sp-2) var(--sp-4) var(--sp-3); border-top: 1px solid var(--border); font-size: var(--fs-xs); color: var(--muted); }
 .files .storage .credit-bar { margin: 0 0 var(--sp-1); }
 .files .storage p { margin: var(--sp-1) 0 0; }
+.files .storage p.full { color: var(--err); }
 
 @media (max-width: 767px) {
   .chat > header { padding: var(--sp-1) var(--sp-2); gap: var(--sp-1); }

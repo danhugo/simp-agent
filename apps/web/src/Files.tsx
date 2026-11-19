@@ -114,7 +114,7 @@ function Storage({ u }: { u: WorkspaceUsage }) {
         <i className={u.state === "full" ? "out" : u.state === "warn" ? "low" : undefined} style={{ width: `${pct}%` }} />
       </div>
       <span>{text}</span>
-      {u.state === "full" && <p className="warn" role="status">Storage full: the agent can't save files. Delete some to free space.</p>}
+      {u.state === "full" && <p className="full" role="status">Storage full: the agent can't save files. Delete some to free space.</p>}
       {u.state === "warn" && <p className="warn">Storage almost full.</p>}
     </footer>
   );
