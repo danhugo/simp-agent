@@ -45,6 +45,8 @@ One-time setup:
 1. Lightsail firewall: SSH (22) open to any IP (GitHub runners have no fixed IP). Login is key-only.
 2. Repo Settings → Secrets and variables → Actions → New repository secret, one per name:
    `SSH_KEY` (the whole .pem file), `SSH_HOST` (43.200.82.250), `OPENROUTER_API_KEY`, `SIMP_SECRET_KEY`, `E2B_API_KEY`,
-   `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `R2_API_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+   `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `R2_API_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+   and optionally `ADMIN_EMAILS` (comma-separated emails that may open the Admin page and call `/api/admin/*`;
+   empty or missing = no admins). It is only set here, never from the app.
    Make `SIMP_SECRET_KEY` once (on the box: `docker run --rm python:3.13-slim sh -c "pip -q install cryptography && python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"`)
    and never change it: it encrypts users' Google tokens.

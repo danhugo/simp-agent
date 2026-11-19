@@ -41,6 +41,11 @@ CREATE TABLE IF NOT EXISTS credit_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT, u
     note TEXT, created REAL);
 CREATE TABLE IF NOT EXISTS sandbox_pauses(sbx_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, paused_at REAL, cpus REAL,
     mem_gib REAL);
+CREATE TABLE IF NOT EXISTS admin_audit(id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id TEXT NOT NULL, action TEXT,
+    target_user_id TEXT, detail TEXT, created REAL);
+CREATE TABLE IF NOT EXISTS settings_kv(key TEXT PRIMARY KEY, value TEXT, updated REAL, updated_by TEXT);
+CREATE TABLE IF NOT EXISTS settings_history(id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, old TEXT, new TEXT,
+    actor TEXT, reason TEXT, created REAL);
 CREATE INDEX IF NOT EXISTS usage_user_at ON usage(user_id, at);
 CREATE INDEX IF NOT EXISTS credit_ledger_user ON credit_ledger(user_id);
 """

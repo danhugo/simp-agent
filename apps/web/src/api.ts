@@ -43,6 +43,37 @@ const json = (body: unknown): RequestInit => ({
   method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" },
 });
 
+const send = (method: string, body: unknown): RequestInit => ({ ...json(body), method });
+
+/** REST-only (/api/admin/*): admins only (ADMIN_EMAILS on the server); everyone else gets 403. */
+export interface AdminUser { id: string; email: string; created: number | null; revoked: boolean; points_granted: number;
+  points_spent: number; points_balance: number; spend_7d_usd: number; last_active: number | null }
+export interface AdminUserDetail extends AdminUser {
+  ledger: { id: number; points: number; note: string; created: number }[];
+  usage_30d: { model: string; calls: number; input: number; output: number; cost_usd: number }[];
+}
+export interface AdminSystem { paused: boolean; spend_today_usd: number; open_sessions: number; busy_sessions: number; users: number; billing_enabled: boolean }
+export interface AdminAudit { id: number; action: string; actor: string | null; target: string | null; detail: Record<string, unknown>; created: number }
+export interface AdminSetting { key: string; value: unknown; file_value: unknown; source: "file" | "db"; editable: boolean; updated: number | null }
+export interface AdminHistory { id: number; key: string; old: unknown; new: unknown; actor_email: string | null; reason: string; created: number }
+
+export const admin = {
+  me: async (): Promise<boolean> => { try { await call("/api/admin/me"); return true; } catch (e) { if (e instanceof AuthError) throw e; return false; } },
+  users: async (q: string, offset = 0): Promise<{ users: AdminUser[]; total: number }> =>
+    (await call(`/api/admin/users?q=${encodeURIComponent(q)}&limit=50&offset=${offset}`)).json(),
+  user: async (id: string): Promise<AdminUserDetail> => (await call(`/api/admin/users/${id}`)).json(),
+  credit: async (id: string, points: number, reason: string, confirm = false) =>
+    (await call(`/api/admin/users/${id}/credit`, json({ points, reason, confirm }))).json(),
+  revoke: (id: string, revoke: boolean, reason: string) => call(`/api/admin/users/${id}/${revoke ? "revoke" : "unrevoke"}`, json({ reason })),
+  system: async (): Promise<AdminSystem> => (await call("/api/admin/system")).json(),
+  pause: (pause: boolean, reason: string) => call(`/api/admin/system/${pause ? "pause" : "resume"}`, json({ reason })),
+  audit: async (offset = 0): Promise<AdminAudit[]> => (await call(`/api/admin/audit?limit=50&offset=${offset}`)).json(),
+  settings: async (): Promise<AdminSetting[]> => (await call("/api/admin/settings")).json(),
+  putSetting: (key: string, value: unknown, reason: string) => call(`/api/admin/settings/${encodeURIComponent(key)}`, send("PUT", { value, reason })),
+  history: async (key = ""): Promise<AdminHistory[]> => (await call(`/api/admin/settings/history?key=${encodeURIComponent(key)}`)).json(),
+  rollback: (id: number, reason: string) => call(`/api/admin/settings/history/${id}/rollback`, json({ reason })),
+};
+
 export const api = {
   me: async (): Promise<{ name: string }> => (await call("/api/me")).json(),
   logout: () => call("/api/logout", { method: "POST" }),

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api, AuthError, type ConnStatus, getToken, setToken, subscribe } from "./api";
+import { admin, api, AuthError, type ConnStatus, getToken, setToken, subscribe } from "./api";
 import { Chat, Composer, type Send, writtenFile } from "./Chat";
 import { IconCalendar, IconChart, IconCheck, IconChevron, IconCompose, IconFile, IconSearch, IconApps, IconLogout, IconMemory, IconMenu, IconPersona, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
@@ -8,6 +8,7 @@ import { requestLocation, saveLocation, sharedLocation } from "./location";
 import { Files } from "./Files";
 import { Preview } from "./Preview";
 import { Memory } from "./Memory";
+import { Admin } from "./Admin";
 import { Apps } from "./Apps";
 import { Persona, loadSavedSkin } from "./Persona";
 import type { SessionInfo } from "./protocol.gen";
@@ -129,9 +130,9 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
     return () => window.removeEventListener("keydown", onKey);
   }, [drawer]);
   // Memory / Apps page (only when no session is picked); "#crafts?..." (aliases "#apps", "#connections") is the OAuth return
-  const [page, setPage] = useState<"" | "memory" | "apps" | "persona">(() => (isConnHash() ? "apps" : ""));
+  const [page, setPage] = useState<"" | "memory" | "apps" | "persona" | "admin">(() => (isConnHash() ? "apps" : ""));
   const pick = (id: string) => { setSid(id); setPage(""); setDrawer(false); };
-  const open = (p: "memory" | "apps" | "persona") => { pick(""); setPage(p); };
+  const open = (p: "memory" | "apps" | "persona" | "admin") => { pick(""); setPage(p); };
 
   useEffect(() => {
     refresh();
@@ -256,7 +257,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
             : sessions.length === 0 && <p className="muted small pad">No sessions yet.</p>}
         </nav>
         <div className="foot">
-          <AccountMenu theme={theme} onTheme={onTheme} onLogout={onLogout} />
+          <AccountMenu theme={theme} onTheme={onTheme} onLogout={onLogout} onAdmin={() => open("admin")} />
         </div>
       </aside>
       {sid ? (
@@ -275,6 +276,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
         </>
       ) : page === "memory" ? <Memory onError={guard} menuButton={menu} />
         : page === "apps" ? <Apps onError={guard} menuButton={menu} />
+        : page === "admin" ? <Admin onError={guard} menuButton={menu} />
         : page === "persona" ? <Persona onError={guard} menuButton={menu} profiles={profiles} models={models} /> : (
         <main className="home">
           <header className="home-head">{menu}<span className="brand only-mobile"><PixelAgent size={22} />Simp</span></header>
@@ -306,7 +308,9 @@ const short = new Intl.NumberFormat("en-US", { notation: "compact", maximumFract
 const fmtShort = (x: number) => short.format(x).replace("K", "k");
 
 /** Sidebar footer: avatar + username; opens a menu with the theme toggle and Sign out. */
-function AccountMenu({ theme, onTheme, onLogout }: { theme: string; onTheme: () => void; onLogout: () => void }) {
+function AccountMenu({ theme, onTheme, onLogout, onAdmin }: { theme: string; onTheme: () => void; onLogout: () => void; onAdmin: () => void }) {
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => { admin.me().then(setIsAdmin).catch(() => {}); }, []);  // the link only; the server checks every call
   const [name, setName] = useState("");
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -361,6 +365,8 @@ function AccountMenu({ theme, onTheme, onLogout }: { theme: string; onTheme: () 
             <span>Share location</span>
           </button>
           {locNote && <div className="menu-note" role="status">{locNote}</div>}
+          {isAdmin && <button role="menuitem" tabIndex={-1} onClick={() => { onAdmin(); close(); }}>
+            <IconChart size={16} /><span>Admin</span></button>}
           <button role="menuitem" tabIndex={-1} onClick={() => api.logout().catch(() => {}).finally(onLogout)}>
             <IconLogout size={16} /><span>Sign out</span>
           </button>
