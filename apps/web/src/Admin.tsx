@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { admin, AuthError, type AdminAudit, type AdminHistory, type AdminSetting, type AdminSystem, type AdminUser, type AdminUserDetail } from "./api";
 import { errorText } from "./Chat";
 import { ago } from "./Memory";
+import { fmt as bytes } from "./Files";
 
 const BIG_GRANT = 100_000;  // same as the server: bigger grants need a second confirm
 const fmt = (x: number) => x.toLocaleString("en-US");
@@ -126,6 +127,7 @@ function UserPanel({ id, fail, ok, onChange, onClose }: P & { id: string; onChan
   const [u, setU] = useState<AdminUserDetail | null>(null);
   const [points, setPoints] = useState("");
   const [confirmBig, setConfirmBig] = useState(false);
+  const [quotaGb, setQuotaGb] = useState("");
   const load = useCallback(() => admin.user(id).then(setU, fail), [id, fail]);
   useEffect(() => { load(); }, [load]);
   if (!u) return <p className="muted">Loading…</p>;
@@ -144,6 +146,23 @@ function UserPanel({ id, fail, ok, onChange, onClose }: P & { id: string; onChan
         <input inputMode="numeric" value={points} onChange={(e) => { setPoints(e.target.value); setConfirmBig(false); }} placeholder="Points (negative to correct)" aria-label="Points" />
         {big && valid && <label className="small"><input type="checkbox" checked={confirmBig} onChange={(e) => setConfirmBig(e.target.checked)} /> Yes, {fmt(n)} points</label>}
       </ReasonForm>
+      <h3>Storage</h3>
+      <p className="muted small mem-about">
+        {bytes(u.workspace.used)} used of {u.workspace.quota ? bytes(u.workspace.quota) : "no limit"}
+        {u.workspace.quota_mb_override === null ? " (default)" : " (set for this user)"}
+        {u.workspace.state === "full" ? " · full: the agent can't save files" : u.workspace.state === "warn" ? " · almost full" : ""}
+      </p>
+      <ReasonForm label="Set storage"
+        onSubmit={async (r) => {
+          const gb = Number(quotaGb);
+          if (quotaGb.trim() === "" || !Number.isFinite(gb) || gb < 0) return;
+          await admin.quota(id, Math.round(gb * 1024), r).then(() => { setQuotaGb(""); return done(); }, fail);
+        }}>
+        <input inputMode="decimal" value={quotaGb} onChange={(e) => setQuotaGb(e.target.value)} placeholder="GB (0 = no limit)" aria-label="Storage quota in GB" />
+      </ReasonForm>
+      {u.workspace.quota_mb_override !== null && (
+        <ReasonForm label="Back to default" onSubmit={(r) => admin.quota(id, null, r).then(done, fail)} />
+      )}
       <h3>{u.revoked ? "Restore access" : "Revoke access"}</h3>
       <p className="muted small mem-about">{u.revoked ? "They can sign in with Google again." : "Signs them out everywhere and blocks sign-in and model calls."}</p>
       <ReasonForm label={u.revoked ? "Restore" : "Revoke"} danger={!u.revoked}

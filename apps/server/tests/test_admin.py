@@ -142,3 +142,21 @@ async def test_rate_limit(tmp_path, monkeypatch):
     codes = [(await call(c, "post", "/api/admin/system/resume", t)).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
     await mgr.store.close()
+
+
+async def test_admin_per_user_storage_quota(tmp_path):
+    app, mgr, c, toks, ids = await setup(tmp_path)
+    t, joe = toks["boss@example.com"], ids["joe@example.com"]
+    assert (await call(c, "put", f"/api/admin/users/{joe}/quota", toks["joe@example.com"], {"quota_mb": 1, "reason": "r"})).status_code == 403
+    w = (await call(c, "get", f"/api/admin/users/{joe}", t)).json()["workspace"]
+    assert w == {"used": 0, "quota": 10240 * 2**20, "state": "ok", "quota_mb_override": None}  # default 10 GB
+    assert (await call(c, "put", f"/api/admin/users/{joe}/quota", t, {"quota_mb": 20480})).status_code == 422  # reason
+    assert (await call(c, "put", f"/api/admin/users/{joe}/quota", t, {"quota_mb": -1, "reason": "r"})).status_code == 422
+    assert (await call(c, "put", f"/api/admin/users/{joe}/quota", t, {"quota_mb": 20480, "reason": "needs room"})).status_code == 200
+    w = (await call(c, "get", f"/api/admin/users/{joe}", t)).json()["workspace"]
+    assert w["quota"] == 20480 * 2**20 and w["quota_mb_override"] == 20480
+    assert (await call(c, "put", f"/api/admin/users/{joe}/quota", t, {"quota_mb": None, "reason": "back"})).status_code == 200
+    assert (await call(c, "get", f"/api/admin/users/{joe}", t)).json()["workspace"]["quota_mb_override"] is None
+    audit = (await call(c, "get", "/api/admin/audit", t)).json()
+    assert [a["detail"]["after_mb"] for a in audit if a["action"] == "quota"] == [None, 20480]
+    await mgr.store.close()

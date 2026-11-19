@@ -51,6 +51,8 @@ export interface AdminUser { id: string; email: string; created: number | null; 
 export interface AdminUserDetail extends AdminUser {
   ledger: { id: number; points: number; note: string; created: number }[];
   usage_30d: { model: string; calls: number; input: number; output: number; cost_usd: number }[];
+  /** quota_mb_override: null = the global workspace.quota_mb applies. */
+  workspace: WorkspaceUsage & { quota_mb_override: number | null };
 }
 export interface AdminSystem { paused: boolean; spend_today_usd: number; open_sessions: number; busy_sessions: number; users: number; billing_enabled: boolean }
 export interface AdminAudit { id: number; action: string; actor: string | null; target: string | null; detail: Record<string, unknown>; created: number }
@@ -67,6 +69,8 @@ export const admin = {
   user: async (id: string): Promise<AdminUserDetail> => (await call(`/api/admin/users/${id}`)).json(),
   credit: async (id: string, points: number, reason: string, confirm = false) =>
     (await call(`/api/admin/users/${id}/credit`, json({ points, reason, confirm }))).json(),
+  /** quota_mb: null = back to the global default, 0 = no limit. */
+  quota: (id: string, quota_mb: number | null, reason: string) => call(`/api/admin/users/${id}/quota`, send("PUT", { quota_mb, reason })),
   revoke: (id: string, revoke: boolean, reason: string) => call(`/api/admin/users/${id}/${revoke ? "revoke" : "unrevoke"}`, json({ reason })),
   system: async (): Promise<AdminSystem> => (await call("/api/admin/system")).json(),
   pause: (pause: boolean, reason: string) => call(`/api/admin/system/${pause ? "pause" : "resume"}`, json({ reason })),
