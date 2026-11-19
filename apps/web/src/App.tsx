@@ -282,6 +282,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
           <header className="home-head">{menu}<span className="brand only-mobile"><PixelAgent size={22} />Simp</span></header>
           <div className="home-hero">
             <Mascot3D size={112} className="hero-face" working={creating} mood={hello ? "done" : "idle"} />
+            <MotionTip />
             <h1>{greeting()}</h1>
             <Composer busy={false} send={start} variant="hero" prefill={prefill} onQueueFiles={(fs) => queued.current.push(...fs)} disabled={creating} tools={profiles.length > 0 && (
               <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} />
@@ -462,4 +463,20 @@ export function greeting(h = new Date().getHours()) {
   if (h < 12) return "Morning! What are we making?";
   if (h < 18) return "Afternoon! What's on your mind?";
   return "Evening! What should we work on?";
+}
+
+/** Shown once on home when the OS asks for reduced motion, so users know why Simp holds still. */
+function MotionTip() {
+  const [show, setShow] = useState(() => {
+    try { if (localStorage.getItem("simp.motionTip") === "0") return false; } catch { /* storage blocked */ }
+    return matchMedia("(prefers-reduced-motion: reduce)").matches;
+  });
+  if (!show) return null;
+  const close = () => { setShow(false); try { localStorage.setItem("simp.motionTip", "0"); } catch { /* storage blocked */ } };
+  return (
+    <div className="motion-tip" role="note">
+      <span>Tip: Simp is still because your device has "reduce motion" on. Turn on animations in your system settings to see it move.</span>
+      <button className="icon" aria-label="Dismiss tip" onClick={close}>×</button>
+    </div>
+  );
 }
