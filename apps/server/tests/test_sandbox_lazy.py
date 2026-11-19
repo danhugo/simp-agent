@@ -110,8 +110,11 @@ async def test_sessions_of_a_user_share_one_container(tmp_path, fake_docker):
     assert not b.box.running and ("rm", "-f", "simp-u-u1") in calls
 
 
-async def test_idle_stop_never_during_a_running_tool(tmp_path, fake_docker):
+async def test_idle_stop_never_during_a_running_tool(tmp_path, fake_docker, monkeypatch):
     calls, gate = fake_docker
+    # exact clock: with a real monotonic value (Linux: seconds since boot), (last + 600) - last can round to
+    # 599.999..., so the "exactly idle_pause_s" step flaked on CI
+    monkeypatch.setattr(docker, "time", type("Clock", (), {"monotonic": staticmethod(lambda: 1000.0)}))
     sb = sandbox(tmp_path, idle_pause_s=600)
     env = await sb.open("s1", "u1")
     gate["sleep 1000"] = asyncio.Event()

@@ -84,6 +84,8 @@ async def test_reconnect_mid_delta_gets_full_in_flight_text():
             assert e["offset"] == len(text)
             text += e["delta"]
     assert text == "Let me look at the directory."
+    h.command(p.Abort())  # don't leave the run waiting on approval: loop teardown would cancel it mid-state
+    await wait_for(lambda: h.task.done())
 
 
 async def test_abort_settles_pending_approval():
