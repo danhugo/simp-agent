@@ -16,9 +16,53 @@ jobs:
   test:
     uses: ./.github/workflows/test.yml
 
-  deploy:
+  # Images are built here (linux/amd64) and pushed to GHCR, so the 2 GB box only pulls them.
+  build:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - run: '[ "${{ github.ref_type }}" = tag ] || { echo "deploy a tag (v*), not a branch"; exit 1; }'
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image names
+        id: img
+        run: echo "repo=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: server
+          platforms: linux/amd64
+          push: true
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}  # links the package to this repo
+          tags: ${{ steps.img.outputs.repo }}/simp-server:${{ github.ref_name }},${{ steps.img.outputs.repo }}/simp-server:latest
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: web
+          platforms: linux/amd64
+          push: true
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}  # links the package to this repo
+          build-args: VITE_SENTRY_DSN=${{ vars.VITE_SENTRY_DSN }}
+          tags: ${{ steps.img.outputs.repo }}/simp-web:${{ github.ref_name }},${{ steps.img.outputs.repo }}/simp-web:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: SSH key
         run: |
@@ -40,10 +84,13 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}  # optional: comma-separated admin emails; empty = no admin page
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}  # optional: error reports to Sentry when set
         run: |
           names="OPENROUTER_API_KEY SIMP_SECRET_KEY E2B_API_KEY S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY R2_API_TOKEN GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET"
           for n in $names; do [ -n "${!n}" ] || { echo "missing repo secret: $n"; exit 1; }; done
-          { for n in $names; do printf '%s=%s\n' "$n" "${!n}"; done; printf 'ADMIN_EMAILS=%s\n' "$ADMIN_EMAILS"; } | ssh box 'umask 077; cat > /srv/simp/.env'
+          { for n in $names; do printf '%s=%s\n' "$n" "${!n}"; done
+            printf 'ADMIN_EMAILS=%s\n' "$ADMIN_EMAILS"
+            [ -z "$SENTRY_DSN" ] || printf 'SENTRY_DSN=%s\n' "$SENTRY_DSN"; } | ssh box 'umask 077; cat > /srv/simp/.env'
 
       # settings.toml (models, bucket, allowed_emails...) is one repo secret, not in this public repo
       - name: Write /srv/simp/settings.toml
@@ -54,12 +101,25 @@ jobs:
           printf '%s\n' "$SETTINGS_TOML" | python3 -c 'import sys, tomllib; tomllib.loads(sys.stdin.read())'
           printf '%s\n' "$SETTINGS_TOML" | ssh box 'umask 077; cat > /srv/simp/settings.toml'
 
+      # --force-recreate: a container restarts even when only settings.toml/.env changed (same image).
+      # The box logs in to GHCR with this job's short-lived token (works for private packages too).
       - name: Pull and restart
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          printf '%s\n' "$TOKEN" | ssh box 'docker login ghcr.io -u ${{ github.actor }} --password-stdin >/dev/null'
           ssh box 'set -e; cd ~/simp-agent && git fetch -q --tags --force origin && git reset -q --hard ${{ github.ref_name }}
-            echo DOMAIN=simpagent.app > .env
-            docker compose up -d --build --remove-orphans server caddy
-            docker image prune -f >/dev/null'
+            printf "DOMAIN=simpagent.app\nSIMP_TAG=${{ github.ref_name }}\n" > .env
+            docker compose pull -q server caddy
+            docker compose up -d --force-recreate --remove-orphans server caddy
+            docker image prune -f >/dev/null; docker logout ghcr.io >/dev/null'
 
-      - name: Check the site answers
-        run: curl -fsS -o /dev/null --retry 12 --retry-delay 5 --retry-all-errors https://simpagent.app/
+      - name: Wait until ready
+        run: |
+          for i in $(seq 30); do
+            code=$(curl -s -o /tmp/ready -w '%{http_code}' https://simpagent.app/api/readyz || true)
+            [ "$code" = 200 ] && { cat /tmp/ready; exit 0; }
+            [ "$code" = 404 ] && curl -fsS https://simpagent.app/api/healthz && exit 0  # older image without readyz
+            sleep 5
+          done
+          echo "not ready (last $code):"; cat /tmp/ready 2>/dev/null; exit 1

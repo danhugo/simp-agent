@@ -1116,6 +1116,24 @@ wheels = [
 ]
 
 [[package]]
+name = "sentry-sdk"
+version = "2.75.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d2/95/121b20d75e738d249a0e26e6476a2acb178673e8228002748fc0cd85ce55/sentry_sdk-2.75.0.tar.gz", hash = "sha256:c38ac2d4b2435c11da821e173bb9d9088c98f41ae92f559ce0e424170a8e1a29", size = 1092308 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ec/ee/fbfe67386d64a7218013c8346b88b89d72f279b4ddb434ed5e94bea3d389/sentry_sdk-2.75.0-py3-none-any.whl", hash = "sha256:9a10e97de2cbd42ad7e4a6e02a0d5af19de9811eb02445077d41ba14c08e170c", size = 555165 },
+]
+
+[package.optional-dependencies]
+fastapi = [
+    { name = "fastapi" },
+]
+
+[[package]]
 name = "simp-agent"
 version = "0.1.0"
 source = { editable = "packages/simp_agent" }
@@ -1167,6 +1185,7 @@ dependencies = [
     { name = "e2b" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "sentry-sdk", extra = ["fastapi"] },
     { name = "simp-agent", extra = ["mcp"] },
     { name = "uvicorn" },
 ]
@@ -1179,6 +1198,7 @@ requires-dist = [
     { name = "e2b", specifier = ">=2.64.0" },
     { name = "fastapi" },
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "sentry-sdk", extras = ["fastapi"], specifier = ">=2.75.0" },
     { name = "simp-agent", extras = ["mcp"], editable = "packages/simp_agent" },
     { name = "uvicorn", specifier = ">=0.54.0" },
 ]

@@ -36,8 +36,14 @@
 
 `.github/workflows/deploy.yml` deploys a release tag: `git tag v0.1.0 && git push origin v0.1.0`. Pushing to master
 (the dev branch) never deploys. Roll back = re-run an older tag from the Actions tab (Run workflow, pick the tag).
-It SSHes to the box, rewrites `/srv/simp/.env` from repo secrets, checks out the tag, and runs `docker compose up -d --build server caddy`,
-then checks `https://simpagent.app/` answers. `/srv/simp/settings.toml` is rewritten too, from the `SETTINGS_TOML`
+After the tests, CI builds the `server` and `web` images (linux/amd64) and pushes them to GHCR as
+`ghcr.io/danhugo/simp-server:<tag>` / `simp-web:<tag>` (plus `:latest`); the box never builds. Then it SSHes to the box,
+rewrites `/srv/simp/.env` from repo secrets, checks out the tag (for docker-compose.yml), logs in to GHCR with the job's
+`GITHUB_TOKEN`, sets `SIMP_TAG=<tag>` and runs `docker compose pull && docker compose up -d --force-recreate server caddy`
+(force-recreate: a settings-only change restarts the server too). The job fails unless `https://simpagent.app/api/readyz`
+(fallback `/api/healthz`) answers 200 within ~2.5 min. `/api/readyz` checks database, R2 bucket, E2B and the model
+provider (cached 30 s); `/api/healthz` only says the process is up. Roll back = re-run an older tag (pulls its image).
+`/srv/simp/settings.toml` is rewritten too, from the `SETTINGS_TOML`
 repo secret (the whole file; this repo is public, so models, bucket and `allowed_emails` stay out of it).
 To change settings: edit the secret, then re-run the tag. Keep your own copy: a secret cannot be read back.
 
@@ -47,6 +53,7 @@ One-time setup:
    `SSH_KEY` (the whole .pem file), `SSH_HOST` (43.200.82.250), `OPENROUTER_API_KEY`, `SIMP_SECRET_KEY`, `E2B_API_KEY`,
    `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `R2_API_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
    and optionally `ADMIN_EMAILS` (comma-separated emails that may open the Admin page and call `/api/admin/*`;
-   empty or missing = no admins). It is only set here, never from the app.
+   empty or missing = no admins; only set here, never from the app), and optional `SENTRY_DSN` (server errors to
+   Sentry; unset = off). Optional repo *variable* `VITE_SENTRY_DSN` (public browser DSN, baked into the web build).
    Make `SIMP_SECRET_KEY` once (on the box: `docker run --rm python:3.13-slim sh -c "pip -q install cryptography && python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"`)
    and never change it: it encrypts users' Google tokens.

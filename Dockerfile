@@ -29,7 +29,8 @@ RUN corepack enable
 COPY apps/web/package.json apps/web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY apps/web .
-RUN pnpm build
+ARG VITE_SENTRY_DSN=""
+RUN VITE_SENTRY_DSN=$VITE_SENTRY_DSN pnpm build
 
 FROM caddy:2 AS web
 COPY --from=web-build /web/dist /srv/web

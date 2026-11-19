@@ -1,20 +1,24 @@
-# Production: docker compose up -d. Home (settings.toml, .env, simp.db) is $SIMP_HOME on the host (default /srv/simp).
+# Production: CI builds the images and pushes them to GHCR; the box runs `docker compose pull && docker compose up -d`
+# (SIMP_TAG picks the release, default latest). Build locally instead: `docker compose build` (uses build: below).
+# Home (settings.toml, .env, simp.db) is $SIMP_HOME on the host (default /srv/simp).
 x-logging: &logging {driver: json-file, options: {max-size: 10m, max-file: "3"}}  # docker keeps all logs otherwise
 
 services:
   server:
+    image: ghcr.io/danhugo/simp-server:${SIMP_TAG:-latest}
     build: {context: ., target: server}
     restart: always
     logging: *logging
     volumes: ["${SIMP_HOME:-/srv/simp}:/data"]
   google_mcp:
-    build: {context: ., target: server}
+    image: ghcr.io/danhugo/simp-server:${SIMP_TAG:-latest}
     restart: always
     logging: *logging
     command: ["python", "-m", "simp_server.google_mcp"]
     network_mode: "service:server"  # server reaches it on 127.0.0.1:8101-8103 (connections.APPS default urls)
     volumes: ["${SIMP_HOME:-/srv/simp}:/data"]
   caddy:
+    image: ghcr.io/danhugo/simp-web:${SIMP_TAG:-latest}
     build: {context: ., target: web}
     restart: always
     logging: *logging

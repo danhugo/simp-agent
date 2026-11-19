@@ -45,7 +45,7 @@ from simp_agent.plugins.redact_secrets import RedactSecrets
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
 
-from . import admin, budget, ops, persona as persona_mod, workspace
+from . import admin, budget, health, ops, persona as persona_mod, workspace
 from . import protocol as p
 from .connections import STATE_TTL, Connections, UserMcp, providers
 from .fake import sse
@@ -680,6 +680,17 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             raise HTTPException(401, "bad token")
         return u
 
+    ready = health.Ready(health.checks(settings, store, files, sandbox, mgr.keys))
+
+    @app.get("/api/healthz")  # no auth: process alive, no external calls
+    async def healthz():
+        return {"ok": True}
+
+    @app.get("/api/readyz")  # no auth: dependencies, cached ~30 s
+    async def readyz():
+        ok, result = await ready()
+        return JSONResponse(result, status_code=200 if ok else 503)
+
     @app.get("/api/auth/google/start")  # no auth: the login page links here; Google is the only web sign-in
     async def google_start():
         try:
@@ -1247,6 +1258,7 @@ def main() -> None:
         # open SSE streams never end on their own; without the timeout uvicorn waits forever and lifespan never closes sandboxes
         ops.setup_logging()
         settings = load_settings()
+        ops.setup_sentry(settings["data_dir"])  # no-op without SENTRY_DSN
         app = create_app(settings, stream if a.fake_llm else ai.stream)
         main, preview = (uvicorn.Server(uvicorn.Config(x, host=settings["host"], port=port, log_config=None,
                                                        timeout_graceful_shutdown=SHUTDOWN_GRACE))
