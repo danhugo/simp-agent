@@ -51,8 +51,10 @@ DENIED = ("Transport endpoint is not connected", "AccessDenied", "403 Forbidden"
 CREDS_MARGIN_S = 300
 MOUNT_SH = 'printf "%s\\n%s\\n%s\\n" "$K" "$S" "$T" | sh -c ' + shlex.quote(S3FS) + ' sh "$B" "$U" "$R" "$O"'
 # kill the old s3fs first: a lazy umount alone leaves it serving (and writing for) processes still inside /work
+# then empty the bare mountpoint: a process still writing there (cwd or open dir in the old mount) would otherwise
+# leave files in it and s3fs refuses a non-empty mountpoint; anything written in that gap is lost (it is not in R2)
 UNMOUNT_SH = "sync; pkill -x s3fs; for i in 1 2 3 4 5; do pgrep -x s3fs >/dev/null || break; sleep 1; done; " \
-             "umount -l /work 2>/dev/null; mkdir -p /work"
+             "umount -l /work 2>/dev/null; mkdir -p /work; mountpoint -q /work || find /work -mindepth 1 -delete"
 
 
 def _sdk():
@@ -176,6 +178,7 @@ class E2BEnv:
     def __init__(self, sandbox: "E2BSandbox", box: _Box, session_id: str):
         self.sandbox, self.box, self.session_id = sandbox, box, session_id
         self.used = False
+        self.internal = False  # after_tool's own commands (sync, mirror): no quota note, the agent never sees them
 
     @contextlib.asynccontextmanager
     async def _use(self, need_s: float | None = None):
@@ -276,7 +279,7 @@ class E2BEnv:
         cwd = self._path(cwd or ".")
         code, out = await self._call(lambda sbx: _run(sbx, command, cwd, timeout, cancel, on_output), timeout)
         self.sandbox.check_denied(self.box, out)
-        if note := await self.sandbox.quota_note(self.box):
+        if not self.internal and (note := await self.sandbox.quota_note(self.box)):
             out = f"{out.rstrip()}\n{note}" if out.strip() else note
         return code, out
 
@@ -284,6 +287,7 @@ class E2BEnv:
         """After each tool call that used the sandbox: sync (s3fs uploads closed files), mirror changed repos."""
         if not self.used:
             return
+        self.internal = True
         try:
             await self.exec("sync", "/work", 60, asyncio.Event())
             if self.sandbox.quota is not None:
@@ -295,7 +299,7 @@ class E2BEnv:
         except Exception as e:
             log.warning("after-tool sync failed: %s", e, extra={"session": self.session_id})
         finally:
-            self.used = False
+            self.used = self.internal = False
 
 
 class E2BSandbox:
@@ -412,7 +416,7 @@ class E2BSandbox:
         box.creds_until = time.monotonic() + c["expires_in"] if c.get("expires_in") else 0.0
         envs = {"K": c["access_key"], "S": c["secret_key"], "T": c["session_token"] or "",
                 "B": f"{c['bucket']}:/{c['prefix'].rstrip('/')}", "U": c["endpoint"], "R": c["region"],
-                "O": "ro" if ro else ""}
+                "O": "ro,nonempty" if ro else "nonempty"}  # nonempty: see UNMOUNT_SH (a writer can race the cleanup)
         await box.exec(UNMOUNT_SH, "/", 30, asyncio.Event(), user="root")
         code, out = await _run(box.sbx, MOUNT_SH, "/", 60, asyncio.Event(), user="root", envs=envs)
         if code != 0 or not await self._mounted(box):

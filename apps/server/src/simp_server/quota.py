@@ -84,7 +84,7 @@ class Quota:
 
     def note(self, u: dict) -> str:
         """A line for the agent (appended to command output) when the workspace is nearly full or full."""
-        gb = lambda n: f"{n / 2**30:.2f} GB"  # noqa: E731
+        gb = lambda n: f"{n / 2**30:.2f} GB" if n >= 2**30 else f"{n / MB:.0f} MB"  # noqa: E731
         if u["state"] == "full":
             return (f"[workspace full: {gb(u['used'])} of {gb(u['quota'])} used. /work is read-only now. Tell the user "
                     "to delete files in the Files panel; writing will work again once there is room.]")
