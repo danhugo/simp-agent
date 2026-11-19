@@ -31,3 +31,17 @@
 4. Google Cloud Console: add the redirect URIs and the test users.
 5. Check sign-in, chat, an s3fs mount inside E2B with the temporary credentials, and granting points.
 6. Set up UptimeRobot.
+
+## CI/CD (GitHub Actions)
+
+`.github/workflows/deploy.yml` deploys on every push to master (docs and site changes skip it), or by hand from the Actions tab.
+It SSHes to the box, rewrites `/srv/simp/.env` from repo secrets, pulls, and runs `docker compose up -d --build server caddy`,
+then checks `https://simpagent.app/` answers. `/srv/simp/settings.toml` stays on the box (edit it there).
+
+One-time setup:
+1. Lightsail firewall: SSH (22) open to any IP (GitHub runners have no fixed IP). Login is key-only.
+2. Repo Settings → Secrets and variables → Actions → New repository secret, one per name:
+   `SSH_KEY` (the whole .pem file), `SSH_HOST` (43.200.82.250), `OPENROUTER_API_KEY`, `SIMP_SECRET_KEY`, `E2B_API_KEY`,
+   `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `R2_API_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+   Make `SIMP_SECRET_KEY` once (on the box: `docker run --rm python:3.13-slim sh -c "pip -q install cryptography && python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"`)
+   and never change it: it encrypts users' Google tokens.
