@@ -67,7 +67,7 @@ async def test_day_budget_and_pause(tmp_path):
     import httpx
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
         u = (await c.get("/api/usage", headers={"Authorization": f"Bearer {token}"})).json()
-        assert u == {"today_usd": 1.0, "day_limit_usd": 1.0, "paused": False, "billing_enabled": False, "points_balance": None}
+        assert u == {"today_usd": 1.0, "day_limit_usd": 1.0, "paused": False, "billing_enabled": False, "points_balance": None, "points_granted": None}
         (tmp_path / "PAUSED").touch()
         u = (await c.get("/api/usage", headers={"Authorization": f"Bearer {token}"})).json()
         assert u["paused"] is True

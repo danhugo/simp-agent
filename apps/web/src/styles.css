@@ -140,6 +140,14 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
   flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
   background: var(--accent); color: var(--accent-text); font-size: var(--fs-sm); font-weight: 600;
 }
+/* points left, as a bar that fills with use: amber at 80% used, red when out */
+.account-pts { margin-left: auto; padding-left: var(--sp-2); font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.credit-bar { height: 4px; margin: 2px var(--sp-2) var(--sp-1); border-radius: 99px; background: var(--active); overflow: hidden; }
+.credit-bar i { display: block; height: 100%; border-radius: inherit; background: var(--text); }
+.credit-bar i.low { background: var(--warn); }
+.credit-bar i.out { background: var(--err); }
+.account-pts.out { color: var(--err); }
+.app.collapsed .sidebar :is(.account-pts, .credit-bar) { display: none; }
 .account .menu.up { top: auto; bottom: calc(100% + var(--sp-1)); left: 0; right: 0; min-width: 0; }
 
 /* empty state */

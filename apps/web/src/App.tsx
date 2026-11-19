@@ -300,6 +300,11 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
   );
 }
 
+const fmt = (x: number) => x.toLocaleString("en-US");
+/** 3,580 -> 3.6k, 5,200,000 -> 5.2M; numbers under 1,000 stay exact */
+const short = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+const fmtShort = (x: number) => short.format(x).replace("K", "k");
+
 /** Sidebar footer: avatar + username; opens a menu with the theme toggle and Sign out. */
 function AccountMenu({ theme, onTheme, onLogout }: { theme: string; onTheme: () => void; onLogout: () => void }) {
   const [name, setName] = useState("");
@@ -308,7 +313,13 @@ function AccountMenu({ theme, onTheme, onLogout }: { theme: string; onTheme: () 
   const trigger = useRef<HTMLButtonElement>(null);
   const [shareLoc, setShareLoc] = useState(() => sharedLocation() !== null);
   const [locNote, setLocNote] = useState("");
-  const [points, setPoints] = useState<number | null>(null);
+  const [points, setPoints] = useState<{ left: number; granted: number } | null>(null);
+  useEffect(() => {  // points shown under the name: on load, every minute, and when the menu opens
+    const load = () => api.usage().then((u) => setPoints(u.billing_enabled ? { left: u.points_balance ?? 0, granted: u.points_granted ?? 0 } : null)).catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, [open]);
   useEffect(() => { api.me().then((m) => setName(m.name)).catch(() => {}); }, []);
   const toggleLocation = () => {
     setLocNote("");
@@ -321,7 +332,6 @@ function AccountMenu({ theme, onTheme, onLogout }: { theme: string; onTheme: () 
   useEffect(() => {
     if (!open) return;
     items()[0]?.focus();
-    api.usage().then((u) => setPoints(u.billing_enabled ? u.points_balance : null)).catch(() => {});
     const away = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
     document.addEventListener("pointerdown", away);
     return () => document.removeEventListener("pointerdown", away);
@@ -342,7 +352,6 @@ function AccountMenu({ theme, onTheme, onLogout }: { theme: string; onTheme: () 
       onBlur={(e) => { if (open && !root.current?.contains(e.relatedTarget as Node)) setOpen(false); }}>
       {open && (
         <div className="menu up" role="menu" aria-label="Account">
-          {points !== null && <div className="menu-note">{points.toLocaleString("en-US")} points</div>}
           <button role="menuitem" tabIndex={-1} onClick={() => { onTheme(); close(); }}>
             {theme === "dark" ? <IconSun size={16} /> : <IconMoon size={16} />}<span>{theme === "dark" ? "Light" : "Dark"} theme</span>
           </button>
@@ -361,7 +370,17 @@ function AccountMenu({ theme, onTheme, onLogout }: { theme: string; onTheme: () 
         aria-label={`Account${name ? `: ${name}` : ""}`} onClick={() => setOpen(!open)}>
         <span className="avatar" aria-hidden="true">{(name[0] ?? "?").toUpperCase()}</span>
         <span className="account-name">{name || "Account"}</span>
+        {points && <span className={`account-pts ${points.left > 0 ? "" : "out"}`}>{points.left > 0 ? `${fmtShort(points.left)} pts` : "Out of points"}</span>}
       </button>
+      {points && points.granted > 0 && (() => {
+        const used = Math.min(1, Math.max(0, 1 - points.left / points.granted));
+        return (
+          <div className="credit-bar" role="meter" aria-label="Points used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(used * 100)}
+            aria-valuetext={`${fmt(Math.max(0, points.left))} of ${fmt(points.granted)} points left`} title={`${fmt(Math.max(0, points.left))} of ${fmt(points.granted)} points left`}>
+            <i className={used >= 1 ? "out" : used >= 0.8 ? "low" : ""} style={{ width: `${used * 100}%` }} />
+          </div>
+        );
+      })()}
     </div>
   );
 }
