@@ -154,11 +154,21 @@ class FakeStore:
 
 class FakeDb:
     def __init__(self):
-        self.rows, self.seconds = list(), 0.0
+        self.rows, self.seconds, self.pauses = list(), 0.0, dict()
 
     async def add_usage(self, user_id, sid, model, input, output, cost=0.0):
         self.rows.append((user_id, model, input, cost))
-        self.seconds += input
+        if model.startswith("sandbox:"):
+            self.seconds += input
+
+    async def add_pause(self, user_id, sbx_id, cpus, mem_gib):
+        self.pauses.setdefault(sbx_id, {"user_id": user_id, "paused_at": time.time(), "cpus": cpus, "mem_gib": mem_gib})
+
+    async def pop_pause(self, sbx_id):
+        return self.pauses.pop(sbx_id, None)
+
+    async def pause_ids(self):
+        return list(self.pauses)
 
     async def sandbox_seconds(self, user_id, since):
         return self.seconds
@@ -555,3 +565,80 @@ async def test_live_e2b(tmp_path):
     finally:
         for i in await sb.list_all():
             await sb._sdk.kill(i["id"])
+
+
+async def test_running_box_paused_when_points_run_out(cloud):
+    """Billing on: once the balance is <= 0 the tick marks the box over, pauses it when idle, and calls are refused."""
+    sb = make(cloud)
+    balance = [5]
+
+    async def credits(user_id, rate):
+        return {"balance": balance[0]}
+    sb.compute.db.credits, sb.compute.billing = credits, (True, 1000.0)
+    env = await sb.open("s1", "u1")
+    await go(env)
+    balance[0] = 0
+    await sb.stop_idle(now=env.box.last + 1)  # marks it over
+    await sb.stop_idle(now=env.box.last + 1)  # next tick: paused
+    assert env.box.over and env.box.state == "paused"
+    with pytest.raises(SandboxLimit, match="out of points"):
+        await go(env)
+    balance[0] = 10
+    await go(env)  # credit added: works again
+
+
+async def _paused_store(cloud, tmp_path, **opts):
+    from simp_server.store import SqliteStore
+    sb = make(cloud, **opts)
+    db = SqliteStore({"data_dir": str(tmp_path)})
+    await db.open()
+    sb.compute.db = db
+    env = await sb.open("s1", "u1")
+    await go(env)
+    await sb.stop_idle(now=env.box.last + 10_000)  # idle pause
+    assert env.box.state == "paused"
+    return sb, db, env
+
+
+async def paused_rows(db):
+    return [r for r in await db.usage("u1") if r["model"].startswith("sandbox-paused")]
+
+
+async def test_paused_time_charged_once_on_resume(cloud, tmp_path):
+    sb, db, env = await _paused_store(cloud, tmp_path)
+    await db._do("UPDATE sandbox_pauses SET paused_at=paused_at-100")  # paused 100 s
+    await sb.stop_idle(now=env.box.last + 20_000)  # still paused: no charge yet
+    assert await paused_rows(db) == []
+    await go(env)  # resume
+    [r] = await paused_rows(db)
+    assert r["input"] == 100
+    assert r["cost"] == pytest.approx(0.1 * 100 * (2 * 0.000014 + 2 * 0.0000045), rel=0.01)
+    await go(env)
+    assert len(await paused_rows(db)) == 1  # no double charge
+    await db.close()
+
+
+async def test_paused_ratio_zero_records_nothing(cloud, tmp_path):
+    sb, db, env = await _paused_store(cloud, tmp_path, paused_price_ratio=0)
+    assert await db.pause_ids() == []
+    await go(env)
+    assert await paused_rows(db) == []
+    await db.close()
+
+
+async def test_paused_box_survives_restart_and_expiry_charged_once(cloud, tmp_path):
+    sb, db, env = await _paused_store(cloud, tmp_path)
+    await db._do("UPDATE sandbox_pauses SET paused_at=paused_at-50")
+    sb2 = make(cloud)  # server restart: same db, adopts the paused box, keeps the first pause time
+    sb2.compute.db = db
+    await sb2.start()
+    assert await paused_rows(db) == []
+    cloud.boxes.pop(env.box.sbx_id)  # expired at the provider
+    sb3 = make(cloud)
+    sb3.compute.db = db
+    await sb3.start()
+    [r] = await paused_rows(db)
+    assert r["input"] == 50
+    await sb3.start()
+    assert len(await paused_rows(db)) == 1
+    await db.close()
