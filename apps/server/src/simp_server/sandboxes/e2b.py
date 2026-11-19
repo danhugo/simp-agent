@@ -312,7 +312,7 @@ class E2BSandbox:
         self.idle_pause_s, self.max_life_s = s.get("idle_pause_s", 600), s.get("max_life_s", 3300)
         self.snapshot_every_s = s.get("snapshot_every_s", 900)
         # counts against the user's workspace quota: keep it well under it (over the cap: libraries reinstall)
-        self.snapshot_max_bytes = int(s.get("snapshot_max_mb", 500)) * 2**20
+        self.snapshot_max_bytes = int(s.get("snapshot_max_mb", 2048)) * 2**20
         self.provider_timeout_s = s.get("provider_timeout_s", self.idle_pause_s + 300)
         self.cpus, self.memory_gib = float(s.get("cpus", 2)), float(s.get("memory_mb", 2048)) / 1024  # for cost
         self.store, self.keys, self.compute = None, dict(), Compute(settings, "e2b")

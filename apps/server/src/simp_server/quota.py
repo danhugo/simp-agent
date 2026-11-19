@@ -1,4 +1,4 @@
-"""Workspace storage quota (design 2026-11-20). `[workspace] quota_mb` per user (0 = off; the admin can override it per
+"""Workspace storage quota (design 2026-11-20). `[workspace] quota_mb` per user (default 10 GB, 0 = off; the admin can override it per
 user), warn at `quota_warn` (0.8), block writes at `quota_block` (0.95) of it.
 
 Used bytes live in the db (workspace_usage), so a sandbox start knows them without listing the bucket:
@@ -31,7 +31,7 @@ class Quota:
     async def limit(self, user_id: str, row: dict | None = None) -> int:
         """Quota in bytes for this user, 0 = no quota."""
         row = row if row is not None else await self.db.ws_usage(user_id)
-        mb = row["quota_mb"] if row and row["quota_mb"] is not None else self._w.get("quota_mb", 2048)
+        mb = row["quota_mb"] if row and row["quota_mb"] is not None else self._w.get("quota_mb", 10240)
         return int(float(mb) * MB)
 
     async def usage(self, user_id: str) -> dict:

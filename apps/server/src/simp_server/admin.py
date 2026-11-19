@@ -78,7 +78,7 @@ def editable(settings: dict) -> dict:
 
 DEFAULTS = {"budget.user_day_usd": budget.Limits.user_day_usd, "budget.run_usd": budget.Limits.run_usd,
             "billing.points_per_usd": 1000.0, "sandbox.paused_price_ratio": 0.1, "allowed_emails": [],
-            "workspace.quota_mb": 2048.0}
+            "workspace.quota_mb": 10240.0}
 
 
 def get_key(settings: dict, key: str):

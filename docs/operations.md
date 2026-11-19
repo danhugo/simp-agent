@@ -272,7 +272,7 @@ bucket = "simp-workspaces"
 region = "auto"            # R2; an AWS region otherwise
 mount_scope = "none"       # R2 has no STS; on AWS keep "sts" and set role_arn
 dev_unscoped_mount = true  # required with "none": the store key goes into every sandbox (trusted users only)
-quota_mb = 2048            # per-user workspace storage (0 = off); admin can change it, and override per user
+quota_mb = 10240           # per-user workspace storage (0 = off); admin can change it, and override per user
 # quota_warn = 0.8         # agent and Files panel warn from here
 # quota_block = 0.95       # from here /work is read-only (read-only credential when mount_scope is "sts"/"r2") and uploads get 507
 # quota_recount_s = 60     # at most one bucket recount per user per minute after sandbox tool calls
@@ -286,7 +286,7 @@ memory_mb = 2048
 idle_pause_s = 600         # pause after 10 min unused (home snapshot first)
 max_life_s = 3300          # kill and recreate after 55 min (E2B Hobby: 1 h continuous cap)
 snapshot_every_s = 900     # home snapshot to /work/.simp/home.tar.zst
-snapshot_max_mb = 500      # counts against quota_mb; over this, no new snapshot (libraries reinstall); repos are never in it
+snapshot_max_mb = 2048     # counts against quota_mb; over this, no new snapshot (libraries reinstall); repos are never in it
 # provider_timeout_s = idle_pause_s + 300   # E2B-side pause if this server dies
 max_running = 10           # E2B Hobby allows 20 concurrent
 day_minutes = 240          # per-user daily compute minutes (e2b default)
