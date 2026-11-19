@@ -45,7 +45,7 @@ from simp_agent.plugins.redact_secrets import RedactSecrets
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
 
-from . import budget, health, ops, persona as persona_mod, workspace
+from . import admin, budget, health, ops, persona as persona_mod, workspace
 from . import protocol as p
 from .connections import STATE_TTL, Connections, UserMcp, providers
 from .fake import sse
@@ -193,7 +193,7 @@ def load_settings(home: Path = HOME) -> dict:
 def take_keys(settings: dict) -> dict:
     """Model keys from <data_dir>/.env and the process env. Removed from os.environ so sandboxed commands never see them."""
     names = ({pr.get("api_key_env") for pr in settings["profiles"].values()} | {"OPENAI_API_KEY", "ANTHROPIC_API_KEY",
-             "SIMP_SECRET_KEY", "E2B_API_KEY"} | {settings.get("workspace", dict()).get(k, d) for k, d in (
+             "SIMP_SECRET_KEY", "E2B_API_KEY", "ADMIN_EMAILS"} | {settings.get("workspace", dict()).get(k, d) for k, d in (
              ("access_key_env", "S3_ACCESS_KEY_ID"), ("secret_key_env", "S3_SECRET_ACCESS_KEY"))} | {a.get(k) for a in providers(settings).values() for k in ("client_id_env", "client_secret_env")})
     keys = dict()
     f = Path(settings["data_dir"]) / ".env"
@@ -234,6 +234,7 @@ class Run:
         self.decisions: dict[str, str] = dict()  # call_id -> approval decision, for the MCP audit log
         profiles = mgr.settings["profiles"]  # a profile removed from settings falls back to the default one
         self.profile = profiles.get(row["profile"]) or profiles[mgr.settings["default_profile"]]
+        self.profile_name, self.limits = row["profile"], mgr.limits
         self.mcp = UserMcp(self)
         self.model = build_model(self.profile)
         self.run_start = time.time()
@@ -425,6 +426,9 @@ class Run:
 
     async def start(self, text, fresh: bool = True) -> None:  # text: a prompt, or a coroutine factory (continue_, compact)
         if fresh:  # a queued follow-up stays inside the same run budget
+            # runtime settings (admin): a new run picks up current limits and prices; a run in progress keeps its own
+            self.limits = self.mgr.limits
+            self.profile = self.mgr.settings["profiles"].get(self.profile_name) or self.profile
             self.run_start = time.time()
         await self.set_state("running")
         self.run_id = uuid.uuid4().hex[:8]
@@ -433,7 +437,7 @@ class Run:
         self.task = asyncio.create_task(self._run(fn))
 
     async def over_budget(self) -> str | None:
-        lim, store, msg = self.mgr.limits, self.mgr.store, None
+        lim, store, msg = self.limits, self.mgr.store, None
         if self.mgr.paused():
             msg = "budget: server paused by the admin"
         elif not await store.user_active(self.user_id):
@@ -514,6 +518,8 @@ class SessionManager:
     def __init__(self, settings: dict, store, sandbox, stream_fn):
         self.settings, self.store, self.sandbox, self.stream_fn = settings, store, sandbox, stream_fn
         self.keys = take_keys(settings)
+        # not a secret to mask in chats, and never editable at runtime: only from <data_dir>/.env or the env
+        self.admin_emails = {e.strip().lower() for e in self.keys.pop("ADMIN_EMAILS", "").split(",") if e.strip()}
         self.conns = Connections(settings, store, self.keys)
         self.tools_seen: dict[str, dict] = dict()  # user -> app -> tool -> needs approval (portal detail page)
         self.limits = budget.limits(settings)
@@ -641,6 +647,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         await store.open()
+        await admin.load_overrides(settings, mgr)
         if err := check_sandbox(settings, await store.count_users()):
             raise SystemExit(err)
         for name, pr in settings["profiles"].items():
@@ -739,10 +746,11 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def models(u=Depends(user)) -> dict[str, str]:  # profile name -> model id, for display
         return {name: pr.get("model", name) for name, pr in settings["profiles"].items()}
 
-    billing = budget.billing(settings)
+    admin.mount(app, settings, mgr, user)
 
     @app.get("/api/usage")
     async def usage(u=Depends(user)):
+        billing = budget.billing(settings)  # read per call: billing.points_per_usd is a runtime setting
         c = await store.credits(u["id"], billing[1]) if billing[0] else {}
         return {"today_usd": round(await store.spent(u["id"], budget.day_start()), 4),
                 "day_limit_usd": mgr.limits.user_day_usd, "paused": mgr.paused(),
