@@ -194,7 +194,12 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .composer.hero .composer-card { padding: var(--sp-2); border-radius: 27px; }
 .composer.hero textarea { font-size: var(--fs-lg); }
 /* iOS Safari zooms the page when a field under 16px gets focus */
-@media (max-width: 767px) { .composer textarea, input:not([type=checkbox]):not([type=radio]), textarea, select { font-size: max(16px, 1em); } }
+@media (max-width: 767px) {
+  .composer textarea, input:not([type=checkbox]):not([type=radio]), textarea, select { font-size: max(16px, 1em); }
+  /* keep attach | text | model | send on one row with a long model name */
+  .composer textarea { min-width: 4em; }
+  .composer .model-btn { max-width: 30vw; }
+}
 
 /* ---- file card under a write/edit tool ---- */
 .file-card {

@@ -175,7 +175,7 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .mem-search { display: flex; align-items: center; gap: var(--sp-2); width: 240px; min-width: 0; padding: 0 var(--sp-3); border-radius: 10px; background: var(--panel); color: var(--muted); }
 .mem-search input { flex: 1; min-width: 0; border: 0; background: none; padding: 7px 0; box-shadow: none; outline: none; }
 .mem-search:focus-within { outline: 2px solid var(--text); outline-offset: 1px; }
-@media (max-width: 560px) { .mem-toolbar { flex-wrap: wrap; } .mem-search { width: 100%; order: 3; } .mem-toolbar .new-mem { margin-left: 0; } .mem-empty { flex-direction: column; text-align: center; } }
+@media (max-width: 560px) { .mem-toolbar { flex-wrap: wrap; } .mem-search { width: 100%; order: 3; } .mem-toolbar:has(.new-mem) .tabs { flex-basis: 100%; order: -2; } .mem-toolbar .new-mem { margin-left: 0; order: -1; } .mem-empty { flex-direction: column; text-align: center; } }
 .mem-empty { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-3); padding: var(--sp-3) var(--sp-1); }
 .mem-empty p { margin: 0; }
 /* add: a "+" field, about one line of text long (not the full page width) */
@@ -251,6 +251,7 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 @media (max-width: 767px) {
   .only-mobile { display: revert !important; }
   button.icon.only-mobile { display: inline-grid !important; }
+  .brand.only-mobile { display: inline-flex !important; }  /* revert would drop the flex centering of icon + name */
   .only-desktop { display: none !important; }
   .sidebar {
     position: fixed; inset: 0 auto 0 0; z-index: 30; width: min(var(--sidebar-w), 85vw);
@@ -274,6 +275,9 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
   .login .pw input { padding-right: 48px; }
   .login button.link { padding: 0 var(--sp-2); }
   input[type="checkbox"] { width: 20px; height: 20px; }
+  /* keep the switch small; an invisible 44px box takes the tap */
+  .switch { position: relative; min-width: 0; min-height: 0; }
+  .switch::before { content: ""; position: absolute; inset: 50% auto auto 50%; width: 44px; height: 44px; translate: -50% -50%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
