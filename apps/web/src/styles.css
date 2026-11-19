@@ -310,9 +310,7 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 @keyframes mascot-hop { 40% { transform: translateY(-16%); } }
 .mascot3d.mood-error canvas { transform: translateY(6%); transition: transform .4s; }
 .mascot3d.mood-asking::after { content: "?"; position: absolute; top: -30%; right: -20%; font-weight: 700; font-size: max(11px, calc(var(--s) * .32)); line-height: 1; color: var(--text); }
-@media (prefers-reduced-motion: reduce) { .mascot3d.mood-done canvas { animation: none; } }
 @keyframes mascot-bob { 50% { transform: translateY(-6px); } }
-@media (prefers-reduced-motion: reduce) { .mascot3d.working canvas { animation: none; } }
 
 /* overloaded (5 min of work): two pixel steam puffs rising from the top of the head */
 .mascot3d-steam { position: absolute; top: -22%; left: 50%; width: 70%; height: 34%; transform: translateX(-50%); pointer-events: none; display: none; z-index: 1; }
