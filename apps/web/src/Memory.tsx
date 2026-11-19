@@ -53,14 +53,9 @@ export function Memory({ onError, menuButton }: { onError: (e: unknown) => void;
     <main className="memory">
       <header className="home-head">{menuButton}</header>
       <div className="memory-body">
-        {/* like claude.ai's Projects/Artifacts: the title alone, then tabs on the left and tools + one primary action on the right */}
-        <h1 className="page-title">Memory</h1>
-        <div className="mem-toolbar">
-          <div className="tabs" role="tablist">
-            {([["all", "All"], ["global", "About you"], ["agent", "Simp's notes"]] as const).map(([v, label]) => (
-              <button key={v} role="tab" aria-selected={view === v} className="tab" onClick={() => setView(v)}>{label}</button>
-            ))}
-          </div>
+        {/* title row carries the actions (search, export, add); the tabs get their own row, so they fit on a phone */}
+        <div className="page-head">
+          <h1 className="page-title">Memory</h1>
           <span className="spacer" />
           {searching || q ? (
             <label className="mem-search"><IconSearch size={16} />
@@ -71,7 +66,14 @@ export function Memory({ onError, menuButton }: { onError: (e: unknown) => void;
             <button className="ghost icon" aria-label="Search" title="Search" disabled={!items?.length} onClick={() => setSearching(true)}><IconSearch /></button>
           )}
           <button className="ghost icon" onClick={exportAll} disabled={!items?.length} aria-label="Export" title="Export all as JSON"><IconDownload /></button>
-          <button className="primary new-mem" onClick={() => { setAddOpen(true); setView((v) => (v === "agent" ? "all" : v)); }}>New memory</button>
+          <button className="primary new-mem" aria-label="New memory" onClick={() => { setAddOpen(true); setView((v) => (v === "agent" ? "all" : v)); }}><IconPlus size={16} />New<span className="only-desktop">&nbsp;memory</span></button>
+        </div>
+        <div className="mem-toolbar">
+          <div className="tabs" role="tablist">
+            {([["all", "All"], ["global", "About you"], ["agent", "Simp's notes"]] as const).map(([v, label]) => (
+              <button key={v} role="tab" aria-selected={view === v} className="tab" onClick={() => setView(v)}>{label}</button>
+            ))}
+          </div>
         </div>
         {addOpen && (
           <form className="mem-add" onSubmit={add}>
