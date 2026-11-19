@@ -57,6 +57,9 @@ export interface AdminAudit { id: number; action: string; actor: string | null; 
 export interface AdminSetting { key: string; value: unknown; file_value: unknown; source: "file" | "db"; editable: boolean; updated: number | null }
 export interface AdminHistory { id: number; key: string; old: unknown; new: unknown; actor_email: string | null; reason: string; created: number }
 
+/** Workspace storage: bytes used of the quota (0 = no quota). full = /work is read-only for the agent. */
+export type WorkspaceUsage = { used: number; quota: number; state: "off" | "ok" | "warn" | "full" };
+
 export const admin = {
   me: async (): Promise<boolean> => { try { await call("/api/admin/me"); return true; } catch (e) { if (e instanceof AuthError) throw e; return false; } },
   users: async (q: string, offset = 0): Promise<{ users: AdminUser[]; total: number }> =>
@@ -95,6 +98,10 @@ export const api = {
   /** path is relative to the workspace root. */
   upload: (sid: string, path: string, data: Blob) =>
     call(`/api/sessions/${sid}/files/raw?path=${encodeURIComponent(path)}`, { method: "PUT", body: data }),
+  /** A file or a whole folder. Returns the workspace usage after the delete. */
+  deleteFile: async (sid: string, path: string): Promise<WorkspaceUsage> =>
+    (await call(`/api/sessions/${sid}/files?path=${encodeURIComponent(path)}`, { method: "DELETE" })).json(),
+  workspace: async (): Promise<WorkspaceUsage> => (await call("/api/workspace")).json(),
   /** html/pdf preview: base URL on the separate preview origin; iframe src = base + path. */
   preview: async (sid: string): Promise<{ base: string }> => (await call(`/api/sessions/${sid}/preview`, { method: "POST" })).json(),
   apps: async (): Promise<AppItem[]> => (await call("/api/apps")).json(),

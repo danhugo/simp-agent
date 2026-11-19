@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -62,9 +63,31 @@ class LocalStore:
         await self._env(user_id).write_bytes(rel(path) or ".", data)
 
     async def delete(self, user_id: str, path: str) -> None:
-        await asyncio.to_thread(self._env(user_id)._unlink, rel(path) or ".")  # O_NOFOLLOW walk, like read/write
+        """A file, or a folder with everything in it."""
+        env, r = self._env(user_id), rel(path)
+        if not r:
+            raise PermissionError("cannot delete the workspace root")
+        p = Path(env.root) / r
+        if p.is_dir() and not p.is_symlink():
+            if not p.resolve().is_relative_to(Path(env.root).resolve()):  # a symlinked parent
+                raise PermissionError(f"path escapes root: {path}")
+            await asyncio.to_thread(shutil.rmtree, p)  # rmtree never follows symlinks inside
+        else:
+            await asyncio.to_thread(env._unlink, r)  # O_NOFOLLOW walk, like read/write
 
-    async def mount_creds(self, user_id: str) -> dict | None:
+    async def size(self, user_id: str) -> int:
+        def walk():
+            n = 0
+            for d, _, names in os.walk(self.root / user_id):
+                for f in names:
+                    try:
+                        n += os.lstat(os.path.join(d, f)).st_size
+                    except OSError:
+                        pass
+            return n
+        return await asyncio.to_thread(walk)
+
+    async def mount_creds(self, user_id: str, read_only: bool = False) -> dict | None:
         return None  # bind mount: nothing to hand over
 
     async def restore(self, user_id: str, at: datetime, path: str = "") -> list[str]:
@@ -155,32 +178,52 @@ class S3Store:
         await asyncio.to_thread(self.s3.put_object, Bucket=self.bucket, Key=self.key(user_id, path), Body=data)
 
     async def delete(self, user_id: str, path: str) -> None:
-        await asyncio.to_thread(self.s3.delete_object, Bucket=self.bucket, Key=self.key(user_id, path))
+        """A file, or a folder (every key under it, and s3fs's "dir/" marker)."""
+        k = self.key(user_id, path)
+        if not rel(path):
+            raise PermissionError("cannot delete the workspace root")
 
-    async def mount_creds(self, user_id: str) -> dict:
-        """What a FUSE mount in the user's sandbox needs: endpoint, bucket, prefix and a credential for that prefix."""
+        def rm():
+            keys = [k] + [o["Key"] for page in self.s3.get_paginator("list_objects_v2").paginate(
+                Bucket=self.bucket, Prefix=k + "/") for o in page.get("Contents", [])]
+            for i in range(0, len(keys), 1000):
+                self.s3.delete_objects(Bucket=self.bucket, Delete={"Objects": [{"Key": x} for x in keys[i:i + 1000]],
+                                                                   "Quiet": True})
+        await asyncio.to_thread(rm)
+
+    async def size(self, user_id: str) -> int:
+        """Bytes under the user's prefix (current objects; R2 keeps no old versions). One request per 1000 keys."""
+        def total():
+            return sum(o["Size"] for page in self.s3.get_paginator("list_objects_v2").paginate(
+                Bucket=self.bucket, Prefix=self.prefix(user_id)) for o in page.get("Contents", []))
+        return await asyncio.to_thread(total)
+
+    async def mount_creds(self, user_id: str, read_only: bool = False) -> dict:
+        """What a FUSE mount in the user's sandbox needs: endpoint, bucket, prefix and a credential for that prefix.
+        read_only (workspace full): the credential itself can only read, so the bucket refuses writes too."""
         prefix = self.prefix(user_id)
         out = {"endpoint": self.mount_endpoint, "bucket": self.bucket, "prefix": prefix, "region": self.region}
         if self.scope == "none":
             return out | {"access_key": self.access_key, "secret_key": self.secret_key, "session_token": ""}
         if self.scope == "r2":
-            return out | await self._r2_creds(prefix)
+            return out | await self._r2_creds(prefix, read_only)
+        actions = ["s3:GetObject"] if read_only else ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
         policy = {"Version": "2012-10-17", "Statement": [
             {"Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": [f"arn:aws:s3:::{self.bucket}"],
              "Condition": {"StringLike": {"s3:prefix": [prefix, prefix + "*"]}}},
-            {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-             "Resource": [f"arn:aws:s3:::{self.bucket}/{prefix}*"]}]}
+            {"Effect": "Allow", "Action": actions, "Resource": [f"arn:aws:s3:::{self.bucket}/{prefix}*"]}]}
         c = (await asyncio.to_thread(self.sts.assume_role, RoleArn=self.role_arn, RoleSessionName=f"simp-{user_id}"[:64],
                                      Policy=json.dumps(policy), DurationSeconds=self.creds_ttl))["Credentials"]
         left = (c["Expiration"] - datetime.now(c["Expiration"].tzinfo)).total_seconds() if c.get("Expiration") else self.creds_ttl
         return out | {"access_key": c["AccessKeyId"], "secret_key": c["SecretAccessKey"], "session_token": c["SessionToken"],
                       "expires_in": max(0.0, left)}  # sandboxes remount before this runs out (review M2)
 
-    async def _r2_creds(self, prefix: str) -> dict:
-        """Cloudflare R2 Temporary Credentials API: read-write creds limited to `prefix`, signed off the store key."""
+    async def _r2_creds(self, prefix: str, read_only: bool = False) -> dict:
+        """Cloudflare R2 Temporary Credentials API: creds limited to `prefix`, signed off the store key."""
         import httpx
 
-        body = {"bucket": self.bucket, "parentAccessKeyId": self.access_key, "permission": "object-read-write",
+        body = {"bucket": self.bucket, "parentAccessKeyId": self.access_key,
+                "permission": "object-read-only" if read_only else "object-read-write",
                 "ttlSeconds": self.creds_ttl, "prefixes": [prefix]}
         async with httpx.AsyncClient(timeout=30, transport=self.cf_transport) as http:
             r = await http.post(f"{self.cf_api}/accounts/{self.cf_account_id}/r2/temp-access-credentials", json=body,

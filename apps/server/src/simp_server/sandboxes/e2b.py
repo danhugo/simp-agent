@@ -49,7 +49,12 @@ RESTORE_SH = f"[ -f {SNAPSHOT} ] || exit 0; zstd -dc {SNAPSHOT} | tar -C /home/u
 SUDO_CHECK = "sudo -n true 2>/dev/null && echo SIMP_SUDO_OK; true"  # the template must not give `user` root
 DENIED = ("Transport endpoint is not connected", "AccessDenied", "403 Forbidden")
 CREDS_MARGIN_S = 300
-MOUNT_SH = 'printf "%s\\n%s\\n%s\\n" "$K" "$S" "$T" | sh -c ' + shlex.quote(S3FS) + ' sh "$B" "$U" "$R"'
+MOUNT_SH = 'printf "%s\\n%s\\n%s\\n" "$K" "$S" "$T" | sh -c ' + shlex.quote(S3FS) + ' sh "$B" "$U" "$R" "$O"'
+# kill the old s3fs first: a lazy umount alone leaves it serving (and writing for) processes still inside /work
+# then empty the bare mountpoint: a process still writing there (cwd or open dir in the old mount) would otherwise
+# leave files in it and s3fs refuses a non-empty mountpoint; anything written in that gap is lost (it is not in R2)
+UNMOUNT_SH = "sync; pkill -x s3fs; for i in 1 2 3 4 5; do pgrep -x s3fs >/dev/null || break; sleep 1; done; " \
+             "umount -l /work 2>/dev/null; mkdir -p /work; mountpoint -q /work || find /work -mindepth 1 -delete"
 
 
 def _sdk():
@@ -157,6 +162,8 @@ class _Box:
         self.starting = self.over = False  # starting: holds a running slot (M8); over: daily budget used up
         self.mirror_lock, self.mirror_failed, self.mirror_sid, self.mirror_bg = asyncio.Lock(), False, None, None
         self.creds_until = 0.0  # monotonic time the mount credential expires (0 = none)
+        self.ro = False  # /work mounted read-only (workspace full)
+        self.noted = ""  # last quota state told to the agent ("warn" once; "full" on every command)
 
     async def exec(self, command, cwd, timeout, cancel, on_output=None, user="user"):  # raw: no start, no busy count
         return await _run(self.sbx, command, cwd, timeout, cancel, on_output, user=user)
@@ -171,6 +178,7 @@ class E2BEnv:
     def __init__(self, sandbox: "E2BSandbox", box: _Box, session_id: str):
         self.sandbox, self.box, self.session_id = sandbox, box, session_id
         self.used = False
+        self.internal = False  # after_tool's own commands (sync, mirror): no quota note, the agent never sees them
 
     @contextlib.asynccontextmanager
     async def _use(self, need_s: float | None = None):
@@ -182,6 +190,7 @@ class E2BEnv:
                 self.box.over = False
             await self.sandbox.ensure(self.box)
             await self.sandbox.fresh_creds(self.box, need_s)
+            await self.sandbox.apply_quota(self.box)
             self.used = True
             yield self.box.sbx
         finally:
@@ -240,7 +249,12 @@ class E2BEnv:
 
     async def write_bytes(self, path: str, data: bytes) -> None:
         p = self._path(path)
-        await self._call(lambda sbx: sbx.files.write(p, data))
+
+        async def write(sbx):
+            if self.box.ro and (p == "/work" or p.startswith("/work/")):
+                raise PermissionError(await self.sandbox.quota_note(self.box) or "workspace full: /work is read-only")
+            return await sbx.files.write(p, data)
+        await self._call(write)
 
     async def write_file(self, path: str, text: str) -> None:
         await self.write_bytes(path, text.encode())
@@ -265,19 +279,27 @@ class E2BEnv:
         cwd = self._path(cwd or ".")
         code, out = await self._call(lambda sbx: _run(sbx, command, cwd, timeout, cancel, on_output), timeout)
         self.sandbox.check_denied(self.box, out)
+        if not self.internal and (note := await self.sandbox.quota_note(self.box)):
+            out = f"{out.rstrip()}\n{note}" if out.strip() else note
         return code, out
 
     async def after_tool(self) -> None:
         """After each tool call that used the sandbox: sync (s3fs uploads closed files), mirror changed repos."""
         if not self.used:
             return
+        self.internal = True
         try:
             await self.exec("sync", "/work", 60, asyncio.Event())
-            await mirror_locked(self, self.box, REPOS, MIRRORS, self.session_id, cwd="/work")
+            if self.sandbox.quota is not None:
+                self.sandbox.quota.touch(self.box.user_id)  # background recount of the bucket prefix, throttled
+            if not self.box.ro:  # read-only /work: the mirror fails; it is retried before a kill (remirror_if_failed)
+                await mirror_locked(self, self.box, REPOS, MIRRORS, self.session_id, cwd="/work")
+            else:
+                self.box.mirror_failed = True
         except Exception as e:
             log.warning("after-tool sync failed: %s", e, extra={"session": self.session_id})
         finally:
-            self.used = False
+            self.used = self.internal = False
 
 
 class E2BSandbox:
@@ -293,10 +315,12 @@ class E2BSandbox:
         self.tag = s.get("tag", "simp")  # metadata app=<tag>: which sandboxes this server owns
         self.idle_pause_s, self.max_life_s = s.get("idle_pause_s", 600), s.get("max_life_s", 3300)
         self.snapshot_every_s = s.get("snapshot_every_s", 900)
+        # counts against the user's workspace quota: keep it well under it (over the cap: libraries reinstall)
         self.snapshot_max_bytes = int(s.get("snapshot_max_mb", 2048)) * 2**20
         self.provider_timeout_s = s.get("provider_timeout_s", self.idle_pause_s + 300)
         self.cpus, self.memory_gib = float(s.get("cpus", 2)), float(s.get("memory_mb", 2048)) / 1024  # for cost
         self.store, self.keys, self.compute = None, dict(), Compute(settings, "e2b")
+        self.quota = None  # quota.Quota, set by create_app; None = no workspace quota
         self.sdk = None  # e2b.AsyncSandbox (tests put a fake here)
         self.envs: dict[str, E2BEnv] = dict()
         self.boxes: dict[str, _Box] = dict()
@@ -384,16 +408,55 @@ class E2BSandbox:
         code, _ = await box.exec("mountpoint -q /work && ls /work >/dev/null", "/", 20, asyncio.Event())
         return code == 0
 
-    async def _mount(self, box: _Box) -> None:
-        """(Re)mount the user's prefix at /work with a fresh scoped credential (as root; the files belong to `user`)."""
-        c = await self.store.mount_creds(box.user_id)
+    async def _mount(self, box: _Box, ro: bool | None = None) -> None:
+        """(Re)mount the user's prefix at /work with a fresh scoped credential (as root; the files belong to `user`).
+        Every mount path comes here, so a full workspace is always mounted read-only, with a read-only credential."""
+        ro = await self._want_ro(box) if ro is None else ro
+        c = await self.store.mount_creds(box.user_id, read_only=ro)
         box.creds_until = time.monotonic() + c["expires_in"] if c.get("expires_in") else 0.0
         envs = {"K": c["access_key"], "S": c["secret_key"], "T": c["session_token"] or "",
-                "B": f"{c['bucket']}:/{c['prefix'].rstrip('/')}", "U": c["endpoint"], "R": c["region"]}
-        await box.exec("umount -l /work 2>/dev/null; mkdir -p /work", "/", 30, asyncio.Event(), user="root")
+                "B": f"{c['bucket']}:/{c['prefix'].rstrip('/')}", "U": c["endpoint"], "R": c["region"],
+                "O": "ro,nonempty" if ro else "nonempty"}  # nonempty: see UNMOUNT_SH (a writer can race the cleanup)
+        await box.exec(UNMOUNT_SH, "/", 30, asyncio.Event(), user="root")
         code, out = await _run(box.sbx, MOUNT_SH, "/", 60, asyncio.Event(), user="root", envs=envs)
         if code != 0 or not await self._mounted(box):
             raise RuntimeError(f"workspace mount failed: {out.strip()}")
+        box.ro = ro
+
+    async def _want_ro(self, box: _Box) -> bool:
+        if self.quota is None:
+            return False
+        try:
+            return await self.quota.full(box.user_id)
+        except Exception as e:  # a failed count must not stop the sandbox: keep the current mode
+            log.warning("workspace quota check failed: %s", e, extra={"user": box.user_id})
+            return box.ro
+
+    async def apply_quota(self, box: _Box) -> None:
+        """Before a call (and on the idle tick): switch /work to read-only once the workspace is full, back to
+        read-write once there is room. Only when no other call uses the mount (like fresh_creds)."""
+        want = await self._want_ro(box)
+        if want == box.ro:
+            return
+        async with box.lock:
+            if box.state != "running" or box.active > 1 or want == box.ro:
+                return  # another call is in /work: the next call (or tick) switches
+            log.info("workspace %s: remounting /work %s", "full" if want else "has room", "read-only" if want else
+                     "read-write", extra={"user": box.user_id})
+            await self._mount(box, want)
+
+    async def quota_note(self, box: _Box) -> str:
+        if self.quota is None:
+            return ""
+        try:
+            u = await self.quota.usage(box.user_id)
+        except Exception:
+            return ""
+        if u["state"] == "full" or (u["state"] == "warn" and box.noted != "warn"):
+            box.noted = u["state"]
+            return self.quota.note(u)
+        box.noted = u["state"] if u["state"] == "warn" else ""
+        return ""
 
     async def snapshot(self, box: _Box) -> None:
         """Home (repos, libraries) -> /work/.simp/home.tar.zst. Never raises."""
@@ -461,6 +524,10 @@ class E2BSandbox:
         """Max life (or a failed start): snapshot home, retry a failed mirror, sync, unmount, kill. Caller holds
         box.lock (and box.mirror_lock when snapshot=True)."""
         box.state = "stopping"
+        if snapshot and box.ro:  # full workspace: let the last snapshot and repo mirror through, nobody else can write
+            with contextlib.suppress(Exception):
+                await box.exec("pkill -KILL -u user; true", "/", 30, asyncio.Event(), user="root")
+                await self._mount(box, ro=False)
         if snapshot:
             await self.snapshot(box)
             with contextlib.suppress(Exception):
@@ -501,6 +568,13 @@ class E2BSandbox:
                         await self.fresh_creds(box, 2 * CREDS_MARGIN_S)  # M2: refresh at an idle point
                     except Exception as e:
                         log.error("workspace credential refresh failed: %s", e, extra={"user": box.user_id})
+                if self.quota is not None and box.last > self.quota.last.get(box.user_id, 0.0):
+                    self.quota.touch(box.user_id)  # used since the last recount (a throttled touch may have skipped it)
+                if box.active == 0:
+                    try:
+                        await self.apply_quota(box)  # a background recount found it full (or freed): switch now
+                    except Exception as e:
+                        log.error("workspace quota remount failed: %s", e, extra={"user": box.user_id})
                 if not box.over and await self.compute.over(box.user_id):
                     log.warning("sandbox budget used up (daily minutes or points): pausing after the current call",
                                 extra={"user": box.user_id})

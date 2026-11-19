@@ -46,7 +46,7 @@ CONTAINER_DIRS = ("/home/user", "/tmp")  # file tools may reach these container-
 S3FS = """read -r AWSACCESSKEYID; read -r AWSSECRETACCESSKEY; read -r AWSSESSIONTOKEN
 export AWSACCESSKEYID AWSSECRETACCESSKEY; [ -n "$AWSSESSIONTOKEN" ] && export AWSSESSIONTOKEN
 exec s3fs "$1" /work -o url="$2" -o endpoint="$3" -o use_path_request_style -o allow_other -o uid=1000 -o gid=1000 \
-  -o umask=0022 -o compat_dir -o stat_cache_expire=5 -o enable_noobj_cache"""
+  -o umask=0022 -o compat_dir -o stat_cache_expire=5 -o enable_noobj_cache ${4:+-o "$4"}"""  # $4: extra, e.g. ro
 
 
 def build_image(tag: str = IMAGE) -> int:
