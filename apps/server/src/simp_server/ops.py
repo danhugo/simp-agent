@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import logging
 import sqlite3
 import sys
@@ -51,3 +53,40 @@ def backup(data_dir: Path, dest: Path, keep: int = 0) -> Path:
         for old in sorted(dest.glob("simp-*.tar.gz"))[:-keep]:
             old.unlink()
     return out
+
+
+def env_value(data_dir: str, name: str) -> str:
+    """name from the process env, else from <data_dir>/.env ("" if unset)."""
+    if os.environ.get(name):
+        return os.environ[name]
+    f = Path(data_dir) / ".env"
+    for line in f.read_text().splitlines() if f.exists() else ():
+        k, sep, v = line.partition("=")
+        if sep and k.strip() == name and not line.lstrip().startswith("#"):
+            return v.strip().strip("'\"")
+    return ""
+
+
+_SECRETISH = re.compile(r"(?i)(authorization|cookie|token|secret|key|password|dsn|credential)")
+
+
+def _scrub(obj):
+    if isinstance(obj, dict):
+        return {k: "[Filtered]" if isinstance(k, str) and _SECRETISH.search(k) else _scrub(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_scrub(v) for v in obj]
+    if isinstance(obj, str):
+        return re.sub(r"\b(sk-[\w-]{8,}|e2b_\w{8,}|Bearer\s+\S+|[A-Za-z0-9_-]{32,})", "[Filtered]", obj)
+    return obj
+
+
+def setup_sentry(data_dir: str) -> bool:
+    """Error reporting to Sentry, only when SENTRY_DSN is set (env or <data_dir>/.env). No PII, keys scrubbed."""
+    dsn = env_value(data_dir, "SENTRY_DSN")
+    if not dsn:
+        return False
+    import sentry_sdk
+
+    sentry_sdk.init(dsn=dsn, send_default_pii=False, traces_sample_rate=float(env_value(data_dir, "SENTRY_TRACES_RATE") or 0),
+                    before_send=lambda event, hint: _scrub(event), before_send_transaction=lambda event, hint: _scrub(event))
+    return True

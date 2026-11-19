@@ -47,3 +47,14 @@ def test_backup_keeps_newest(tmp_path):
     f = ops.backup(home, out, keep=3)
     left = sorted(p.name for p in out.iterdir())
     assert left == ["other.txt", "simp-20260103-000000.tar.gz", "simp-20260104-000000.tar.gz", f.name]
+
+
+def test_sentry_off_without_dsn_and_scrub(tmp_path, monkeypatch):
+    monkeypatch.delenv("SENTRY_DSN", raising=False)
+    assert ops.setup_sentry(str(tmp_path)) is False
+    (tmp_path / ".env").write_text("SENTRY_DSN=https://x@o1.ingest.sentry.io/1\n")
+    assert ops.env_value(str(tmp_path), "SENTRY_DSN").startswith("https://")
+    ev = ops._scrub({"request": {"headers": {"Authorization": "Bearer abc", "Cookie": "c", "Host": "h"}},
+                     "message": "failed with sk-or-v1-abcdef1234567890"})
+    assert ev["request"]["headers"] == {"Authorization": "[Filtered]", "Cookie": "[Filtered]", "Host": "h"}
+    assert "sk-or" not in ev["message"]
