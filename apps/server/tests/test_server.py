@@ -511,7 +511,7 @@ async def test_title_set_once_event_and_usage(env):
     await run.command(p.Prompt(text="x" * 3000))
     await settle(run)
     # reasoning models spend tokens thinking first: room for that, and the lowest effort every provider accepts
-    assert fp.calls == 2 and fp.models[1].max_tokens == 200 and fp.models[1].compat["reasoning_effort"] == "low"
+    assert fp.calls == 2 and fp.models[1].max_tokens == 2000 and fp.models[1].compat["reasoning_effort"] == "low"
     assert fp.ctxs[1].messages[0].content == "x" * 2000
     ev = [e for e in drain(q) if e["type"] == "session_title"]
     assert [e["title"] for e in ev] == ["Fix the login bug"] and ev[0]["seq"] > 0
@@ -523,14 +523,29 @@ async def test_title_set_once_event_and_usage(env):
     assert fp.calls == 3  # no second title call
 
 
+async def test_title_profile_uses_its_model_with_reasoning_off(env):
+    fp = FakeProvider(reply("a"), titled("Short title"))
+    _, mgr, user, _, run = await env(fp, title="")
+    main = mgr.settings["profiles"][mgr.settings["default_profile"]]
+    mgr.settings["profiles"]["cheap"] = {**main, "model": "deepseek/deepseek-v4.1-flash"}
+    mgr.settings["title_profile"] = "cheap"
+    await run.command(p.Prompt(text="hi"))
+    await settle(run)
+    assert fp.models[1].id == "deepseek/deepseek-v4.1-flash" and fp.models[1].compat["reasoning_effort"] == "none"
+    assert run.info.title == "Short title"
+
+
 async def test_title_error_keeps_empty(env):
-    fp = FakeProvider(reply("a"), AssistantMessage(stop_reason="error", error="boom"))
+    fp = FakeProvider(reply("a"), AssistantMessage(stop_reason="error", error="boom"), reply("b"), titled("Second try"))
     _, mgr, user, _, run = await env(fp, title="")
     await run.command(p.Prompt(text="hi"))
     await settle(run)
     assert fp.calls == 2 and run.state == "idle" and run.info.title == ""
     assert (await mgr.store.get_session(user["id"], run.sid))["title"] == ""
     assert not [e for e in run.log if e["type"] == "session_title"]
+    await run.command(p.Prompt(text="again"))  # a failed title is tried again on the next answer
+    await settle(run)
+    assert fp.calls == 4 and run.info.title == "Second try"
 
 
 async def test_title_empty_reply_is_logged(env, caplog):
