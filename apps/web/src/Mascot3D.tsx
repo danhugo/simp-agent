@@ -29,7 +29,8 @@ export function readPal(): Pal {
   const rgb = (k: string): [number, number, number] | null => {
     const v = s.getPropertyValue(`--m3-${k}`).trim();
     if (!v.startsWith("#")) return null;
-    const n = parseInt(v.slice(1), 16);
+    const h = v.length === 4 ? v.slice(1).replace(/./g, "$&$&") : v.slice(1);  // the production CSS minifier writes #ffffff as #fff
+    const n = parseInt(h, 16);
     return [n >> 16, (n >> 8) & 255, n & 255];
   };
   return { hi: rgb("hi"), base: rgb("base"), mid: rgb("mid"), low: rgb("low"), out: rgb("out"), eye: rgb("eye"), blush: rgb("blush"), sweat: rgb("sweat"), hot: rgb("hot") };
