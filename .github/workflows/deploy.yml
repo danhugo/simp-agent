@@ -110,8 +110,8 @@ jobs:
           printf '%s\n' "$TOKEN" | ssh box 'docker login ghcr.io -u ${{ github.actor }} --password-stdin >/dev/null'
           ssh box 'set -e; cd ~/simp-agent && git fetch -q --tags --force origin && git reset -q --hard ${{ github.ref_name }}
             printf "DOMAIN=simpagent.app\nSIMP_TAG=${{ github.ref_name }}\n" > .env
-            docker compose pull -q server caddy
-            docker compose up -d --force-recreate --remove-orphans server caddy
+            docker compose pull -q
+            docker compose up -d --force-recreate --remove-orphans
             docker image prune -f >/dev/null; docker logout ghcr.io >/dev/null'
 
       - name: Wait until ready
