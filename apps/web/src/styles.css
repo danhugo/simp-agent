@@ -417,10 +417,11 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .persona-go { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: var(--accent); color: var(--accent-text); cursor: pointer; }
 .persona-go:disabled { background: color-mix(in srgb, var(--accent) 22%, var(--bg)); color: var(--bg); cursor: not-allowed; }
 .persona-go.stop { background: var(--text); color: var(--bg); }
-.persona-ideas { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.persona-ideas { display: flex; gap: var(--sp-2); overflow-x: auto; scrollbar-width: none; }
+.persona-ideas .suggestion { flex: none; white-space: nowrap; }
 .persona-error { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-3); padding: var(--sp-3); border-radius: 10px; color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }
 .persona-error p { margin: 0; flex: 1; overflow-wrap: anywhere; }
-.persona-items { list-style: none; margin: auto 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); width: 100%; }
+.persona-items { list-style: none; margin: auto 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); width: 100%; }
 .persona-piece { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: var(--sp-2); border-radius: 12px; background: var(--bg); min-width: 0; text-align: center; }
 .persona-piece.failed { box-shadow: inset 0 0 0 1px var(--err); }
 .persona-item, .persona-piece-empty { width: 80px; height: 80px; image-rendering: pixelated; }
@@ -541,3 +542,8 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .admin-panel { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--sp-3) var(--sp-4); margin-top: var(--sp-4); }
 .admin-panel h2 { margin: 0; }
 
+
+.persona-pick { align-self: flex-start; height: 0; overflow: visible; display: flex; cursor: pointer; }
+.persona-pick input { width: 16px; height: 16px; margin: 0; position: relative; z-index: 1; accent-color: var(--text); cursor: inherit; }
+.persona-piece.picked { box-shadow: inset 0 0 0 1.5px var(--text); }
+.persona-piece.picked.failed { box-shadow: inset 0 0 0 1.5px var(--err); }

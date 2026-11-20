@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { getSkin, onSkin, type Wear } from "./skin";
+import { getPaint, getSkin, onSkin, type Paint, type Wear } from "./skin";
 
 /**
  * Simp's head as a real 3D sphere rendered into a small pixel grid (default 48x48) and scaled up crisply.
@@ -14,7 +14,9 @@ const FOCUS_AFTER_MS = 2 * 60 * 1000;     // 2 min of continuous work: focused (
 const OVERLOAD_AFTER_MS = 5 * 60 * 1000;  // 5 min: overloaded (> < eyes, red cheeks, steam)
 /** Short-lived or state-driven faces beyond idle/working (see public/mascot-states.html). */
 export type Mood = "idle" | "done" | "asking" | "error" | "stopped";
-export type Face = { roll?: number; h?: number; eyes?: "arc" | "round" | "flat"; sweat?: boolean; blush?: boolean; yaw?: number; pitch?: number };
+export type Face = { roll?: number; h?: number; eyes?: "arc" | "round" | "flat"; sweat?: boolean; blush?: boolean; yaw?: number; pitch?: number;
+  /** face paint; undefined = the saved persona's, null = none */
+  paint?: Paint | null };
 const FACES: Record<Mood, Face> = {
   idle: {},
   done: { h: 11 },                                            // big happy ^ ^ (plus one hop, in CSS)
@@ -71,8 +73,16 @@ const tone = (c: [number, number, number], lit: number): [number, number, number
     : c.map((x) => Math.round(x * k)) as [number, number, number];
 };
 
+// face paint is makeup, not a solid: shade it only lightly so whites stay white and colors stay bright
+const paintTone = (c: [number, number, number], lit: number): [number, number, number] => {
+  const k = lit > 0.93 ? 1.1 : lit > 0.62 ? 1 : lit > 0.32 ? 0.92 : 0.84;
+  return k > 1 ? c.map((x) => Math.round(x + (255 - x) * (k - 1))) as [number, number, number]
+    : c.map((x) => Math.round(x * k)) as [number, number, number];
+};
+
 /** focus 0..1: squinting eyes and a sweat drop; overload 0..1: "> <" eyes and red cheeks; skin: a persona outfit */
 export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: number, pitch: number, blink: number, focus = 0, overload = 0, face: Face = {}, skin: Wear | null = null, bare = false, view = SKIN_VIEW, centerY = 0) {
+  const paint = face.paint === undefined ? getPaint() : face.paint;
   const img = ctx.createImageData(N, N), S = skin ? view : 1, R = (N / 2 - 0.6) / S, c = N / 2, eyeW = (1.4 * 24) / (N / S) + 1.6;  // by the head's own pixel size, so eyes look the same with an outfit
   const rl = face.roll ?? 0, cr = Math.cos(rl), sr = Math.sin(rl), cp = Math.cos(pitch), sp = Math.sin(pitch), cy = Math.cos(yaw), sy = Math.sin(yaw);
   // view space (u right, v up, z toward the viewer) -> head space, the same turn the painted face gets
@@ -157,7 +167,10 @@ export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: 
           : face.eyes === "flat" ? Math.min(...[-18, 18].map((c) => Math.hypot(lon - Math.max(c - 9, Math.min(c + 9, lon)), lat)))
           : Math.min(eyeDist(lon, lat, -18, squint, face.h), eyeDist(lon, lat, 18, squint, face.h));
         const cheek = 1 + overload * 0.5;  // cheeks grow and turn red when overloaded
+        const pc = paint ? paint(lon, lat) : null;  // face paint: over the skin and blush, under the eyes
         if (eye < eyeW) col = pal.eye;
+        else if (pc && pc !== "skin") col = paintTone(hex(pc), lit);
+        else if (pc === "skin") { /* paint clears the blush here */ }
         else if ((focus > 0.5 || face.sweat) && pal.sweat && (((lon - 40) / 5) ** 2 + ((lat - 24) / (lat > 24 ? 4 : 7)) ** 2 < 1)) col = pal.sweat;  // drop on the brow
         else if (face.blush === false) { /* no blush */ }
         else if (((lon - 33) / (9 * cheek)) ** 2 + ((lat + 15) / (4.5 * cheek)) ** 2 < 1 || ((lon + 33) / (9 * cheek)) ** 2 + ((lat + 15) / (4.5 * cheek)) ** 2 < 1)
@@ -182,10 +195,12 @@ export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: 
 }
 const outfitCache: { wear: Wear | null; key: string; hits: Float32Array } = { wear: null, key: "", hits: new Float32Array(0) };
 
-export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idle", className, skin, onSkinError, fit = false }: {
+export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idle", className, skin, paint, onSkinError, fit = false }: {
   size?: number; pixels?: number; working?: boolean; mood?: Mood; className?: string;
   /** an outfit to wear; undefined = the saved persona's, null = none */
   skin?: Wear | null; onSkinError?: (msg: string) => void;
+  /** face paint; undefined = the saved persona's, null = none */
+  paint?: Paint | null;
   /** fit the outfit inside size (the head shrinks); default: the head keeps its size and the outfit overflows */
   fit?: boolean;
 }) {
@@ -201,13 +216,15 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
   fitRef.current = fit;
   const skinRef = useRef(skin);
   skinRef.current = skin;
+  const paintRef = useRef(paint);
+  paintRef.current = paint;
   const errRef = useRef(onSkinError);
   errRef.current = onSkinError;
   useEffect(() => {
     const cv = canvas.current, ctx = cv?.getContext("2d");
     if (!cv || !ctx) return;
     let pal = readPal(), blink = 0, raf = 0, timer = 0, since = 0, focus = 0, overload = 0;
-    let lastKey = "", lastWear: Wear | null = null, broken: Wear | null = null;
+    let lastKey = "", lastWear: Wear | null = null, broken: Wear | null = null, lastPaint: Paint | null | undefined;
     const offSkin = onSkin(() => { lastKey = ""; });
     const target = { yaw: 0, pitch: 0 }, cur = { yaw: 0, pitch: 0 };
     const onMove = (e: PointerEvent) => {
@@ -227,7 +244,8 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
       const over = since > 0 && now - since > OVERLOAD_AFTER_MS;
       overload += ((over ? 1 : 0) - overload) * 0.08;
       steam.current?.classList.toggle("on", over);
-      const face = workingRef.current ? {} : FACES[moodRef.current];
+      const mf = workingRef.current ? {} : FACES[moodRef.current];
+      const face: Face = paintRef.current === undefined ? mf : { ...mf, paint: paintRef.current };
       const posed = face.yaw !== undefined || face.pitch !== undefined;  // a mood with its own pose stops following the pointer
       const t = workingRef.current ? { yaw: 0, pitch: rad(20) } : posed ? { yaw: rad(face.yaw ?? 0), pitch: rad(face.pitch ?? 0) } : target, k = 0.12;
       const sway = moodRef.current === "asking" && !workingRef.current ? rad(Math.sin(now / 500) * 10) : 0;
@@ -237,8 +255,8 @@ export function Mascot3D({ size = 120, pixels = 48, working = false, mood = "idl
       if (wear && wear === broken) wear = null;
       const args = [cur.yaw + shake + sway, cur.pitch, face.eyes === "flat" ? 0 : blink, focus, overload] as const;
       const key = `${args.map((x) => x.toFixed(4))}|${JSON.stringify(face)}|${pal.base}`;
-      if (key !== lastKey || wear !== lastWear) {  // an outfit is costly to march: skip frames where nothing moved
-        lastKey = key; lastWear = wear;
+      if (key !== lastKey || wear !== lastWear || paintRef.current !== lastPaint) {  // an outfit is costly to march: skip frames where nothing moved
+        lastKey = key; lastWear = wear; lastPaint = paintRef.current;
         // with an outfit the camera backs off SKIN_VIEW times: render that many more pixels, so the head keeps its density
         const n = wear ? Math.round(pixels * SKIN_VIEW) : pixels;
         if (cv.width !== n) {

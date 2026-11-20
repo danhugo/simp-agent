@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compileSkin } from "./skin";
+import { compilePaint, compileSkin } from "./skin";
 
 const BEANIE = `
 const cap = H.above([H.sphere(p, [0, 0.1, 0], 1.08), "#d94141"], p, 0.55);
@@ -29,5 +29,18 @@ describe("compileSkin", () => {
     expect(() => compileSkin("return [H.sphere(p, [0, 1.6, 0], 0.3), '#ff0000']", "hat")).toThrow(/floats.*Measured/);
     expect(() => compileSkin("return H.below([H.shell(H.head(p), 0.06), '#3463c9'], p, -0.3)", "hat")).toThrow(/below y = 0.4/);
     expect(() => compileSkin("return H.below([H.shell(H.head(p), 0.06), '#3463c9'], p, -0.3)", "bottom")).not.toThrow();
+  });
+  it("face paint: baked lookup, actionable errors", () => {
+    const p = compilePaint(`return Math.abs(Math.abs(lon) - 18) < 4 && lat > 6 && lat < 22 ? "#9b7fb0" : Math.abs(lat + 15) < 6 ? "skin" : null;`);
+    expect(p(18, 14)).toBe("#9b7fb0");   // a stroke above the right eye
+    expect(p(33, -15)).toBe("skin");     // blush cleared
+    expect(p(0, 40)).toBeNull();
+    expect(() => compilePaint("return 'red'")).toThrow(/#rrggbb/);
+    expect(() => compilePaint("return null")).toThrow(/nothing/);
+    expect(() => compilePaint("return [")).toThrow(/syntax/);
+    const brow = compilePaint(`return D.curve(Math.abs(lon), lat, [7, 23], [18, 32], [30, 24], 3, 3, 7.5) ? "#3b2a20" : D.dot(lon, lat, [0, -30], 4) ? "#ff0000" : null;`);
+    expect(brow(-18, 27.5)).toBe("#3b2a20");  // the arch's middle, mirrored to the left brow
+    expect(brow(18, 20)).toBeNull();          // under the arch
+    expect(brow(0, -30)).toBe("#ff0000");
   });
 });
