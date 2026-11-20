@@ -38,7 +38,7 @@ async def test_abort_mid_batch_repairs_history():
     sent = seen[-1]
     check_pairs(sent)
     assert not any(isinstance(m, AssistantMessage) and m.stop_reason == "aborted" for m in sent)
-    assert next(m for m in sent if getattr(m, "tool_call_id", "") == "c3").content == "No result provided"
+    assert next(m for m in sent if getattr(m, "tool_call_id", "") == "c3").content == "Interrupted by the user"
 
 
 async def test_stream_error_message_excluded():

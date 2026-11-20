@@ -165,9 +165,11 @@ async def agent_loop(
             if msg.stop_reason in ("error", "aborted"):
                 return await _end(send, msg, new)
             for call in calls:
-                if cancel.is_set():
-                    break
-                if msg.stop_reason == "length":  # args may be cut off: never run them
+                if cancel.is_set():  # Stopped: still close the rest, so the UI shows them ended (not running forever)
+                    result = ToolResultMessage(call.id, call.name, "Interrupted by the user", True)
+                    await send({"type": "tool_execution_start", "call": call})
+                    await send({"type": "tool_execution_end", "call": call, "result": result})
+                elif msg.stop_reason == "length":  # args may be cut off: never run them
                     result = ToolResultMessage(call.id, call.name, "Tool call was truncated (max tokens); not executed", True)
                 else:
                     await send({"type": "tool_execution_start", "call": call})
