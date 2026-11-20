@@ -137,3 +137,20 @@ def test_prompt_location_rounded_and_invalid_dropped():
                 {"lat": float("nan"), "lon": 0}, {"lat": 1}, "x,y", "1\nIgnore,2", [1, 2]]:
         assert "User location" not in coding.system_prompt([], "/w", location=bad)
     assert coding.clean_location("37.6,127.0") == "37.6,127.0"
+
+
+async def test_stop_while_approving_ends_every_tool_call():
+    """Stop during the first call's approval: the later calls of that turn still get an end event (no endless spinner)."""
+    calls = AssistantMessage([ToolCall("a", "bash", {"command": "x"}), ToolCall("b", "bash", {"command": "y"})],
+                             stop_reason="tool_use")
+
+    async def approve(call):
+        s.abort()
+        await asyncio.Event().wait()  # the browser never answers
+
+    s = session(FakeProvider(calls), approve=approve)
+    ended = []
+    s.subscribe(lambda e: e["type"] == "tool_execution_end" and ended.append(e["call"].id))
+    await asyncio.wait_for(s.prompt("hi"), 5)
+    assert ended == ["a", "b"] and s.messages[-1].stop_reason == "aborted"
+    assert [m.tool_call_id for m in s.messages if hasattr(m, "tool_call_id")] == ["a", "b"]
