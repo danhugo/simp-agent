@@ -63,6 +63,8 @@ const HIDDEN = ["window", "document", "globalThis", "self", "fetch", "XMLHttpReq
   "sessionStorage", "indexedDB", "navigator", "location", "importScripts", "Function"];
 
 export type Slot = "hat" | "bottom";
+/** Face paint: a color (or "skin" to clear the blush there, or null) at a point of the face, in degrees. */
+export type Paint = (lon: number, lat: number) => string | null;
 
 /** What a slot's code actually draws, measured by sampling: what the model gets back to "see" its work. */
 export interface Report { bbox: [number[], number[]]; colors: string[]; touchesHead: boolean; volume: number }
@@ -188,9 +190,70 @@ export function bake(w: Wear): Wear {
   return baked;
 }
 
-// the saved persona's outfit, shown by every Mascot3D unless one is passed explicitly
-let current: Wear | null = null;
+const PSTEP = 1.5;  // face paint table spacing in degrees (a face pixel is ~3 degrees wide)
+type Pt = [number, number];
+// distance on the face in degrees: lon shrinks with cos(lat) on the sphere, so strokes keep their width up and down
+const fdist = (lon: number, lat: number, x: number, y: number) => Math.hypot((lon - x) * Math.cos((lat * Math.PI) / 180), lat - y);
+/** Is (lon, lat) on the segment a-b, with the width going from w1 at a to w2 at b (degrees)? Returns 0..1 along it, or -1. */
+function onSeg(lon: number, lat: number, a: Pt, b: Pt, w1: number, w2: number): number {
+  const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy;
+  const t = L ? Math.max(0, Math.min(1, ((lon - a[0]) * dx + (lat - a[1]) * dy) / L)) : 0;
+  return fdist(lon, lat, a[0] + dx * t, a[1] + dy * t) <= (w1 + (w2 - w1) * t) / 2 ? t : -1;
+}
+/** Drawing helpers for face paint: true where (lon, lat) is on the stroke. Widths are full widths in degrees. */
+export const D = {
+  line: (lon: number, lat: number, a: Pt, b: Pt, w1 = 4, w2 = w1) => onSeg(lon, lat, a, b, w1, w2) >= 0,
+  /** a smooth curve from a to b bending toward c (a quadratic curve), width w1 -> w2; e.g. a brow tapered at both ends: w1 = w2 = 1 and wMid */
+  curve: (lon: number, lat: number, a: Pt, c: Pt, b: Pt, w1 = 4, w2 = w1, wMid = (w1 + w2) / 2) => {
+    const N = 12;
+    let prev = a;
+    for (let i = 1; i <= N; i++) {
+      const t = i / N, u = 1 - t, p: Pt = [u * u * a[0] + 2 * u * t * c[0] + t * t * b[0], u * u * a[1] + 2 * u * t * c[1] + t * t * b[1]];
+      const w = (k: number) => (k < 0.5 ? w1 + (wMid - w1) * k * 2 : wMid + (w2 - wMid) * (k - 0.5) * 2);
+      if (onSeg(lon, lat, prev, p, w((i - 1) / N), w(t)) >= 0) return true;
+      prev = p;
+    }
+    return false;
+  },
+  dot: (lon: number, lat: number, c: Pt, r = 3) => fdist(lon, lat, c[0], c[1]) <= r,
+  /** a round outline: radius r (to the middle of the line), line width w; glasses rims, halos */
+  ring: (lon: number, lat: number, c: Pt, r: number, w = 3) => Math.abs(fdist(lon, lat, c[0], c[1]) - r) <= w / 2,
+};
+/**
+ * Compile and check face paint: the body of `paint(lon, lat, D)` (D: stroke helpers), lon/lat in degrees on the head sphere (lon 0 = the
+ * middle of the face, + toward the picture's right; lat 0 = eye level, + up). Baked once into a table, so drawing is
+ * a lookup. Throws a message the model can act on.
+ */
+export function compilePaint(code: string): Paint {
+  let fn: (...a: unknown[]) => unknown;
+  try { fn = new Function("lon", "lat", "D", ...HIDDEN, `"use strict";\n${code}`) as typeof fn; }
+  catch (e) { throw new Error(`syntax error: ${(e as Error).message}`); }
+  const n = Math.round(180 / PSTEP) + 1, table: (string | null)[] = new Array(n * n), t0 = performance.now();
+  const colors = new Set<string>();
+  let painted = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const lon = -90 + i * PSTEP, lat = -90 + j * PSTEP;
+    let out: unknown;
+    try { out = fn(lon, lat, D); } catch (e) { throw new Error(`threw at lon=${lon}, lat=${lat}: ${(e as Error).message}`); }
+    if (out === null || out === undefined) { table[i * n + j] = null; continue; }
+    if (typeof out !== "string" || !(out === "skin" || /^#[0-9a-f]{6}$/i.test(out)))
+      throw new Error(`must return null, "skin" or "#rrggbb", got ${JSON.stringify(out)?.slice(0, 80)}`);
+    table[i * n + j] = out.toLowerCase();
+    if (out !== "skin") { painted++; colors.add(out.toLowerCase()); }
+  }
+  if (performance.now() - t0 > 300) throw new Error("too slow; simplify the code");
+  if (painted < 6) throw new Error("it paints (almost) nothing: return a color where the marks are; strokes at least 4 degrees wide");
+  const paint: Paint = (lon, lat) => {
+    const i = Math.round((lon + 90) / PSTEP), j = Math.round((lat + 90) / PSTEP);
+    return i < 0 || j < 0 || i >= n || j >= n ? null : table[i * n + j];
+  };
+  return paint;
+}
+
+// the saved persona's outfit and face paint, shown by every Mascot3D unless passed explicitly
+let current: Wear | null = null, currentPaint: Paint | null = null;
 const subs = new Set<() => void>();
 export const getSkin = () => current;
-export function setSkin(w: Wear | null) { current = w; subs.forEach((f) => f()); }
+export const getPaint = () => currentPaint;
+export function setSkin(w: Wear | null, paint: Paint | null = currentPaint) { current = w; currentPaint = paint; subs.forEach((f) => f()); }
 export function onSkin(f: () => void) { subs.add(f); return () => { subs.delete(f); }; }

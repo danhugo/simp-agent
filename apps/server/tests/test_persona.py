@@ -12,6 +12,7 @@ def test_parse_and_prompts():
     assert persona.parse(HAT) == "return null;"
     assert persona.parse("here:\n```js\nreturn 1;\n```") == "return 1;"
     assert "HAT" in persona.system("hat") and "BOTTOM" in persona.system("bottom")
+    assert "paint(lon, lat, D)" in persona.system("face")
     msg = persona.user_message("a wizard", other="HATCODE", code="BAD", error="covers the eyes")
     assert "HATCODE" in msg and "covers the eyes" in msg and "BAD" in msg
 
@@ -41,6 +42,10 @@ async def test_outfit_collection(tmp_path):
         assert (await c.post("/api/outfits", headers=h, json={"name": "x"})).status_code == 400  # empty
         oid = (await c.post("/api/outfits", headers=h, json={"name": "Wizard", "hat": "return null;"})).json()["id"]
         assert [o["name"] for o in (await c.get("/api/outfits", headers=h)).json()] == ["Wizard"]
+        fid = (await c.post("/api/outfits", headers=h, json={"kind": "face", "name": "Paint", "face": "return null;", "hat": "x"})).json()["id"]
+        f = next(o for o in (await c.get("/api/outfits", headers=h)).json() if o["id"] == fid)
+        assert (f["kind"], f["face"], f["hat"]) == ("face", "return null;", "")  # a piece keeps only its own slot
+        await c.delete(f"/api/outfits/{fid}", headers=h)
         assert (await c.delete(f"/api/outfits/{oid}", headers=h)).json() == {"ok": True}
         assert (await c.delete(f"/api/outfits/{oid}", headers=h)).status_code == 404
         assert (await c.get("/api/outfits", headers=h)).json() == []
