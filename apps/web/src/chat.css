@@ -411,3 +411,15 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .skeleton.grid i:nth-child(6n+2), .skeleton.grid i:nth-child(6n+3) { background: linear-gradient(90deg, var(--bg) 20%, var(--hover) 50%, var(--bg) 80%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
 .skeleton.image .sheet { aspect-ratio: 4 / 3; padding: 0; background: linear-gradient(90deg, var(--hover) 25%, var(--active) 50%, var(--hover) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
 .skeleton.grid i:nth-child(-n+6), .skeleton.grid i:nth-child(6n+1) { background: var(--hover); animation: none; }  /* header row + row numbers */
+
+/* show_cards: link cards with a preview image (URLs only, nothing stored) */
+.link-cards { display: flex; gap: 10px; overflow-x: auto; padding: 4px 0 8px; scroll-snap-type: x mandatory; }
+.link-card { flex: 0 0 200px; display: flex; flex-direction: column; gap: 4px; padding: 0 0 10px; border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden; color: inherit; text-decoration: none; scroll-snap-align: start; }
+.link-card:hover { border-color: var(--muted); }
+.link-card-img { width: 100%; height: 112px; object-fit: cover; display: block; background: var(--hover); }
+.link-card-title, .link-card-snippet, .link-card-host { padding: 0 10px; }
+.link-card-title { font-weight: 600; font-size: 13.5px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.link-card-img + .link-card-title, .link-card > .link-card-title:first-child { margin-top: 8px; }
+.link-card-snippet { font-size: 12px; opacity: .75; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.link-card-host { margin-top: auto; display: flex; align-items: center; gap: 6px; font-size: 11.5px; opacity: .7; }

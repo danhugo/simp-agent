@@ -197,6 +197,65 @@ def do_search(query: str, count: int = 5, provider: str = "duckduckgo", get=http
     return f"{UNTRUSTED}\n{body}"
 
 
+class _Meta(HTMLParser):
+    """Collects <meta property|name=... content=...> from a page."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.meta = {}
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        key = (a.get("property") or a.get("name") or "").lower()
+        if tag == "meta" and key and a.get("content") and key not in self.meta:
+            self.meta[key] = a["content"].strip()
+
+
+def og_image(html: str, base: str) -> str:
+    """og:image (or twitter:image) of a page, absolute; "" if none."""
+    p = _Meta()
+    p.feed(html)
+    img = p.meta.get("og:image") or p.meta.get("og:image:url") or p.meta.get("twitter:image") or ""
+    img = urllib.parse.urljoin(base, img) if img else ""
+    return img if img.startswith(("http://", "https://")) else ""
+
+
+MAX_CARDS = 6
+
+
+def _http(u) -> str:
+    return u if isinstance(u, str) and u.startswith(("http://", "https://")) else ""
+
+
+def do_cards(items: list, get=http_get) -> str:
+    """Validates cards; fills a missing image from the page's og:image. Returns JSON {"cards": [...]}. Stores URLs only."""
+    import json
+    from concurrent.futures import ThreadPoolExecutor
+
+    cards = []
+    for it in (items or [])[:MAX_CARDS]:
+        if not isinstance(it, dict) or not _http(it.get("url")):
+            continue
+        cards.append({"url": it["url"], "title": str(it.get("title") or "")[:200],
+                      "snippet": str(it.get("snippet") or "")[:300], "image": _http(it.get("image"))})
+    if not cards:
+        raise WebError("no valid cards (each needs an http(s) url)")
+
+    def fill(c):
+        if not c["image"]:
+            try:
+                final, ctype, body = get(c["url"])
+                if "html" in ctype.lower():
+                    c["image"] = og_image(_decode(body, ctype), final)
+            except WebError:
+                pass  # card still shows as text
+        return c
+
+    with ThreadPoolExecutor(len(cards)) as ex:
+        cards = list(ex.map(fill, cards))
+    return json.dumps({"cards": cards}, ensure_ascii=False)
+
+
 def _p(t, d):
     return {"type": t, "description": d}
 
@@ -218,7 +277,20 @@ def make_tools(provider: str = "duckduckgo") -> list[AgentTool]:
         except WebError as e:
             return f"web_fetch error: {e}"
 
+    async def cards(args, ctx):
+        try:
+            return await asyncio.to_thread(do_cards, args.get("items"))
+        except WebError as e:
+            return f"show_cards error: {e}"
+
+    card = _obj({"url": _p("string", "Link the card opens"), "title": _p("string", "Card title"),
+                 "image": _p("string", "Image URL; omit to use the page's og:image"),
+                 "snippet": _p("string", "One short line")}, ["url", "title"])
     return [
+        AgentTool("show_cards", "Show the user visual link cards (image, title, site) under your answer. Use only when "
+                                "pictures help: products, places, people, recipes, news. Not for code, definitions or "
+                                f"numbers. Max {MAX_CARDS} items.",
+                  _obj({"items": {"type": "array", "items": card, "description": "Cards to show"}}, ["items"]), cards),
         AgentTool("web_search", "Search the web. Returns title, url, snippet per result. Follow up with web_fetch for details.",
                   _obj({"query": _p("string", "Search query"),
                         "count": _p("integer", "Max results (default 5)")}, ["query"]), search),

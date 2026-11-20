@@ -113,6 +113,33 @@ def test_plugin_registers_tools():
 
     api = Api()
     web.Web().setup(api, {})
-    assert api.tools == ["web_search", "web_fetch"]
+    assert api.tools == ["show_cards", "web_search", "web_fetch"]
     with pytest.raises(ValueError):
         web.Web().setup(api, {"search": "bing"})
+
+
+def test_og_image():
+    html = '<head><meta property="og:image" content="/a.jpg"><meta name="twitter:image" content="https://x/b.jpg"></head>'
+    assert web.og_image(html, "https://site.com/p") == "https://site.com/a.jpg"
+    assert web.og_image('<meta name="twitter:image" content="https://x/b.jpg">', "https://s/") == "https://x/b.jpg"
+    assert web.og_image("<p>none</p>", "https://s/") == ""
+    assert web.og_image('<meta property="og:image" content="javascript:1">', "https://s/") == ""
+
+
+def test_cards_fill_image_and_validate():
+    import json
+    calls = []
+
+    def get(url):
+        calls.append(url)
+        if "dead" in url:
+            raise WebError("HTTP 404")
+        return url, "text/html", b'<meta property="og:image" content="https://cdn/x.png">'
+
+    items = [{"url": "https://a.com", "title": "A"}, {"url": "https://b.com", "title": "B", "image": "https://i/b.jpg"},
+             {"url": "https://dead.com", "title": "D"}, {"url": "ftp://bad", "title": "bad"}, "junk"]
+    cards = json.loads(web.do_cards(items, get=get))["cards"]
+    assert [c["image"] for c in cards] == ["https://cdn/x.png", "https://i/b.jpg", ""]
+    assert sorted(calls) == ["https://a.com", "https://dead.com"]  # given image not refetched
+    with pytest.raises(WebError):
+        web.do_cards([{"url": "file:///etc/passwd"}], get=get)

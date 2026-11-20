@@ -386,10 +386,14 @@ function FileCard({ path, sid, onOpen, onPreview, onError }: { path: string; sid
 type ToolProps = { state: ChatState; send: Send; sid: string; onOpenFile?: (p: string) => void; onPreviewFile?: (p: string) => void; onError: (e: unknown) => void };
 
 /** A few calls show as rows; more fold into one summary line. Calls still running or waiting for you stay visible. */
-function ToolGroup({ calls, ...p }: ToolProps & { calls: ToolCall[] }) {
+function ToolGroup({ calls: all, ...p }: ToolProps & { calls: ToolCall[] }) {
+  // link cards are part of the answer: never folded into the summary line
+  const cards = all.filter((c) => c.name === "show_cards"), calls = all.filter((c) => c.name !== "show_cards");
+  const cardEls = cards.map((c) => <Tool key={c.id} call={c} {...p} />);
+  if (!calls.length) return <>{cardEls}</>;
   const finished = calls.filter((c) => p.state.results[c.id]);
   const active = calls.filter((c) => !p.state.results[c.id]);
-  if (calls.length <= 3 || finished.length <= 1) return <>{calls.map((c) => <Tool key={c.id} call={c} {...p} />)}</>;
+  if (calls.length <= 3 || finished.length <= 1) return <>{calls.map((c) => <Tool key={c.id} call={c} {...p} />)}{cardEls}</>;
   const failed = finished.filter((c) => p.state.results[c.id].is_error).length;
   return (
     <>
@@ -404,6 +408,7 @@ function ToolGroup({ calls, ...p }: ToolProps & { calls: ToolCall[] }) {
         <div className="tool-group-body">{finished.map((c) => <Tool key={c.id} call={c} {...p} />)}</div>
       </details>
       {active.map((c) => <Tool key={c.id} call={c} {...p} />)}
+      {cardEls}
     </>
   );
 }
@@ -440,6 +445,8 @@ function Tool({ call, state, send, sid, onOpenFile, onPreviewFile, onError }: {
   const file = writtenFile(call, result);
   const status = result ? (result.is_error ? "error" : "done") : state.pending?.call_id === call.id ? "approval" : "running";
   const ms = useToolTimer(call.id, !result);
+  const cards = call.name === "show_cards" && result && !result.is_error ? parseCards(result.content) : [];
+  if (cards.length) return <LinkCards cards={cards} />;
   return (
     <>
     <details className={`tool ${status}`}>
@@ -461,6 +468,40 @@ function Tool({ call, state, send, sid, onOpenFile, onPreviewFile, onError }: {
     {result?.is_error && output && <p className="tool-err small">{oneLine(output)}</p>}
     {file && <FileCard path={file} sid={sid} onOpen={onOpenFile} onPreview={onPreviewFile} onError={onError} />}
     </>
+  );
+}
+
+export type LinkCard = { url: string; title: string; snippet: string; image: string };
+
+/** show_cards result (JSON {"cards": [...]}) -> cards with http(s) links; [] if it is not that. */
+export function parseCards(content: string): LinkCard[] {
+  try {
+    const raw = JSON.parse(content)?.cards;
+    const http = (u: unknown) => (typeof u === "string" && /^https?:\/\//.test(u) ? u : "");
+    return Array.isArray(raw) ? raw.filter((c) => http(c?.url)).map((c) => ({
+      url: c.url, title: String(c.title ?? ""), snippet: String(c.snippet ?? ""), image: http(c.image),
+    })) : [];
+  } catch { return []; }
+}
+
+const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
+
+function LinkCards({ cards }: { cards: LinkCard[] }) {
+  return (
+    <div className="link-cards">
+      {cards.map((c, i) => (
+        <a key={i} className="link-card" href={c.url} target="_blank" rel="noopener noreferrer" title={c.title}>
+          {c.image && <img className="link-card-img" src={c.image} alt="" loading="lazy" referrerPolicy="no-referrer"
+            onError={(e) => e.currentTarget.remove()} />}
+          <span className="link-card-title">{c.title || host(c.url)}</span>
+          {c.snippet && <span className="link-card-snippet">{c.snippet}</span>}
+          <span className="link-card-host">
+            <img src={`https://www.google.com/s2/favicons?domain=${host(c.url)}&sz=32`} alt="" width={14} height={14} loading="lazy" />
+            {host(c.url)}
+          </span>
+        </a>
+      ))}
+    </div>
   );
 }
 
