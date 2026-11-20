@@ -111,6 +111,9 @@ def test_plugin_registers_tools():
         def register_tool(self, t):
             self.tools.append(t.name)
 
+        def add_prompt_section(self, name, text, order):
+            self.section = text
+
     api = Api()
     web.Web().setup(api, {})
     assert api.tools == ["show_cards", "web_search", "web_fetch"]

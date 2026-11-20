@@ -221,6 +221,8 @@ def og_image(html: str, base: str) -> str:
 
 
 MAX_CARDS = 6
+CARDS_HINT = ("When seeing it would help the user (the subject has a look), call show_cards with the best pages "
+              "you found, then answer in text.")
 
 
 def _http(u) -> str:
@@ -287,9 +289,9 @@ def make_tools(provider: str = "duckduckgo") -> list[AgentTool]:
                  "image": _p("string", "Image URL; omit to use the page's og:image"),
                  "snippet": _p("string", "One short line")}, ["url", "title"])
     return [
-        AgentTool("show_cards", "Show the user visual link cards (image, title, site) under your answer. Use only when "
-                                "pictures help: products, places, people, recipes, news. Not for code, definitions or "
-                                f"numbers. Max {MAX_CARDS} items.",
+        AgentTool("show_cards", "Show link cards with a preview image under your answer, for subjects that are better "
+                                "seen than read about. Image is filled from the page if omitted. "
+                                f"Max {MAX_CARDS} items.",
                   _obj({"items": {"type": "array", "items": card, "description": "Cards to show"}}, ["items"]), cards),
         AgentTool("web_search", "Search the web. Returns title, url, snippet per result. Follow up with web_fetch for details.",
                   _obj({"query": _p("string", "Search query"),
@@ -312,3 +314,4 @@ class Web:
             raise ValueError(f"unknown web search provider {provider!r}; have {sorted(PROVIDERS)}")
         for t in make_tools(provider):
             api.register_tool(t)
+        api.add_prompt_section(self.name, CARDS_HINT, 20)
