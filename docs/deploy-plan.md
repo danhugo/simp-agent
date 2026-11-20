@@ -20,7 +20,7 @@
 | 4 | Backups | ⏸ Daily Lightsail snapshots for now; Litestream later |
 | 5 | HTTPS, domain, built web | ✅ `simpagent.app` + `preview.simpagent.app` (Cloudflare proxy on, SSL Full strict); Caddy + compose written |
 | 6 | Google OAuth redirect URIs | ⏳ After the domain: add `https://<domain>/...`, keep Testing mode (up to 100 users) |
-| 7 | Keep processes running | ✅ Docker Compose (server, caddy; google_mcp later) |
+| 7 | Keep processes running | ✅ Docker Compose (server, google_mcp, caddy) |
 | 8 | Monitoring | ⏳ UptimeRobot (free) |
 
 ## Next steps
