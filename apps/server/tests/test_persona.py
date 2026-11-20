@@ -12,7 +12,7 @@ def test_parse_and_prompts():
     assert persona.parse(HAT) == "return null;"
     assert persona.parse("here:\n```js\nreturn 1;\n```") == "return 1;"
     assert "HAT" in persona.system("hat") and "BOTTOM" in persona.system("bottom")
-    assert "paint(lon, lat)" in persona.system("face")
+    assert "paint(lon, lat, D)" in persona.system("face")
     msg = persona.user_message("a wizard", other="HATCODE", code="BAD", error="covers the eyes")
     assert "HATCODE" in msg and "covers the eyes" in msg and "BAD" in msg
 
