@@ -221,9 +221,8 @@ def og_image(html: str, base: str) -> str:
 
 
 MAX_CARDS = 6
-CARDS_HINT = ("Visuals: when the user asks about something visual (a place or city — e.g. \"Chengdu has what?\" —, "
-              "dishes, products, people, animals, films, news), web_search for it and call show_cards with the best "
-              "2-6 pages so they see photos, then answer in text. Don't show cards for code, math or plain facts.")
+CARDS_HINT = ("When seeing it would help the user (the subject has a look), call show_cards with the best pages "
+              "you found, then answer in text.")
 
 
 def _http(u) -> str:
@@ -290,11 +289,9 @@ def make_tools(provider: str = "duckduckgo") -> list[AgentTool]:
                  "image": _p("string", "Image URL; omit to use the page's og:image"),
                  "snippet": _p("string", "One short line")}, ["url", "title"])
     return [
-        AgentTool("show_cards", "Show link cards with a preview image (photo, title, site) under your answer. CALL IT "
-                                "whenever the answer is about things people want to SEE: places / cities / travel, food, "
-                                "products, people, animals, movies, events, news. Use the urls you found with web_search "
-                                "(image is filled from the page if you omit it). Skip it for code, math, definitions. "
-                                f"2-{MAX_CARDS} items, then write your answer as usual.",
+        AgentTool("show_cards", "Show link cards with a preview image under your answer, for subjects that are better "
+                                "seen than read about. Image is filled from the page if omitted. "
+                                f"Max {MAX_CARDS} items.",
                   _obj({"items": {"type": "array", "items": card, "description": "Cards to show"}}, ["items"]), cards),
         AgentTool("web_search", "Search the web. Returns title, url, snippet per result. Follow up with web_fetch for details.",
                   _obj({"query": _p("string", "Search query"),
