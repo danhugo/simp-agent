@@ -413,7 +413,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .skeleton.grid i:nth-child(-n+6), .skeleton.grid i:nth-child(6n+1) { background: var(--hover); animation: none; }  /* header row + row numbers */
 
 /* show_cards: link cards with a preview image (URLs only, nothing stored) */
-.link-cards { display: flex; gap: 10px; overflow-x: auto; padding: 4px 0 8px; scroll-snap-type: x mandatory; }
+.link-cards { display: flex; align-items: flex-start; gap: 10px; overflow-x: auto; padding: 4px 0 8px; scroll-snap-type: x mandatory; }
 .link-card { flex: 0 0 200px; display: flex; flex-direction: column; gap: 4px; padding: 0 0 10px; border: 1px solid var(--border);
   border-radius: 10px; overflow: hidden; color: inherit; text-decoration: none; scroll-snap-align: start; }
 .link-card:hover { border-color: var(--muted); }
