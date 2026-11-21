@@ -23,6 +23,9 @@ SLOTS = {
             "For a thing whose round part is the ball (a racket, a magnifying glass): the top is its FRAME, a ring around "
             "the edge of the head seen from the front (H.torus tilted 90 deg about x, R ~1.05, around the face, not over it), "
             "plus the handle rising from the top. "
+            "Most hair FALLS DOWN under its weight: locks hang down with jagged tips (see the shaggy example); "
+            "spikes pointing UP are only for spiky, punk or super-saiyan hair. Copy where the tips point and the colors "
+            "(two-tone tips: pick the color by height) from the description or picture. "
             "Hair covers the WHOLE scalp like real hair, with no bald back. SHORT hair (spiky, messy, buzz, crew cut) "
             "stops at the ears (sides and back down to about y = 0, never down to the cheeks) and leaves a high forehead "
             "open when the character has one; only LONG hair (bob, long, braids) goes down the sides and back to the nape (y = -0.7), "
@@ -164,6 +167,8 @@ EXAMPLES = {
 EXAMPLES["hat"] += ("Example, a hood (a top): a thick shell over the head, open for the face, falling to the cheeks; "
                      "hooded characters (a reaper, a monk, an assassin) wear THIS, never a hood across the face.\n<code>\n"
                      + '// a hood: a thick shell over the whole head, open for the face; it falls down the back and sides to the cheeks\nconst c = "#2f3a2a";\nlet hood = H.shell(H.sphere(p, [0, 0.05, -0.05], 1.12), 0.07);\nhood = Math.max(hood, -0.6 - p[1]);\nhood = Math.max(hood, -Math.max(p[1] - 0.45, -p[2] - 0.05, Math.abs(p[0]) - 0.8));  // the face opening\nconst peak = [H.lock(p, [0, 1.05, -0.2], [0, 1.25, -0.75], 0.25, [0, 1.3, -0.4]), c];  // a soft point at the back\nconst rim = [Math.max(H.torus(H.tilt(p, [0, 0, 0.55], "x", 90), [0, 0, 0.55], 0.95, 0.07), -0.6 - p[1]), "#5a6b4a"];\nreturn H.union([hood, c], peak, rim);' + "\n</code>\n")
+EXAMPLES["hat"] += ("Example, shaggy layered hair that falls down, with two-tone tips (a top):\n<code>\n"
+                     + '// shaggy layered hair that FALLS DOWN: a full cap, then many short locks hanging down with jagged tips, thick bangs\n// over the forehead to just above the eyes; the color fades to a second color at the tips\nconst top = "#f2c230", tip = "#e8782a";\nconst col = (y) => (y < 0.35 ? tip : top);\nconst cap = H.cut(H.above([H.sphere(p, [0, 0.08, -0.04], 1.1), top], p, -0.1), Math.max(p[1] - 0.45, -p[2] - 0.2, Math.abs(p[0]) - 0.78));\nconst locks = [];\nfor (const [i, a] of [-1.05, -1.6, -2.15, -2.7, 3.14, 2.7, 2.15, 1.6, 1.05].entries()) {  // sides and back (never the face), hanging down\n  const s = Math.sin(a), k = Math.cos(a);\n  locks.push(H.lock(p, [0.95 * s, 0.55, 0.95 * k], [1.12 * s, -0.25 - (i % 2) * 0.15, 1.12 * k], 0.24, [1.12 * s, 0.25, 1.12 * k]));\n}\nfor (const x of [-0.55, -0.28, 0, 0.28, 0.55])  // bangs: down over the forehead, stopping above the eyes\n  locks.push(H.lock(p, [x * 0.8, 0.95, 0.45], [x, 0.42 + Math.abs(x) * 0.1, 1.0], 0.22, [x * 0.9, 0.9, 0.85]));\nconst d = Math.min(...locks);\nconst hair = H.union(cap, [d, col(p[1])]);\nreturn hair && [hair[0], col(p[1])];' + "\n</code>\n")
 
 
 def system(slot: str) -> str:
