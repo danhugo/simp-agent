@@ -13,3 +13,9 @@ OFFICE_APT = ["libreoffice-nogui"]
 def prompt_list(office: bool) -> str:
     cli = "ffmpeg, imagemagick, tesseract OCR (vie, eng), git, node" + (", LibreOffice (soffice --headless)" if office else "")
     return f"Preinstalled Python libraries: {', '.join(PIP)}. Command-line tools: {cli}."
+
+
+VENV = "/opt/simp/venv"
+# E2B applies template envs only at build time, so E2BSandbox exports these in every command.
+RUN_ENV = {"PYTHONNOUSERSITE": "1",
+           "PATH": f"{VENV}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}

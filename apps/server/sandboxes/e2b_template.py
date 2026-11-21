@@ -10,9 +10,7 @@ import argparse
 
 from e2b import Template, default_build_logger
 
-from simp_server.sandboxes.toolset import APT, OFFICE_APT, PIP
-
-VENV = "/opt/simp/venv"
+from simp_server.sandboxes.toolset import APT, OFFICE_APT, PIP, RUN_ENV, VENV
 
 
 def template(office: bool = False):
@@ -32,8 +30,7 @@ def template(office: bool = False):
          .run_cmd(["apt-get purge -y sudo >/dev/null 2>&1 || true",
                    "rm -f /usr/bin/sudo /etc/sudoers.d/* && (sed -i '/^user[[:space:]]/d' /etc/sudoers 2>/dev/null || true)",
                    "! su -s /bin/sh user -c 'sudo -n true' >/dev/null 2>&1"])
-         .set_envs({"PYTHONNOUSERSITE": "1",
-                    "PATH": f"{VENV}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"})
+         .set_envs(RUN_ENV)  # build-time only on E2B; at run time E2BSandbox exports RUN_ENV in every command
          .set_user("user")
          .set_workdir("/work"))
     return t
