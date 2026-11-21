@@ -76,7 +76,8 @@ const HIDDEN = ["window", "document", "globalThis", "self", "fetch", "XMLHttpReq
 
 export type Slot = "hat" | "bottom";
 /** Face paint: a color (or "skin" to clear the blush there, or null) at a point of the face, in degrees. */
-export type Paint = (lon: number, lat: number) => string | null;
+/** a face paint lookup; eyes: it draws its own eyes ("eye", or any paint on an eye), so the default ones are hidden */
+export type Paint = ((lon: number, lat: number) => string | null) & { eyes?: boolean };
 
 /** What a slot's code actually draws, measured by sampling: what the model gets back to "see" its work. */
 export interface Report { bbox: [number[], number[]]; colors: string[]; touchesHead: boolean; volume: number }
@@ -278,16 +279,17 @@ export function compilePaint(code: string): Paint {
   catch (e) { throw new Error(`syntax error: ${(e as Error).message}`); }
   const n = Math.round(180 / PSTEP) + 1, table: (string | null)[] = new Array(n * n), t0 = performance.now();
   const colors = new Set<string>();
-  let painted = 0;
+  let painted = 0, eyes = 0;
   for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
     const lon = -90 + i * PSTEP, lat = -90 + j * PSTEP;
     let out: unknown;
     try { out = fn(lon, lat, D); } catch (e) { throw new Error(`threw at lon=${lon}, lat=${lat}: ${(e as Error).message}`); }
     if (out === null || out === undefined) { table[i * n + j] = null; continue; }
-    if (typeof out !== "string" || !(out === "skin" || /^#[0-9a-f]{6}$/i.test(out)))
-      throw new Error(`must return null, "skin" or "#rrggbb", got ${JSON.stringify(out)?.slice(0, 80)}`);
+    if (typeof out !== "string" || !(out === "skin" || out === "eye" || /^#[0-9a-f]{6}$/i.test(out)))
+      throw new Error(`must return null, "skin", "eye" or "#rrggbb", got ${JSON.stringify(out)?.slice(0, 80)}`);
     table[i * n + j] = out.toLowerCase();
     if (out !== "skin") { painted++; colors.add(out.toLowerCase()); }
+    if (out === "eye" || (out !== "skin" && Math.abs(Math.abs(lon) - 18) < 6 && Math.abs(lat - 1) < 5)) eyes++;  // own eyes: "eye", or paint on an eye
   }
   if (performance.now() - t0 > 300) throw new Error("too slow; simplify the code");
   if (painted < 6) throw new Error("it paints (almost) nothing: return a color where the marks are; strokes at least 4 degrees wide");
@@ -295,6 +297,9 @@ export function compilePaint(code: string): Paint {
     const i = Math.round((lon + 90) / PSTEP), j = Math.round((lat + 90) / PSTEP);
     return i < 0 || j < 0 || i >= n || j >= n ? null : table[i * n + j];
   };
+  if (eyes) {
+    paint.eyes = true;
+  }
   return paint;
 }
 
