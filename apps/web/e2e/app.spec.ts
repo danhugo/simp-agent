@@ -147,11 +147,16 @@ test("a new session gets a title in the sidebar", async ({ page }) => {
   await expect(page.locator(".chat header strong")).toHaveText("Fake title");
 });
 
-test("composer attach uploads to the workspace", async ({ page }) => {
+test("composer attach waits, can be removed, and uploads on send", async ({ page }) => {
   await login(page);
+  await page.setInputFiles(".composer input[type=file]", { name: "gone.txt", mimeType: "text/plain", buffer: Buffer.from("x") });
+  await page.getByRole("button", { name: "Remove gone.txt" }).click();
   await page.setInputFiles(".composer input[type=file]", { name: "att.txt", mimeType: "text/plain", buffer: Buffer.from("x") });
   await expect(page.locator(".attached")).toContainText("att.txt");
+  await page.locator("textarea[aria-label=Message]").press("Enter");
+  await expect(page.locator(".attached")).toHaveCount(0);
   await openMenuItem(page, "Files");
+  await expect(page.locator(".files")).not.toContainText("gone.txt");
   await expect(page.locator(".files")).toContainText("att.txt");
 });
 
