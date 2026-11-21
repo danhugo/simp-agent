@@ -398,6 +398,12 @@ export function Persona({ onError, menuButton, profiles, models }: {
               <div className="composer persona-composer">
                 <div className="composer-card expanded" onClick={(e) => { if (e.target === e.currentTarget) (e.currentTarget.querySelector("textarea") as HTMLTextAreaElement | null)?.focus(); }}>
                   <textarea id="persona-desc" aria-labelledby="persona-look" rows={2} maxLength={1000} value={draft.description ?? ""} disabled={busy} onChange={set("description")}
+                    onPaste={async (e) => {  // a pasted picture becomes the reference picture
+                      const f = [...e.clipboardData.files].find((x) => /^image\/(png|jpeg|webp|gif)$/.test(x.type));
+                      if (!f) return;
+                      e.preventDefault();
+                      try { setRefImg(await shrink(f)); } catch { setError("that picture could not be read"); }
+                    }}
                     placeholder="Long pink hair with a purple wizard hat and a blue skirt"
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); generate(); } }} />
                   <div className="composer-bar">

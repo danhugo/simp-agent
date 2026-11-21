@@ -34,6 +34,13 @@ interface Props {
 
 interface Action { key: string; label: string; icon: ReactNode; title: string; onClick: () => void; pressed?: boolean; disabled?: boolean }
 
+/** the pictures in a paste, renamed "pasted-<time>.<ext>" so they don't overwrite each other */
+export function pastedImages(e: React.ClipboardEvent): File[] {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
+  return [...e.clipboardData.files].filter((f) => f.type.startsWith("image/")).map((f, i, all) =>
+    new File([f], `pasted-${stamp}${all.length > 1 ? `-${i + 1}` : ""}.${f.type.split("/")[1].replace("jpeg", "jpg").replace(/\+.*/, "")}`, { type: f.type }));
+}
+
 export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesOpen = false, onOpenFile, onPreviewFile, notify, onToggleNotify, menuButton, firstPrompt }: Props) {
   const busy = state.runState !== "idle" && state.runState !== "error";
   // the mascot's face after a run: a happy hop when it finishes, turned aside when stopped, sad on error
@@ -645,7 +652,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
     setAttached([]);
   };
   const stop = () => send({ type: "abort" });
-  const upload = async (files: FileList | null) => {
+  const upload = async (files: FileList | File[] | null) => {
     if (!files?.length) return;
     if (!sid) {  // home: nothing to upload to yet
       const list = [...files];
@@ -680,6 +687,12 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
           ref={area} value={text} rows={1} autoFocus aria-label="Message" disabled={disabled}
           placeholder={busy ? "Add to what Simp is doing…" : "Message Simp…"}
           onChange={(e) => setText(e.target.value)}
+          onPaste={(e) => {  // a pasted picture is uploaded like an attached file (named by time: screenshots are all "image.png")
+            const imgs = pastedImages(e);
+            if (!imgs.length || !(sid || onQueueFiles)) return;
+            e.preventDefault();
+            upload(imgs);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
             if (e.key === "Escape" && busy) stop();
