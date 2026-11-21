@@ -20,6 +20,9 @@ SLOTS = {
             "hats (beanie, wizard cone, cowboy, top hat, cap, beret, crown, witch hat, chef toque, helmet) or hair "
             "(spiky, short messy, bob, long straight, twin tails, ponytail, bun, afro, curls). Hair is a scalp cap plus "
             "H.lock strands (spikes, bangs, tails) or a curtain for long hair (see the examples), never one smooth blob. "
+            "For a thing whose round part is the ball (a racket, a magnifying glass): the top is its FRAME, a ring around "
+            "the edge of the head seen from the front (H.torus tilted 90 deg about x, R ~1.05, around the face, not over it), "
+            "plus the handle rising from the top. "
             "Hair covers the WHOLE head like real hair: the top, the sides and the back down to the nape (y = -0.7), "
             "open only for the face in front (see the braids example), so no bald back. Tails, braids, buns and ponytails grow "
             "from that cover and touch it: braids are a chain of touching balls, ponytails a bent H.lock, a bun a ball."),
@@ -36,9 +39,10 @@ SLOTS = {
                "3. BELL: a skirt, robe or coat: slightly rounded sides flaring out to a flat hem at y = -1.65, and under the "
                "hem a ROUND base clearly NARROWER than the hem, so the hem shows as a step. See the skirt and the coat examples.\n"
                "Choose by the overall shape: round and small -> SNUG; taller with a belly -> ROUND BODY; a skirt, robe, coat or "
-               "something wide at the bottom (a teapot, lamp, pot, bell, vase, lighthouse) -> BELL. A long thin THING (a racket, "
-               "a sword, a pencil, a spoon) is not a shape to copy: Simp holds or wears its look (its colors, a pattern like "
-               "racket strings, a small part of it on the top) on a SNUG bottom. "
+               "something wide at the bottom (a teapot, lamp, pot, bell, vase, lighthouse) -> BELL. A THING with a round part "
+               "(a racket, a magnifying glass, a frying pan, a lollipop, a balloon): the ball IS that round part; the bottom is "
+               "SNUG in its color and the top carries the rest (the frame, the handle). Other long thin things (a sword, a pencil): "
+               "SNUG in its colors and pattern, a small part of it on the top. "
                "Patterns and details (stripes, webs, belts, buttons) are colors chosen by where p is, or small parts on the surface."),
 }
 
@@ -238,6 +242,8 @@ mask), or null to leave the default (skin plus blush). The picture is ~48 pixels
 strokes must be at least 4 degrees wide and dots at least 6. Paint MARKS, not a mask: keep most of the face bare
 skin (cover at most about a third of it) and never fill the whole face. Use bright, saturated colors (red, blue,
 pink, orange, gold, green...); black or dark gray only for thin lines like brows, never for big areas.
+A thin pattern over the whole face is fine when the character IS a patterned thing: racket strings (a grid of thin
+lines every ~12 degrees), a clock's ticks, a ball's seams; keep the lines thin so the face shows through.
 
 ## Strokes: draw with D, never with boxes
 Hand-drawn marks are curved and tapered. Build every mark with these helpers (true where the point is on the mark;
