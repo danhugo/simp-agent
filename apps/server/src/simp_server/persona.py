@@ -202,8 +202,11 @@ def system(slot: str) -> str:
     return SYSTEM.format(what=what, where=where)
 
 
-def user_message(description: str, other: str = "", code: str = "", error: str = "") -> str:
+def user_message(description: str, other: str = "", code: str = "", error: str = "", image: bool = False) -> str:
     msg = f"Character description:\n{description}\n"
+    if image:
+        msg += ("\nA reference picture is attached: take this piece's look from it (its shape, style and colors), "
+                "simplified into chunky pixel-art shapes that still follow every rule above.\n")
     if other:
         msg += "\n" + CONTEXT.format(code=other)
     if error:

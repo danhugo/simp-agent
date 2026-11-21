@@ -13,7 +13,9 @@ def _to_anthropic(messages: list) -> list[dict]:
     out = list()
     for m in messages:
         if isinstance(m, UserMessage):
-            out.append({"role": "user", "content": [{"type": "text", "text": m.content}]})
+            imgs = [{"type": "image", "source": {"type": "base64", "media_type": u[5:u.index(";")], "data": u[u.index(",") + 1:]}}
+                    for u in m.images]
+            out.append({"role": "user", "content": [*imgs, {"type": "text", "text": m.content}]})
         elif isinstance(m, AssistantMessage):
             blocks = list()
             for c in m.content:

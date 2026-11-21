@@ -28,7 +28,8 @@ def to_input(model: Model, system_prompt: str, messages: list) -> list[dict]:
     out = [{"role": "developer" if _reasoning(model) else "system", "content": system_prompt}]
     for i, m in enumerate(messages):
         if isinstance(m, UserMessage):
-            out.append({"role": "user", "content": [{"type": "input_text", "text": m.content}]})
+            out.append({"role": "user", "content": [{"type": "input_text", "text": m.content},
+                                                     *({"type": "input_image", "image_url": u} for u in m.images)]})
         elif isinstance(m, AssistantMessage):
             same_api = (m.provider, m.api) == (model.provider, model.api)
             other_model = same_api and m.model != model.id

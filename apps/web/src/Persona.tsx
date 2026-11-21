@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, AuthError, type Outfit, type Persona as P } from "./api";
 import { ModelPicker } from "./App";
 import { errorText } from "./Chat";
-import { IconBookmark, IconBookmarked, IconCheck, IconRedo, IconStop, IconTrash, IconWand, IconX } from "./icons";
+import { IconBookmark, IconBookmarked, IconCheck, IconPlus, IconRedo, IconStop, IconTrash, IconWand, IconX } from "./icons";
 import { Mascot3D, readPal, render, SKIN_VIEW } from "./Mascot3D";
 import { combine, compilePaint, compileSkin, getPaint, getSkin, item, setSkin, type Paint, type Slot, type Wear } from "./skin";
 
@@ -12,6 +12,14 @@ const FIX_TRIES = 3;  // the model gets the check's error (with what it measured
 const IDEAS = ["a grumpy pirate", "a sleepy wizard", "a cheerful chef", "a cowboy"];
 
 type Step = { state: "waiting" | "designing" | "checking" | "fixing" | "done" | "failed"; note?: string; tries?: number };
+
+/** a picture shrunk to fit in 512px, as a JPEG data URL (small enough to send to the model) */
+async function shrink(file: File): Promise<string> {
+  const img = await createImageBitmap(file), k = Math.min(1, 512 / Math.max(img.width, img.height));
+  const cv = document.createElement("canvas"); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+  const ctx = cv.getContext("2d")!; ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height); ctx.drawImage(img, 0, 0, cv.width, cv.height);
+  return cv.toDataURL("image/jpeg", 0.85);
+}
 
 /** A slot's code as a standalone object (checked + baked into its own grid), or its error. */
 function tryCompile(code: string | undefined, slot: Slot): { wear: Wear | null; err: string } {
@@ -230,13 +238,15 @@ export function Persona({ onError, menuButton, profiles, models }: {
   const setStep = (slot: PSlot, s: Step) => setSteps((x) => ({ ...x, [slot]: s }));
 
   /** Design one slot: ask, check in the page, send problems back, until it passes or tries run out. */
+  const [refImg, setRefImg] = useState("");  // a reference picture for the model (data URL), not saved
+  const imgPicker = useRef<HTMLInputElement>(null);
   const design = async (slot: PSlot, other: string, signal: AbortSignal): Promise<string> => {
-    const description = draft.description!.trim();
+    const description = draft.description?.trim() || "Like the picture.";
     let req: { code?: string; error?: string } = {};
     let last = "";
     for (let i = 0; i <= FIX_TRIES; i++) {
       setStep(slot, { state: i ? "fixing" : "designing", tries: i, note: req.error });
-      const { code } = await api.generatePersona({ description, profile, slot, other, ...req }, signal);
+      const { code } = await api.generatePersona({ description, profile, slot, other, image: refImg || undefined, ...req }, signal);
       if (signal.aborted) throw new DOMException("stopped", "AbortError");
       last = code ?? "";
       setDraft((d) => ({ ...d, [slot]: last }));  // show every attempt in the preview, good or not
@@ -250,7 +260,7 @@ export function Persona({ onError, menuButton, profiles, models }: {
   };
 
   const generate = async (only?: PSlot) => {
-    if (!draft.description?.trim() || !profile) return;
+    if (!(draft.description?.trim() || refImg) || !profile) return;
     setError("");
     abort.current?.abort();
     const ctl = new AbortController();
@@ -391,10 +401,18 @@ export function Persona({ onError, menuButton, profiles, models }: {
                     placeholder="Long pink hair with a purple wizard hat and a long blue skirt" aria-describedby="persona-desc-note"
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); generate(); } }} />
                   <div className="composer-bar">
+                    <button type="button" className="round attach" aria-label="Add a reference picture" title="Add a reference picture"
+                      disabled={busy} onClick={() => imgPicker.current?.click()}><IconPlus size={16} /></button>
+                    <input ref={imgPicker} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={async (e) => {
+                      const f = e.target.files?.[0]; e.target.value = "";
+                      if (f) try { setRefImg(await shrink(f)); } catch { setError("that picture could not be read"); }
+                    }} />
+                    {refImg && <span className="persona-ref"><img src={refImg} alt="Reference picture" />
+                      <button type="button" className="ghost icon" aria-label="Remove the picture" title="Remove" disabled={busy} onClick={() => setRefImg("")}><IconX size={12} /></button></span>}
                     {profiles.length > 0 && <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} />}
                     <span className="spacer" />
                     {busy ? <button className="persona-go stop" aria-label="Stop" title="Stop" onClick={stopNow}><IconStop size={16} /></button>
-                      : <button className="persona-go" disabled={!draft.description?.trim() || !profile} onClick={() => generate()}
+                      : <button className="persona-go" disabled={!(draft.description?.trim() || refImg) || !profile} onClick={() => generate()}
                           aria-label={draft.hat || draft.bottom ? "Redesign outfit" : "Design outfit"} title={`${draft.hat || draft.bottom ? "Redesign outfit" : "Design outfit"} (Enter)`}>
                           <IconWand size={18} /></button>}
                   </div>

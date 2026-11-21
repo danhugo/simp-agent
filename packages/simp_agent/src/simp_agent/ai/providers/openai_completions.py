@@ -15,7 +15,8 @@ def to_openai(system_prompt: str, messages: list) -> list[dict]:
     out = [{"role": "system", "content": system_prompt}]
     for m in messages:
         if isinstance(m, UserMessage):
-            out.append({"role": "user", "content": m.content})
+            out.append({"role": "user", "content": m.content if not m.images else
+                        [{"type": "text", "text": m.content}, *({"type": "image_url", "image_url": {"url": u}} for u in m.images)]})
         elif isinstance(m, AssistantMessage):
             text, calls = m.text(), m.tool_calls()
             msg = {"role": "assistant", "content": text if text.strip() else (None if calls else "")}

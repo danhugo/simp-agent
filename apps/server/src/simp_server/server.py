@@ -156,6 +156,8 @@ class PersonaGen(BaseModel):
     other: str = Field("", max_length=8000)  # the slot already designed, for matching style
     code: str = Field("", max_length=8000)   # with error: the code that failed a check, to be fixed
     error: str = Field("", max_length=2000)
+    # a reference picture from the user, shrunk by the app: data:image/(png|jpeg|webp);base64,...
+    image: str = Field("", max_length=1_500_000, pattern=r"^(data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+)?$")
 
 
 class MemoryEdit(BaseModel):
@@ -835,7 +837,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             return await budget.out_of_points(settings, store, u["id"])
 
         ctx = Context(persona_mod.system(body.slot), [UserMessage(persona_mod.user_message(
-            body.description, body.other, body.code, body.error))], [])
+            body.description, body.other, body.code, body.error, bool(body.image)), images=[body.image] if body.image else [])], [])
         problem = ""
         for _ in range(2):  # one retry when the answer has no code (cut off, or prose instead of code)
             msg = None
