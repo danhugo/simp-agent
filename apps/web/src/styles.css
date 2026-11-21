@@ -421,7 +421,7 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .persona-ideas .suggestion { flex: none; white-space: nowrap; }
 .persona-error { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-3); padding: var(--sp-3); border-radius: 10px; color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }
 .persona-error p { margin: 0; flex: 1; overflow-wrap: anywhere; }
-.persona-items { list-style: none; margin: auto 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-2); width: 100%; }
+.persona-items { list-style: none; margin: auto 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); width: 100%; }
 .persona-piece { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: var(--sp-2); border-radius: 12px; background: var(--bg); min-width: 0; text-align: center; }
 .persona-piece.failed { box-shadow: inset 0 0 0 1px var(--err); }
 .persona-item, .persona-piece-empty { width: 80px; height: 80px; image-rendering: pixelated; }
@@ -492,7 +492,7 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .persona-form { background: var(--panel); border-color: transparent; }
 .persona-form input, .persona-form textarea:not(.persona-composer textarea) { background: var(--bg); }
 /* Simp's card on the right: form first, the try-on beside it */
-.persona-grid { grid-template-columns: minmax(0, 1fr) minmax(340px, 440px); }
+.persona-grid { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
 .persona-side { order: 2; }
 .persona-form { order: 1; }
 @media (max-width: 760px) { .persona-grid { grid-template-columns: 1fr; } .persona-side { order: 0; } }
