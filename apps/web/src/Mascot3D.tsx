@@ -14,7 +14,7 @@ const FOCUS_AFTER_MS = 2 * 60 * 1000;     // 2 min of continuous work: focused (
 const OVERLOAD_AFTER_MS = 5 * 60 * 1000;  // 5 min: overloaded (> < eyes, red cheeks, steam)
 /** Short-lived or state-driven faces beyond idle/working (see public/mascot-states.html). */
 export type Mood = "idle" | "done" | "asking" | "error" | "stopped";
-export type Face = { roll?: number; h?: number; eyes?: "arc" | "round" | "flat" | "none"; sweat?: boolean; blush?: boolean; yaw?: number; pitch?: number;
+export type Face = { roll?: number; h?: number; eyes?: "arc" | "round" | "flat"; sweat?: boolean; blush?: boolean; yaw?: number; pitch?: number;
   /** face paint; undefined = the saved persona's, null = none */
   paint?: Paint | null };
 const FACES: Record<Mood, Face> = {
@@ -161,14 +161,14 @@ export function render(ctx: CanvasRenderingContext2D, N: number, pal: Pal, yaw: 
       if (z2 > 0) {
         const lon = deg(Math.atan2(x2, z2)), lat = deg(Math.asin(Math.max(-1, Math.min(1, y1))));
         const squint = Math.max(blink, focus * 0.8);  // focused: the ^ ^ flattens into narrowed eyes
-        const eye = face.eyes === "none" || paint?.eyes ? 99 : overload > 0.5
+        const eye = overload > 0.5
           ? Math.min(chevronDist(lon, lat, -18, 1), chevronDist(lon, lat, 18, -1))
           : face.eyes === "round" ? Math.min(...[-18, 18].map((c) => Math.abs(Math.hypot((lon - c) * Math.cos(rad(lat)), lat - 1) - 5 * (1 - blink))))
           : face.eyes === "flat" ? Math.min(...[-18, 18].map((c) => Math.hypot(lon - Math.max(c - 9, Math.min(c + 9, lon)), lat)))
           : Math.min(eyeDist(lon, lat, -18, squint, face.h), eyeDist(lon, lat, 18, squint, face.h));
         const cheek = 1 + overload * 0.5;  // cheeks grow and turn red when overloaded
         const pc = paint ? paint(lon, lat) : null;  // face paint: over the skin and blush, under the eyes
-        if (eye < eyeW || pc === "eye") col = pal.eye;
+        if (eye < eyeW) col = pal.eye;
         else if (pc && pc !== "skin") col = paintTone(hex(pc), lit);
         else if (pc === "skin") { /* paint clears the blush here */ }
         else if ((focus > 0.5 || face.sweat) && pal.sweat && (((lon - 40) / 5) ** 2 + ((lat - 24) / (lat > 24 ? 4 : 7)) ** 2 < 1)) col = pal.sweat;  // drop on the brow

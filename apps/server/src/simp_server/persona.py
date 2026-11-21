@@ -108,11 +108,10 @@ Answer with the code only, inside <code></code>: the BODY of a JavaScript functi
 
 ## The face
 lon and lat are degrees on the ball: lon 0 is the middle of the face, + toward the picture's right, -90/+90 at the
-sides; lat 0 is eye level, + up, +90 at the top. Simp's own eyes are happy arcs "^ ^" at lon -18 and +18, lat 0
-(about 20 degrees wide, 8 tall), drawn by the app on top of your paint; keep them unless the character needs other
-eyes (see Eyes below). The pink blush sits on the cheeks at lon +-33,
+sides; lat 0 is eye level, + up, +90 at the top. The eyes are drawn by the app at lon -18 and +18, lat 0 (about 16
+degrees wide), ALWAYS on top of your paint, so you cannot hide them. The pink blush sits on the cheeks at lon +-33,
 lat -15 (an oval ~18 wide, 9 tall). The face spans about lon -60..60, lat -45..50.
-Return "#rrggbb" to paint that spot, "eye" for your own eye strokes, "skin" to show bare skin there (use it to remove the blush, e.g. for a pale
+Return "#rrggbb" to paint that spot, "skin" to show bare skin there (use it to remove the blush, e.g. for a pale
 mask), or null to leave the default (skin plus blush). The picture is ~48 pixels: a face pixel is ~3 degrees, so
 strokes must be at least 4 degrees wide and dots at least 6. Paint MARKS, not a mask: keep most of the face bare
 skin (cover at most about a third of it) and never fill the whole face. Use bright, saturated colors (red, blue,
@@ -132,34 +131,6 @@ which look stiff:
 Glasses and goggles frame the eyes with room to spare: each rim is a ring of radius about 13-15 around the eye
 center [+-18, 2] (bigger than the eye), joined by a bridge over the nose; never a tight line hugging the eye. Plain Math is available; no other globals. Pure, deterministic, fast.
 
-## Eyes (optional)
-To give the character other eyes, draw them yourself: return "eye" (Simp's dark eye color) for the eye strokes, or
-paint a color right on the eye spot; then the app's "^ ^" are hidden. Keep Simp's style: small simple symbol eyes,
-centered at [+-18, 1], about 16-20 degrees wide, strokes 3-3.5 wide, both eyes alike (mirror with Math.abs(lon)).
-Never big anime eyes, whites, irises, lashes or pupils with shine: one clean stroke shape per eye.
-Good eye shapes: closed line "- -", sleepy "u u", "> <", round "o o" (D.ring r 6), dots (D.dot r 4.5), "X X",
-crying "T T" (+ a light blue tear), wink (one "^", one "-"), surprised "O" (D.ring r 8), angry (a line slanting DOWN
-toward the nose), sad (a curve rising toward the nose, drooping outside), hearts (pink, two lobes and a point, ~18
-wide), sparkle. No eyebrows unless asked: the eye shape itself shows the mood.
-Example, angry eyes:
-<code>
-const a = Math.abs(lon);
-if (D.line(a, lat, [9, -2], [27, 6], 3.2, 3.2)) return "eye";
-return null;
-</code>
-Example, heart eyes:
-<code>
-const a = Math.abs(lon), x = a - 18, y = lat - 1;
-if (D.dot(a, lat, [13.5, 4], 5.2) || D.dot(a, lat, [22.5, 4], 5.2) || (y < 4 && y > -9 && Math.abs(x) < (y + 9) * 0.78)) return "#e8436b";
-return null;
-</code>
-Example, crying "T T":
-<code>
-const a = Math.abs(lon);
-if (D.line(a, lat, [9, 6], [27, 6], 3.2, 3.2) || D.line(a, lat, [18, 6], [18, -4], 3.2, 3.2)) return "eye";
-if (D.line(a, lat, [18, -8], [18, -24], 4, 2)) return "#7cc4f0";
-return null;
-</code>
 Example, arched brows and three tapered orange tiger stripes on each cheek:
 <code>
 const a = Math.abs(lon);  // mirror: draw the right side, both sides get it
