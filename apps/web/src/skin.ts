@@ -56,7 +56,7 @@ export const H = {
   },
   union: (...parts: Part[]): Part => {
     let best: Part = null;
-    for (const x of parts) if (x && (!best || x[0] < best[0])) best = x;
+    for (const x of parts) if (x && (!best || x[0] <= best[0])) best = x;  // a tie goes to the LATER part: it is drawn over
     return best;
   },
   cut: (a: Part, d: number): Part => (a ? [Math.max(a[0], -d), a[1]] : null),

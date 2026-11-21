@@ -24,6 +24,9 @@ SLOTS = {
             "r(i)); 5) tails, braids (a chain of touching balls), buns and ponytails grow from the hair and touch it.\n"
             "Take the shape and the colors from the description or the picture (two-tone hair: the color by height). "
             "Light parts get a darker edge or inner color so they show against the pale head. "
+            "A small round THING (a ball, a fruit, a bug, a planet): the top CONTINUES the thing over the upper ball, a thin "
+            "shell (H.shell of H.head) in its colors and pattern (seams, stripes, spots) plus its own small parts (a stem "
+            "and leaf, antennae); never a separate object about it (no hoop for a ball, no basket for a fruit). "
             "A thing whose round part is the ball (a racket, a magnifier): the top is its FRAME, a ring around the edge of "
             "the face (H.torus tilted 90 deg about x, R ~1.05), plus its handle rising from the top."),
     "bottom": ("the BOTTOM: what is under the face: a body, shorts, a skirt, a robe or a coat (no legs, so no pants)",
@@ -69,7 +72,8 @@ H gives signed-distance helpers (sizes in head units; c = center [x,y,z]):
 - H.lock(p, a, b, r, m?)                 a tapered strand: thick (r) at root a, pointed at tip b, bent toward m
 - H.shell(d, t)                          hollow version of distance d, wall thickness t
 - H.tilt(p, c, ax, deg)                  p rotated around c about axis "x" | "y" | "z"; use the result as p
-- H.union(...parts)                      parts are [d, color] or null; returns the nearest (or null)
+- H.union(...parts)                      parts are [d, color] or null; returns the nearest (or null); on a tie the
+                                         LATER part wins, so [same d, other color] listed after is drawn over
 - H.above(a, p, y0) / H.below(a, p, y0)  keep only the piece of part a above / below height y0
 - H.cut(a, d)                            part a minus the solid with distance d
 - H.smooth(a, b, k)                      soft union of two parts
