@@ -244,7 +244,8 @@ class AgentSession:
         self._abort = asyncio.Event()
         self.agent._cancel = asyncio.Event()
 
-    async def prompt(self, text: str) -> list:
+    async def prompt(self, text: str, images: list = ()) -> list:
+        """images: workspace paths of pictures the user attached; the model sees them during this run."""
         self._fresh_abort()
         await self.start()
         for p in self.plugins:
@@ -256,7 +257,15 @@ class AgentSession:
         for p in self.plugins:
             r = await self._hook(p, "before_agent_start", {"prompt": text, "messages": self.messages}) or {}
             extra += [UserMessage(m) if isinstance(m, str) else m for m in r.get("messages", [])]
-        return await self._run(functools.partial(self.agent.prompt, text, extra))
+        pics = list()
+        if self.agent.model.vision:
+            from ..coding.tools import MAX_RUN_IMAGES, is_image, load_image
+            for path in [x for x in images if is_image(x)][:MAX_RUN_IMAGES]:
+                try:
+                    pics.append((path, await load_image(self.agent.env, os.path.join(self.agent.cwd, path))))
+                except Exception as e:  # missing or too big: the model still gets the file name in the text
+                    extra.append(UserMessage(f"[{path} could not be attached: {e}]"))
+        return await self._run(functools.partial(self.agent.prompt, text, extra, pics))
 
     async def continue_(self) -> list:
         self._fresh_abort()

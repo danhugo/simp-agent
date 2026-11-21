@@ -200,7 +200,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
                       {it.msg.text && <CopyButton label="Copy answer" text={() => it.msg.text} />}
                       {it.seq === lastAnswer && !busy && lastUser && (
                         <button type="button" className="icon-btn" aria-label="Try again" title="Ask again"
-                          onClick={() => send({ type: "prompt", text: lastUser })}><IconRefresh size={16} /></button>
+                          onClick={() => send({ type: "prompt", text: lastUser, images: [] })}><IconRefresh size={16} /></button>
                       )}
                     </div>
                   )}
@@ -670,7 +670,9 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
     }
     const files = `[Attached files in the workspace: ${names.join(", ")}]`;  // so the agent knows
     const note = !names.length ? "" : t ? `\n\n${files}` : files;
-    send(!busy ? { type: "prompt", text: t + note } : { type: "steer", text: t + note });
+    // pictures go with a new prompt for the model to look at (a message sent while busy only names them)
+    const images = names.filter((n) => /\.(png|jpe?g|webp|gif)$/i.test(n)).slice(0, 6);
+    send(!busy ? { type: "prompt", text: t + note, images } : { type: "steer", text: t + note });
     setText("");
     setPending([]);
   };

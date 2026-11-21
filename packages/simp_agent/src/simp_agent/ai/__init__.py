@@ -110,6 +110,7 @@ class Model:
     api: str = "anthropic-messages"  # anthropic-messages | openai-completions | openai-responses
     base_url: str | None = None
     api_key_env: str | None = None  # env var holding the key
+    vision: bool = False  # it can look at images (profile `vision = true`): attached pictures and `read` of an image
     compat: dict = field(default_factory=dict)  # openai: include_usage, max_tokens_field, supports_finish_reason; all: reasoning_effort; anthropic: thinking_budget
 
 
