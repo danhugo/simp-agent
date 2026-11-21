@@ -115,8 +115,10 @@ mask), or null to leave the default (skin plus blush). The picture is ~48 pixels
 strokes must be at least 4 degrees wide and dots at least 6. Paint MARKS, not a mask: keep most of the face bare
 skin (cover at most about a third of it) and never fill the whole face. Use bright, saturated colors (red, blue,
 pink, orange, gold, green...); black or dark gray only for thin lines like brows, never for big areas.
-A thin pattern over the whole face is fine when the character IS a patterned thing: racket strings (a grid of thin
-lines every ~12 degrees), a clock's ticks, a ball's seams; keep the lines thin so the face shows through.
+When the character IS a round THING (a ball, a fruit, a bug, a planet), the ball is that thing: paint the WHOLE
+face in its color and pattern so it matches the top and bottom around it (an orange skin, a basketball's orange with
+black seams, a watermelon's green stripes, a tennis ball's yellow-green with a white curve); the eyes stay on top and
+the blush may stay. Same for racket strings, a clock's ticks: a thin pattern over the whole face.
 
 ## Strokes: draw with D, never with boxes
 Hand-drawn marks are curved and tapered. Build every mark with these helpers (true where the point is on the mark;
