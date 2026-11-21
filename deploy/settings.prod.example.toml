@@ -25,6 +25,9 @@ enabled = true
 
 [sandbox]
 kind = "e2b"
+# outbound network: only the workspace endpoint + egress_allow (web goes through server tools). "open" = no filter
+# egress = "allowlist"
+# egress_allow = []
 
 [workspace]
 store = "s3"

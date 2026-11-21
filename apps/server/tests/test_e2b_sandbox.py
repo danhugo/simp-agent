@@ -107,6 +107,7 @@ class FakeE2B:
         sbx = FakeSandbox(self, metadata)
         self.boxes[sbx.sandbox_id] = sbx
         self.log.append(("create", sbx.sandbox_id, metadata["user_id"], timeout, lifecycle["on_timeout"]))
+        self.network = kw.get("network")
         return sbx
 
     async def connect(self, sandbox_id, timeout=None, **kw):
@@ -146,6 +147,7 @@ class FakeE2B:
 
 class FakeStore:
     expires_in = None
+    mount_endpoint = "https://acct.r2.cloudflarestorage.com"
 
     async def mount_creds(self, user_id, read_only=False):
         return {"endpoint": "http://s3", "bucket": "b", "prefix": f"users/{user_id}/", "region": "r",
@@ -642,3 +644,15 @@ async def test_paused_box_survives_restart_and_expiry_charged_once(cloud, tmp_pa
     await sb3.start()
     assert len(await paused_rows(db)) == 1
     await db.close()
+
+
+async def test_egress_allowlist_only_storage(cloud):
+    sb = make(cloud, egress_allow=["example.org"])
+    await go(await sb.open("s1", "u1"))
+    assert cloud.network == {"allow_out": ["example.org", "acct.r2.cloudflarestorage.com"], "deny_out": ["0.0.0.0/0"]}
+
+
+async def test_egress_open_setting(cloud):
+    sb = make(cloud, egress="open")
+    await go(await sb.open("s1", "u1"))
+    assert cloud.network is None

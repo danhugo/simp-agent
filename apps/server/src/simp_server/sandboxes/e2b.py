@@ -22,6 +22,7 @@ import logging
 import os
 import shlex
 import time
+import urllib.parse
 import uuid
 from datetime import datetime, timezone
 
@@ -312,6 +313,8 @@ class E2BSandbox:
     def __init__(self, settings: dict):
         s = settings.get("sandbox", dict())
         self.template = s.get("template", "simp-sandbox")
+        # egress: "allowlist" (default) = only `egress_allow` + the workspace endpoint; "open" = no filter (dev)
+        self.egress, self.egress_allow = s.get("egress", "allowlist"), list(s.get("egress_allow", []))
         self.tag = s.get("tag", "simp")  # metadata app=<tag>: which sandboxes this server owns
         self.idle_pause_s, self.max_life_s = s.get("idle_pause_s", 600), s.get("max_life_s", 3300)
         self.snapshot_every_s = s.get("snapshot_every_s", 900)
@@ -324,6 +327,14 @@ class E2BSandbox:
         self.sdk = None  # e2b.AsyncSandbox (tests put a fake here)
         self.envs: dict[str, E2BEnv] = dict()
         self.boxes: dict[str, _Box] = dict()
+
+    def _network(self) -> dict | None:
+        """Outbound allowlist: the sandbox reaches only the workspace store (s3fs) and `egress_allow`; web access goes
+        through the server's web tools. Hosts are matched by name. DNS (8.8.8.8) stays open: a very slow channel."""
+        if self.egress == "open":
+            return None
+        host = urllib.parse.urlsplit(getattr(self.store, "mount_endpoint", "") or "").hostname
+        return {"allow_out": [*self.egress_allow, *([host] if host else [])], "deny_out": ["0.0.0.0/0"]}
 
     def _api(self) -> dict:
         key = self.keys.get("E2B_API_KEY") or os.environ.get("E2B_API_KEY")
@@ -385,7 +396,7 @@ class E2BSandbox:
             box.sbx = await self._sdk.create(
                 template=self.template, timeout=self.provider_timeout_s, **self._api(),
                 metadata={"app": self.tag, "user_id": box.user_id},
-                lifecycle={"on_timeout": "pause", "auto_resume": False})
+                lifecycle={"on_timeout": "pause", "auto_resume": False}, **({"network": n} if (n := self._network()) else {}))
             box.started = time.monotonic()
             box.mirror_failed = False
         box.sbx_id, box.state = box.sbx.sandbox_id, "running"

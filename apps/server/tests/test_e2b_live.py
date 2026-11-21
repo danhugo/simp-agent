@@ -131,3 +131,20 @@ async def test_live_paused_behind_our_back_resumes(tmp_path):
         await sb.close_all()
         for i in await sb.list_all():
             await sb._sdk.kill(i["id"], api_key=KEY)
+
+
+async def test_live_egress_allowlist(tmp_path):
+    """Default egress: package indexes and random hosts unreachable; an allowlisted host reachable."""
+    settings = {"data_dir": str(tmp_path), "sandbox": {"kind": "e2b", "tag": f"simp-live-{uuid.uuid4().hex[:8]}",
+                                                        "provider_timeout_s": 300, "egress_allow": ["example.com"]}}
+    sb = NoMountE2BSandbox(settings)
+    sb.keys = {"E2B_API_KEY": KEY}
+    try:
+        env = await sb.open("s1", "u1")
+        probe = "curl -s -o /dev/null -m 8 -w '%{http_code}' "
+        assert (await env.exec(probe + "https://example.com", ".", 60, ev()))[1].strip() == "200"
+        for url in ("https://pypi.org/simple/", "https://registry.npmjs.org/", "https://httpbin.org/post"):
+            assert (await env.exec(probe + url, ".", 60, ev()))[1].strip() in ("000", ""), url
+    finally:
+        for i in await sb.list_all():
+            await sb._sdk.kill(i["id"], api_key=KEY)
