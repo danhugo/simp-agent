@@ -18,6 +18,11 @@ pytestmark = pytest.mark.skipif(not KEY, reason="needs E2B_API_KEY (real E2B)")
 class NoMountE2BSandbox(E2BSandbox):
     """TEST ONLY: /work is a local dir instead of the s3fs bucket mount."""
 
+    def __init__(self, settings):
+        super().__init__(settings)
+        # no real store; the allowlist still needs a store host (any name works, nothing is mounted)
+        self.store = type("Store", (), {"mount_endpoint": "https://store.invalid"})()
+
     async def _mount(self, box):
         code, out = await _run(box.sbx, "mkdir -p /work/.simp && chown -R user:user /work", "/", 30, asyncio.Event(),
                                user="root")
@@ -58,9 +63,7 @@ async def test_live_e2b_no_bucket(tmp_path):
         with pytest.raises(FileNotFoundError):
             await env.read_file("/home/user/missing.txt")
         assert "SIMP_SUDO_OK" not in (await box.exec(SUDO_CHECK, "/", 20, ev()))[1]
-        code, out = await env.exec("pip install --user -q six && python -c 'import six; print(six.__file__)'",
-                                   ".", 180, ev())
-        assert code == 0 and "/home/user/.local" in out, out
+        assert (await env.exec("pip install --user -q six", ".", 120, ev()))[0] != 0  # no package index (egress)
         await sb._refresh_timeout(box, time.monotonic() + 120)  # set_timeout accepted by the API
 
         # timeout: killed process group, (None, partial output)
@@ -80,7 +83,6 @@ async def test_live_e2b_no_bucket(tmp_path):
         t0 = time.monotonic()
         assert await env2.exec("cat /home/user/note.txt", ".", 60, ev()) == (0, "kept")
         t["resume_s"] = time.monotonic() - t0
-        assert (await env2.exec("python -c 'import six'", ".", 60, ev()))[0] == 0
         assert env2.box.sbx_id == sid
 
         # max life: snapshot, unmount, kill; nothing left at the provider
