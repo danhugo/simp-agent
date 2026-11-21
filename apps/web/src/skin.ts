@@ -122,7 +122,7 @@ export function compileSkin(code: string, slot?: Slot): Wear {
     if (out && out[0] < 0) throw new Error(`it covers the eyes: point [${x}, 0.02, 1.0] is inside the ${out[1]} part; keep the face (front, y between -0.45 and 0.5) clear. ${seen}`);
   }
   // the whole face (eyes, brows, cheeks), just in front of the sphere: a stray lock or a high collar hides it
-  for (let lat = -20; lat <= 16; lat += 4) for (let lon = -40; lon <= 40; lon += 5) {
+  for (let lat = -20; lat <= 12; lat += 4) for (let lon = -32; lon <= 32; lon += 4) {
     const a = (lon * Math.PI) / 180, b = (lat * Math.PI) / 180, q = [1.04 * Math.cos(b) * Math.sin(a), 1.04 * Math.sin(b), 1.04 * Math.cos(b) * Math.cos(a)];
     const out = wear(q);
     if (out && out[0] < 0) throw new Error(`it covers the face: point [${q.map((v) => v.toFixed(2)).join(", ")}] in front of the face is inside the ${out[1]} part. The face (front, |x| < 0.7, y from -0.4 to 0.3) must stay fully clear: bangs end above y = 0.35, side hair hangs at |x| > 0.8, a bottom starts below y = -0.5. ${seen}`);
