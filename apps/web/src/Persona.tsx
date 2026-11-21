@@ -7,7 +7,7 @@ import { Mascot3D, readPal, render, SKIN_VIEW } from "./Mascot3D";
 import { combine, compilePaint, compileSkin, getPaint, getSkin, item, setSkin, type Paint, type Slot, type Wear } from "./skin";
 
 type PSlot = Slot | "face";  // face paint is a slot too, but paint, not a 3D piece
-const SLOTS: { slot: PSlot; label: string }[] = [{ slot: "hat", label: "Hat" }, { slot: "bottom", label: "Bottom" }, { slot: "face", label: "Face" }];
+const SLOTS: { slot: PSlot; label: string }[] = [{ slot: "hat", label: "Hat" }, { slot: "hair", label: "Hair" }, { slot: "bottom", label: "Bottom" }, { slot: "face", label: "Face" }];
 const FIX_TRIES = 3;  // the model gets the check's error (with what it measured) back this many times
 const IDEAS = ["a grumpy pirate", "a sleepy wizard", "a cheerful chef", "a cowboy"];
 
@@ -44,21 +44,22 @@ function framing(wear: Wear): { view: number; cy: number } {
   return { cy: (lo[1] + hi[1]) / 2, view: Math.max(0.35, Math.min(2, Math.max(w, h) * 1.08)) };  // w: the farthest it reaches while turning
 }
 const MAX_OUTFITS = 10;  // per kind (outfits, hats, bottoms); matches the server
-const KINDS = [["all", "All"], ["outfit", "Outfits"], ["hat", "Hats"], ["bottom", "Bottoms"], ["face", "Faces"]] as const;
-const NOUN: Record<PSlot, string> = { hat: "hat", bottom: "bottom", face: "face paint" };
+const KINDS = [["all", "All"], ["outfit", "Outfits"], ["hat", "Hats"], ["hair", "Hair"], ["bottom", "Bottoms"], ["face", "Faces"]] as const;
+const NOUN: Record<PSlot, string> = { hat: "hat", hair: "hair", bottom: "bottom", face: "face paint" };
 /** faint outline of what goes in an empty slot */
 function SlotShape({ slot, size = 48 }: { slot: PSlot; size?: number }) {
   return (
     <svg width={size} height={(size * 40) / 48} viewBox="0 0 48 40" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
       {slot === "face" ? <><circle cx="24" cy="20" r="14" /><path d="M17 19l2-2 2 2M27 19l2-2 2 2" /></>
+        : slot === "hair" ? <path d="M10 30c-1-12 5-20 14-20s15 8 14 20l-4-6-3 4-3-7-4 6-4-6-3 7-3-4z" />
         : slot === "hat" ? <><path d="M14 26c0-9 4.5-16 10-16s10 7 10 16" /><path d="M6 27c4 3 32 3 36 0" /></>
         : <path d="M15 8h18l7 24c-10 3-22 3-32 0z" />}
     </svg>
   );
 }
-const KIND_ONE: Record<Outfit["kind"], string> = { outfit: "Outfit", hat: "Hat", bottom: "Bottom", face: "Face paint" };
+const KIND_ONE: Record<Outfit["kind"], string> = { outfit: "Outfit", hat: "Hat", hair: "Hair", bottom: "Bottom", face: "Face paint" };
 const sameAs = (o: Outfit, d: P) => o.kind === "outfit"
-  ? o.hat === (d.hat ?? "") && o.bottom === (d.bottom ?? "") && (o.face ?? "") === (d.face ?? "")
+  ? o.hat === (d.hat ?? "") && (o.hair ?? "") === (d.hair ?? "") && o.bottom === (d.bottom ?? "") && (o.face ?? "") === (d.face ?? "")
   : (o[o.kind] ?? "") === (d[o.kind] ?? "");
 
 /** A collection card's picture: Simp wearing that outfit, drawn once (no animation, baked lazily when visible). */
@@ -69,12 +70,12 @@ function OutfitThumb({ o }: { o: Outfit }) {
     if (!c || !ctx) return;
     const draw = () => {
       if (o.kind === "face") { render(ctx, 96, readPal(), 0.35, 0.1, 0, 0, 0, { paint: tryPaint(o.face).paint }); return; }  // the bare head, painted
-      if (o.kind === "hat" || o.kind === "bottom") {  // a single piece: shown alone, like on the stage
-        const w = tryCompile(o.kind === "hat" ? o.hat : o.bottom, o.kind).wear;
+      if (o.kind === "hat" || o.kind === "hair" || o.kind === "bottom") {  // a single piece: shown alone, like on the stage
+        const w = tryCompile(o[o.kind] ?? "", o.kind).wear;
         if (w) { const f = framing(w); render(ctx, 96, readPal(), 0.5, 0.35, 0, 0, 0, {}, w, true, f.view, f.cy); }
         return;
       }
-      const w = combine([tryCompile(o.hat, "hat").wear, tryCompile(o.bottom, "bottom").wear]);
+      const w = combine([tryCompile(o.hat, "hat").wear, tryCompile(o.hair, "hair").wear, tryCompile(o.bottom, "bottom").wear]);
       render(ctx, 96, readPal(), 0.35, 0.15, 0, 0, 0, { paint: tryPaint(o.face).paint }, w);
     };
     const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); setTimeout(draw, 0); } });
@@ -151,21 +152,22 @@ export function Persona({ onError, menuButton, profiles, models }: {
 
   // each slot is its own object (baked alone); "assemble" then merges them into one grid Simp wears
   // removing a piece shows at once; only edits to existing code wait to settle
-  const hatSettled = useSettled(draft.hat), bottomSettled = useSettled(draft.bottom);
-  const hatCode = draft.hat ? hatSettled : "", bottomCode = draft.bottom ? bottomSettled : "";
+  const hatSettled = useSettled(draft.hat), hairSettled = useSettled(draft.hair), bottomSettled = useSettled(draft.bottom);
+  const hatCode = draft.hat ? hatSettled : "", hairCode = draft.hair ? hairSettled : "", bottomCode = draft.bottom ? bottomSettled : "";
   const hat = useMemo(() => tryCompile(hatCode, "hat"), [hatCode]);
+  const hair = useMemo(() => tryCompile(hairCode, "hair"), [hairCode]);
   const bottom = useMemo(() => tryCompile(bottomCode, "bottom"), [bottomCode]);
   const faceSettled = useSettled(draft.face), faceCode = draft.face ? faceSettled : "";
   const face = useMemo(() => tryPaint(faceCode), [faceCode]);
-  const compiled: Record<PSlot, { wear?: Wear | null; paint?: Paint | null; err: string }> = { hat, bottom, face };
+  const compiled: Record<PSlot, { wear?: Wear | null; paint?: Paint | null; err: string }> = { hat, hair, bottom, face };
   const [wear, setWear] = useState<Wear | null>(null);
   const [assembling, setAssembling] = useState(false);
-  const shown = saved === null || (!wear && assembling && (draft.hat || draft.bottom)) ? getSkin() : wear;  // until the persona loads: what Simp already wears in the app
+  const shown = saved === null || (!wear && assembling && (draft.hat || draft.hair || draft.bottom)) ? getSkin() : wear;  // until the persona loads: what Simp already wears in the app
   useEffect(() => {
     setAssembling(true);
-    const t = setTimeout(() => { { const w = combine([hat.wear, bottom.wear]); setWear(() => w); }; setAssembling(false); }, 30);  // let "Assembling…" paint
+    const t = setTimeout(() => { { const w = combine([hat.wear, hair.wear, bottom.wear]); setWear(() => w); }; setAssembling(false); }, 30);  // let "Assembling…" paint
     return () => clearTimeout(t);
-  }, [hat.wear, bottom.wear]);
+  }, [hat.wear, hair.wear, bottom.wear]);
 
   // the collection: saved outfits to pick from
   const [outfits, setOutfits] = useState<Outfit[] | null>(null);
@@ -180,7 +182,7 @@ export function Persona({ onError, menuButton, profiles, models }: {
   const pieces = (slot: PSlot): Outfit[] => {
     const seen = new Set<string>();
     return (outfits ?? []).filter((o) => (o.kind === slot || o.kind === "outfit") && o[slot]).filter((o) => !seen.has(o[slot]!) && !!seen.add(o[slot]!))
-      .map((o) => ({ ...o, kind: slot, hat: slot === "hat" ? o.hat : "", bottom: slot === "bottom" ? o.bottom : "", face: slot === "face" ? o.face : "" }));
+      .map((o) => ({ ...o, kind: slot, hat: slot === "hat" ? o.hat : "", hair: slot === "hair" ? o.hair : "", bottom: slot === "bottom" ? o.bottom : "", face: slot === "face" ? o.face : "" }));
   };
   useEffect(() => {
     if (!picker) return;
@@ -210,14 +212,14 @@ export function Persona({ onError, menuButton, profiles, models }: {
       const base = draft.name || draft.description?.slice(0, 30) || "Outfit";
       const one = (s: PSlot) => (k === "outfit" || k === s ? draft[s] ?? "" : "");
       const o = { kind: k, name: k === "outfit" ? base.slice(0, 40) : `${base.slice(0, 30)} ${k === "face" ? "face" : k}`,
-        description: draft.description ?? "", hat: one("hat"), bottom: one("bottom"), face: one("face") };
+        description: draft.description ?? "", hat: one("hat"), hair: one("hair"), bottom: one("bottom"), face: one("face") };
       const { id } = await api.addOutfit(o);
       setOutfits((xs) => [{ ...o, id, created: Date.now() / 1000 }, ...(xs ?? [])]);
     } catch (e) { fail(e); }
   };
   // an outfit replaces both slots; a piece replaces only its own, so pieces mix and match
   const wearOutfit = (o: Outfit) => {
-    setDraft((d) => o.kind === "outfit" ? { ...d, description: o.description, hat: o.hat, bottom: o.bottom, face: o.face ?? "" }
+    setDraft((d) => o.kind === "outfit" ? { ...d, description: o.description, hat: o.hat, hair: o.hair ?? "", bottom: o.bottom, face: o.face ?? "" }
       : { ...d, [o.kind]: o[o.kind] ?? "" });
     setSteps((x) => (o.kind === "outfit" ? {} : { ...x, [o.kind]: undefined }));
   };
@@ -260,8 +262,8 @@ export function Persona({ onError, menuButton, profiles, models }: {
     try {
       let hatCode = only && only !== "hat" ? draft.hat ?? "" : "";
       for (const slot of todo) {  // one after the other: the bottom sees the hat, to match it
-        // the bottom and the face see the hat, to match its colors
-        const code = await design(slot, slot !== "hat" ? hatCode : only === "hat" ? draft.bottom ?? "" : "", ctl.signal);
+        // the other pieces see the hat, to match its colors (hair also fits under it)
+        const code = await design(slot, slot !== "hat" ? hatCode : only === "hat" ? draft.hair || draft.bottom || "" : "", ctl.signal);
         if (slot === "hat") hatCode = code;
       }
     } catch (e) {
@@ -287,11 +289,11 @@ export function Persona({ onError, menuButton, profiles, models }: {
     setSaving(false);
   };
   // what Simp is (name, personality, outfit pieces); the outfit prompt is only a tool to make pieces, so typing it is not a change
-  const norm = (x: P) => JSON.stringify([x.name ?? "", x.instruction ?? "", x.hat ?? "", x.bottom ?? "", x.face ?? ""]);
+  const norm = (x: P) => JSON.stringify([x.name ?? "", x.instruction ?? "", x.hat ?? "", x.hair ?? "", x.bottom ?? "", x.face ?? ""]);
   const dirty = saved !== null && norm(saved) !== norm(draft);
   const set = (k: keyof P) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setDraft((d) => ({ ...d, [k]: e.target.value }));
 
-  const canSave = !busy && !assembling && !hat.err && !bottom.err && !face.err;
+  const canSave = !busy && !assembling && !hat.err && !hair.err && !bottom.err && !face.err;
   const clearSlot = (slot: PSlot) => { setDraft((d) => ({ ...d, [slot]: "" })); setSteps((x) => ({ ...x, [slot]: undefined })); };
 
   return (
@@ -395,7 +397,7 @@ export function Persona({ onError, menuButton, profiles, models }: {
                     <span className="spacer" />
                     {busy ? <button className="persona-go stop" aria-label="Stop" title="Stop" onClick={stopNow}><IconStop size={16} /></button>
                       : <button className="persona-go" disabled={!draft.description?.trim() || !profile} onClick={() => generate()}
-                          aria-label={draft.hat || draft.bottom ? "Redesign outfit" : "Design outfit"} title={`${draft.hat || draft.bottom ? "Redesign outfit" : "Design outfit"} (Enter)`}>
+                          aria-label={draft.hat || draft.hair || draft.bottom ? "Redesign outfit" : "Design outfit"} title={`${draft.hat || draft.hair || draft.bottom ? "Redesign outfit" : "Design outfit"} (Enter)`}>
                           <IconWand size={18} /></button>}
                   </div>
                 </div>
@@ -427,8 +429,8 @@ export function Persona({ onError, menuButton, profiles, models }: {
               {fullNote && (
                 <p className="persona-full small" role="alert">You have {MAX_OUTFITS} {NOUN[fullNote]}s saved. Delete one below to save this {NOUN[fullNote]}.</p>
               )}
-              {(hat.wear || bottom.wear || face.paint) && (
-                <button className="ghost bordered persona-keep" disabled={busy || assembling || inCollection || full("outfit") || !!hat.err || !!bottom.err || !!face.err} onClick={() => keep()}>
+              {(hat.wear || hair.wear || bottom.wear || face.paint) && (
+                <button className="ghost bordered persona-keep" disabled={busy || assembling || inCollection || full("outfit") || !!hat.err || !!hair.err || !!bottom.err || !!face.err} onClick={() => keep()}>
                   {inCollection ? <><IconCheck size={14} /> Current outfit saved</> : full("outfit") ? `${MAX_OUTFITS} outfits saved. Delete one to save this.` : "Save current outfit"}</button>
               )}
               <div>
@@ -471,6 +473,6 @@ export function Persona({ onError, menuButton, profiles, models }: {
 export async function loadSavedSkin() {
   try {
     const p = await api.persona();
-    setSkin(combine([tryCompile(p.hat, "hat").wear, tryCompile(p.bottom, "bottom").wear]), tryPaint(p.face).paint);
+    setSkin(combine([tryCompile(p.hat, "hat").wear, tryCompile(p.hair, "hair").wear, tryCompile(p.bottom, "bottom").wear]), tryPaint(p.face).paint);
   } catch { /* no outfit */ }
 }

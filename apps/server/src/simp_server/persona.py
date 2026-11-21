@@ -10,12 +10,15 @@ from __future__ import annotations
 import re
 
 SLOTS = {
-    "hat": ("a HAT (or hair, crown, hood, horns: whatever the character wears on top of the head)",
-            "It must sit ON the head, touching the sphere. A hat stays above y = 0.55 (a brim or band around "
-            "y = 0.6..0.9 with radius ~0.6..0.9 hugs it); it may rise up to y = 1.9. HAIR may come lower: bangs over the "
-            "forehead end above y = 0.35, side locks fall down the sides (|x| > 0.8) to the cheeks (y >= -0.5), and the "
-            "back may hang lower; the front of the face (|x| < 0.75, y < 0.3) always stays clear for the eyes. Build hair "
-            "from a scalp cap plus many H.lock strands (see the hair example), never one smooth blob."),
+    "hat": ("a HAT (or crown, hood, horns, headband: whatever the character wears on top of the head; NOT hair, "
+            "hair is drawn separately)",
+            "It must sit ON the head: everything above y = 0.55, touching the sphere (a brim or band around "
+            "y = 0.6..0.9 with radius ~0.6..0.9 hugs it). It may rise up to y = 1.9."),
+    "hair": ("the HAIR (only hair: no hat; if the character has a hat, draw the hair that shows under and around it)",
+             "It grows ON the head, touching the sphere. Bangs over the forehead end above y = 0.35, side locks fall "
+             "down the sides (|x| > 0.8) to the cheeks (y >= -0.5), and the back may hang lower; the front of the face "
+             "(|x| < 0.75, y < 0.3) always stays clear for the eyes. Build it from a scalp cap plus many H.lock strands "
+             "(see the hair example), never one smooth blob. It may rise up to y = 1.9."),
     "bottom": ("the BOTTOM: shorts, a skirt, a belt or a robe hem (no legs, so no pants)",
                "There is no body: the ball IS the whole character, so it wraps the LOWER half of the sphere, "
                "everything below y = -0.5 (a bit under the cheeks), slightly outside the sphere and a little roomy (trim with H.below). Give it a real silhouette: "
@@ -72,7 +75,7 @@ const band = [H.torus(p, [0, 0.6, 0], 0.85, 0.1), "#b02e2e"];
 const pom = [H.sphere(p, [0, 1.25, 0], 0.18), "#ffffff"];
 return H.union(cap, band, pom);
 </code>
-Example, spiky anime hair (a hat slot): a cap on the scalp, then pointed locks bent outward; bangs end above
+Example, spiky anime hair (a hair): a cap on the scalp, then pointed locks bent outward; bangs end above
 the eyes and side locks fall past the ears.
 <code>
 const c = "#5a1d16";

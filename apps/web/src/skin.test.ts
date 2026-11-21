@@ -27,7 +27,7 @@ describe("compileSkin", () => {
     expect(() => compileSkin("return window.x")).toThrow(/threw/);
     expect(() => compileSkin("return [H.head(p) - 0.1, '#ff0000']")).toThrow(/covers the eyes/);
     expect(() => compileSkin("return [H.sphere(p, [0, 1.6, 0], 0.3), '#ff0000']", "hat")).toThrow(/floats.*Measured/);
-    expect(() => compileSkin("return H.below([H.shell(H.head(p), 0.06), '#3463c9'], p, -0.3)", "hat")).toThrow(/over the face/);
+    expect(() => compileSkin("return H.below([H.shell(H.head(p), 0.06), '#3463c9'], p, -0.3)", "hat")).toThrow(/below y = 0.4/);
     expect(() => compileSkin("return H.below([H.shell(H.head(p), 0.06), '#3463c9'], p, -0.3)", "bottom")).not.toThrow();
   });
   it("face paint: baked lookup, actionable errors", () => {
@@ -48,7 +48,7 @@ describe("compileSkin", () => {
 describe("hair", () => {
   it("side locks may fall past the ears, the face stays clear", () => {
     const side = `return H.union(H.above([H.sphere(p,[0,0.06,-0.06],1.06),"#5a1d16"],p,0.3), [H.lock(p,[0.75,0.45,0.2],[1.15,-0.35,0.3],0.24),"#5a1d16"], [H.lock(p,[-0.75,0.45,0.2],[-1.15,-0.35,0.3],0.24),"#5a1d16"]);`;
-    expect(() => compileSkin(side, "hat")).not.toThrow();
-    expect(() => compileSkin(`return [H.sphere(p,[0,0.1,0.9],0.4),"#5a1d16"]`, "hat")).toThrow(/over the face|covers the eyes/);
+    expect(() => compileSkin(side, "hair")).not.toThrow();
+    expect(() => compileSkin(`return [H.sphere(p,[0,0.1,0.9],0.4),"#5a1d16"]`, "hair")).toThrow(/over the face|covers the eyes/);
   });
 });

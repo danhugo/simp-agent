@@ -103,6 +103,8 @@ class SqliteStore:
             await self._do("ALTER TABLE outfits ADD COLUMN kind TEXT DEFAULT 'outfit'")  # outfit | hat | bottom (a single piece)
         if "face" not in [r["name"] for r in await self._all("PRAGMA table_info(outfits)")]:
             await self._do("ALTER TABLE outfits ADD COLUMN face TEXT DEFAULT ''")  # face paint code (kind outfit | face)
+        if "hair" not in [r["name"] for r in await self._all("PRAGMA table_info(outfits)")]:
+            await self._do("ALTER TABLE outfits ADD COLUMN hair TEXT DEFAULT ''")  # hair code (kind outfit | hair)
         if "link_id" not in [r["name"] for r in await self._all("PRAGMA table_info(mcp_audit)")]:
             await self._do("ALTER TABLE mcp_audit ADD COLUMN link_id TEXT")
         cols = [r["name"] for r in await self._all("PRAGMA table_info(sessions)")]
@@ -224,14 +226,14 @@ class SqliteStore:
 
     # outfits: the user's saved collection of generated outfits (the worn one lives in the persona)
     async def outfits(self, user_id: str) -> list[dict]:
-        return await self._all("SELECT id, kind, name, description, hat, bottom, COALESCE(face, '') AS face, created FROM outfits WHERE user_id=? "
+        return await self._all("SELECT id, kind, name, description, hat, bottom, COALESCE(face, '') AS face, COALESCE(hair, '') AS hair, created FROM outfits WHERE user_id=? "
                                "ORDER BY created DESC", user_id)
 
     async def add_outfit(self, user_id: str, name: str, description: str, hat: str, bottom: str, kind: str = "outfit",
-                         face: str = "") -> str:
+                         face: str = "", hair: str = "") -> str:
         oid = uuid.uuid4().hex[:12]
-        await self._do("INSERT INTO outfits(id, user_id, name, description, hat, bottom, created, kind, face) VALUES(?,?,?,?,?,?,?,?,?)",
-                       oid, user_id, name, description, hat, bottom, time.time(), kind, face)
+        await self._do("INSERT INTO outfits(id, user_id, name, description, hat, bottom, created, kind, face, hair) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                       oid, user_id, name, description, hat, bottom, time.time(), kind, face, hair)
         return oid
 
     async def delete_outfit(self, user_id: str, oid: str) -> bool:

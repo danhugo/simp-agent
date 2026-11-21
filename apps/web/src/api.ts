@@ -22,10 +22,10 @@ export interface MemoryItem { id: string; scope: "global" | "agent"; agent_id: s
   /** the chat it was saved in, if that chat still exists ("" = untitled) */ source_title?: string | null; source_created?: number | null }
 
 /** REST-only (/api/persona): Simp's personality (the user's words) and outfit slot code (see skin.ts). {} = none. */
-export interface Persona { name?: string; description?: string; instruction?: string; hat?: string; bottom?: string; face?: string; profile?: string }
+export interface Persona { name?: string; description?: string; instruction?: string; hat?: string; hair?: string; bottom?: string; face?: string; profile?: string }
 
 /** REST-only (/api/outfits): a saved outfit in the user's collection. */
-export interface Outfit { id: string; kind: "outfit" | "hat" | "bottom" | "face"; name: string; description: string; hat: string; bottom: string; face?: string; created: number }
+export interface Outfit { id: string; kind: "outfit" | "hat" | "hair" | "bottom" | "face"; name: string; description: string; hat: string; hair?: string; bottom: string; face?: string; created: number }
 
 export class AuthError extends Error {}
 
@@ -122,7 +122,7 @@ export const api = {
   deleteMemory: (id: string) => call(`/api/memories/${id}`, { method: "DELETE" }),
   persona: async (): Promise<Persona> => (await call("/api/persona")).json(),
   savePersona: (p: Persona) => call("/api/persona", { ...json(p), method: "PUT" }),
-  generatePersona: async (b: { description: string; profile: string; slot: "hat" | "bottom" | "face"; other?: string; code?: string; error?: string }, signal?: AbortSignal): Promise<{ code: string }> =>
+  generatePersona: async (b: { description: string; profile: string; slot: "hat" | "hair" | "bottom" | "face"; other?: string; code?: string; error?: string }, signal?: AbortSignal): Promise<{ code: string }> =>
     (await call("/api/persona/generate", { ...json(b), signal })).json(),
   outfits: async (): Promise<Outfit[]> => (await call("/api/outfits")).json(),
   addOutfit: async (o: Omit<Outfit, "id" | "created">): Promise<{ id: string }> => (await call("/api/outfits", json(o))).json(),

@@ -134,6 +134,7 @@ class PersonaIn(BaseModel):
     name: str = Field("", max_length=24)
     description: str = Field("", max_length=1000)
     instruction: str = Field("", max_length=800)   # the user's own words: tone only (fenced in the prompt)
+    hair: str = Field("", max_length=8000)
     hat: str = Field("", max_length=8000)           # outfit slots: JS bodies of wear(p, H), see persona.py
     bottom: str = Field("", max_length=8000)
     face: str = Field("", max_length=8000)          # face paint: JS body of paint(lon, lat)
@@ -141,10 +142,11 @@ class PersonaIn(BaseModel):
 
 
 class OutfitIn(BaseModel):
-    kind: str = Field("outfit", pattern="^(outfit|hat|bottom|face)$")  # a whole outfit, or one piece
+    kind: str = Field("outfit", pattern="^(outfit|hat|hair|bottom|face)$")  # a whole outfit, or one piece
     name: str = Field("", max_length=40)
     description: str = Field("", max_length=1000)
     hat: str = Field("", max_length=8000)
+    hair: str = Field("", max_length=8000)
     bottom: str = Field("", max_length=8000)
     face: str = Field("", max_length=8000)
 
@@ -152,7 +154,7 @@ class OutfitIn(BaseModel):
 class PersonaGen(BaseModel):
     description: str = Field(min_length=1, max_length=1000)
     profile: str
-    slot: str = Field(pattern="^(hat|bottom|face)$")
+    slot: str = Field(pattern="^(hat|hair|bottom|face)$")
     other: str = Field("", max_length=8000)  # the slot already designed, for matching style
     code: str = Field("", max_length=8000)   # with error: the code that failed a check, to be fixed
     error: str = Field("", max_length=2000)
@@ -793,7 +795,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
 
     @app.put("/api/persona")
     async def put_persona(body: PersonaIn, u=Depends(user)):
-        await store.set_persona(u["id"], body.model_dump() if (body.hat or body.bottom or body.face or body.instruction) else dict())
+        await store.set_persona(u["id"], body.model_dump() if (body.hat or body.hair or body.bottom or body.face or body.instruction) else dict())
         return {"ok": True}
 
     @app.get("/api/outfits")
@@ -803,14 +805,14 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     @app.post("/api/outfits")
     async def add_outfit(body: OutfitIn, u=Depends(user)):
         if body.kind != "outfit":  # a piece keeps only its own slot
-            for k in ("hat", "bottom", "face"):
+            for k in ("hat", "hair", "bottom", "face"):
                 if k != body.kind:
                     setattr(body, k, "")
-        if not (body.hat or body.bottom or body.face):
+        if not (body.hat or body.hair or body.bottom or body.face):
             raise HTTPException(400, f"a {body.kind} needs its code")
         if sum(o["kind"] == body.kind for o in await store.outfits(u["id"])) >= MAX_OUTFITS:
             raise HTTPException(400, f"the collection is full ({MAX_OUTFITS} {body.kind}s); delete one first")
-        return {"id": await store.add_outfit(u["id"], body.name, body.description, body.hat, body.bottom, body.kind, body.face)}
+        return {"id": await store.add_outfit(u["id"], body.name, body.description, body.hat, body.bottom, body.kind, body.face, body.hair)}
 
     @app.delete("/api/outfits/{oid}")
     async def delete_outfit(oid: str, u=Depends(user)):
