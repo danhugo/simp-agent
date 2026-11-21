@@ -25,11 +25,8 @@ SLOTS = {
                "a skirt, robe or coat is a BELL: as wide as the ball at its waist, flaring out with slightly rounded (convex) sides, not a dead-straight cone, with a flat hem, "
                "and under the hem a ROUND base (a squashed half ball) clearly NARROWER than the hem, so the hem shows as a step; never a flat cut-off edge (see the skirt example); never pinched in under the waist. Like everything here it starts at y = -0.5, so it "
                "does not hide the cheeks. It may flare out to |x|,|z| <= 1.5. "
-               "Pick ONE length, the one the description asks for (short / medium / long) or else the one that fits the character, by where the hem ends: 1 SHORT (shorts, mini skirt) "
-               "hem at about y = -1.45; 2 MEDIUM (knee skirt, kilt) hem at y = -1.75; "
-               "3 LONG (gown, robe, wizard cloak) hem at y = -2.0 (the hem is the lowest point of the round base). For round or gourd shorts (the shorts example) "
-               "the length is how far the lower ball hangs: center y = -0.4 (short), -0.6 r 0.85 k 0.35 (medium), "
-               "-0.85 r 0.9 k 0.4 (long, like puffy bloomers)."),
+               "Keep that one bell form and size for every skirt, robe and coat (no short or long versions): hem at y = -1.65, "
+               "round base down to about y = -2.0."),
 }
 
 SYSTEM = """You design ONE piece of an outfit for Simp, a round AI assistant mascot drawn as a tiny pixel-art 3D
@@ -130,15 +127,14 @@ slightly wider and lower toward the bottom (a soft union of the head with a lowe
 const body = H.smooth([H.head(p), "#3463c9"], [H.sphere(p, [0, -0.4, 0], 0.85), "#3463c9"], 0.3);
 return H.below([H.shell(body[0], 0.06), "#3463c9"], p, -0.5);
 </code>
-Example, a flared skirt with a round base (a bottom), medium length:
+Example, a skirt (a bottom), the one bell form:
 <code>
-// a skirt: a flared bell (slightly rounded sides) with a flat hem, and under it a smaller round base (a squashed half ball, narrower
-// than the hem, so the hem's edge shows as a step). hem = the lowest point: -1.45 short, -1.75 medium, -2.0 long
-const c = "#7a4fd0", hem = -1.75, r = 1.3 - (hem + 2) * 0.45, cut = hem + 0.3;
-// sides slightly rounded: halfway between a straight cone and an oval
-const flare = [Math.max(0.5 * H.cone(p, [0, cut, 0], r, 2.9)
-  + 0.5 * (Math.hypot(p[0] / r, (p[1] - cut) / (-0.5 - cut + 0.35), p[2] / r) - 1) * r, p[1] + 0.5, cut - p[1]), c];
-const base = [Math.max(H.sphere([p[0], (p[1] - cut) * 1.6, p[2]], [0, 0, 0], r * 0.7) / 1.6, p[1] - cut - 0.05), c];
+// a skirt: a bell with slightly rounded sides and a flat hem at y = -1.65, and under it a smaller round base
+// (a squashed half ball, narrower than the hem, so the hem shows as a step). Always this size.
+const c = "#7a4fd0", cut = -1.65;
+const flare = [Math.max(0.5 * H.cone(p, [0, cut, 0], 1.3, 2.9)
+  + 0.5 * (Math.hypot(p[0] / 1.3, (p[1] - cut) / 1.45, p[2] / 1.3) - 1) * 1.3, p[1] + 0.5, cut - p[1]), c];
+const base = [Math.max(H.sphere([p[0], (p[1] - cut) * 1.6, p[2]], [0, 0, 0], 0.85) / 1.6, p[1] - cut - 0.05), c];
 const skirt = H.below(H.union(flare, base), p, -0.5);
 const waist = [H.torus(p, [0, -0.52, 0], 0.88, 0.09), "#4b2e8f"];
 return H.union(skirt, waist);

@@ -398,7 +398,7 @@ export function Persona({ onError, menuButton, profiles, models }: {
               <div className="composer persona-composer">
                 <div className="composer-card expanded" onClick={(e) => { if (e.target === e.currentTarget) (e.currentTarget.querySelector("textarea") as HTMLTextAreaElement | null)?.focus(); }}>
                   <textarea id="persona-desc" aria-labelledby="persona-look" rows={2} maxLength={1000} value={draft.description ?? ""} disabled={busy} onChange={set("description")}
-                    placeholder="Long pink hair with a purple wizard hat and a long blue skirt" aria-describedby="persona-desc-note"
+                    placeholder="Long pink hair with a purple wizard hat and a blue skirt"
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); generate(); } }} />
                   <div className="composer-bar">
                     <button type="button" className="round attach" aria-label="Add a reference picture" title="Add a reference picture"
@@ -418,9 +418,6 @@ export function Persona({ onError, menuButton, profiles, models }: {
                   </div>
                 </div>
               </div>
-              <p id="persona-desc-note" className="muted small persona-note-inline">
-                Tip: add a length for the bottom: <b>short</b>, <b>medium</b> or <b>long</b>.
-              </p>
               {error && (
                 <div className="persona-error" role="alert">
                   <p>Couldn't draw the outfit: {error}. Try again, or pick another model.</p>
