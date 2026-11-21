@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 
 from simp_agent.coding import SANDBOX_HINT
 from simp_server import workspace
-from simp_server.sandboxes import Compute, SandboxLimit, valid_id
+from simp_server.sandboxes import Compute, toolset, SandboxLimit, valid_id
 from simp_server.sandboxes.docker import S3FS
 from simp_server.sandboxes.repos import mirror_locked, remirror_if_failed, restore_repos
 
@@ -317,7 +317,8 @@ class E2BSandbox:
         self.template = s.get("template", "simp-sandbox")
         # egress: "allowlist" (default) = only `egress_allow` + the workspace endpoint; "open" = no filter (dev)
         self.egress, self.egress_allow = s.get("egress", "allowlist"), list(s.get("egress_allow", []))
-        self.prompt_hint = SANDBOX_HINT if self.egress == "open" else f"{SANDBOX_HINT} {NO_NET}"
+        fixed = f"{toolset.prompt_list(bool(s.get('office')))} Libraries are fixed: do not install packages."
+        self.prompt_hint = " ".join([SANDBOX_HINT, fixed, *([] if self.egress == "open" else [NO_NET])])
         self.tag = s.get("tag", "simp")  # metadata app=<tag>: which sandboxes this server owns
         self.idle_pause_s, self.max_life_s = s.get("idle_pause_s", 600), s.get("max_life_s", 3300)
         self.snapshot_every_s = s.get("snapshot_every_s", 900)

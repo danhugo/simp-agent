@@ -148,3 +148,22 @@ async def test_live_egress_allowlist(tmp_path):
     finally:
         for i in await sb.list_all():
             await sb._sdk.kill(i["id"], api_key=KEY)
+
+
+async def test_live_template_toolset(tmp_path):
+    """The template's libraries import; user cannot change /opt/simp or install packages (no index route)."""
+    settings = {"data_dir": str(tmp_path), "sandbox": {"kind": "e2b", "tag": f"simp-live-{uuid.uuid4().hex[:8]}",
+                                                        "provider_timeout_s": 300,
+                                                        "template": os.environ.get("SIMP_E2B_TEMPLATE", "simp-sandbox")}}
+    sb = NoMountE2BSandbox(settings)
+    sb.keys = {"E2B_API_KEY": KEY}
+    try:
+        env = await sb.open("s1", "u1")
+        assert (await env.exec("python -c 'import pandas, docx, pptx, openpyxl, pdfplumber, matplotlib'", ".", 120, ev()))[0] == 0
+        assert (await env.exec("touch /opt/simp/x", ".", 30, ev()))[0] != 0
+        assert "vie" in (await env.exec("tesseract --list-langs", ".", 30, ev()))[1]
+        assert (await env.exec("pip install --target /work/x six", ".", 60, ev()))[0] != 0
+        assert (await env.exec("pip install six", ".", 60, ev()))[0] != 0
+    finally:
+        for i in await sb.list_all():
+            await sb._sdk.kill(i["id"], api_key=KEY)
