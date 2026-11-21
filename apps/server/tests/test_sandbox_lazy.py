@@ -75,7 +75,7 @@ async def test_open_and_file_ops_start_nothing(tmp_path, fake_docker):
     assert len(runs(calls)) == 1 and "simp-u-u1" in runs(calls)[0] and "simp-home-u1:/home/user" in runs(calls)[0]
 
 
-async def test_chat_only_session_starts_no_container(tmp_path, fake_docker):
+async def test_chat_only_session_starts_no_container(tmp_path, fake_docker, ask_all):
     calls, _ = fake_docker
     (tmp_path / "settings.toml").write_text('[plugins]\nsandbox = "simp_server.sandboxes.docker:DockerSandbox"\n'
                                             '[profiles.test]\napi = "fake"\nmodel = "m"\n')

@@ -145,7 +145,8 @@ async def test_e2b_warn_note_once(cloud):  # noqa: F811
     assert not env.box.ro
 
 
-async def test_e2b_kill_of_full_box_remounts_writable_for_last_snapshot(cloud):  # noqa: F811
+async def test_e2b_kill_of_full_box_remounts_writable_for_last_snapshot(cloud, monkeypatch):  # noqa: F811
+    monkeypatch.setattr("simp_server.sandboxes.e2b.HOME_DIRS", ".data")  # a home dir to pack (none by default)
     sb = make(cloud)
     sb.quota, sb.store = FakeQuota(), RoStore()
     sb.quota.u = {"used": 99, "quota": 100, "state": "full"}

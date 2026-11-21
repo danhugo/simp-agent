@@ -95,6 +95,7 @@ class AgentSession:
                            after_tool_call=self._after_tool_call)
         # approval policy: approve(call) -> "allow" | "deny" | "always" (sync or async). None = allow everything.
         self.approve, self.needs_approval, self.always_allowed = approve, {"bash", "write", "edit"}, set()
+        self.must_ask: Callable[[ai.ToolCall], bool] | None = None  # app rule: this call is asked even after "always"
         self.agent.subscribe(self._on_agent_event)
         self._subs = list()
         self._abort = asyncio.Event()
@@ -202,7 +203,9 @@ class AgentSession:
                 return f"blocked by plugin {plugin_name(p)}: {r['block']}"
             if "args" in r:
                 call.arguments = r["args"]
-        if self.approve is None or call.name not in self.needs_approval or call.name in self.always_allowed:
+        if self.approve is None or call.name not in self.needs_approval:
+            return None
+        if call.name in self.always_allowed and not (self.must_ask and self.must_ask(call)):
             return None
         ask = asyncio.ensure_future(_maybe_await(self.approve(call)))
         stop = asyncio.ensure_future(ctx.cancel.wait())

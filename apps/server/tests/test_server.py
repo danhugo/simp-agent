@@ -108,7 +108,7 @@ async def test_mid_delta_reconnect_snapshot(env):
     assert q.get_nowait() == {"type": "text_delta", "msg_id": snap["in_flight"]["msg_id"], "offset": 6, "delta": "world"}
 
 
-async def test_approve_then_abort(env):
+async def test_approve_then_abort(env, ask_all):
     _, _, _, _, run = await env(FakeProvider(bash("c1", "echo one"), bash("c2", "echo two"), reply()))
     _, q = run.subscribe(0)
     await run.command(p.Prompt(text="go"))
@@ -196,7 +196,7 @@ async def test_http_auth_host_and_files(env):
         assert (await c.get("/api/sessions/nope/files", headers=auth)).status_code == 404
 
 
-async def test_run_through_docker_sandbox_and_close_on_shutdown(tmp_path):
+async def test_run_through_docker_sandbox_and_close_on_shutdown(tmp_path, ask_all):
     import shutil
     import subprocess
 
@@ -346,7 +346,7 @@ def test_empty_key_ignored(tmp_path, monkeypatch):
     assert r.secrets == [] and r.mask("text") == "text"
 
 
-async def test_restart_with_pending_approval(tmp_path):
+async def test_restart_with_pending_approval(tmp_path, ask_all):
     (tmp_path / "settings.toml").write_text('[profiles.test]\napi = "fake"\nmodel = "m"\n')
     settings = load_settings(tmp_path)
     app = create_app(settings, FakeProvider(bash("c1", "echo hi")))
@@ -377,7 +377,7 @@ async def test_restart_with_pending_approval(tmp_path):
         await mgr2.store.close()
 
 
-async def test_continue_after_restart_mid_approval(tmp_path):
+async def test_continue_after_restart_mid_approval(tmp_path, ask_all):
     (tmp_path / "settings.toml").write_text('[profiles.test]\napi = "fake"\nmodel = "m"\n')
     settings = load_settings(tmp_path)
     app = create_app(settings, FakeProvider(bash("c1", "echo hi")))
@@ -802,3 +802,26 @@ async def test_office_render(env, tmp_path):
                 await api.put(f"/api/sessions/{run.sid}/files/raw?path=real.docx", content=doc.read_bytes(), headers=h)
                 r = await prev.get(path + "real.docx?render=html")
                 assert r.status_code == 200 and b"<" in r.content
+
+
+async def test_policy_safe_bash_runs_without_asking(env):
+    _, _, _, _, run = await env(FakeProvider(bash("c1", "echo one"), reply()))
+    _, q = run.subscribe(0)
+    await run.command(p.Prompt(text="go"))
+    await wait_for(lambda: run.state == "idle" and run.task.done())
+    evs = [e for e in drain(q) if "seq" in e]
+    assert not [e for e in evs if e["type"] == "approval_request"]
+    assert any(e["type"] == "tool_result" and "one" in e["content"] for e in evs)
+
+
+async def test_policy_asks_for_push_and_denies_install_with_reason(env):
+    _, _, _, _, run = await env(FakeProvider(bash("c1", "pip install six"), bash("c2", "git push"), reply()))
+    _, q = run.subscribe(0)
+    await run.command(p.Prompt(text="go"))
+    await wait_for(lambda: run.pending and run.pending.call_id == "c2")
+    await run.command(p.Approve(call_id="c2", decision="deny"))
+    await wait_for(lambda: run.state == "idle" and run.task.done())
+    evs = [e for e in drain(q) if "seq" in e]
+    assert [e["call_id"] for e in evs if e["type"] == "approval_request"] == ["c2"]
+    denied = next(e for e in evs if e["type"] == "tool_result" and e.get("call_id", e.get("tool_call_id")) == "c1")
+    assert "libraries are fixed" in denied["content"]

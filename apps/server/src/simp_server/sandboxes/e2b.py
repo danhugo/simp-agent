@@ -320,7 +320,8 @@ class E2BSandbox:
         self.template = s.get("template", "simp-sandbox")
         # egress: "allowlist" (default) = only `egress_allow` + the workspace endpoint; "open" = no filter (dev)
         self.egress, self.egress_allow = s.get("egress", "allowlist"), list(s.get("egress_allow", []))
-        fixed = f"{toolset.prompt_list(bool(s.get('office')))} Libraries are fixed: do not install packages."
+        self.toolset_line = toolset.prompt_list(bool(s.get("office")))  # named in policy deny reasons
+        fixed = f"{self.toolset_line} Libraries are fixed: do not install packages."
         self.prompt_hint = " ".join([SANDBOX_HINT, fixed, *([] if self.egress == "open" else [NO_NET])])
         self.tag = s.get("tag", "simp")  # metadata app=<tag>: which sandboxes this server owns
         self.idle_pause_s, self.max_life_s = s.get("idle_pause_s", 600), s.get("max_life_s", 3300)
