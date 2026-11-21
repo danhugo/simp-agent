@@ -268,11 +268,13 @@ export function Persona({ onError, menuButton, profiles, models }: {
     const todo = only ? [only] : SLOTS.map((s) => s.slot).filter((x) => picked.includes(x));
     setSteps((x) => ({ ...x, ...Object.fromEntries(todo.map((s) => [s, { state: "waiting" } as Step])) }));
     try {
-      let hatCode = only && only !== "hat" ? draft.hat ?? "" : "";
-      for (const slot of todo) {  // one after the other: the bottom sees the hat, to match it
-        // the bottom and the face see the hat, to match its colors
-        const code = await design(slot, slot !== "hat" ? hatCode : only === "hat" ? draft.bottom ?? "" : "", ctl.signal);
-        if (slot === "hat") hatCode = code;
+      // one after the other (top, bottom, face): each piece sees the 3D pieces already there (drawn in this run, or
+      // kept from before), so the bottom matches the top and the face knows what the top and bottom drew
+      const have: Partial<Record<PSlot, string>> = { hat: todo.includes("hat") ? "" : draft.hat ?? "", bottom: todo.includes("bottom") ? "" : draft.bottom ?? "" };
+      for (const slot of todo) {
+        const other = (["hat", "bottom"] as const).filter((k) => k !== slot && have[k])
+          .map((k) => `// the ${k === "hat" ? "top" : "bottom"}:\n${have[k]}`).join("\n\n");
+        have[slot] = await design(slot, other, ctl.signal);
       }
     } catch (e) {
       if (ctl.signal.aborted) {  // stopped by the user: slots not finished go back to how they were, no error shown

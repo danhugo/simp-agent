@@ -154,7 +154,7 @@ class PersonaGen(BaseModel):
     description: str = Field(min_length=1, max_length=1000)
     profile: str
     slot: str = Field(pattern="^(hat|bottom|face)$")
-    other: str = Field("", max_length=8000)  # the slot already designed, for matching style
+    other: str = Field("", max_length=16000)  # the pieces already designed (top and/or bottom), for matching style
     code: str = Field("", max_length=8000)   # with error: the code that failed a check, to be fixed
     error: str = Field("", max_length=2000)
     # a reference picture from the user, shrunk by the app: data:image/(png|jpeg|webp);base64,...
