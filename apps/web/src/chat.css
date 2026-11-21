@@ -430,3 +430,11 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .composer-card.expanded .attached li.pic { padding: 0; border: 0; background: none; overflow: visible; max-width: none; }
 .composer-card .attached li.pic img { width: 88px; height: 88px; object-fit: cover; border-radius: 12px; border: 1px solid var(--border); display: block; }
 .composer-card .attached li.pic .remove { position: absolute; top: -6px; right: -6px; background: var(--bg); border: 1px solid var(--border); }
+
+/* files sent with a user message: pictures as thumbnails, other files as chips; a click previews */
+.msg.user .sent-files { list-style: none; margin: 0 0 var(--sp-2); padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: flex-end; }
+.msg.user .sent-files button { padding: 0; border-radius: 12px; overflow: hidden; }
+.msg.user .sent-files button.pic img { width: 160px; max-height: 160px; object-fit: cover; display: block; border-radius: 12px; border: 1px solid var(--border); }
+.msg.user .sent-files button.doc { display: inline-flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--panel); border: 1px solid var(--border); font-size: var(--fs-sm); max-width: 260px; }
+.msg.user .sent-files button.doc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg.user .sent-files .sent-pic-wait { display: grid; place-items: center; width: 160px; height: 100px; font-size: var(--fs-xs); color: var(--muted); background: var(--panel); }

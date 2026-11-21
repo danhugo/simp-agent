@@ -181,7 +181,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
         <div className="messages" ref={log} onScroll={onScroll} role="log" aria-live="polite" aria-label="Conversation">
           <div className="thread">
             {state.items.map((it) =>
-              it.kind === "user" ? <div key={it.seq} className="msg user"><Md text={it.text} /></div>
+              it.kind === "user" ? <UserMsg key={it.seq} text={it.text} sid={sid} onPreview={onPreviewFile} onError={onError} />
               : it.kind === "notice" ? (it.text === "run aborted" ? null  // shown as "Stopped" under the answer
                 : <div key={it.seq} className={`notice ${it.level}`}>{it.text}</div>)
               : absorbed.has(it.seq) ? null  // its tool calls are shown in the group above
@@ -207,7 +207,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
                 </div>
               ))}
             {/* aria-live off + aria-busy: don't announce every streamed token; the finished message is announced once */}
-            {firstPrompt && !state.items.some((i) => i.kind === "user") && <div className="msg user">{firstPrompt}</div>}
+            {firstPrompt && !state.items.some((i) => i.kind === "user") && <UserMsg text={firstPrompt} sid={sid} onError={onError} plain />}
             {(f.text || (f.thinking && !liveTurnHasItems)) && (
               <div className="msg assistant streaming" aria-live="off" aria-busy="true">
                 {!liveTurnHasItems && turnThinking(turn, true)}
@@ -385,6 +385,43 @@ export async function downloadFile(sid: string, path: string) {
   const url = URL.createObjectURL(await api.download(sid, path));
   Object.assign(document.createElement("a"), { href: url, download: path.split("/").pop() || path }).click();
   URL.revokeObjectURL(url);
+}
+
+const ATTACHED = /\s*\[Attached files in the workspace: ([^\]]+)\]\s*$/;
+const isPic = (n: string) => /\.(png|jpe?g|webp|gif)$/i.test(n);
+
+/** A user's message: its text, and the files sent with it as cards (pictures as thumbnails); a click previews. */
+function UserMsg({ text, sid, onPreview, onError, plain }: { text: string; sid: string; onPreview?: (p: string) => void; onError: (e: unknown) => void; plain?: boolean }) {
+  const m = text.match(ATTACHED), body = m ? text.slice(0, m.index) : text;
+  const files = m ? m[1].split(", ").filter(Boolean) : [];
+  return (
+    <div className="msg user">
+      {files.length > 0 && (
+        <ul className="sent-files" aria-label="Sent files">
+          {files.map((f) => (
+            <li key={f}>
+              <button type="button" className={`ghost ${isPic(f) ? "pic" : "doc"}`} title={f} aria-label={`Preview ${f}`}
+                disabled={!onPreview} onClick={() => onPreview?.(f)}>
+                {isPic(f) ? <SentPic path={f} sid={sid} onError={onError} /> : <><IconFile size={16} /><span>{f}</span></>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {body && (plain ? body : <Md text={body} />)}
+    </div>
+  );
+}
+
+/** a sent picture, loaded from the workspace (the files API needs the auth header, so through a blob URL) */
+function SentPic({ path, sid, onError }: { path: string; sid: string; onError: (e: unknown) => void }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let u = "", live = true;
+    api.download(sid, path).then((b) => { u = URL.createObjectURL(b); if (live) setUrl(u); }).catch(() => { /* gone: show the name */ });
+    return () => { live = false; if (u) URL.revokeObjectURL(u); };
+  }, [sid, path]);
+  return url ? <img src={url} alt={path} /> : <span className="sent-pic-wait">{path}</span>;
 }
 
 function FileCard({ path, sid, onOpen, onPreview, onError }: { path: string; sid: string; onOpen?: (p: string) => void; onPreview?: (p: string) => void; onError: (e: unknown) => void }) {
