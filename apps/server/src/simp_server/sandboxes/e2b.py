@@ -93,7 +93,9 @@ async def _run(sbx, command: str, cwd: str, timeout, cancel, on_output=None, use
     # e.g. Netskope), so the timeout clock starts before commands.run and the kill must not need the stream.
     pidfile = f"/tmp/.simp-{uuid.uuid4().hex}.pid"
     marker = pidfile[:-4] + ".started"  # kept after the command ends: proves it began (ponytail: 0-byte files in /tmp)
-    wrapped = (f"setsid -w sh -c 'touch {marker} || exit 97; echo $$ > {pidfile}; echo $$; exec sh -c \"$0\" 2>&1' "
+    # E2B ignores template envs at run time and resets PATH even when passed as envs, so export inside the command
+    exports = " ".join(f"{k}={v}" for k, v in toolset.RUN_ENV.items())  # plain values: inside single quotes
+    wrapped = (f"setsid -w sh -c 'touch {marker} || exit 97; export {exports}; echo $$ > {pidfile}; echo $$; exec sh -c \"$0\" 2>&1' "
                + shlex.quote(command)
                + f"; c=$?; rm -f {pidfile}; exit $c")
 
