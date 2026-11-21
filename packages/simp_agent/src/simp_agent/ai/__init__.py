@@ -36,6 +36,7 @@ class ToolCall:
 class UserMessage:
     content: str
     role: Literal["user"] = "user"
+    images: list[str] = field(default_factory=list)  # data URLs (data:image/png;base64,...) sent with the text
 
 
 @dataclass

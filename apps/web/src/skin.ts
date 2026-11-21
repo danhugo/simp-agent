@@ -7,7 +7,7 @@
 export type Part = [number, string] | null;
 export type Box = { lo: number[]; hi: number[] };
 /** An outfit; `boxes` (head space) hold all of it, one per slot, so the renderer marches only where a ray is inside one. */
-export type Wear = ((p: number[]) => Part) & { boxes?: Box[]; grid?: number[] };
+export type Wear = ((p: number[]) => Part) & { boxes?: Box[]; grid?: number[]; solid?: { lo: number[]; n: number[]; dist: Float32Array } };
 type V = number[];
 
 const len = (x: number, y: number, z: number) => Math.hypot(x, y, z);
@@ -33,6 +33,18 @@ export const H = {
   torus: (p: V, c: V, R: number, r: number) => {
     const q = sub(p, c);
     return Math.hypot(Math.hypot(q[0], q[2]) - R, q[1]) - r;
+  },
+  /** a tapered lock of hair (or spike, horn): from root a (thickness r) to the pointed tip b, bent toward m if given */
+  lock: (p: V, a: V, b: V, r: number, m?: V) => {
+    const mid = m ?? a.map((v, k) => (v + b[k]) / 2), at = (t: number) => a.map((v, k) => (1 - t) ** 2 * v + 2 * (1 - t) * t * mid[k] + t * t * b[k]);
+    let best = 9, prev = at(0);
+    for (let i = 1; i <= 8; i++) {
+      const cur = at(i / 8), d = sub(cur, prev), q = sub(p, prev), L = d[0] ** 2 + d[1] ** 2 + d[2] ** 2 || 1;
+      const h = Math.max(0, Math.min(1, (q[0] * d[0] + q[1] * d[1] + q[2] * d[2]) / L));
+      best = Math.min(best, len(q[0] - d[0] * h, q[1] - d[1] * h, q[2] - d[2] * h) - r * (1 - (i - 1 + h) / 8));
+      prev = cur;
+    }
+    return best;
   },
   shell: (d: number, t: number) => Math.abs(d) - t,
   tilt: (p: V, c: V, ax: "x" | "y" | "z", deg: number) => {
@@ -96,7 +108,7 @@ export function compileSkin(code: string, slot?: Slot): Wear {
     inside++; colors.add(out[1].toLowerCase());
     p.forEach((v, k) => { lo[k] = Math.min(lo[k], v); hi[k] = Math.max(hi[k], v); });
     if (Math.hypot(p[0], p[1], p[2]) < 1.2) touches = true;
-    if ((slot === "hat" && p[1] < 0.4) || (slot === "bottom" && p[1] > -0.15)) misplaced++;
+    if ((slot === "hat" && (p[1] < -1.5 || (p[1] < 0.3 && p[2] > 0.3 && Math.abs(p[0]) < 0.75))) || (slot === "bottom" && p[1] > -0.15)) misplaced++;
   }
   const ms = performance.now() - t0;
   if (ms > 160) throw new Error(`too slow: ${N} calls took ${ms.toFixed(0)} ms (budget 160 ms); simplify the code`);
@@ -109,9 +121,15 @@ export function compileSkin(code: string, slot?: Slot): Wear {
     const out = wear([x, 0.02, 1.0]);
     if (out && out[0] < 0) throw new Error(`it covers the eyes: point [${x}, 0.02, 1.0] is inside the ${out[1]} part; keep the face (front, y between -0.45 and 0.5) clear. ${seen}`);
   }
+  // the whole face (eyes, brows, cheeks), just in front of the sphere: a stray lock or a high collar hides it
+  for (let lat = -20; lat <= 12; lat += 4) for (let lon = -32; lon <= 32; lon += 4) {
+    const a = (lon * Math.PI) / 180, b = (lat * Math.PI) / 180, q = [1.04 * Math.cos(b) * Math.sin(a), 1.04 * Math.sin(b), 1.04 * Math.cos(b) * Math.cos(a)];
+    const out = wear(q);
+    if (out && out[0] < 0) throw new Error(`it covers the face: point [${q.map((v) => v.toFixed(2)).join(", ")}] in front of the face is inside the ${out[1]} part. The face (front, |x| < 0.7, y from -0.4 to 0.3) must stay fully clear: bangs end above y = 0.35, side hair hangs at |x| > 0.8, a bottom starts below y = -0.5. ${seen}`);
+  }
   if (slot && !touches) throw new Error(`it floats: no part touches the head (sphere of radius 1). ${seen}`);
   if (slot && misplaced / inside > 0.08) throw new Error(slot === "hat"
-    ? `${Math.round((misplaced / inside) * 100)}% of the hat is below y = 0.4, over the face; a hat stays above y = 0.55 (use H.above). ${seen}`
+    ? `${Math.round((misplaced / inside) * 100)}% of the hat/hair is over the face (front, |x| < 0.75, below y = 0.3) or below y = -1.5; bangs end above y = 0.35, long hair falls down the sides (|x| > 0.8) and the back. ${seen}`
     : `${Math.round((misplaced / inside) * 100)}% of the bottom is above y = -0.15, over the face; it stays below y = -0.3 (use H.below). ${seen}`);
   // sampled extent, padded by a few sample spacings so thin edges between samples stay inside
   const blo = lo.map((v) => v - 0.2), bhi = hi.map((v) => v + 0.2);
@@ -139,7 +157,36 @@ export function compileSkin(code: string, slot?: Slot): Wear {
 }
 
 /** One slot's code as a standalone object: checked, then baked into its own grid. Throws like compileSkin. */
-export const item = (code: string, slot: Slot): Wear => bake(compileSkin(code, slot));
+export const item = (code: string, slot: Slot): Wear => attached(bake(compileSkin(code, slot)));
+
+/** every part must hang together with the rest and the head: a piece floating on its own (a pom-pom, a ring) is an error */
+function attached(w: Wear): Wear {
+  const { lo, n, dist } = w.solid!, [nx, ny, nz] = n, N = nx * ny * nz, seen = new Uint8Array(N), stack: number[] = [];
+  let inside = 0;
+  for (let a = 0; a < N; a++) {
+    if (dist[a] >= 0) continue;
+    inside++;
+    const i = Math.floor(a / (ny * nz)), j = Math.floor(a / nz) % ny, k = a % nz;
+    const x = lo[0] + i * CELL, y = lo[1] + j * CELL, z = lo[2] + k * CELL;
+    if (Math.hypot(x, y, z) < 1.1) { seen[a] = 1; stack.push(a); }  // touches the head
+  }
+  while (stack.length) {
+    const a = stack.pop()!, i = Math.floor(a / (ny * nz)), j = Math.floor(a / nz) % ny, k = a % nz;
+    for (const [di, dj, dk] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+      const I = i + di, J = j + dj, K = k + dk;
+      if (I < 0 || J < 0 || K < 0 || I >= nx || J >= ny || K >= nz) continue;
+      const b = (I * ny + J) * nz + K;
+      if (!seen[b] && dist[b] < 0) { seen[b] = 1; stack.push(b); }
+    }
+  }
+  let loose = 0, at: number[] | null = null;
+  for (let a = 0; a < N; a++) if (dist[a] < 0 && !seen[a]) {
+    loose++;
+    if (!at) at = [lo[0] + Math.floor(a / (ny * nz)) * CELL, lo[1] + (Math.floor(a / nz) % ny) * CELL, lo[2] + (a % nz) * CELL];
+  }
+  if (loose > Math.max(8, inside * 0.01)) throw new Error(`a part floats on its own near [${at!.map((v) => v.toFixed(2)).join(", ")}]: every part must touch the rest of the piece (or the head), like a pom-pom sewn onto the hat; move it in or make it bigger so it overlaps`);
+  return w;
+}
 
 /** Assemble: all objects merged into ONE grid (one unified 3D object), built once. Cheap on baked items. */
 export const combine = (ws: (Wear | null)[]): Wear | null => {
@@ -187,6 +234,7 @@ export function bake(w: Wear): Wear {
   };
   baked.boxes = boxes;
   baked.grid = n;
+  baked.solid = { lo, n, dist };
   return baked;
 }
 

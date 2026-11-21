@@ -2,16 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, AuthError, type Outfit, type Persona as P } from "./api";
 import { ModelPicker } from "./App";
 import { errorText } from "./Chat";
-import { IconBookmark, IconBookmarked, IconCheck, IconRedo, IconStop, IconTrash, IconWand, IconX } from "./icons";
+import { IconBookmark, IconBookmarked, IconCheck, IconPlus, IconRedo, IconStop, IconTrash, IconWand, IconX } from "./icons";
 import { Mascot3D, readPal, render, SKIN_VIEW } from "./Mascot3D";
 import { combine, compilePaint, compileSkin, getPaint, getSkin, item, setSkin, type Paint, type Slot, type Wear } from "./skin";
 
 type PSlot = Slot | "face";  // face paint is a slot too, but paint, not a 3D piece
-const SLOTS: { slot: PSlot; label: string }[] = [{ slot: "hat", label: "Hat" }, { slot: "bottom", label: "Bottom" }, { slot: "face", label: "Face" }];
+const SLOTS: { slot: PSlot; label: string }[] = [{ slot: "hat", label: "Top" }, { slot: "bottom", label: "Bottom" }, { slot: "face", label: "Face" }];
 const FIX_TRIES = 3;  // the model gets the check's error (with what it measured) back this many times
 const IDEAS = ["a grumpy pirate", "a sleepy wizard", "a cheerful chef", "a cowboy"];
 
 type Step = { state: "waiting" | "designing" | "checking" | "fixing" | "done" | "failed"; note?: string; tries?: number };
+
+/** a picture shrunk to fit in 512px, as a JPEG data URL (small enough to send to the model) */
+async function shrink(file: File): Promise<string> {
+  const img = await createImageBitmap(file), k = Math.min(1, 512 / Math.max(img.width, img.height));
+  const cv = document.createElement("canvas"); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+  const ctx = cv.getContext("2d")!; ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height); ctx.drawImage(img, 0, 0, cv.width, cv.height);
+  return cv.toDataURL("image/jpeg", 0.85);
+}
 
 /** A slot's code as a standalone object (checked + baked into its own grid), or its error. */
 function tryCompile(code: string | undefined, slot: Slot): { wear: Wear | null; err: string } {
@@ -23,7 +31,7 @@ function tryPaint(code: string | undefined): { paint: Paint | null; err: string 
   try { return { paint: compilePaint(code), err: "" }; } catch (e) { return { paint: null, err: (e as Error).message }; }
 }
 const check = (code: string, slot: PSlot) => {
-  try { if (slot === "face") compilePaint(code); else compileSkin(code, slot); return ""; } catch (e) { return (e as Error).message; }
+  try { if (slot === "face") compilePaint(code); else item(code, slot); return ""; } catch (e) { return (e as Error).message; }
 };
 
 /** value, but only after it stopped changing for ms (hand edits in a code box rebake once, not per keystroke) */
@@ -44,8 +52,8 @@ function framing(wear: Wear): { view: number; cy: number } {
   return { cy: (lo[1] + hi[1]) / 2, view: Math.max(0.35, Math.min(2, Math.max(w, h) * 1.08)) };  // w: the farthest it reaches while turning
 }
 const MAX_OUTFITS = 10;  // per kind (outfits, hats, bottoms); matches the server
-const KINDS = [["all", "All"], ["outfit", "Outfits"], ["hat", "Hats"], ["bottom", "Bottoms"], ["face", "Faces"]] as const;
-const NOUN: Record<PSlot, string> = { hat: "hat", bottom: "bottom", face: "face paint" };
+const KINDS = [["all", "All"], ["outfit", "Outfits"], ["hat", "Tops"], ["bottom", "Bottoms"], ["face", "Faces"]] as const;
+const NOUN: Record<PSlot, string> = { hat: "top", bottom: "bottom", face: "face paint" };
 /** faint outline of what goes in an empty slot */
 function SlotShape({ slot, size = 48 }: { slot: PSlot; size?: number }) {
   return (
@@ -56,7 +64,7 @@ function SlotShape({ slot, size = 48 }: { slot: PSlot; size?: number }) {
     </svg>
   );
 }
-const KIND_ONE: Record<Outfit["kind"], string> = { outfit: "Outfit", hat: "Hat", bottom: "Bottom", face: "Face paint" };
+const KIND_ONE: Record<Outfit["kind"], string> = { outfit: "Outfit", hat: "Top", bottom: "Bottom", face: "Face paint" };
 const sameAs = (o: Outfit, d: P) => o.kind === "outfit"
   ? o.hat === (d.hat ?? "") && o.bottom === (d.bottom ?? "") && (o.face ?? "") === (d.face ?? "")
   : (o[o.kind] ?? "") === (d[o.kind] ?? "");
@@ -209,7 +217,7 @@ export function Persona({ onError, menuButton, profiles, models }: {
     try {
       const base = draft.name || draft.description?.slice(0, 30) || "Outfit";
       const one = (s: PSlot) => (k === "outfit" || k === s ? draft[s] ?? "" : "");
-      const o = { kind: k, name: k === "outfit" ? base.slice(0, 40) : `${base.slice(0, 30)} ${k === "face" ? "face" : k}`,
+      const o = { kind: k, name: k === "outfit" ? base.slice(0, 40) : `${base.slice(0, 30)} ${k === "hat" ? "top" : k}`,
         description: draft.description ?? "", hat: one("hat"), bottom: one("bottom"), face: one("face") };
       const { id } = await api.addOutfit(o);
       setOutfits((xs) => [{ ...o, id, created: Date.now() / 1000 }, ...(xs ?? [])]);
@@ -230,13 +238,15 @@ export function Persona({ onError, menuButton, profiles, models }: {
   const setStep = (slot: PSlot, s: Step) => setSteps((x) => ({ ...x, [slot]: s }));
 
   /** Design one slot: ask, check in the page, send problems back, until it passes or tries run out. */
+  const [refImg, setRefImg] = useState("");  // a reference picture for the model (data URL), not saved
+  const imgPicker = useRef<HTMLInputElement>(null);
   const design = async (slot: PSlot, other: string, signal: AbortSignal): Promise<string> => {
-    const description = draft.description!.trim();
+    const description = draft.description?.trim() || "Like the picture.";
     let req: { code?: string; error?: string } = {};
     let last = "";
     for (let i = 0; i <= FIX_TRIES; i++) {
       setStep(slot, { state: i ? "fixing" : "designing", tries: i, note: req.error });
-      const { code } = await api.generatePersona({ description, profile, slot, other, ...req }, signal);
+      const { code } = await api.generatePersona({ description, profile, slot, other, image: refImg || undefined, ...req }, signal);
       if (signal.aborted) throw new DOMException("stopped", "AbortError");
       last = code ?? "";
       setDraft((d) => ({ ...d, [slot]: last }));  // show every attempt in the preview, good or not
@@ -250,7 +260,7 @@ export function Persona({ onError, menuButton, profiles, models }: {
   };
 
   const generate = async (only?: PSlot) => {
-    if (!draft.description?.trim() || !profile) return;
+    if (!(draft.description?.trim() || refImg) || !profile) return;
     setError("");
     abort.current?.abort();
     const ctl = new AbortController();
@@ -388,21 +398,26 @@ export function Persona({ onError, menuButton, profiles, models }: {
               <div className="composer persona-composer">
                 <div className="composer-card expanded" onClick={(e) => { if (e.target === e.currentTarget) (e.currentTarget.querySelector("textarea") as HTMLTextAreaElement | null)?.focus(); }}>
                   <textarea id="persona-desc" aria-labelledby="persona-look" rows={2} maxLength={1000} value={draft.description ?? ""} disabled={busy} onChange={set("description")}
-                    placeholder="A purple pointy wizard hat with yellow stars and a long blue skirt" aria-describedby="persona-desc-note"
+                    placeholder="Long pink hair with a purple wizard hat and a blue skirt"
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); generate(); } }} />
                   <div className="composer-bar">
+                    <button type="button" className="round attach" aria-label="Add a reference picture" title="Add a reference picture"
+                      disabled={busy} onClick={() => imgPicker.current?.click()}><IconPlus size={16} /></button>
+                    <input ref={imgPicker} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={async (e) => {
+                      const f = e.target.files?.[0]; e.target.value = "";
+                      if (f) try { setRefImg(await shrink(f)); } catch { setError("that picture could not be read"); }
+                    }} />
+                    {refImg && <span className="persona-ref"><img src={refImg} alt="Reference picture" />
+                      <button type="button" className="ghost icon" aria-label="Remove the picture" title="Remove" disabled={busy} onClick={() => setRefImg("")}><IconX size={12} /></button></span>}
                     {profiles.length > 0 && <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} />}
                     <span className="spacer" />
                     {busy ? <button className="persona-go stop" aria-label="Stop" title="Stop" onClick={stopNow}><IconStop size={16} /></button>
-                      : <button className="persona-go" disabled={!draft.description?.trim() || !profile} onClick={() => generate()}
+                      : <button className="persona-go" disabled={!(draft.description?.trim() || refImg) || !profile} onClick={() => generate()}
                           aria-label={draft.hat || draft.bottom ? "Redesign outfit" : "Design outfit"} title={`${draft.hat || draft.bottom ? "Redesign outfit" : "Design outfit"} (Enter)`}>
                           <IconWand size={18} /></button>}
                   </div>
                 </div>
               </div>
-              <p id="persona-desc-note" className="muted small persona-note-inline">
-                Tip: add a length for the bottom: <b>short</b>, <b>medium</b> or <b>long</b>.
-              </p>
               {error && (
                 <div className="persona-error" role="alert">
                   <p>Couldn't draw the outfit: {error}. Try again, or pick another model.</p>
@@ -441,7 +456,7 @@ export function Persona({ onError, menuButton, profiles, models }: {
                 )}
               </div>
               {outfits === null ? <p className="muted small">Loading…</p>
-                : outfits.length === 0 ? <p className="muted small">Outfits and pieces you save show up here. Pick a hat from one look and a bottom from another.</p>
+                : outfits.length === 0 ? <p className="muted small">Outfits and pieces you save show up here. Pick a top from one look and a bottom from another.</p>
                 : !outfits.some((o) => kind === "all" || o.kind === kind) ? <p className="muted small">Nothing saved here yet.</p>
                 : <ul className="outfit-grid">
                     {outfits.filter((o) => kind === "all" || o.kind === kind).map((o) => {

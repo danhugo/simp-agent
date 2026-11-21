@@ -122,7 +122,7 @@ export const api = {
   deleteMemory: (id: string) => call(`/api/memories/${id}`, { method: "DELETE" }),
   persona: async (): Promise<Persona> => (await call("/api/persona")).json(),
   savePersona: (p: Persona) => call("/api/persona", { ...json(p), method: "PUT" }),
-  generatePersona: async (b: { description: string; profile: string; slot: "hat" | "bottom" | "face"; other?: string; code?: string; error?: string }, signal?: AbortSignal): Promise<{ code: string }> =>
+  generatePersona: async (b: { description: string; profile: string; slot: "hat" | "bottom" | "face"; other?: string; code?: string; error?: string; image?: string }, signal?: AbortSignal): Promise<{ code: string }> =>
     (await call("/api/persona/generate", { ...json(b), signal })).json(),
   outfits: async (): Promise<Outfit[]> => (await call("/api/outfits")).json(),
   addOutfit: async (o: Omit<Outfit, "id" | "created">): Promise<{ id: string }> => (await call("/api/outfits", json(o))).json(),
