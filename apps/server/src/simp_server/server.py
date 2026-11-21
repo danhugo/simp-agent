@@ -196,7 +196,7 @@ def load_settings(home: Path = HOME) -> dict:
 def take_keys(settings: dict) -> dict:
     """Model keys from <data_dir>/.env and the process env. Removed from os.environ so sandboxed commands never see them."""
     names = ({pr.get("api_key_env") for pr in settings["profiles"].values()} | {"OPENAI_API_KEY", "ANTHROPIC_API_KEY",
-             "SIMP_SECRET_KEY", "E2B_API_KEY", "ADMIN_EMAILS"} | {settings.get("workspace", dict()).get(k, d) for k, d in (
+             "SIMP_SECRET_KEY", "E2B_API_KEY", "TAVILY_API_KEY", "ADMIN_EMAILS"} | {settings.get("workspace", dict()).get(k, d) for k, d in (
              ("access_key_env", "S3_ACCESS_KEY_ID"), ("secret_key_env", "S3_SECRET_ACCESS_KEY"))} | {a.get(k) for a in providers(settings).values() for k in ("client_id_env", "client_secret_env")})
     keys = dict()
     f = Path(settings["data_dir"]) / ".env"
@@ -248,7 +248,7 @@ class Run:
             context_file=False,  # a general agent: no AGENTS.md/CLAUDE.md (reading them woke the sandbox on every first message)
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
-            plugins=[*build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(), Memory(store=DbMemoryStore(
+            plugins=[*build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(mgr.keys.get("TAVILY_API_KEY")), Memory(store=DbMemoryStore(
                 mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), self.mcp, SandboxSync(env)],
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))

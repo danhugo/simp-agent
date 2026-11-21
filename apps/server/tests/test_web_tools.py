@@ -146,3 +146,44 @@ def test_cards_fill_image_and_validate():
     assert sorted(calls) == ["https://a.com", "https://dead.com"]  # given image not refetched
     with pytest.raises(WebError):
         web.do_cards([{"url": "file:///etc/passwd"}], get=get)
+
+
+def fake_post(calls, reply):
+    def post(url, payload, key):
+        calls.append((url, payload, key))
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+    return post
+
+
+def test_tavily_search_maps_results():
+    calls = []
+    post = fake_post(calls, {"results": [{"title": "T", "url": "https://t.com", "content": "snip  pet"}]})
+    out = do_search("q", 3, get=None, key="tv-secret", post=post)
+    assert "1. T\nhttps://t.com\nsnip pet" in out and out.startswith(web.UNTRUSTED)
+    assert calls[0][0] == "https://api.tavily.com/search" and calls[0][1]["max_results"] == 3
+    assert "tv-secret" not in out
+
+
+def test_search_falls_back_to_ddg():
+    get = lambda u: (u, "text/html", DDG.encode())
+    assert "https://example.com/a" in do_search("q", 5, get=get, key=None)  # no key
+    post = fake_post([], WebError("HTTP 500 from tavily"))
+    assert "https://example.com/a" in do_search("q", 5, get=get, key="k", post=post)  # tavily down
+
+
+def test_fetch_falls_back_to_extract_on_403():
+    def get(u):
+        raise WebError(f"HTTP 403 from {u}")
+    calls = []
+    post = fake_post(calls, {"results": [{"url": "https://s.com", "raw_content": "page text"}]})
+    out = do_fetch("https://s.com", get=get, key="k", post=post)
+    assert "page text" in out and calls[0][0] == "https://api.tavily.com/extract"
+    with pytest.raises(WebError):
+        do_fetch("https://s.com", get=get, key=None)
+
+
+def test_fetch_raw_returns_html():
+    out = do_fetch("https://x.com", get=lambda u: (u, "text/html", b"<html><script>api('/r')</script></html>"), raw=True)
+    assert "<script>api('/r')</script>" in out

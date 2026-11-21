@@ -33,6 +33,8 @@ from simp_server.sandboxes.docker import S3FS
 from simp_server.sandboxes.repos import mirror_locked, remirror_if_failed, restore_repos
 
 log = logging.getLogger("simp_server")
+NO_NET = ("The sandbox has no internet. Get web data only with web_search / web_fetch (raw=true for page source). "
+          "If they fail, say so; do not try curl.")
 
 REPOS, MIRRORS, SNAPSHOT = "/home/user/repos", "/work/.simp/repos", "/work/.simp/home.tar.zst"
 SANDBOX_DIRS = ("/work", "/home/user", "/tmp")
@@ -315,6 +317,7 @@ class E2BSandbox:
         self.template = s.get("template", "simp-sandbox")
         # egress: "allowlist" (default) = only `egress_allow` + the workspace endpoint; "open" = no filter (dev)
         self.egress, self.egress_allow = s.get("egress", "allowlist"), list(s.get("egress_allow", []))
+        self.prompt_hint = SANDBOX_HINT if self.egress == "open" else f"{SANDBOX_HINT} {NO_NET}"
         self.tag = s.get("tag", "simp")  # metadata app=<tag>: which sandboxes this server owns
         self.idle_pause_s, self.max_life_s = s.get("idle_pause_s", 600), s.get("max_life_s", 3300)
         self.snapshot_every_s = s.get("snapshot_every_s", 900)

@@ -656,3 +656,8 @@ async def test_egress_open_setting(cloud):
     sb = make(cloud, egress="open")
     await go(await sb.open("s1", "u1"))
     assert cloud.network is None
+
+
+def test_prompt_hint_says_no_internet(cloud):
+    assert "no internet" in make(cloud).prompt_hint and "web_fetch" in make(cloud).prompt_hint
+    assert "no internet" not in make(cloud, egress="open").prompt_hint
