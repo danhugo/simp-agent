@@ -3,8 +3,8 @@ shared by the user's sessions. `[sandbox] kind = "e2b"`, needs `[workspace] stor
 
 - /work is an s3fs mount of the user's bucket prefix (scoped credential from the store); every file op and command
   runs in the sandbox (one writer). The Files panel goes to the store, never here.
-- /home/user (repos, libraries) is the sandbox's disk: packed to /work/.simp/home.tar.zst at pause, every
-  `snapshot_every_s` and before kill, unpacked at create. Repos are also mirrored after each tool call (repos.py).
+- /home/user is the sandbox's disk. Libraries are fixed in the template, so no home dir is packed (HOME_DIRS empty;
+  old library snapshots are deleted at create). Repos are also mirrored after each tool call (repos.py).
 - Lifecycle: create (mount, restore home, restore repos) -> running -> idle `idle_pause_s` -> snapshot, pause ->
   next tool call -> resume, check mount, remount if dead. At `max_life_s` from create (Hobby: 1 h continuous cap) a
   sandbox with no foreground call running is snapshotted, synced, unmounted and killed; the next call creates a fresh
@@ -40,7 +40,8 @@ REPOS, MIRRORS, SNAPSHOT = "/home/user/repos", "/work/.simp/repos", "/work/.simp
 SANDBOX_DIRS = ("/work", "/home/user", "/tmp")
 # Libraries only. Never repos/ (review C2): the repo mirror is their one source of truth; an older snapshot restored
 # over them would roll them back and the next mirror would force-push the rollback.
-HOME_DIRS = ".local .npm-global .venvs"
+# Libraries are fixed in the template (toolset.py), so nothing in home is packed today; kept for future home dirs.
+HOME_DIRS = ""
 
 # $1 cap in bytes. Over the cap there is no new snapshot (libraries reinstall from manifests).
 SNAPSHOT_SH = f"""cd /home/user || exit 0; d=$(ls -d {HOME_DIRS} 2>/dev/null); [ -n "$d" ] || exit 0
@@ -48,7 +49,9 @@ mkdir -p /work/.simp && tar -cf - $d 2>/dev/null | zstd -q -f -o /tmp/home.tar.z
 if [ "$(stat -c %s /tmp/home.tar.zst)" -gt "$1" ]; then rm -f /tmp/home.tar.zst; echo "home snapshot over the cap: skipped"; exit 0; fi
 cp /tmp/home.tar.zst {SNAPSHOT}.tmp && mv -f {SNAPSHOT}.tmp {SNAPSHOT} && rm -f /tmp/home.tar.zst && sync"""
 # old snapshots may still hold repos/: never unpack them
-RESTORE_SH = f"[ -f {SNAPSHOT} ] || exit 0; zstd -dc {SNAPSHOT} | tar -C /home/user -xf - --anchored --exclude=repos --exclude=./repos"
+# old snapshots held user-installed libraries: drop them (they count toward the workspace quota) instead of unpacking
+RESTORE_SH = (f"rm -f {SNAPSHOT} {SNAPSHOT}.tmp" if not HOME_DIRS else
+              f"[ -f {SNAPSHOT} ] || exit 0; zstd -dc {SNAPSHOT} | tar -C /home/user -xf - --anchored --exclude=repos --exclude=./repos")
 SUDO_CHECK = "sudo -n true 2>/dev/null && echo SIMP_SUDO_OK; true"  # the template must not give `user` root
 DENIED = ("Transport endpoint is not connected", "AccessDenied", "403 Forbidden")
 CREDS_MARGIN_S = 300
@@ -474,7 +477,10 @@ class E2BSandbox:
         return ""
 
     async def snapshot(self, box: _Box) -> None:
-        """Home (repos, libraries) -> /work/.simp/home.tar.zst. Never raises."""
+        """Home dirs (HOME_DIRS) -> /work/.simp/home.tar.zst. Never raises. No dirs: nothing to do."""
+        box.snap_at = time.monotonic()
+        if not HOME_DIRS:
+            return
         try:
             code, out = await box.exec(f"sh -c {shlex.quote(SNAPSHOT_SH)} sh {self.snapshot_max_bytes}", "/home/user",
                                        900, asyncio.Event())

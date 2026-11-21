@@ -217,7 +217,8 @@ async def test_lazy_create_mount_restore_and_file_ops(cloud):
     assert len(cloud.kinds("create")) == 1  # sessions of a user share one sandbox
 
 
-async def test_idle_pause_then_resume_remounts_when_mount_is_dead(cloud):
+async def test_idle_pause_then_resume_remounts_when_mount_is_dead(cloud, monkeypatch):
+    monkeypatch.setattr("simp_server.sandboxes.e2b.HOME_DIRS", ".data")  # a home dir to pack (none by default)
     sb = make(cloud, idle_pause_s=600)
     env = await sb.open("s1", "u1")
     await go(env)
@@ -265,7 +266,8 @@ async def test_max_life_kill_waits_for_foreground_call(cloud):
     assert len(cloud.kinds("create")) == 2
 
 
-async def test_snapshot_schedule(cloud):
+async def test_snapshot_schedule(cloud, monkeypatch):
+    monkeypatch.setattr("simp_server.sandboxes.e2b.HOME_DIRS", ".data")
     sb = make(cloud, snapshot_every_s=900, idle_pause_s=10_000)
     env = await sb.open("s1", "u1")
     await go(env)
@@ -395,12 +397,9 @@ async def test_home_snapshot_never_holds_repos(cloud):
     sb = make(cloud, idle_pause_s=1)
     env = await sb.open("s1", "u1")
     await go(env)
-    restore = cloud.runs("zstd -dc")[0]
-    assert "--exclude=repos" in restore and "--anchored" in restore
+    assert not cloud.runs("zstd -dc")  # nothing is unpacked into home any more
     await sb.stop_idle(now=env.box.last + 10)
-    snap = [r for r in cloud.runs() if "zstd -q -f" in r][0]
-    assert "repos" not in snap.split("ls -d", 1)[1].split(")")[0]
-    assert "tar -cf - repos" not in snap
+    assert not [r for r in cloud.runs() if "tar -cf" in r]
 
 
 async def test_pause_waits_and_aborts_for_a_call_that_started(cloud):
@@ -668,3 +667,16 @@ def test_prompt_hint_lists_tools(cloud):
     h = make(cloud).prompt_hint
     assert toolset.prompt_list(False) in h and "Libraries are fixed: do not install packages" in h and "/opt" not in h
     assert "LibreOffice" in make(cloud, office=True).prompt_hint
+
+
+async def test_home_snapshot_carries_no_libraries(cloud):
+    """Libraries are fixed in the template: user installs are not packed, old library snapshots are removed (quota)."""
+    from simp_server.sandboxes import e2b
+    sb = make(cloud, idle_pause_s=1)
+    env = await sb.open("s1", "u1")
+    await go(env)
+    assert any(r.startswith("rm -f /work/.simp/home.tar.zst") for r in cloud.runs())  # old snapshot dropped at create
+    for d in (".local", ".npm-global", ".venvs"):
+        assert d not in e2b.HOME_DIRS
+    await sb.stop_idle(now=env.box.last + 10)
+    assert not cloud.runs("zstd -q -f")
