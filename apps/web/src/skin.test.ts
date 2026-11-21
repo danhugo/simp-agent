@@ -52,3 +52,9 @@ describe("hair", () => {
     expect(() => compileSkin(`return [H.sphere(p,[0,0.1,0.9],0.4),"#5a1d16"]`, "hat")).toThrow(/over the face|covers the eyes/);
   });
 });
+
+describe("bad distances", () => {
+  it("a near-zero distance everywhere is rejected (it would paint the whole picture)", () => {
+    expect(() => compileSkin(`return H.union(H.below([H.shell(H.head(p), 0.06), "#3b6fb6"], p, -0.5), [0.001, "#000000"]);`, "bottom")).toThrow(/near zero/);
+  });
+});

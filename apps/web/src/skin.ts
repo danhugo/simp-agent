@@ -95,7 +95,7 @@ export function compileSkin(code: string, slot?: Slot): Wear {
   const r = () => ((rnd = (rnd * 16807) % 2147483647) / 2147483647);
   const t0 = performance.now();
   const lo = [9, 9, 9], hi = [-9, -9, -9], colors = new Set<string>();
-  let inside = 0, touches = false, misplaced = 0;
+  let inside = 0, touches = false, misplaced = 0, near = 0;
   const N = 4000;
   for (let i = 0; i < N; i++) {
     const p = [r() * 3.6 - 1.8, r() * 3.8 - 1.9, r() * 3.6 - 1.8];
@@ -104,6 +104,7 @@ export function compileSkin(code: string, slot?: Slot): Wear {
     if (out === null || out === undefined) continue;
     if (!Array.isArray(out) || typeof out[0] !== "number" || !Number.isFinite(out[0]) || typeof out[1] !== "string" || !/^#[0-9a-f]{6}$/i.test(out[1]))
       throw new Error(`must return null or [finiteNumber, "#rrggbb"], got ${JSON.stringify(out)?.slice(0, 120)}`);
+    if (out[0] < 0.03) near++;  // the renderer draws a surface wherever the distance gets this small
     if (out[0] >= 0) continue;
     inside++; colors.add(out[1].toLowerCase());
     p.forEach((v, k) => { lo[k] = Math.min(lo[k], v); hi[k] = Math.max(hi[k], v); });
@@ -112,6 +113,7 @@ export function compileSkin(code: string, slot?: Slot): Wear {
   }
   const ms = performance.now() - t0;
   if (ms > 160) throw new Error(`too slow: ${N} calls took ${ms.toFixed(0)} ms (budget 160 ms); simplify the code`);
+  if (near > inside * 3 + 200) throw new Error(`the distance is near zero far away from any part (${near} of ${N} samples are under 0.03, only ${inside} inside), so it would cover the whole picture: return the real distance to each part, never a tiny constant like Math.min(d, 0.001)`);
   if (!inside) throw new Error("it is empty: no sampled point was inside any part (distance < 0). Parts are probably too thin (< 0.05) or outside the allowed box");
   const f = (v: number) => +v.toFixed(2);
   const report: Report = { bbox: [lo.map(f), hi.map(f)], colors: [...colors].slice(0, 8), touchesHead: touches, volume: f((inside / N) * 3.6 * 3.8 * 3.6) };

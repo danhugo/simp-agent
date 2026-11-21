@@ -8,49 +8,36 @@ outline, helpers) is fixed; the page checks each slot (shape, speed, placement) 
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 SLOTS = {
-    "hat": ("the TOP: a hat OR hair (or both: hair with a hat on it), crown, hood, horns, ears, headband: whatever is on the head",
-            "It must sit ON the head, touching the sphere; it may rise up to y = 1.9. A HAT is WORN, not perched: "
-            "its crown wraps the top of the head (a shell over the head above y = 0.5), a brim ONLY if that hat really has one "
-            "(cowboy, straw, wizard; not a party hat, crown, helmet, cap or beanie) sits at y = 0.5..0.6 and is WIDER than the head (radius 1.3..1.6), and tall parts rise from the crown about as wide "
-            "as the head; a helmet covers the head down to the brow and the ears; light parts (white ears) get a darker outline color or an inner color so they show against the pale head; every part touches the next (see the wizard and cowboy examples). Never a small hat on the top. HAIR may come lower: bangs end "
-            "above y = 0.35; side and back hair may fall down past the cheeks to y = -1.5 for long hair; the front "
-            "of the face (|x| < 0.75, y < 0.3) always stays clear for the eyes. Pick the style the description asks for: "
-            "hats (beanie, wizard cone, cowboy, top hat, cap, beret, crown, witch hat, chef toque, helmet) or hair "
-            "(spiky, short messy, bob, long straight, twin tails, ponytail, bun, afro, curls). Hair is a scalp cap plus "
-            "H.lock strands (spikes, bangs, tails) or a curtain for long hair (see the examples), never one smooth blob. "
-            "For a thing whose round part is the ball (a racket, a magnifying glass): the top is its FRAME, a ring around "
-            "the edge of the head seen from the front (H.torus tilted 90 deg about x, R ~1.05, around the face, not over it), "
-            "plus the handle rising from the top. "
-            "Most hair FALLS DOWN under its weight: locks hang down with jagged tips (see the shaggy example); "
-            "spikes pointing UP are only for spiky, punk or super-saiyan hair. Copy where the tips point and the colors "
-            "(two-tone tips: pick the color by height) from the description or picture. "
-            "Make every lock DIFFERENT (length, lean, thickness, bend; some crossing), never evenly spaced or parallel: "
-            "vary them with a fixed pseudo-random r(i) as in the shaggy example. "
-            "Hair covers the WHOLE scalp like real hair, with no bald back. SHORT hair (spiky, messy, buzz, crew cut) "
-            "stops at the ears (sides and back down to about y = 0, never down to the cheeks) and leaves a high forehead "
-            "open when the character has one; only LONG hair (bob, long, braids) goes down the sides and back to the nape (y = -0.7), "
-            "open only for the face in front (see the braids example), so no bald back. Tails, braids, buns and ponytails grow "
-            "from that cover and touch it: braids are a chain of touching balls, ponytails a bent H.lock, a bun a ball."),
+    "hat": ("the TOP: whatever is on the head: a hat, hair, or both (hair under a hat), a hood, a crown, horns, ears, a headband",
+            "Everything sits ON the head and touches it (and every part touches the next); it may rise up to y = 1.9. "
+            "The FACE stays open: nothing in front of it below y = 0.3 (|x| < 0.75); bangs stop above y = 0.35.\n"
+            "HATS are worn, not perched: the crown wraps the top of the head; a brim only if that hat has one, at "
+            "y = 0.5..0.6 and wider than the head (radius 1.3..1.6); tall parts rise from the crown about as wide as the "
+            "head; helmets and hoods wrap the head and frame the face.\n"
+            "HAIR, in 5 rules: 1) it covers the whole scalp (no bald back); 2) LENGTH as the character has it: short hair "
+            "stops at the ears (y >= 0), long hair falls down the sides and back (to y = -1.5 at most); 3) DIRECTION: hair "
+            "falls down under its weight with jagged tips, and stands up in spikes only when the character's hair does; "
+            "4) every lock is DIFFERENT (length, lean, thickness), never evenly spaced or parallel (a fixed pseudo-random "
+            "r(i)); 5) tails, braids (a chain of touching balls), buns and ponytails grow from the hair and touch it.\n"
+            "Take the shape and the colors from the description or the picture (two-tone hair: the color by height). "
+            "Light parts get a darker edge or inner color so they show against the pale head. "
+            "A thing whose round part is the ball (a racket, a magnifier): the top is its FRAME, a ring around the edge of "
+            "the face (H.torus tilted 90 deg about x, R ~1.05), plus its handle rising from the top."),
     "bottom": ("the BOTTOM: what is under the face: a body, shorts, a skirt, a robe or a coat (no legs, so no pants)",
-               "The ball IS the head; the bottom goes on the LOWER half, everything "
-               "below y = -0.5 (a bit under the cheeks), trimmed with H.below. Use exactly ONE of these 3 forms, always at "
-               "the size of its example, never another silhouette and no short or long versions:\n"
-               "1. SNUG: a thin shell that hugs the ball itself, so Simp stays one round ball (shorts, a belt, overalls, a swimsuit, "
-               "and anything that is itself round and small: fruit like an apple, orange, peach, cherry, lemon, plum, tomato, a ball (football, tennis ball, "
-               "basketball, bowling ball, pokeball, snowball), an egg, a pearl, a bubble, a bug, a bun, a donut, a dumpling, a coin, "
-               "a clock, a planet, the moon, a lollipop, a bomb, a slime, a seed). See the overalls example.\n"
-               "2. ROUND BODY: a round belly under the ball, about as wide as it and bulging out, rounded at the bottom "
-               "(a body, a suit, a superhero costume, a puffy dress). See the round body example.\n"
-               "3. BELL: a skirt, robe or coat: slightly rounded sides flaring out to a flat hem at y = -1.65, and under the "
-               "hem a ROUND base clearly NARROWER than the hem, so the hem shows as a step. See the skirt and the coat examples.\n"
-               "Choose by the overall shape: round and small -> SNUG; taller with a belly -> ROUND BODY; a skirt, robe, coat or "
-               "something wide at the bottom (a teapot, lamp, pot, bell, vase, lighthouse) -> BELL. A THING with a round part "
-               "(a racket, a magnifying glass, a frying pan, a lollipop, a balloon): the ball IS that round part; the bottom is "
-               "SNUG in its color and the top carries the rest (the frame, the handle). Other long thin things (a sword, a pencil): "
-               "SNUG in its colors and pattern, a small part of it on the top. "
-               "Patterns and details (stripes, webs, belts, buttons) are colors chosen by where p is, or small parts on the surface."),
+               "It goes on the LOWER half of the ball, below y = -0.5, trimmed with H.below. Use exactly ONE of 3 forms, "
+               "at the size of its example (no other silhouette, no short or long versions):\n"
+               "1. SNUG: a thin shell hugging the ball, so Simp stays one round ball: shorts, belts, overalls, swimsuits, "
+               "and things that are themselves small and round (fruit, balls, eggs, bugs, buns, coins, planets).\n"
+               "2. ROUND BODY: a round belly under the ball, about as wide as it: a body, a suit, a costume, a puffy dress.\n"
+               "3. BELL: a skirt, robe, coat, or a thing wide at the bottom (a pot, lamp, vase): slightly rounded sides, a "
+               "flat hem at y = -1.65 and a NARROWER round base under it.\n"
+               "A thing with a round part (a racket, a pan): SNUG in its color, the top carries the rest. "
+               "Clothes have LAYERS (an outer coat cut open with H.cut so the inner layer shows) and PATTERNS (stripes, "
+               "dots, checks: the color chosen by where p is). Take the layers, pattern and colors from the description "
+               "or the picture."),
 }
 
 SYSTEM = """You design ONE piece of an outfit for Simp, a round AI assistant mascot drawn as a tiny pixel-art 3D
@@ -151,10 +138,10 @@ const a = Math.abs(lon);
 if (D.ring(a, lat, [18, 2], 14, 3.5) || D.curve(lon, lat, [-5, 5], [0, 8], [5, 5], 3, 3, 3)) return "#2b2b2b";
 return null;
 </code>
-Example, No-Face (Spirited Away): violet strokes through each eye, tapered at the ends, no blush:
+Example, long marks running through each eye, tapered at the ends, the blush removed:
 <code>
 const a = Math.abs(lon);
-if (D.line(a, lat, [18, 23], [18, 7], 2, 6.5) || D.line(a, lat, [18, -6], [17, -31], 6.5, 2)) return "#9b7fb0";
+if (D.line(a, lat, [18, 23], [18, 7], 2, 6.5) || D.line(a, lat, [18, -6], [17, -31], 6.5, 2)) return "#3a9f8f";
 if (D.dot(a, lat, [33, -15], 12)) return "skin";
 return null;
 </code>
@@ -162,15 +149,20 @@ return null;
 
 
 # each slot gets only its own examples (shorter prompt, and a hat does not borrow a skirt's brim)
-EXAMPLES = {
-    "hat": 'Example, a red beanie with a pom-pom (a top):\n<code>\nconst cap = H.above([H.sphere(p, [0, 0.1, 0], 1.08), "#d94141"], p, 0.55);\nconst band = [H.torus(p, [0, 0.6, 0], 0.85, 0.1), "#b02e2e"];\nconst pom = [H.sphere(p, [0, 1.25, 0], 0.18), "#ffffff"];\nreturn H.union(cap, band, pom);\n</code>\nExample, a wizard hat (a top), worn:\n<code>\n// a hat is WORN: its crown wraps the top of the head (a shell over the head above the brim), the brim sits around\n// the head at y = 0.5..0.6 and is wider than it, and the tall part rises from the crown as wide as the head\nconst c = "#5b3fb0";\nconst crown = H.above([H.sphere(p, [0, 0.05, 0], 1.08), c], p, 0.5);\nconst brim = [H.cyl(p, [0, 0.55, 0], 1.45, 0.05), c];\nconst cone = [H.cone(H.tilt(p, [0, 0.6, 0], "z", -12), [0, 0.6, 0], 0.85, 1.5), c];\nconst band = [H.torus(p, [0, 0.66, 0], 0.88, 0.09), "#f2c230"];\nconst star = [H.sphere(p, [0.45, 1.05, 0.55], 0.1), "#f2c230"];\nreturn H.union(crown, brim, cone, band, star);\n</code>\nExample, a cowboy hat (a top), worn:\n<code>\nconst c = "#9a6a3a", d = "#6e4724";\nconst crown = H.above([H.sphere(p, [0, 0.05, 0], 1.08), c], p, 0.5);\n// the brim: wide, curling up at the sides (lifted with distance from the center along x)\nconst q = [p[0], p[1] - 0.25 * Math.max(0, Math.abs(p[0]) - 0.9) ** 2, p[2]];\nconst brim = [H.cyl(q, [0, 0.55, 0], 1.55, 0.05), c];\nconst top = [H.rbox(p, [0, 0.95, 0], [0.72, 0.42, 0.62], 0.25), c];\nconst band = [H.torus(p, [0, 0.7, 0], 0.8, 0.08), d];\nreturn H.union(crown, brim, top, band);\n</code>\nExample, short spiky hair (a top): a cap on the scalp down to the ears, then pointed locks bent up and out; short\nbangs leave the forehead open, the sides stop at the ears.\n<code>\nconst c = "#5a1d16";\nconst cap = H.cut(H.above([H.sphere(p, [0, 0.06, -0.06], 1.06), c], p, 0), Math.max(p[1] - 0.5, -p[2] - 0.2, Math.abs(p[0]) - 0.8));  // open at the forehead and face\nconst L = (a, b, m, r) => [H.lock(p, a, b, r, m), c];\nconst spikes = [\n  L([0, 0.85, 0.2], [0.1, 1.65, 0.5], [0.15, 1.3, 0.2], 0.3), L([0.45, 0.8, 0.1], [1.0, 1.45, 0.25], [0.8, 1.2, 0.0], 0.28),\n  L([-0.45, 0.8, 0.1], [-1.0, 1.45, 0.25], [-0.8, 1.2, 0.0], 0.28), L([0, 0.7, -0.6], [0, 1.2, -1.45], [0, 1.15, -0.9], 0.3),\n  L([0.25, 0.75, 0.6], [0.45, 0.55, 1.02], [0.42, 0.8, 0.85], 0.2), L([-0.2, 0.77, 0.6], [-0.38, 0.53, 1.03], [-0.4, 0.82, 0.85], 0.2),\n  L([0.8, 0.45, 0.1], [1.3, 0.55, 0.05], [1.1, 0.35, 0.1], 0.22), L([-0.8, 0.45, 0.1], [-1.3, 0.55, 0.05], [-1.1, 0.35, 0.1], 0.22),\n];\nreturn H.union(cap, ...spikes);\n</code>\nExample, two braids hanging down the back (a top): hair over the whole head except the face, then two chains of\ntouching balls from the back of the head.\n<code>\nconst c = "#5a3420", band = "#e85a7a";\n// hair covers the whole head except the face: a shell over the head, open in front below the bangs line\nlet hair = Math.max(H.sphere(p, [0, 0.03, -0.04], 1.07), -0.7 - p[1]);\nhair = Math.max(hair, -Math.max(p[1] - 0.3, -p[2] - 0.1, Math.abs(p[0]) - 0.95));\nconst parts = [[hair, c]];\n// two braids from the back of the head, hanging down: a chain of touching balls, getting smaller, a band at the end\nfor (const s of [-1, 1]) {\n  for (let i = 0; i < 6; i++) {\n    const y = -0.25 - i * 0.25, r = 0.25 - i * 0.015;\n    parts.push([H.sphere(p, [s * (0.42 + i * 0.03), y, -0.82 - i * 0.06], r), i % 2 ? "#4a2a18" : c]);\n  }\n  parts.push([H.sphere(p, [s * 0.6, -1.6, -1.18], 0.1), band]);\n  parts.push([H.lock(p, [s * 0.6, -1.65, -1.18], [s * 0.62, -1.95, -1.2], 0.12), c]);\n}\nreturn H.union(...parts);\n</code>\nExample, long straight hair with bangs (a top): a scalp cap, a curtain that flares a little toward the ends\nand is open in front for the face, pointed ends and soft bangs.\n<code>\nconst c = "#3b2418";\nconst scalp = H.above([H.sphere(p, [0, 0.05, -0.05], 1.08), c], p, 0.25);\n// long hair: a soft bell around the head, flaring a little toward the ends, open in front for the face\nconst y = Math.max(-1.3, Math.min(0.3, p[1]));\nlet d = Math.abs(Math.hypot(p[0], p[2] + 0.12) - (1.0 + 0.2 * Math.max(0, -y) ** 1.5)) - 0.12;\nd = Math.max(d, p[1] - 0.4, -1.35 - p[1]);\nd = Math.max(d, -H.rbox(p, [0, -0.55, 1.1], [0.82, 1.0, 0.9], 0.45));\nconst ends = [-2.2, -1.5, -0.8, 0, 0.8, 1.5, 2.2].map((a) => { const s = Math.sin(a + Math.PI), k = Math.cos(a + Math.PI); return [H.lock(p, [1.15 * s, -1.15, 1.15 * k - 0.12], [1.25 * s, -1.6, 1.25 * k - 0.12], 0.18), c]; });\nconst bangs = [-0.5, -0.17, 0.17, 0.5].map((x) => [H.lock(p, [x * 0.5, 1.0, 0.3], [x * 1.1, 0.42, 1.0], 0.22, [x * 0.8, 0.95, 0.85]), c]);\nreturn H.union(scalp, [d, c], ...ends, ...bangs);\n</code>\n',
-    "bottom": 'Clothes have LAYERS and PATTERNS, like real ones: an inner layer (robe, shirt) under an outer one (coat, jacket,\napron) that is cut open (H.cut) so the inner one shows; stripes, dots, checks or triangles by choosing the color from\nwhere p is. Copy the look of the reference (layers, trims, pattern), not just one flat color.\nExample, an open coat over a dark robe, with a triangle pattern (a bottom), form 3 BELL:\n<code>\n// the bell (an oval dome with a flat hem) as a function so both layers share it; s = how much bigger;\n// under the hem a smaller round base (the robe\'s), narrower than the hem\nconst cut = -1.65, base = [Math.max(H.sphere([p[0], (p[1] - cut) * 1.6, p[2]], [0, 0, 0], 0.85) / 1.6, p[1] - cut - 0.05), "#2b2622"];\n// a bell with slightly rounded sides: halfway between a straight cone and an oval dome\nconst bell = (s) => Math.max(0.5 * H.cone(p, [0, cut, 0], 1.3 * s, 2.9)\n  + 0.5 * (Math.hypot(p[0] / (1.3 * s), (p[1] - cut) / 1.45, p[2] / (1.3 * s)) - 1) * 1.3, p[1] + 0.5, cut - p[1]);\n// two layers: a dark inner robe, and an open coat over it (a V opening at the front shows the robe)\nconst inner = H.below([bell(0.92), "#2b2622"], p, -0.5);\nconst w = 0.16 + (-0.5 - p[1]) * 0.3;  // the opening widens toward the hem\nlet coat = H.below([H.shell(bell(1.04), 0.05), "#f29a2e"], p, -0.5);\ncoat = H.cut(coat, Math.max(Math.abs(p[0]) - w, -p[2]));\n// pattern: the color depends on where p is (here white triangles on a grid wrapped around the coat)\nconst a = Math.atan2(p[0], p[2]) * 1.6, u = a - Math.floor(a), v = p[1] * 3 - Math.floor(p[1] * 3);\nconst tri = Math.abs(u - 0.5) < (0.8 - v) * 0.5 && v > 0.15;\nreturn H.union(inner, base, coat && [coat[0], tri ? "#f4f4ee" : "#f29a2e"]);\n</code>\nExample, a superhero suit (a bottom), form 2 ROUND BODY: red with black web lines, blue sides.\n<code>\n// the body: no cone, just a round belly under the head (a squashed ball blended into the head)\nconst body = H.smooth([H.head(p) - 0.03, ""], [H.sphere([p[0], (p[1] + 1.0) * 1.15, p[2]], [0, 0, 0], 1.02) / 1.15, ""], 0.35)[0];\nconst a = Math.atan2(p[0], p[2]), side = Math.abs(a) > 1.0 && Math.abs(a) < 2.4;\nconst ring = (p[1] * 4) - Math.floor(p[1] * 4) < 0.12, ray = (a * 6 / Math.PI) - Math.floor(a * 6 / Math.PI) < 0.08;\nconst spider = H.sphere(p, [0, -0.85, 1.05], 0.12) < 0;\nreturn H.below([body, side ? "#2a4bb0" : spider || ring || ray ? "#1a1a1a" : "#d42a2a"], p, -0.5);\n</code>\nExample, a skirt (a bottom), form 3 BELL:\n<code>\n// a skirt: a bell with slightly rounded sides and a flat hem at y = -1.65, and under it a smaller round base\n// (a squashed half ball, narrower than the hem, so the hem shows as a step). Always this size.\nconst c = "#7a4fd0", cut = -1.65;\nconst flare = [Math.max(0.5 * H.cone(p, [0, cut, 0], 1.3, 2.9)\n  + 0.5 * (Math.hypot(p[0] / 1.3, (p[1] - cut) / 1.45, p[2] / 1.3) - 1) * 1.3, p[1] + 0.5, cut - p[1]), c];\nconst base = [Math.max(H.sphere([p[0], (p[1] - cut) * 1.6, p[2]], [0, 0, 0], 0.85) / 1.6, p[1] - cut - 0.05), c];\nconst skirt = H.below(H.union(flare, base), p, -0.5);\nconst waist = [H.torus(p, [0, -0.52, 0], 0.88, 0.09), "#4b2e8f"];\nreturn H.union(skirt, waist);\n</code>\nExample, overalls (a bottom), form 1 SNUG: a fitted base plus chunky pieces on the front.\n<code>\nconst base = H.below([H.shell(H.head(p), 0.06), "#3b6fb6"], p, -0.5);\nconst bib = H.below([H.rbox(p, [0, -0.7, 0.8], [0.36, 0.22, 0.12], 0.05), "#5b8fd6"], p, -0.5);\nconst buttons = H.union([H.sphere(p, [-0.26, -0.56, 0.9], 0.09), "#f2c230"], [H.sphere(p, [0.26, -0.56, 0.9], 0.09), "#f2c230"]);\nreturn H.union(base, bib, buttons);\n</code>\n',
-}
-EXAMPLES["hat"] += ("Example, a hood (a top): a thick shell over the head, open for the face, falling to the cheeks; "
-                     "hooded characters (a reaper, a monk, an assassin) wear THIS, never a hood across the face.\n<code>\n"
-                     + '// a hood: a thick shell over the whole head, open for the face; it falls down the back and sides to the cheeks\nconst c = "#2f3a2a";\nlet hood = H.shell(H.sphere(p, [0, 0.05, -0.05], 1.12), 0.07);\nhood = Math.max(hood, -0.6 - p[1]);\nhood = Math.max(hood, -Math.max(p[1] - 0.45, -p[2] - 0.05, Math.abs(p[0]) - 0.8));  // the face opening\nconst peak = [H.lock(p, [0, 1.05, -0.2], [0, 1.25, -0.75], 0.25, [0, 1.3, -0.4]), c];  // a soft point at the back\nconst rim = [Math.max(H.torus(H.tilt(p, [0, 0, 0.55], "x", 90), [0, 0, 0.55], 0.95, 0.07), -0.6 - p[1]), "#5a6b4a"];\nreturn H.union([hood, c], peak, rim);' + "\n</code>\n")
-EXAMPLES["hat"] += ("Example, shaggy layered hair that falls down, with two-tone tips (a top):\n<code>\n"
-                     + '// shaggy layered hair that FALLS DOWN. Every lock differs (length, tilt, thickness, bend) and some cross: real hair\n// is never evenly spaced or parallel. r(i) is a fixed "random" in 0..1, so the hair looks the same every frame.\nconst top = "#f2c230", tip = "#e8782a";\nconst r = (i) => { const v = Math.sin(i * 12.9898) * 43758.5453; return v - Math.floor(v); };\nconst cap = H.cut(H.above([H.sphere(p, [0, 0.08, -0.04], 1.1), top], p, -0.1), Math.max(p[1] - 0.45, -p[2] - 0.2, Math.abs(p[0]) - 0.78));\nconst locks = [];\nfor (let i = 0; i < 11; i++) {  // sides and back (angles away from the face), hanging down\n  const a = (i < 6 ? 1 : -1) * (1.0 + (i % 6) * 0.42 + r(i) * 0.25), s = Math.sin(a), k = Math.cos(a);\n  const len = 0.35 + r(i + 20) * 0.55, tilt = (r(i + 40) - 0.5) * 0.5;  // how far down, and a sideways lean\n  locks.push(H.lock(p, [0.95 * s, 0.55 + r(i + 60) * 0.25, 0.95 * k],\n    [1.1 * s + tilt * k, 0.2 - len, 1.1 * k - tilt * s], 0.18 + r(i + 80) * 0.12, [1.2 * s, 0.3, 1.2 * k]));\n}\nfor (let i = 0; i < 6; i++) {  // bangs: uneven lengths, leaning left or right, stopping above the eyes\n  const x = -0.6 + i * 0.24 + (r(i + 100) - 0.5) * 0.12, lean = (r(i + 120) - 0.5) * 0.35;\n  locks.push(H.lock(p, [x * 0.7, 0.98, 0.42], [x + lean, 0.42 + r(i + 140) * 0.18, 1.0], 0.17 + r(i + 160) * 0.1, [x * 0.9 + lean * 0.4, 0.9, 0.86]));\n}\nconst col = p[1] < 0.35 ? tip : top;  // two-tone: the tips are orange\nconst hair = H.union(cap, [Math.min(...locks), col]);\nreturn hair && [hair[0], col];' + "\n</code>\n")
+# examples live in persona_examples/<slot>-<n>-<name>.js (first line: "// what it shows"). Neutral colors that match no
+# famous character, so the model learns the technique instead of copying an answer.
+_EX = Path(__file__).with_name("persona_examples")
+
+
+def _examples(prefix: str) -> str:
+    out = []
+    for f in sorted(_EX.glob(f"{prefix}-*.js")):
+        title, _, code = f.read_text().partition("\n")
+        out.append(f"Example, {title.removeprefix('// ')}:\n<code>\n{code.strip()}\n</code>\n")
+    return "".join(out)
+
+
+EXAMPLES = {"hat": _examples("top"), "bottom": _examples("bottom")}
 
 
 def system(slot: str) -> str:
