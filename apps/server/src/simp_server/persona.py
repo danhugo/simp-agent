@@ -11,8 +11,11 @@ import re
 
 SLOTS = {
     "hat": ("a HAT (or hair, crown, hood, horns: whatever the character wears on top of the head)",
-            "It must sit ON the head: everything above y = 0.55, touching the sphere (a brim or band around "
-            "y = 0.6..0.9 with radius ~0.6..0.9 hugs it). It may rise up to y = 1.9."),
+            "It must sit ON the head, touching the sphere. A hat stays above y = 0.55 (a brim or band around "
+            "y = 0.6..0.9 with radius ~0.6..0.9 hugs it); it may rise up to y = 1.9. HAIR may come lower: bangs over the "
+            "forehead end above y = 0.35, side locks fall down the sides (|x| > 0.8) to the cheeks (y >= -0.5), and the "
+            "back may hang lower; the front of the face (|x| < 0.75, y < 0.3) always stays clear for the eyes. Build hair "
+            "from a scalp cap plus many H.lock strands (see the hair example), never one smooth blob."),
     "bottom": ("the BOTTOM: shorts, a skirt, a belt or a robe hem (no legs, so no pants)",
                "There is no body: the ball IS the whole character, so it wraps the LOWER half of the sphere, "
                "everything below y = -0.5 (a bit under the cheeks), slightly outside the sphere and a little roomy (trim with H.below). Give it a real silhouette: "
@@ -51,6 +54,7 @@ H gives signed-distance helpers (sizes in head units; c = center [x,y,z]):
 - H.cyl(p, c, r, hh)                     vertical cylinder, half height hh
 - H.cone(p, c, r, h)                     vertical cone, base radius r at c, tip at c + [0, h, 0]
 - H.torus(p, c, R, r)                    horizontal ring (in the xz plane)
+- H.lock(p, a, b, r, m?)                 a tapered strand: thick (r) at root a, pointed at tip b, bent toward m
 - H.shell(d, t)                          hollow version of distance d, wall thickness t
 - H.tilt(p, c, ax, deg)                  p rotated around c about axis "x" | "y" | "z"; use the result as p
 - H.union(...parts)                      parts are [d, color] or null; returns the nearest (or null)
@@ -67,6 +71,20 @@ const cap = H.above([H.sphere(p, [0, 0.1, 0], 1.08), "#d94141"], p, 0.55);
 const band = [H.torus(p, [0, 0.6, 0], 0.85, 0.1), "#b02e2e"];
 const pom = [H.sphere(p, [0, 1.25, 0], 0.18), "#ffffff"];
 return H.union(cap, band, pom);
+</code>
+Example, spiky anime hair (a hat slot): a cap on the scalp, then pointed locks bent outward; bangs end above
+the eyes and side locks fall past the ears.
+<code>
+const c = "#5a1d16";
+const cap = H.above([H.sphere(p, [0, 0.06, -0.06], 1.06), c], p, 0.3);
+const L = (a, b, m, r) => [H.lock(p, a, b, r, m), c];
+const spikes = [
+  L([0, 0.85, 0.2], [0.1, 1.65, 0.5], [0.15, 1.3, 0.2], 0.3), L([0.45, 0.8, 0.1], [1.0, 1.45, 0.25], [0.8, 1.2, 0.0], 0.28),
+  L([-0.45, 0.8, 0.1], [-1.0, 1.45, 0.25], [-0.8, 1.2, 0.0], 0.28), L([0, 0.7, -0.6], [0, 1.2, -1.45], [0, 1.15, -0.9], 0.3),
+  L([0.25, 0.7, 0.62], [0.45, 0.4, 1.05], [0.42, 0.72, 0.85], 0.2), L([-0.2, 0.72, 0.62], [-0.38, 0.38, 1.06], [-0.4, 0.75, 0.85], 0.2),
+  L([0.75, 0.45, 0.2], [1.15, -0.35, 0.3], [1.1, 0.2, 0.2], 0.24), L([-0.75, 0.45, 0.2], [-1.15, -0.35, 0.3], [-1.1, 0.2, 0.2], 0.24),
+];
+return H.union(cap, ...spikes);
 </code>
 Example, blue shorts (a bottom): not skin-tight, a little roomy like a gourd: snug at the waist, bulging
 slightly wider and lower toward the bottom (a soft union of the head with a lower ball).
