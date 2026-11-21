@@ -492,7 +492,7 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .persona-form { background: var(--panel); border-color: transparent; }
 .persona-form input, .persona-form textarea:not(.persona-composer textarea) { background: var(--bg); }
 /* Simp's card on the right: form first, the try-on beside it */
-.persona-grid { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
+.persona-grid { grid-template-columns: minmax(0, 1fr) minmax(340px, 440px); }
 .persona-side { order: 2; }
 .persona-form { order: 1; }
 @media (max-width: 760px) { .persona-grid { grid-template-columns: 1fr; } .persona-side { order: 0; } }

@@ -34,6 +34,18 @@ export const H = {
     const q = sub(p, c);
     return Math.hypot(Math.hypot(q[0], q[2]) - R, q[1]) - r;
   },
+  /** a tapered lock of hair (or spike, horn): from root a (thickness r) to the pointed tip b, bent toward m if given */
+  lock: (p: V, a: V, b: V, r: number, m?: V) => {
+    const mid = m ?? a.map((v, k) => (v + b[k]) / 2), at = (t: number) => a.map((v, k) => (1 - t) ** 2 * v + 2 * (1 - t) * t * mid[k] + t * t * b[k]);
+    let best = 9, prev = at(0);
+    for (let i = 1; i <= 8; i++) {
+      const cur = at(i / 8), d = sub(cur, prev), q = sub(p, prev), L = d[0] ** 2 + d[1] ** 2 + d[2] ** 2 || 1;
+      const h = Math.max(0, Math.min(1, (q[0] * d[0] + q[1] * d[1] + q[2] * d[2]) / L));
+      best = Math.min(best, len(q[0] - d[0] * h, q[1] - d[1] * h, q[2] - d[2] * h) - r * (1 - (i - 1 + h) / 8));
+      prev = cur;
+    }
+    return best;
+  },
   shell: (d: number, t: number) => Math.abs(d) - t,
   tilt: (p: V, c: V, ax: "x" | "y" | "z", deg: number) => {
     const a = (-deg * Math.PI) / 180, s = Math.sin(a), k = Math.cos(a), q = sub(p, c);
@@ -96,7 +108,7 @@ export function compileSkin(code: string, slot?: Slot): Wear {
     inside++; colors.add(out[1].toLowerCase());
     p.forEach((v, k) => { lo[k] = Math.min(lo[k], v); hi[k] = Math.max(hi[k], v); });
     if (Math.hypot(p[0], p[1], p[2]) < 1.2) touches = true;
-    if ((slot === "hat" && p[1] < 0.4) || (slot === "bottom" && p[1] > -0.15)) misplaced++;
+    if ((slot === "hat" && (p[1] < -1.5 || (p[1] < 0.3 && p[2] > 0.3 && Math.abs(p[0]) < 0.75))) || (slot === "bottom" && p[1] > -0.15)) misplaced++;
   }
   const ms = performance.now() - t0;
   if (ms > 160) throw new Error(`too slow: ${N} calls took ${ms.toFixed(0)} ms (budget 160 ms); simplify the code`);
@@ -111,7 +123,7 @@ export function compileSkin(code: string, slot?: Slot): Wear {
   }
   if (slot && !touches) throw new Error(`it floats: no part touches the head (sphere of radius 1). ${seen}`);
   if (slot && misplaced / inside > 0.08) throw new Error(slot === "hat"
-    ? `${Math.round((misplaced / inside) * 100)}% of the hat is below y = 0.4, over the face; a hat stays above y = 0.55 (use H.above). ${seen}`
+    ? `${Math.round((misplaced / inside) * 100)}% of the hat/hair is over the face (front, |x| < 0.75, below y = 0.3) or below y = -1.5; bangs end above y = 0.35, long hair falls down the sides (|x| > 0.8) and the back. ${seen}`
     : `${Math.round((misplaced / inside) * 100)}% of the bottom is above y = -0.15, over the face; it stays below y = -0.3 (use H.below). ${seen}`);
   // sampled extent, padded by a few sample spacings so thin edges between samples stay inside
   const blo = lo.map((v) => v - 0.2), bhi = hi.map((v) => v + 0.2);
