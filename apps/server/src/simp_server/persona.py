@@ -12,9 +12,9 @@ import re
 SLOTS = {
     "hat": ("the TOP: a hat OR hair (or both: hair with a hat on it), crown, hood, horns, ears, headband: whatever is on the head",
             "It must sit ON the head, touching the sphere; it may rise up to y = 1.9. A HAT is WORN, not perched: "
-            "its crown wraps the top of the head (a shell over the head above y = 0.5), the brim (if any) sits at "
-            "y = 0.5..0.6 and is WIDER than the head (radius 1.3..1.6), and tall parts rise from the crown about as wide "
-            "as the head; every part touches the next (see the wizard and cowboy examples). Never a small hat on the top. HAIR may come lower: bangs end "
+            "its crown wraps the top of the head (a shell over the head above y = 0.5), a brim ONLY if that hat really has one "
+            "(cowboy, straw, wizard; not a party hat, crown, helmet, cap or beanie) sits at y = 0.5..0.6 and is WIDER than the head (radius 1.3..1.6), and tall parts rise from the crown about as wide "
+            "as the head; a helmet covers the head down to the brow and the ears; light parts (white ears) get a darker outline color or an inner color so they show against the pale head; every part touches the next (see the wizard and cowboy examples). Never a small hat on the top. HAIR may come lower: bangs end "
             "above y = 0.35; side and back hair may fall down past the cheeks to y = -1.5 for long hair; the front "
             "of the face (|x| < 0.75, y < 0.3) always stays clear for the eyes. Pick the style the description asks for: "
             "hats (beanie, wizard cone, cowboy, top hat, cap, beret, crown, witch hat, chef toque, helmet) or hair "
