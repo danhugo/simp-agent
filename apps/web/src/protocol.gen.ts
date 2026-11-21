@@ -229,6 +229,7 @@ export interface PendingApproval {
 export interface Prompt {
   type: "prompt";
   text: string;
+  images: string[];
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema

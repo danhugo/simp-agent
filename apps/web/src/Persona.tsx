@@ -397,6 +397,8 @@ export function Persona({ onError, menuButton, profiles, models }: {
               </div>
               <div className="composer persona-composer">
                 <div className="composer-card expanded" onClick={(e) => { if (e.target === e.currentTarget) (e.currentTarget.querySelector("textarea") as HTMLTextAreaElement | null)?.focus(); }}>
+                  {refImg && <ul className="attached" aria-label="Reference picture"><li className="pic"><img src={refImg} alt="Reference picture" />
+                    <button type="button" className="ghost icon remove" aria-label="Remove the picture" title="Remove" disabled={busy} onClick={() => setRefImg("")}><IconX size={12} /></button></li></ul>}
                   <textarea id="persona-desc" aria-labelledby="persona-look" rows={2} maxLength={1000} value={draft.description ?? ""} disabled={busy} onChange={set("description")}
                     onPaste={async (e) => {  // a pasted picture becomes the reference picture
                       const f = [...e.clipboardData.files].find((x) => /^image\/(png|jpeg|webp|gif)$/.test(x.type));
@@ -413,8 +415,6 @@ export function Persona({ onError, menuButton, profiles, models }: {
                       const f = e.target.files?.[0]; e.target.value = "";
                       if (f) try { setRefImg(await shrink(f)); } catch { setError("that picture could not be read"); }
                     }} />
-                    {refImg && <span className="persona-ref"><img src={refImg} alt="Reference picture" />
-                      <button type="button" className="ghost icon" aria-label="Remove the picture" title="Remove" disabled={busy} onClick={() => setRefImg("")}><IconX size={12} /></button></span>}
                     {profiles.length > 0 && <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} />}
                     <span className="spacer" />
                     {busy ? <button className="persona-go stop" aria-label="Stop" title="Stop" onClick={stopNow}><IconStop size={16} /></button>

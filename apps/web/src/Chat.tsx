@@ -7,7 +7,7 @@ import { api, AuthError, type ConnStatus } from "./api";
 import { Badge, chatName } from "./App";
 import {
   IconArrowDown, IconArrowUp, IconBell, IconCheck, IconChevron, IconClose, IconCompact, IconCopy, IconDownload, IconEye, IconFile, IconFolder, IconMore, IconPlus, IconRefresh,
-  IconStop, fileIcon,
+  IconStop, IconX, fileIcon,
 } from "./icons";
 import type { PendingApproval, ToolCall } from "./protocol.gen";
 import { canContinue, type ChatState } from "./state";
@@ -33,6 +33,18 @@ interface Props {
 }
 
 interface Action { key: string; label: string; icon: ReactNode; title: string; onClick: () => void; pressed?: boolean; disabled?: boolean }
+
+/** a file waiting to be sent: a picture shows itself, anything else its name; x takes it off */
+function PendingFile({ file, onRemove, disabled }: { file: File; onRemove: () => void; disabled?: boolean }) {
+  const url = useMemo(() => (file.type.startsWith("image/") ? URL.createObjectURL(file) : ""), [file]);
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  return (
+    <li className={url ? "pic" : ""} title={file.name}>
+      {url ? <img src={url} alt={file.name} /> : <><IconFile size={16} /><span>{file.name}</span></>}
+      <button type="button" className="ghost icon remove" aria-label={`Remove ${file.name}`} title="Remove" disabled={disabled} onClick={onRemove}><IconX size={12} /></button>
+    </li>
+  );
+}
 
 /** the pictures in a paste, renamed "pasted-<time>.<ext>" so they don't overwrite each other */
 export function pastedImages(e: React.ClipboardEvent): File[] {
@@ -169,7 +181,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
         <div className="messages" ref={log} onScroll={onScroll} role="log" aria-live="polite" aria-label="Conversation">
           <div className="thread">
             {state.items.map((it) =>
-              it.kind === "user" ? <div key={it.seq} className="msg user"><Md text={it.text} /></div>
+              it.kind === "user" ? <UserMsg key={it.seq} text={it.text} sid={sid} onPreview={onPreviewFile} onError={onError} />
               : it.kind === "notice" ? (it.text === "run aborted" ? null  // shown as "Stopped" under the answer
                 : <div key={it.seq} className={`notice ${it.level}`}>{it.text}</div>)
               : absorbed.has(it.seq) ? null  // its tool calls are shown in the group above
@@ -188,14 +200,14 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
                       {it.msg.text && <CopyButton label="Copy answer" text={() => it.msg.text} />}
                       {it.seq === lastAnswer && !busy && lastUser && (
                         <button type="button" className="icon-btn" aria-label="Try again" title="Ask again"
-                          onClick={() => send({ type: "prompt", text: lastUser })}><IconRefresh size={16} /></button>
+                          onClick={() => send({ type: "prompt", text: lastUser, images: [] })}><IconRefresh size={16} /></button>
                       )}
                     </div>
                   )}
                 </div>
               ))}
             {/* aria-live off + aria-busy: don't announce every streamed token; the finished message is announced once */}
-            {firstPrompt && !state.items.some((i) => i.kind === "user") && <div className="msg user">{firstPrompt}</div>}
+            {firstPrompt && !state.items.some((i) => i.kind === "user") && <UserMsg text={firstPrompt} sid={sid} onError={onError} plain />}
             {(f.text || (f.thinking && !liveTurnHasItems)) && (
               <div className="msg assistant streaming" aria-live="off" aria-busy="true">
                 {!liveTurnHasItems && turnThinking(turn, true)}
@@ -373,6 +385,43 @@ export async function downloadFile(sid: string, path: string) {
   const url = URL.createObjectURL(await api.download(sid, path));
   Object.assign(document.createElement("a"), { href: url, download: path.split("/").pop() || path }).click();
   URL.revokeObjectURL(url);
+}
+
+const ATTACHED = /\s*\[Attached files in the workspace: ([^\]]+)\]\s*$/;
+const isPic = (n: string) => /\.(png|jpe?g|webp|gif)$/i.test(n);
+
+/** A user's message: its text, and the files sent with it as cards (pictures as thumbnails); a click previews. */
+function UserMsg({ text, sid, onPreview, onError, plain }: { text: string; sid: string; onPreview?: (p: string) => void; onError: (e: unknown) => void; plain?: boolean }) {
+  const m = text.match(ATTACHED), body = m ? text.slice(0, m.index) : text;
+  const files = m ? m[1].split(", ").filter(Boolean) : [];
+  return (
+    <div className="msg user">
+      {files.length > 0 && (
+        <ul className="sent-files" aria-label="Sent files">
+          {files.map((f) => (
+            <li key={f}>
+              <button type="button" className={`ghost ${isPic(f) ? "pic" : "doc"}`} title={f} aria-label={`Preview ${f}`}
+                disabled={!onPreview} onClick={() => onPreview?.(f)}>
+                {isPic(f) ? <SentPic path={f} sid={sid} onError={onError} /> : <><IconFile size={16} /><span>{f}</span></>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {body && (plain ? body : <Md text={body} />)}
+    </div>
+  );
+}
+
+/** a sent picture, loaded from the workspace (the files API needs the auth header, so through a blob URL) */
+function SentPic({ path, sid, onError }: { path: string; sid: string; onError: (e: unknown) => void }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let u = "", live = true;
+    api.download(sid, path).then((b) => { u = URL.createObjectURL(b); if (live) setUrl(u); }).catch(() => { /* gone: show the name */ });
+    return () => { live = false; if (u) URL.revokeObjectURL(u); };
+  }, [sid, path]);
+  return url ? <img src={url} alt={path} /> : <span className="sent-pic-wait">{path}</span>;
 }
 
 function FileCard({ path, sid, onOpen, onPreview, onError }: { path: string; sid: string; onOpen?: (p: string) => void; onPreview?: (p: string) => void; onError: (e: unknown) => void }) {
@@ -630,56 +679,54 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
     setText(prefill.text);
     requestAnimationFrame(() => { const el = area.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
   }, [prefill?.n]);
-  const [attached, setAttached] = useState<string[]>([]);
+  // files picked or pasted wait here (removable) and are uploaded when the message is sent
+  const [pending, setPending] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
-  useEffect(() => setAttached([]), [sid]);
+  useEffect(() => setPending([]), [sid]);
   useLayoutEffect(() => {  // grow with the text; CSS max-height caps it and the rest scrolls
     const el = area.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [text]);
-  const empty = !text.trim() && !attached.length;  // files alone can be sent, with no text
-  const submit = () => {
+  const empty = !text.trim() && !pending.length;  // files alone can be sent, with no text
+  const submit = async () => {
     const t = text.trim();
-    if ((!t && !attached.length) || disabled) return;
-    const files = `[Attached files in the workspace: ${attached.join(", ")}]`;  // so the agent knows
-    const note = !attached.length ? "" : t ? `\n\n${files}` : files;
-    send(!busy ? { type: "prompt", text: t + note } : { type: "steer", text: t + note });
+    if ((!t && !pending.length) || disabled || uploading) return;
+    const names = pending.map((f) => f.name);
+    if (pending.length) {
+      if (!sid) onQueueFiles?.(pending);  // home: the caller uploads them once the session exists
+      else {
+        setUploading(true);
+        try { for (const f of pending) await api.upload(sid, f.name, f); }
+        catch (e) { onError?.(e); setUploading(false); return; }  // keep the files and the text: nothing was sent
+        setUploading(false);
+      }
+    }
+    const files = `[Attached files in the workspace: ${names.join(", ")}]`;  // so the agent knows
+    const note = !names.length ? "" : t ? `\n\n${files}` : files;
+    // pictures go with a new prompt for the model to look at (a message sent while busy only names them)
+    const images = names.filter((n) => /\.(png|jpe?g|webp|gif)$/i.test(n)).slice(0, 6);
+    send(!busy ? { type: "prompt", text: t + note, images } : { type: "steer", text: t + note });
     setText("");
-    setAttached([]);
+    setPending([]);
   };
   const stop = () => send({ type: "abort" });
-  const upload = async (files: FileList | File[] | null) => {
-    if (!files?.length) return;
-    if (!sid) {  // home: nothing to upload to yet
-      const list = [...files];
-      onQueueFiles?.(list);
-      setAttached((a) => [...a, ...list.map((f) => f.name).filter((n) => !a.includes(n))]);
-      if (picker.current) picker.current.value = "";
-      return;
-    }
-    setUploading(true);
-    try {
-      for (const f of files) {
-        await api.upload(sid, f.name, f);
-        setAttached((a) => (a.includes(f.name) ? a : [...a, f.name]));
-      }
-    } catch (e) { onError?.(e); } finally {
-      setUploading(false);
-      if (picker.current) picker.current.value = "";
-    }
+  const add = (files: FileList | File[] | null) => {
+    const list = [...(files ?? [])];  // copy now: clearing the picker below empties its live FileList
+    if (list.length) setPending((p) => [...p.filter((x) => !list.some((f) => f.name === x.name)), ...list]);
+    if (picker.current) picker.current.value = "";
   };
   return (
     <div className={`composer ${variant ?? ""}`}>
       {idle && <IdleSimp enabled={!busy && !disabled} />}
-      <div className={`composer-card ${attached.length || uploading || text.includes("\n") ? "expanded" : ""}`}
+      <div className={`composer-card ${pending.length || text.includes("\n") ? "expanded" : ""}`}
         onClick={(e) => { if (e.target === e.currentTarget) area.current?.focus(); }}>
-        {(attached.length > 0 || uploading) && (
-          <ul className="attached" aria-label="Attached files" aria-live="polite">
-            {attached.map((n) => <li key={n} title={`Uploaded to the workspace: ${n}`}><IconFile size={16} /><span>{n}</span></li>)}
+        {pending.length > 0 && (
+          <ul className="attached" aria-label="Files to send" aria-live="polite">
+            {pending.map((f) => <PendingFile key={f.name} file={f} disabled={uploading} onRemove={() => setPending((p) => p.filter((x) => x !== f))} />)}
             {uploading && <li className="muted">Uploading…</li>}
           </ul>
         )}
@@ -687,11 +734,11 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
           ref={area} value={text} rows={1} autoFocus aria-label="Message" disabled={disabled}
           placeholder={busy ? "Add to what Simp is doing…" : "Message Simp…"}
           onChange={(e) => setText(e.target.value)}
-          onPaste={(e) => {  // a pasted picture is uploaded like an attached file (named by time: screenshots are all "image.png")
+          onPaste={(e) => {  // a pasted picture waits with the attached files (named by time: screenshots are all "image.png")
             const imgs = pastedImages(e);
             if (!imgs.length || !(sid || onQueueFiles)) return;
             e.preventDefault();
-            upload(imgs);
+            add(imgs);
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
@@ -705,7 +752,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
             <>
               <button type="button" className="round attach" aria-label="Attach files" title="Attach files"
                 disabled={uploading} onClick={() => picker.current?.click()}><IconPlus size={16} /></button>
-              <input ref={picker} type="file" multiple hidden onChange={(e) => upload(e.target.files)} />
+              <input ref={picker} type="file" multiple hidden onChange={(e) => add(e.target.files)} />
             </>
           )}
           {busy && empty ? (

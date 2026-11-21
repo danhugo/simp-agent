@@ -30,6 +30,8 @@ class ToolContext:
     cwd: str
     on_update: Callable[[str], Awaitable[None]]  # emits tool_execution_update (progress for the UI)
     state: dict = field(default_factory=dict)  # per-agent tool state (edit's read hashes); lives as long as the Agent
+    images: list = field(default_factory=list)  # this run's pictures [(name, data URL)]; `read` of an image adds one
+    vision: bool = False  # the model can look at images
 
 
 async def _maybe_await(r):
@@ -66,6 +68,8 @@ class LoopConfig:
     # (call, result, ctx) -> new ToolResultMessage or None to keep it (pi afterToolCall). Also runs after a deny.
     after_tool_call: Callable[[ai.ToolCall, ToolResultMessage, "ToolContext"], Any] | None = None
     tool_state: dict = field(default_factory=dict)  # handed to every ToolContext as ctx.state
+    # pictures for THIS run only [(name, data URL)]: sent with every LLM call of the run, never kept in history
+    images: list = field(default_factory=list)
 
 
 async def api_key_opts(get_api_key, model) -> dict:
@@ -174,7 +178,7 @@ async def agent_loop(
                 else:
                     await send({"type": "tool_execution_start", "call": call})
                     on_update = functools.partial(lambda c, text: send({"type": "tool_execution_update", "call": c, "text": text}), call)
-                    ctx = ToolContext(cancel, config.env, config.cwd, on_update, config.tool_state)
+                    ctx = ToolContext(cancel, config.env, config.cwd, on_update, config.tool_state, config.images, config.model.vision)
                     deny = await _maybe_await(config.before_tool_call(call, ctx)) if config.before_tool_call else None
                     if deny is not None:
                         result = ToolResultMessage(call.id, call.name, f"User denied: {deny}", is_error=True)
@@ -229,6 +233,9 @@ async def _llm_turn(system_prompt, messages, config, cancel, send, add) -> Assis
     if callable(system_prompt):
         system_prompt = await _maybe_await(system_prompt())
     llm_msgs = ai.transform_messages(config.convert_to_llm(config.transform_context(view)))
+    if config.images and config.model.vision:  # last, after any tool results, so the request stays valid
+        llm_msgs.append(UserMessage(f"[Pictures for this turn: {', '.join(n for n, _ in config.images)}]",
+                                    images=[u for _, u in config.images]))
     msg = partial = None
     opts = await api_key_opts(config.get_api_key, config.model)
     async for ev in _stream(config.stream_fn, config.model, Context(system_prompt, llm_msgs, tools), cancel, opts):
@@ -295,9 +302,10 @@ class Agent:
         """Abort even before the run starts (a session is still preparing it): the run will see it at once."""
         self._cancel.set()
 
-    async def prompt(self, text: str, extra: list = ()) -> list:
-        """extra: more messages sent with the prompt (e.g. from a plugin)."""
-        return await self._run([UserMessage(text), *extra])
+    async def prompt(self, text: str, extra: list = (), images: list = ()) -> list:
+        """extra: more messages sent with the prompt (e.g. from a plugin). images: [(name, data URL)] the model sees
+        during this run only (history keeps the text, which names the files)."""
+        return await self._run([UserMessage(text), *extra], images)
 
     async def continue_(self) -> list:
         """Run from the existing history with no new message (pi agentLoopContinue). A trailing error turn is
@@ -308,7 +316,7 @@ class Agent:
             raise ValueError(f"Cannot continue: last message must be user or tool_result, got {last and last.role}")
         return await self._run([])
 
-    async def _run(self, prompts: list) -> list:
+    async def _run(self, prompts: list, images: list = ()) -> list:
         if self.is_streaming:
             raise RuntimeError("Agent is already processing a prompt; wait for it or call abort() first")
         # not reset here: an abort that came while a session was still preparing this run must stick
@@ -329,6 +337,7 @@ class Agent:
                 before_tool_call=self.before_tool_call,
                 after_tool_call=self.after_tool_call,
                 tool_state=self.tool_state,
+                images=list(images),
             )
             emit = lambda e: _emit_all(self._subs, e)  # noqa: E731
             try:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import math
 import os
@@ -25,8 +26,36 @@ def _seen(ctx, path: str, text: str) -> None:
     ctx.state.setdefault("read_hash", dict())[path] = hashlib.sha256(text.encode()).hexdigest()
 
 
+IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}
+MAX_IMAGE_BYTES = 5_000_000  # providers reject bigger pictures
+MAX_RUN_IMAGES = 6  # pictures the model looks at in one run (each one is sent with every call of the run)
+
+
+def is_image(path: str) -> bool:
+    return os.path.splitext(path)[1].lower() in IMAGE_TYPES
+
+
+async def load_image(env, path: str) -> str:
+    """A picture in the workspace as a data URL; ValueError (a message for the model) when it can't be sent."""
+    data = await env.read_bytes(path)
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValueError(f"{os.path.basename(path)} is {len(data) // 1_000_000} MB; pictures over "
+                         f"{MAX_IMAGE_BYTES // 1_000_000} MB can't be viewed (shrink it first, e.g. with Pillow)")
+    return f"data:{IMAGE_TYPES[os.path.splitext(path)[1].lower()]};base64,{base64.b64encode(data).decode()}"
+
+
 async def read(args: dict, ctx) -> str:
     p = _path(ctx, args["path"])
+    if is_image(p):  # a picture: attached for the model to look at, never dumped as text
+        name = args["path"]
+        if not getattr(ctx, "vision", False):
+            return f"{name} is an image; this model cannot view images."
+        if any(n == name for n, _ in ctx.images):
+            return f"{name} is already attached for you to look at."
+        if len(ctx.images) >= MAX_RUN_IMAGES:
+            return f"Already {MAX_RUN_IMAGES} pictures this turn; look at the attached ones or ask the user."
+        ctx.images.append((name, await load_image(ctx.env, p)))
+        return f"{name} is an image; it is attached below for you to look at."
     text = await ctx.env.read_file(p)
     _seen(ctx, p, text)
     lines = text.splitlines()
@@ -177,7 +206,8 @@ def _p(type_: str, description: str) -> dict:
 
 def make_tools(bash_max_timeout_s: float | None = None) -> list:
     return [
-        AgentTool("read", "Read a text file. Output has line numbers. Use offset/limit for big files.",
+        AgentTool("read", "Read a text file (output has line numbers; use offset/limit for big files), or look at an image "
+                          "(png, jpg, webp, gif): it is attached for you to see.",
                   _obj({"path": _p("string", "File path, relative to cwd or absolute"),
                         "offset": _p("integer", "First line to read, 1-based (default 1)"),
                         "limit": _p("integer", f"Max lines to read (default {MAX_LINES})")}, ["path"]), read),

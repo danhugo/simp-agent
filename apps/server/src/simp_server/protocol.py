@@ -178,6 +178,7 @@ ServerEvent = Annotated[
 class Prompt(_M):
     type: Literal["prompt"] = "prompt"
     text: str
+    images: list[str] = Field(default_factory=list)  # workspace paths of attached pictures (the model looks; first 6)
 
 
 class Steer(_M):

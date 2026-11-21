@@ -439,7 +439,7 @@ class Run:
             log.warning("session title failed: %s", e, extra={"session": self.sid})
             self.title_task = None  # the next assistant message tries again
 
-    async def start(self, text, fresh: bool = True) -> None:  # text: a prompt, or a coroutine factory (continue_, compact)
+    async def start(self, text, fresh: bool = True, images: list = ()) -> None:  # text: a prompt, or a coroutine factory (continue_, compact)
         if fresh:  # a queued follow-up stays inside the same run budget
             # runtime settings (admin): a new run picks up current limits and prices; a run in progress keeps its own
             self.limits = self.mgr.limits
@@ -448,7 +448,7 @@ class Run:
         await self.set_state("running")
         self.run_id = uuid.uuid4().hex[:8]
         log.info("run start", extra=self._ctx())
-        fn = text if callable(text) else functools.partial(self.session.prompt, text)
+        fn = text if callable(text) else functools.partial(self.session.prompt, text, *([list(images)] if images else []))
         self.task = asyncio.create_task(self._run(fn))
 
     async def over_budget(self) -> str | None:
@@ -508,7 +508,7 @@ class Run:
     async def command(self, c) -> None:
         if isinstance(c, (p.Prompt, p.FollowUp, p.Steer)):
             if not self.busy:
-                await self.start(c.text)
+                await self.start(c.text, images=getattr(c, "images", []))
             elif len(self.session.agent.steering) + len(self.session.agent.follow_ups) >= MAX_QUEUED:
                 raise HTTPException(429, f"{MAX_QUEUED} messages already queued")
             elif isinstance(c, p.Steer):
