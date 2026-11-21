@@ -392,7 +392,8 @@ class E2BSandbox:
         if not resumed:
             box.sbx = await self._sdk.create(
                 template=self.template, timeout=self.provider_timeout_s, **self._api(),
-                metadata={"app": self.tag, "user_id": box.user_id, "egress": self.egress},
+                metadata={"app": self.tag, "user_id": box.user_id, "egress": self.egress,
+                          "template": self.template},
                 lifecycle={"on_timeout": "pause", "auto_resume": False}, **({"network": n} if (n := self._network()) else {}))
             box.started = time.monotonic()
             box.mirror_failed = False
@@ -593,6 +594,7 @@ class E2BSandbox:
         while pg.has_next:
             for i in await pg.next_items():
                 out.append({"id": i.sandbox_id, "user_id": i.metadata.get("user_id", ""), "egress": i.metadata.get("egress", ""),
+                            "template": i.metadata.get("template", ""),
                             "state": str(getattr(i.state, "value", i.state)), "started_at": i.started_at})
         return out
 
@@ -609,9 +611,9 @@ class E2BSandbox:
         for i in found:
             box = self.boxes.setdefault(i["user_id"], _Box(i["user_id"])) if i["user_id"] else None
             try:
-                # egress differs (e.g. made before the allowlist): its network rules are fixed at create, so do not resume
-                # it; files are in /work and repos in their mirror, nothing is lost
-                if box is None or box.sbx_id or i["egress"] != self.egress:
+                # egress or template differs (older server, or settings changed): network rules and toolset are fixed
+                # at create, so do not resume it; files are in /work and repos in their mirror, nothing is lost
+                if box is None or box.sbx_id or i["egress"] != self.egress or i["template"] != self.template:
                     log.info("killing orphan sandbox %s", i["id"])
                     await self._sdk.kill(i["id"], **self._api())
                     await self.compute.unpaused(i["id"])

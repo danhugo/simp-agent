@@ -264,8 +264,8 @@ async def test_max_life_kill_waits_for_foreground_call(cloud):
 
 
 async def test_orphan_cleanup_on_start(cloud):
-    a = await cloud.create(metadata={"app": "simp", "user_id": "u1", "egress": "allowlist"}, lifecycle={"on_timeout": "pause"})
-    b = await cloud.create(metadata={"app": "simp", "user_id": "u1", "egress": "allowlist"}, lifecycle={"on_timeout": "pause"})
+    a = await cloud.create(metadata={"app": "simp", "user_id": "u1", "egress": "allowlist", "template": "simp-sandbox"}, lifecycle={"on_timeout": "pause"})
+    b = await cloud.create(metadata={"app": "simp", "user_id": "u1", "egress": "allowlist", "template": "simp-sandbox"}, lifecycle={"on_timeout": "pause"})
     a.state = "paused"
     other = await cloud.create(metadata={"app": "other", "user_id": "u9"}, lifecycle={"on_timeout": "pause"})
     sb = make(cloud)
@@ -668,3 +668,15 @@ def test_allowlist_without_store_endpoint_fails_fast(cloud):
     sb.store.mount_endpoint = ""
     with pytest.raises(RuntimeError, match="workspace endpoint"):
         sb._network()
+
+
+async def test_sandbox_from_another_template_is_not_adopted(cloud):
+    """After switching [sandbox] template, old sandboxes would keep the old toolset if resumed: kill them."""
+    old = await cloud.create(metadata={"app": "simp", "user_id": "u1", "egress": "allowlist", "template": "simp-sandbox"},
+                             lifecycle={"on_timeout": "pause"})
+    old.state = "paused"
+    sb = make(cloud, template="simp-sandbox-next")
+    await sb.start()
+    assert old.sandbox_id not in cloud.boxes and not sb.boxes["u1"].sbx_id
+    await go(await sb.open("s1", "u1"))
+    assert cloud.boxes[sb.boxes["u1"].sbx_id].metadata["template"] == "simp-sandbox-next"
