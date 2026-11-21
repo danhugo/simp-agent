@@ -11,8 +11,10 @@ import re
 
 SLOTS = {
     "hat": ("the TOP: a hat OR hair (or both: hair with a hat on it), crown, hood, horns, ears, headband: whatever is on the head",
-            "It must sit ON the head, touching the sphere; it may rise up to y = 1.9. A HAT stays above y = 0.55 "
-            "(a brim or band around y = 0.6..0.9 with radius ~0.6..0.9 hugs it). HAIR may come lower: bangs end "
+            "It must sit ON the head, touching the sphere; it may rise up to y = 1.9. A HAT is WORN, not perched: "
+            "its crown wraps the top of the head (a shell over the head above y = 0.5), the brim (if any) sits at "
+            "y = 0.5..0.6 and is WIDER than the head (radius 1.3..1.6), and tall parts rise from the crown about as wide "
+            "as the head; every part touches the next (see the wizard and cowboy examples). Never a small hat on the top. HAIR may come lower: bangs end "
             "above y = 0.35; side and back hair may fall down past the cheeks to y = -1.5 for long hair; the front "
             "of the face (|x| < 0.75, y < 0.3) always stays clear for the eyes. Pick the style the description asks for: "
             "hats (beanie, wizard cone, cowboy, top hat, cap, beret, crown, witch hat, chef toque, helmet) or hair "
@@ -75,6 +77,29 @@ const cap = H.above([H.sphere(p, [0, 0.1, 0], 1.08), "#d94141"], p, 0.55);
 const band = [H.torus(p, [0, 0.6, 0], 0.85, 0.1), "#b02e2e"];
 const pom = [H.sphere(p, [0, 1.25, 0], 0.18), "#ffffff"];
 return H.union(cap, band, pom);
+</code>
+Example, a wizard hat (a top), worn:
+<code>
+// a hat is WORN: its crown wraps the top of the head (a shell over the head above the brim), the brim sits around
+// the head at y = 0.5..0.6 and is wider than it, and the tall part rises from the crown as wide as the head
+const c = "#5b3fb0";
+const crown = H.above([H.sphere(p, [0, 0.05, 0], 1.08), c], p, 0.5);
+const brim = [H.cyl(p, [0, 0.55, 0], 1.45, 0.05), c];
+const cone = [H.cone(H.tilt(p, [0, 0.6, 0], "z", -12), [0, 0.6, 0], 0.85, 1.5), c];
+const band = [H.torus(p, [0, 0.66, 0], 0.88, 0.09), "#f2c230"];
+const star = [H.sphere(p, [0.45, 1.05, 0.55], 0.1), "#f2c230"];
+return H.union(crown, brim, cone, band, star);
+</code>
+Example, a cowboy hat (a top), worn:
+<code>
+const c = "#9a6a3a", d = "#6e4724";
+const crown = H.above([H.sphere(p, [0, 0.05, 0], 1.08), c], p, 0.5);
+// the brim: wide, curling up at the sides (lifted with distance from the center along x)
+const q = [p[0], p[1] - 0.25 * Math.max(0, Math.abs(p[0]) - 0.9) ** 2, p[2]];
+const brim = [H.cyl(q, [0, 0.55, 0], 1.55, 0.05), c];
+const top = [H.rbox(p, [0, 0.95, 0], [0.72, 0.42, 0.62], 0.25), c];
+const band = [H.torus(p, [0, 0.7, 0], 0.8, 0.08), d];
+return H.union(crown, brim, top, band);
 </code>
 Example, spiky anime hair (a top): a cap on the scalp, then pointed locks bent outward; bangs end above
 the eyes and side locks fall past the ears.
