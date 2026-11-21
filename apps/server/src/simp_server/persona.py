@@ -19,14 +19,16 @@ SLOTS = {
             "(spiky, short messy, bob, long straight, twin tails, ponytail, bun, afro, curls). Hair is a scalp cap plus "
             "H.lock strands (spikes, bangs, tails) or a curtain for long hair (see the examples), never one smooth blob. "
             "Ponytail / twin tails / bun: a sphere or a bent H.lock attached at the back or sides of the head."),
-    "bottom": ("the BOTTOM: shorts, a skirt, a belt, a robe or the lower part of a coat (no legs, so no pants)",
-               "There is no body: the ball IS the whole character, so it wraps the LOWER half of the sphere, "
-               "everything below y = -0.5 (a bit under the cheeks), slightly outside the sphere and a little roomy (trim with H.below). Give it a real silhouette: "
-               "a skirt, robe or coat is a BELL: as wide as the ball at its waist, flaring out with slightly rounded (convex) sides, not a dead-straight cone, with a flat hem, "
-               "and under the hem a ROUND base (a squashed half ball) clearly NARROWER than the hem, so the hem shows as a step; never a flat cut-off edge (see the skirt example); never pinched in under the waist. Like everything here it starts at y = -0.5, so it "
-               "does not hide the cheeks. It may flare out to |x|,|z| <= 1.5. "
-               "Keep that one bell form and size for every skirt, robe and coat (no short or long versions): hem at y = -1.65, "
-               "round base down to about y = -2.0."),
+    "bottom": ("the BOTTOM: what is under the face: a body, shorts, a skirt, a robe or a coat (no legs, so no pants)",
+               "The ball IS the head; the bottom goes on the LOWER half, everything "
+               "below y = -0.5 (a bit under the cheeks), trimmed with H.below. Use exactly ONE of these 3 forms, always at "
+               "the size of its example, never another silhouette and no short or long versions:\n"
+               "1. SNUG: a thin shell that hugs the ball itself (shorts, a belt, overalls, a swimsuit). See the overalls example.\n"
+               "2. ROUND BODY: a round belly under the ball, about as wide as it and bulging out, rounded at the bottom "
+               "(a body, a suit, a superhero costume, a puffy dress). See the round body example.\n"
+               "3. BELL: a skirt, robe or coat: slightly rounded sides flaring out to a flat hem at y = -1.65, and under the "
+               "hem a ROUND base clearly NARROWER than the hem, so the hem shows as a step. See the skirt and the coat examples.\n"
+               "Patterns and details (stripes, webs, belts, buttons) are colors chosen by where p is, or small parts on the surface."),
 }
 
 SYSTEM = """You design ONE piece of an outfit for Simp, a round AI assistant mascot drawn as a tiny pixel-art 3D
@@ -103,7 +105,7 @@ return H.union(scalp, [d, c], ...ends, ...bangs);
 Clothes have LAYERS and PATTERNS, like real ones: an inner layer (robe, shirt) under an outer one (coat, jacket,
 apron) that is cut open (H.cut) so the inner one shows; stripes, dots, checks or triangles by choosing the color from
 where p is. Copy the look of the reference (layers, trims, pattern), not just one flat color.
-Example, an open coat over a dark robe, with a triangle pattern (a bottom):
+Example, an open coat over a dark robe, with a triangle pattern (a bottom), form 3 BELL:
 <code>
 // the bell (an oval dome with a flat hem) as a function so both layers share it; s = how much bigger;
 // under the hem a smaller round base (the robe's), narrower than the hem
@@ -121,13 +123,16 @@ const a = Math.atan2(p[0], p[2]) * 1.6, u = a - Math.floor(a), v = p[1] * 3 - Ma
 const tri = Math.abs(u - 0.5) < (0.8 - v) * 0.5 && v > 0.15;
 return H.union(inner, base, coat && [coat[0], tri ? "#f4f4ee" : "#f29a2e"]);
 </code>
-Example, blue shorts (a bottom): not skin-tight, a little roomy like a gourd: snug at the waist, bulging
-slightly wider and lower toward the bottom (a soft union of the head with a lower ball).
+Example, a superhero suit (a bottom), form 2 ROUND BODY: red with black web lines, blue sides.
 <code>
-const body = H.smooth([H.head(p), "#3463c9"], [H.sphere(p, [0, -0.4, 0], 0.85), "#3463c9"], 0.3);
-return H.below([H.shell(body[0], 0.06), "#3463c9"], p, -0.5);
+// the body: no cone, just a round belly under the head (a squashed ball blended into the head)
+const body = H.smooth([H.head(p) - 0.03, ""], [H.sphere([p[0], (p[1] + 1.0) * 1.15, p[2]], [0, 0, 0], 1.02) / 1.15, ""], 0.35)[0];
+const a = Math.atan2(p[0], p[2]), side = Math.abs(a) > 1.0 && Math.abs(a) < 2.4;
+const ring = (p[1] * 4) - Math.floor(p[1] * 4) < 0.12, ray = (a * 6 / Math.PI) - Math.floor(a * 6 / Math.PI) < 0.08;
+const spider = H.sphere(p, [0, -0.85, 1.05], 0.12) < 0;
+return H.below([body, side ? "#2a4bb0" : spider || ring || ray ? "#1a1a1a" : "#d42a2a"], p, -0.5);
 </code>
-Example, a skirt (a bottom), the one bell form:
+Example, a skirt (a bottom), form 3 BELL:
 <code>
 // a skirt: a bell with slightly rounded sides and a flat hem at y = -1.65, and under it a smaller round base
 // (a squashed half ball, narrower than the hem, so the hem shows as a step). Always this size.
@@ -139,7 +144,7 @@ const skirt = H.below(H.union(flare, base), p, -0.5);
 const waist = [H.torus(p, [0, -0.52, 0], 0.88, 0.09), "#4b2e8f"];
 return H.union(skirt, waist);
 </code>
-Example, overalls (a bottom): a fitted base plus chunky pieces on the front.
+Example, overalls (a bottom), form 1 SNUG: a fitted base plus chunky pieces on the front.
 <code>
 const base = H.below([H.shell(H.head(p), 0.06), "#3b6fb6"], p, -0.5);
 const bib = H.below([H.rbox(p, [0, -0.7, 0.8], [0.36, 0.22, 0.12], 0.05), "#5b8fd6"], p, -0.5);
