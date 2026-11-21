@@ -1,6 +1,6 @@
 # Deploy to the Lightsail box when a release tag is pushed: git tag v0.1.0 && git push origin v0.1.0
 # (master is the dev branch, so a plain push never deploys). Re-run a tag by hand from the Actions tab.
-# One-time setup: see "CI/CD" in docs/deploy-plan.md (repo secrets incl. SETTINGS_TOML + port 22 open).
+# One-time setup: see "CI/CD" in docs/deploy-plan.md (repo secrets + port 22 open; settings.toml is kept on the box).
 name: deploy
 
 on:
@@ -92,14 +92,10 @@ jobs:
             printf 'ADMIN_EMAILS=%s\n' "$ADMIN_EMAILS"
             [ -z "$SENTRY_DSN" ] || printf 'SENTRY_DSN=%s\n' "$SENTRY_DSN"; } | ssh box 'umask 077; cat > /srv/simp/.env'
 
-      # settings.toml (models, bucket, allowed_emails...) is one repo secret, not in this public repo
-      - name: Write /srv/simp/settings.toml
-        env:
-          SETTINGS_TOML: ${{ secrets.SETTINGS_TOML }}
-        run: |
-          [ -n "$SETTINGS_TOML" ] || { echo "missing repo secret: SETTINGS_TOML"; exit 1; }
-          printf '%s\n' "$SETTINGS_TOML" | python3 -c 'import sys, tomllib; tomllib.loads(sys.stdin.read())'
-          printf '%s\n' "$SETTINGS_TOML" | ssh box 'umask 077; cat > /srv/simp/settings.toml'
+      # settings.toml (models, bucket, allowed_emails...) lives only on the box and is edited there; a deploy never
+      # rewrites it. Stop early if it is missing.
+      - name: Check /srv/simp/settings.toml
+        run: ssh box 'test -s /srv/simp/settings.toml || { echo "missing /srv/simp/settings.toml on the box"; exit 1; }'
 
       # --force-recreate: a container restarts even when only settings.toml/.env changed (same image).
       # The box logs in to GHCR with this job's short-lived token (works for private packages too).

@@ -43,9 +43,9 @@ rewrites `/srv/simp/.env` from repo secrets, checks out the tag (for docker-comp
 (force-recreate: a settings-only change restarts the server too). The job fails unless `https://simpagent.app/api/readyz`
 (fallback `/api/healthz`) answers 200 within ~2.5 min. `/api/readyz` checks database, R2 bucket, E2B and the model
 provider (cached 30 s); `/api/healthz` only says the process is up. Roll back = re-run an older tag (pulls its image).
-`/srv/simp/settings.toml` is rewritten too, from the `SETTINGS_TOML`
-repo secret (the whole file; this repo is public, so models, bucket and `allowed_emails` stay out of it).
-To change settings: edit the secret, then re-run the tag. Keep your own copy: a secret cannot be read back.
+`/srv/simp/settings.toml` lives only on the box (this repo is public, so models, bucket and `allowed_emails` stay out
+of it); a deploy never touches it and fails early if it is missing. To change settings: edit the file on the box
+(`ssh simp-agent`, keep a `.bak` copy), then `cd ~/simp-agent && docker compose up -d --force-recreate`.
 
 One-time setup:
 1. Lightsail firewall: SSH (22) open to any IP (GitHub runners have no fixed IP). Login is key-only.
