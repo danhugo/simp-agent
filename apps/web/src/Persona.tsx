@@ -31,7 +31,7 @@ function tryPaint(code: string | undefined): { paint: Paint | null; err: string 
   try { return { paint: compilePaint(code), err: "" }; } catch (e) { return { paint: null, err: (e as Error).message }; }
 }
 const check = (code: string, slot: PSlot) => {
-  try { if (slot === "face") compilePaint(code); else compileSkin(code, slot); return ""; } catch (e) { return (e as Error).message; }
+  try { if (slot === "face") compilePaint(code); else item(code, slot); return ""; } catch (e) { return (e as Error).message; }
 };
 
 /** value, but only after it stopped changing for ms (hand edits in a code box rebake once, not per keystroke) */

@@ -7,7 +7,7 @@
 export type Part = [number, string] | null;
 export type Box = { lo: number[]; hi: number[] };
 /** An outfit; `boxes` (head space) hold all of it, one per slot, so the renderer marches only where a ray is inside one. */
-export type Wear = ((p: number[]) => Part) & { boxes?: Box[]; grid?: number[] };
+export type Wear = ((p: number[]) => Part) & { boxes?: Box[]; grid?: number[]; solid?: { lo: number[]; n: number[]; dist: Float32Array } };
 type V = number[];
 
 const len = (x: number, y: number, z: number) => Math.hypot(x, y, z);
@@ -157,7 +157,36 @@ export function compileSkin(code: string, slot?: Slot): Wear {
 }
 
 /** One slot's code as a standalone object: checked, then baked into its own grid. Throws like compileSkin. */
-export const item = (code: string, slot: Slot): Wear => bake(compileSkin(code, slot));
+export const item = (code: string, slot: Slot): Wear => attached(bake(compileSkin(code, slot)));
+
+/** every part must hang together with the rest and the head: a piece floating on its own (a pom-pom, a ring) is an error */
+function attached(w: Wear): Wear {
+  const { lo, n, dist } = w.solid!, [nx, ny, nz] = n, N = nx * ny * nz, seen = new Uint8Array(N), stack: number[] = [];
+  let inside = 0;
+  for (let a = 0; a < N; a++) {
+    if (dist[a] >= 0) continue;
+    inside++;
+    const i = Math.floor(a / (ny * nz)), j = Math.floor(a / nz) % ny, k = a % nz;
+    const x = lo[0] + i * CELL, y = lo[1] + j * CELL, z = lo[2] + k * CELL;
+    if (Math.hypot(x, y, z) < 1.1) { seen[a] = 1; stack.push(a); }  // touches the head
+  }
+  while (stack.length) {
+    const a = stack.pop()!, i = Math.floor(a / (ny * nz)), j = Math.floor(a / nz) % ny, k = a % nz;
+    for (const [di, dj, dk] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+      const I = i + di, J = j + dj, K = k + dk;
+      if (I < 0 || J < 0 || K < 0 || I >= nx || J >= ny || K >= nz) continue;
+      const b = (I * ny + J) * nz + K;
+      if (!seen[b] && dist[b] < 0) { seen[b] = 1; stack.push(b); }
+    }
+  }
+  let loose = 0, at: number[] | null = null;
+  for (let a = 0; a < N; a++) if (dist[a] < 0 && !seen[a]) {
+    loose++;
+    if (!at) at = [lo[0] + Math.floor(a / (ny * nz)) * CELL, lo[1] + (Math.floor(a / nz) % ny) * CELL, lo[2] + (a % nz) * CELL];
+  }
+  if (loose > Math.max(8, inside * 0.01)) throw new Error(`a part floats on its own near [${at!.map((v) => v.toFixed(2)).join(", ")}]: every part must touch the rest of the piece (or the head), like a pom-pom sewn onto the hat; move it in or make it bigger so it overlaps`);
+  return w;
+}
 
 /** Assemble: all objects merged into ONE grid (one unified 3D object), built once. Cheap on baked items. */
 export const combine = (ws: (Wear | null)[]): Wear | null => {
@@ -205,6 +234,7 @@ export function bake(w: Wear): Wear {
   };
   baked.boxes = boxes;
   baked.grid = n;
+  baked.solid = { lo, n, dist };
   return baked;
 }
 
