@@ -32,3 +32,9 @@ def _s3_settings(tmp_path, w, prefix, **sandbox):
                                                         "prefix": prefix}, "sandbox": sandbox}
     keys = {"S3_ACCESS_KEY_ID": w["access_key"], "S3_SECRET_ACCESS_KEY": w["secret_key"]}
     return settings, keys
+
+
+@pytest.fixture
+def ask_all(monkeypatch):
+    """Every tool call goes to the approval prompt (tests of the approval flow itself, not of the policy)."""
+    monkeypatch.setattr("simp_server.policy.classify", lambda call, mcp_write, available, net_blocked=True: ("ask", ""))

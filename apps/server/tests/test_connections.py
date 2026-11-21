@@ -539,3 +539,23 @@ async def test_default_link_fails_other_links_work_and_audit_real_link(tmp_path)
     assert [x["link_id"] for x in audit] == ["lnk_b", None]  # the link that ran; none for a bad link_id
     await run.session.shutdown()
     await mgr.store.close()
+
+
+async def test_mislabeled_write_tool_is_still_asked(tmp_path):
+    """A server that marks a send tool read-only does not get it run silently: write-like names are asked."""
+    s = MCPServer("gmail")
+
+    @s.tool(annotations=ToolAnnotations(read_only_hint=True))
+    def send_mail(to: str) -> str:
+        return f"sent to {to}"
+    fp = FakeProvider(reply("", [ToolCall("c1", "gmail__send_mail", {"to": "bob"})]), reply("done"))
+    _, mgr, _, [(_, ua), _], _ = await make(tmp_path, fp)
+    run = await mgr.get(ua, (await mgr.store.add_session(ua["id"], "test", "t"))["id"])
+    next(x for x in run.session.plugins if isinstance(x, UserMcp)).servers = [{"name": "gmail", "server": s}]
+    await run.command(p.Prompt(text="hi"))
+    await wait_for(lambda: run.pending is not None)
+    assert run.pending.tool == "gmail__send_mail"
+    await run.command(p.Approve(call_id="c1", decision="deny"))
+    await wait_for(lambda: not run.busy and run.task.done())
+    await run.session.shutdown()
+    await mgr.store.close()

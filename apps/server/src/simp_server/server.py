@@ -40,6 +40,7 @@ from simp_agent.ai import (Context, Model, ThinkingContent, ToolResultMessage, U
                            to_dict)
 from simp_agent.plugins import build_plugins
 from simp_agent.plugins.memory import Memory
+from simp_server import policy
 from simp_server.sandboxes import user_root
 from simp_agent.plugins.redact_secrets import RedactSecrets
 from simp_agent.session import AgentSession
@@ -196,7 +197,7 @@ def load_settings(home: Path = HOME) -> dict:
 def take_keys(settings: dict) -> dict:
     """Model keys from <data_dir>/.env and the process env. Removed from os.environ so sandboxed commands never see them."""
     names = ({pr.get("api_key_env") for pr in settings["profiles"].values()} | {"OPENAI_API_KEY", "ANTHROPIC_API_KEY",
-             "SIMP_SECRET_KEY", "E2B_API_KEY", "ADMIN_EMAILS"} | {settings.get("workspace", dict()).get(k, d) for k, d in (
+             "SIMP_SECRET_KEY", "E2B_API_KEY", "TAVILY_API_KEY", "ADMIN_EMAILS"} | {settings.get("workspace", dict()).get(k, d) for k, d in (
              ("access_key_env", "S3_ACCESS_KEY_ID"), ("secret_key_env", "S3_SECRET_ACCESS_KEY"))} | {a.get(k) for a in providers(settings).values() for k in ("client_id_env", "client_secret_env")})
     keys = dict()
     f = Path(settings["data_dir"]) / ".env"
@@ -248,10 +249,11 @@ class Run:
             context_file=False,  # a general agent: no AGENTS.md/CLAUDE.md (reading them woke the sandbox on every first message)
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
-            plugins=[*build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(), Memory(store=DbMemoryStore(
+            plugins=[policy.Policy(self.verdict), *build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(mgr.keys.get("TAVILY_API_KEY")), Memory(store=DbMemoryStore(
                 mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), self.mcp, SandboxSync(env)],
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
+        self.session.must_ask = lambda call: self.verdict(call)[0] == "ask"  # "always" never covers these
         self.session.agent.steering_mode = "all"  # all queued steers reach the next turn
         self.session.add_prompt_section(  # the user's persona: style only, fenced, read fresh every turn
             "persona", lambda ctx: persona_mod.prompt_section(mgr.store.persona_sync(self.user_id)), 90)
@@ -372,8 +374,16 @@ class Run:
         elif t == "plugin_error":
             await self.durable(p.Notice, level="error", text=f"plugin {e['plugin']}.{e['hook']}: {e['error']}")
 
+    def verdict(self, call) -> tuple[str, str]:
+        mcp_write = call.name in self.mcp.names and call.name in self.session.needs_approval
+        sb = self.mgr.sandbox
+        return policy.classify(call, mcp_write, getattr(sb, "toolset_line", ""),
+                               net_blocked=getattr(sb, "egress", "open") == "allowlist")
+
     async def approve(self, call) -> str:
-        """AgentSession approve callback: ask every tab, wait for a decision. Abort cancels this."""
+        """AgentSession approve callback: policy `allow` runs at once; otherwise ask every tab and wait. Abort cancels."""
+        if self.verdict(call)[0] == "allow":
+            return "allow"
         self.answer = asyncio.get_running_loop().create_future()
         args = self.mcp.shown_args(call) if call.name in self.mcp.names else call.arguments  # email, not link id
         self.pending = p.PendingApproval(call_id=call.id, tool=call.name, args=args)

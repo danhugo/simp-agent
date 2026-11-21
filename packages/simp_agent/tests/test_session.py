@@ -154,3 +154,19 @@ async def test_stop_while_approving_ends_every_tool_call():
     await asyncio.wait_for(s.prompt("hi"), 5)
     assert ended == ["a", "b"] and s.messages[-1].stop_reason == "aborted"
     assert [m.tool_call_id for m in s.messages if hasattr(m, "tool_call_id")] == ["a", "b"]
+
+
+async def test_always_never_covers_a_call_that_must_ask():
+    """'Always' on bash covers later bash calls, except those the app says must ask (must_ask)."""
+    calls = AssistantMessage([ToolCall("a", "bash", {"command": "echo 1"}), ToolCall("b", "bash", {"command": "echo 2"}),
+                              ToolCall("c", "bash", {"command": "git push"})], stop_reason="tool_use")
+    asked = []
+
+    async def approve(call):
+        asked.append(call.id)
+        return "always"
+
+    s = session(FakeProvider(calls, AssistantMessage([TextContent("ok")], stop_reason="stop")), approve=approve)
+    s.must_ask = lambda call: "push" in call.arguments["command"]
+    await asyncio.wait_for(s.prompt("hi"), 5)
+    assert asked == ["a", "c"]

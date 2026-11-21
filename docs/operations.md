@@ -283,10 +283,11 @@ template = "simp-sandbox"
 tag = "simp"               # metadata app=<tag>: which E2B sandboxes this server owns
 cpus = 2                   # used for cost only; set at template build
 memory_mb = 2048
-idle_pause_s = 600         # pause after 10 min unused (home snapshot first)
+idle_pause_s = 600         # pause after 10 min unused
+# office = false           # true if the template was built with --office (names LibreOffice in the prompt)
+# egress = "allowlist"     # outbound only to the workspace endpoint + egress_allow; "open" = no filter (dev only)
+# egress_allow = []        # extra hosts the sandbox may reach; web access goes through web_search / web_fetch
 max_life_s = 3300          # kill and recreate after 55 min (E2B Hobby: 1 h continuous cap)
-snapshot_every_s = 900     # home snapshot to /work/.simp/home.tar.zst
-snapshot_max_mb = 2048     # counts against quota_mb; over this, no new snapshot (libraries reinstall); repos are never in it
 # provider_timeout_s = idle_pause_s + 300   # E2B-side pause if this server dies
 max_running = 10           # E2B Hobby allows 20 concurrent
 day_minutes = 240          # per-user daily compute minutes (e2b default)
@@ -296,6 +297,28 @@ price_gib_s = 0.0000045
 
 Env vars (in `<data_dir>/.env` or the process env, names only): `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (or
 whatever `access_key_env` / `secret_key_env` name), `E2B_API_KEY`, optionally `SIMP_SANDBOX=docker|e2b`.
+
+`TAVILY_API_KEY` (optional): web_search uses Tavily and web_fetch reads bot-blocked pages through Tavily extract;
+without it, DuckDuckGo and plain GET.
+
+**Toolset.** The template bakes a fixed toolset (`simp_server/sandboxes/toolset.py`: pandas, docx, pptx, openpyxl,
+pdf, matplotlib, pillow, OCR with Vietnamese, ffmpeg, node, git) into root-owned `/opt/simp`. Users and the agent use
+it but cannot install or change packages: `/opt/simp` is read-only, the sandbox cannot reach package indexes (egress
+allowlist), and the policy (`simp_server/policy.py`) answers install attempts with the list. To add a library, edit
+`toolset.py`, rebuild the template, switch `template` to the new alias. About 0.6 GB (1.1 GB with `--office`); the
+template does not count toward user quota. Home is not saved any more: old home snapshots (user-installed
+libraries) are deleted at create; repos still come back from their mirror.
+
+**Rollout order (this change).** 1) Build the new template (`e2b_template.py --alias simp-sandbox-next`) and run
+`test_e2b_live.py` against it with a real bucket mount. 2) Set `template` to the new alias and add `TAVILY_API_KEY`.
+3) Deploy the server at a quiet time: at start it kills every sandbox made without the egress allowlist, so each
+user's next tool call creates a fresh one (slower once; files and repos are kept, self-installed libraries are gone).
+
+**Approvals.** `simp_server/policy.py` decides per call: sandbox commands and file edits run without asking; MCP
+tools that change data (by the server's hint, or a name starting with send_/delete_/share_/create_/update_ ...) are
+asked, even after "always"; installs, and network commands when egress is blocked, are refused with a reason. A
+keyword counts only as the command word (`grep curl notes.md` runs). The regexes are a hint layer, not a boundary. Deletes inside `/work` run without
+asking and are permanent on R2.
 
 Build the E2B template once (`--office` adds LibreOffice, about 500 MB):
 
@@ -339,6 +362,12 @@ namespaced per server: two simp instances must not share one Docker host's sandb
   unconfined and a `bridge` network that can reach `host.docker.internal` (your host). Only `docker exec -u 0` uses
   the capability (mount, and the unmount before removal); commands run as 1000 with no capabilities.
 - The E2B template removes sudo; every new sandbox checks that `user` has no passwordless sudo.
+- E2B egress: `allow_out` = workspace endpoint + `egress_allow`, `deny_out` = all. DNS (8.8.8.8) stays reachable:
+  a slow exfiltration channel (data in DNS queries), accepted for now (2026-11-21), to be handled by the security team
+  (`dns_servers=[]` + the endpoint in `/etc/hosts`).
+  Sound only with an account-specific endpoint (R2: `<account>.r2.cloudflarestorage.com`); on a shared host such as
+  `s3.amazonaws.com` a sandbox could upload to any bucket it has keys for. Sandboxes created with other egress
+  settings (e.g. before the allowlist) are killed at server start, not resumed.
 - Repo backup runs git with hooks and fsmonitor off (`core.hooksPath=/dev/null`, `push --no-verify`).
 - `mount_scope = "sts"` hands the sandbox a 1 h credential limited to `users/<user_id>/` (MinIO refuses AssumeRole for
   its root user, so `make minio` creates a `simp-dev` user). `mount_scope = "none"` (needed for R2, which has no STS)

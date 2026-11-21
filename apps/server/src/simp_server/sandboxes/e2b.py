@@ -3,11 +3,11 @@ shared by the user's sessions. `[sandbox] kind = "e2b"`, needs `[workspace] stor
 
 - /work is an s3fs mount of the user's bucket prefix (scoped credential from the store); every file op and command
   runs in the sandbox (one writer). The Files panel goes to the store, never here.
-- /home/user (repos, libraries) is the sandbox's disk: packed to /work/.simp/home.tar.zst at pause, every
-  `snapshot_every_s` and before kill, unpacked at create. Repos are also mirrored after each tool call (repos.py).
-- Lifecycle: create (mount, restore home, restore repos) -> running -> idle `idle_pause_s` -> snapshot, pause ->
+- /home/user is the sandbox's disk and is not saved: libraries are fixed in the template (toolset.py); repos are
+  mirrored to /work after each tool call (repos.py). Old home snapshots (/work/.simp/home.tar.zst) are deleted at create.
+- Lifecycle: create (mount, restore repos) -> running -> idle `idle_pause_s` -> pause ->
   next tool call -> resume, check mount, remount if dead. At `max_life_s` from create (Hobby: 1 h continuous cap) a
-  sandbox with no foreground call running is snapshotted, synced, unmounted and killed; the next call creates a fresh
+  sandbox with no foreground call running is synced, unmounted and killed; the next call creates a fresh
   one. Background processes do not keep it alive.
 - Safety net: created with a provider-side timeout whose action is pause (lifecycle on_timeout="pause"), refreshed on
   use, so a dead server stops the bill. On server start, sandboxes tagged with our metadata are adopted (paused) or
@@ -22,30 +22,23 @@ import logging
 import os
 import shlex
 import time
+import urllib.parse
 import uuid
 from datetime import datetime, timezone
 
 from simp_agent.coding import SANDBOX_HINT
-from simp_server import workspace
-from simp_server.sandboxes import Compute, SandboxLimit, valid_id
+from simp_server import policy, workspace
+from simp_server.sandboxes import Compute, toolset, SandboxLimit, valid_id
 from simp_server.sandboxes.docker import S3FS
 from simp_server.sandboxes.repos import mirror_locked, remirror_if_failed, restore_repos
 
 log = logging.getLogger("simp_server")
+NO_NET = policy.NO_NET
 
 REPOS, MIRRORS, SNAPSHOT = "/home/user/repos", "/work/.simp/repos", "/work/.simp/home.tar.zst"
 SANDBOX_DIRS = ("/work", "/home/user", "/tmp")
-# Libraries only. Never repos/ (review C2): the repo mirror is their one source of truth; an older snapshot restored
-# over them would roll them back and the next mirror would force-push the rollback.
-HOME_DIRS = ".local .npm-global .venvs"
-
-# $1 cap in bytes. Over the cap there is no new snapshot (libraries reinstall from manifests).
-SNAPSHOT_SH = f"""cd /home/user || exit 0; d=$(ls -d {HOME_DIRS} 2>/dev/null); [ -n "$d" ] || exit 0
-mkdir -p /work/.simp && tar -cf - $d 2>/dev/null | zstd -q -f -o /tmp/home.tar.zst || exit 1
-if [ "$(stat -c %s /tmp/home.tar.zst)" -gt "$1" ]; then rm -f /tmp/home.tar.zst; echo "home snapshot over the cap: skipped"; exit 0; fi
-cp /tmp/home.tar.zst {SNAPSHOT}.tmp && mv -f {SNAPSHOT}.tmp {SNAPSHOT} && rm -f /tmp/home.tar.zst && sync"""
-# old snapshots may still hold repos/: never unpack them
-RESTORE_SH = f"[ -f {SNAPSHOT} ] || exit 0; zstd -dc {SNAPSHOT} | tar -C /home/user -xf - --anchored --exclude=repos --exclude=./repos"
+# home snapshots are gone (fixed toolset): delete old ones, which count toward the workspace quota
+CLEAN_SNAPSHOT_SH = f"rm -f {SNAPSHOT} {SNAPSHOT}.tmp"
 SUDO_CHECK = "sudo -n true 2>/dev/null && echo SIMP_SUDO_OK; true"  # the template must not give `user` root
 DENIED = ("Transport endpoint is not connected", "AccessDenied", "403 Forbidden")
 CREDS_MARGIN_S = 300
@@ -156,7 +149,7 @@ class _Box:
     def __init__(self, user_id: str):
         self.user_id, self.sbx, self.sbx_id, self.state = user_id, None, None, "none"
         self.active, self.last = 0, time.monotonic()
-        self.started = self.metered = self.snap_at = self.timeout_at = 0.0
+        self.started = self.metered = self.timeout_at = 0.0
         self.sessions: set[str] = set()
         self.lock = asyncio.Lock()
         self.starting = self.over = False  # starting: holds a running slot (M8); over: daily budget used up
@@ -312,11 +305,13 @@ class E2BSandbox:
     def __init__(self, settings: dict):
         s = settings.get("sandbox", dict())
         self.template = s.get("template", "simp-sandbox")
+        # egress: "allowlist" (default) = only `egress_allow` + the workspace endpoint; "open" = no filter (dev)
+        self.egress, self.egress_allow = s.get("egress", "allowlist"), list(s.get("egress_allow", []))
+        self.toolset_line = toolset.prompt_list(bool(s.get("office")))  # named in policy deny reasons
+        fixed = f"{self.toolset_line} Libraries are fixed: do not install packages."
+        self.prompt_hint = " ".join([SANDBOX_HINT, fixed, *([] if self.egress == "open" else [NO_NET])])
         self.tag = s.get("tag", "simp")  # metadata app=<tag>: which sandboxes this server owns
         self.idle_pause_s, self.max_life_s = s.get("idle_pause_s", 600), s.get("max_life_s", 3300)
-        self.snapshot_every_s = s.get("snapshot_every_s", 900)
-        # counts against the user's workspace quota: keep it well under it (over the cap: libraries reinstall)
-        self.snapshot_max_bytes = int(s.get("snapshot_max_mb", 2048)) * 2**20
         self.provider_timeout_s = s.get("provider_timeout_s", self.idle_pause_s + 300)
         self.cpus, self.memory_gib = float(s.get("cpus", 2)), float(s.get("memory_mb", 2048)) / 1024  # for cost
         self.store, self.keys, self.compute = None, dict(), Compute(settings, "e2b")
@@ -324,6 +319,17 @@ class E2BSandbox:
         self.sdk = None  # e2b.AsyncSandbox (tests put a fake here)
         self.envs: dict[str, E2BEnv] = dict()
         self.boxes: dict[str, _Box] = dict()
+
+    def _network(self) -> dict | None:
+        """Outbound allowlist: the sandbox reaches only the workspace store (s3fs) and `egress_allow`; web access goes
+        through the server's web tools. Hosts are matched by name. DNS (8.8.8.8) stays open: a very slow channel."""
+        if self.egress == "open":
+            return None
+        host = urllib.parse.urlsplit(getattr(self.store, "mount_endpoint", "") or "").hostname
+        if not host:  # deny-all with no store host would leave /work unmountable with an obscure s3fs error
+            raise RuntimeError("sandbox egress allowlist needs the workspace endpoint ([workspace] endpoint or "
+                               "mount_endpoint); set [sandbox] egress = \"open\" only for local dev")
+        return {"allow_out": [*self.egress_allow, *([host] if host else [])], "deny_out": ["0.0.0.0/0"]}
 
     def _api(self) -> dict:
         key = self.keys.get("E2B_API_KEY") or os.environ.get("E2B_API_KEY")
@@ -384,12 +390,12 @@ class E2BSandbox:
         if not resumed:
             box.sbx = await self._sdk.create(
                 template=self.template, timeout=self.provider_timeout_s, **self._api(),
-                metadata={"app": self.tag, "user_id": box.user_id},
-                lifecycle={"on_timeout": "pause", "auto_resume": False})
+                metadata={"app": self.tag, "user_id": box.user_id, "egress": self.egress},
+                lifecycle={"on_timeout": "pause", "auto_resume": False}, **({"network": n} if (n := self._network()) else {}))
             box.started = time.monotonic()
             box.mirror_failed = False
         box.sbx_id, box.state = box.sbx.sandbox_id, "running"
-        box.last = box.metered = box.snap_at = box.timeout_at = time.monotonic()
+        box.last = box.metered = box.timeout_at = time.monotonic()
         try:
             if not resumed or not await self._mounted(box):
                 await self._mount(box)
@@ -398,10 +404,10 @@ class E2BSandbox:
                 if "SIMP_SUDO_OK" in out:
                     raise RuntimeError("e2b template gives `user` passwordless sudo: rebuild it with "
                                        "apps/server/sandboxes/e2b_template.py")
-                await box.exec(RESTORE_SH, "/home/user", 600, asyncio.Event())
+                await box.exec(CLEAN_SNAPSHOT_SH, "/home/user", 600, asyncio.Event())
                 await restore_repos(box, REPOS, MIRRORS, cwd="/work")
         except Exception:
-            await self._kill(box, snapshot=False)
+            await self._kill(box, finalize=False)
             raise
 
     async def _mounted(self, box: _Box) -> bool:
@@ -458,17 +464,6 @@ class E2BSandbox:
         box.noted = u["state"] if u["state"] == "warn" else ""
         return ""
 
-    async def snapshot(self, box: _Box) -> None:
-        """Home (repos, libraries) -> /work/.simp/home.tar.zst. Never raises."""
-        try:
-            code, out = await box.exec(f"sh -c {shlex.quote(SNAPSHOT_SH)} sh {self.snapshot_max_bytes}", "/home/user",
-                                       900, asyncio.Event())
-            if code:
-                log.warning("home snapshot failed: %s", out.strip()[-500:], extra={"user": box.user_id})
-        except Exception as e:
-            log.warning("home snapshot failed: %s", e, extra={"user": box.user_id})
-        box.snap_at = time.monotonic()
-
     async def meter(self, box: _Box, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
         if box.metered:
@@ -497,7 +492,7 @@ class E2BSandbox:
             await box.exec("sync", "/work", 60, asyncio.Event())
             await self._mount(box)
 
-    async def _pause(self, box: _Box, snapshot: bool = True, idle: bool = False) -> None:
+    async def _pause(self, box: _Box, idle: bool = False) -> None:
         """idle=True (tick, close): only if no call is active once both locks are held (C3). The mirror lock first:
         a background mirror finishes before the pause (M7)."""
         async with box.mirror_lock, box.lock:
@@ -505,8 +500,6 @@ class E2BSandbox:
                 return
             box.state = "stopping"  # before any await: a new call waits on box.lock, then resumes
             try:
-                if snapshot:
-                    await self.snapshot(box)
                 await box.sbx.pause()
                 box.state = "paused"
                 await self.compute.paused(box.user_id, box.sbx_id, self.cpus, self.memory_gib)
@@ -520,16 +513,15 @@ class E2BSandbox:
             box.sbx = None
             await self.meter(box)
 
-    async def _kill(self, box: _Box, snapshot: bool = True) -> None:
-        """Max life (or a failed start): snapshot home, retry a failed mirror, sync, unmount, kill. Caller holds
-        box.lock (and box.mirror_lock when snapshot=True)."""
+    async def _kill(self, box: _Box, finalize: bool = True) -> None:
+        """Max life (or a failed start): retry a failed mirror, sync, unmount, kill (finalize=False: just kill). Caller
+        holds box.lock (and box.mirror_lock when finalize=True)."""
         box.state = "stopping"
-        if snapshot and box.ro:  # full workspace: let the last snapshot and repo mirror through, nobody else can write
+        if finalize and box.ro:  # full workspace: let the last repo mirror through, nobody else can write
             with contextlib.suppress(Exception):
                 await box.exec("pkill -KILL -u user; true", "/", 30, asyncio.Event(), user="root")
                 await self._mount(box, ro=False)
-        if snapshot:
-            await self.snapshot(box)
+        if finalize:
             with contextlib.suppress(Exception):
                 await remirror_if_failed(box, REPOS, MIRRORS)
             with contextlib.suppress(Exception):
@@ -545,7 +537,7 @@ class E2BSandbox:
                 await self._kill(box)
 
     async def stop_idle(self, now: float | None = None) -> None:
-        """Server tick: pause idle sandboxes, kill those at max life, snapshot home on schedule, meter running time.
+        """Server tick: pause idle sandboxes, kill those at max life, meter running time.
         Never pauses or kills while a foreground tool call runs (active > 0)."""
         now = time.monotonic() if now is None else now
         for box in list(self.boxes.values()):
@@ -560,8 +552,6 @@ class E2BSandbox:
             else:
                 if box.active:  # M1: a long call must not hit the provider-side pause timer
                     await self._refresh_timeout(box, now)
-                if now - box.snap_at >= self.snapshot_every_s:
-                    await self.snapshot(box)
                 await self.meter(box, max(now, box.metered))
                 if box.active == 0 and box.creds_until and box.creds_until - time.monotonic() < 2 * CREDS_MARGIN_S:
                     try:
@@ -588,9 +578,9 @@ class E2BSandbox:
                 await self._pause(env.box, idle=True)
 
     async def close_all(self) -> None:
-        """Server shutdown: pause without a snapshot (the paused disk keeps home; there is little time)."""
+        """Server shutdown: pause every sandbox (the paused disk keeps home)."""
         self.envs.clear()
-        await asyncio.gather(*(self._pause(b, snapshot=False) for b in self.boxes.values()), return_exceptions=True)
+        await asyncio.gather(*(self._pause(b) for b in self.boxes.values()), return_exceptions=True)
 
     # ---- orphans and admin ----------------------------------------------------------------------------------------
 
@@ -600,7 +590,7 @@ class E2BSandbox:
         pg, out = self._sdk.list(query=SandboxQuery(metadata={"app": self.tag}), **self._api()), list()
         while pg.has_next:
             for i in await pg.next_items():
-                out.append({"id": i.sandbox_id, "user_id": i.metadata.get("user_id", ""),
+                out.append({"id": i.sandbox_id, "user_id": i.metadata.get("user_id", ""), "egress": i.metadata.get("egress", ""),
                             "state": str(getattr(i.state, "value", i.state)), "started_at": i.started_at})
         return out
 
@@ -617,7 +607,9 @@ class E2BSandbox:
         for i in found:
             box = self.boxes.setdefault(i["user_id"], _Box(i["user_id"])) if i["user_id"] else None
             try:
-                if box is None or box.sbx_id:
+                # egress differs (e.g. made before the allowlist): its network rules are fixed at create, so do not resume
+                # it; files are in /work and repos in their mirror, nothing is lost
+                if box is None or box.sbx_id or i["egress"] != self.egress:
                     log.info("killing orphan sandbox %s", i["id"])
                     await self._sdk.kill(i["id"], **self._api())
                     await self.compute.unpaused(i["id"])

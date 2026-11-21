@@ -107,6 +107,7 @@ class FakeE2B:
         sbx = FakeSandbox(self, metadata)
         self.boxes[sbx.sandbox_id] = sbx
         self.log.append(("create", sbx.sandbox_id, metadata["user_id"], timeout, lifecycle["on_timeout"]))
+        self.network = kw.get("network")
         return sbx
 
     async def connect(self, sandbox_id, timeout=None, **kw):
@@ -146,6 +147,7 @@ class FakeE2B:
 
 class FakeStore:
     expires_in = None
+    mount_endpoint = "https://acct.r2.cloudflarestorage.com"
 
     async def mount_creds(self, user_id, read_only=False):
         return {"endpoint": "http://s3", "bucket": "b", "prefix": f"users/{user_id}/", "region": "r",
@@ -203,7 +205,7 @@ async def test_lazy_create_mount_restore_and_file_ops(cloud):
     assert (await env.list("."))[0]["name"] == "a.txt"
     mount = [e for e in cloud.log if e[0] == "run" and "s3fs" in e[3]]
     assert mount and mount[0][2] == "root"
-    assert cloud.runs("home.tar.zst")  # home snapshot restored at create
+    assert cloud.runs("rm -f /work/.simp/home.tar.zst")  # old home snapshot deleted at create
     with pytest.raises(PermissionError):
         await env.read_file("/etc/passwd")
     with pytest.raises(PermissionError):
@@ -223,8 +225,6 @@ async def test_idle_pause_then_resume_remounts_when_mount_is_dead(cloud):
     assert env.box.state == "running"
     await sb.stop_idle(now=env.box.last + 600)
     assert env.box.state == "paused" and cloud.kinds("pause")
-    snap = [r for r in cloud.runs() if "zstd -q -f" in r]
-    assert snap, "home snapshot at pause"
     cloud.codes["mountpoint -q /work && ls /work >/dev/null"] = 1  # the mount died while paused
     n_mounts = len(cloud.runs("exec s3fs"))
     await go(env, "echo hi")
@@ -258,27 +258,14 @@ async def test_max_life_kill_waits_for_foreground_call(cloud):
     assert (await task)[0] == 0
     await sb.stop_idle(now=env.box.started + 4000)
     assert env.box.state == "none" and cloud.kinds("kill")
-    assert any("umount /work" in r for r in cloud.runs())  # snapshot, sync, unmount before kill
+    assert any("umount /work" in r for r in cloud.runs())  # sync, unmount before kill
     await go(env)
     assert len(cloud.kinds("create")) == 2
 
 
-async def test_snapshot_schedule(cloud):
-    sb = make(cloud, snapshot_every_s=900, idle_pause_s=10_000)
-    env = await sb.open("s1", "u1")
-    await go(env)
-    n = len(cloud.runs("zstd -q -f"))
-    env.box.active = 1  # a call is running: snapshots still happen on schedule
-    await sb.stop_idle(now=env.box.snap_at + 899)
-    assert len(cloud.runs("zstd -q -f")) == n
-    await sb.stop_idle(now=env.box.snap_at + 900)
-    assert len(cloud.runs("zstd -q -f")) == n + 1
-    env.box.active = 0
-
-
 async def test_orphan_cleanup_on_start(cloud):
-    a = await cloud.create(metadata={"app": "simp", "user_id": "u1"}, lifecycle={"on_timeout": "pause"})
-    b = await cloud.create(metadata={"app": "simp", "user_id": "u1"}, lifecycle={"on_timeout": "pause"})
+    a = await cloud.create(metadata={"app": "simp", "user_id": "u1", "egress": "allowlist"}, lifecycle={"on_timeout": "pause"})
+    b = await cloud.create(metadata={"app": "simp", "user_id": "u1", "egress": "allowlist"}, lifecycle={"on_timeout": "pause"})
     a.state = "paused"
     other = await cloud.create(metadata={"app": "other", "user_id": "u9"}, lifecycle={"on_timeout": "pause"})
     sb = make(cloud)
@@ -388,19 +375,6 @@ async def until(cond, n=300):
     raise AssertionError("timeout")
 
 
-async def test_home_snapshot_never_holds_repos(cloud):
-    """Review C2: repos come back only from the mirror; the home snapshot neither packs nor unpacks repos/."""
-    sb = make(cloud, idle_pause_s=1)
-    env = await sb.open("s1", "u1")
-    await go(env)
-    restore = cloud.runs("zstd -dc")[0]
-    assert "--exclude=repos" in restore and "--anchored" in restore
-    await sb.stop_idle(now=env.box.last + 10)
-    snap = [r for r in cloud.runs() if "zstd -q -f" in r][0]
-    assert "repos" not in snap.split("ls -d", 1)[1].split(")")[0]
-    assert "tar -cf - repos" not in snap
-
-
 async def test_pause_waits_and_aborts_for_a_call_that_started(cloud):
     """Review C3: the tick's pause re-checks active under the lock and aborts if a call started meanwhile."""
     sb = make(cloud, idle_pause_s=1)
@@ -420,17 +394,17 @@ async def test_pause_waits_and_aborts_for_a_call_that_started(cloud):
 
 
 async def test_call_during_a_pause_waits_then_resumes(cloud):
-    """Review C3: while the pause snapshots (state "stopping"), a new call waits for it, then resumes the sandbox;
+    """Review C3: while the pause runs (state "stopping"), a new call waits for it, then resumes the sandbox;
     it never runs in the sandbox being paused."""
     sb = make(cloud, idle_pause_s=1)
     env = await sb.open("s1", "u1")
     await go(env)
-    gate, real = asyncio.Event(), sb.snapshot
+    gate, real = asyncio.Event(), env.box.sbx.pause
 
-    async def slow_snapshot(box):
+    async def slow_pause(*a, **k):
         await gate.wait()
-        await real(box)
-    sb.snapshot = slow_snapshot
+        return await real(*a, **k)
+    env.box.sbx.pause = slow_pause
     tick = asyncio.create_task(sb.stop_idle(now=env.box.last + 100))
     await until(lambda: env.box.state == "stopping")
     call = asyncio.create_task(go(env, "echo after"))
@@ -642,3 +616,55 @@ async def test_paused_box_survives_restart_and_expiry_charged_once(cloud, tmp_pa
     await sb3.start()
     assert len(await paused_rows(db)) == 1
     await db.close()
+
+
+async def test_egress_allowlist_only_storage(cloud):
+    sb = make(cloud, egress_allow=["example.org"])
+    await go(await sb.open("s1", "u1"))
+    assert cloud.network == {"allow_out": ["example.org", "acct.r2.cloudflarestorage.com"], "deny_out": ["0.0.0.0/0"]}
+
+
+async def test_egress_open_setting(cloud):
+    sb = make(cloud, egress="open")
+    await go(await sb.open("s1", "u1"))
+    assert cloud.network is None
+
+
+def test_prompt_hint_says_no_internet(cloud):
+    assert "no internet" in make(cloud).prompt_hint and "web_fetch" in make(cloud).prompt_hint
+    assert "no internet" not in make(cloud, egress="open").prompt_hint
+
+
+def test_prompt_hint_lists_tools(cloud):
+    from simp_server.sandboxes import toolset
+    h = make(cloud).prompt_hint
+    assert toolset.prompt_list(False) in h and "Libraries are fixed: do not install packages" in h and "/opt" not in h
+    assert "LibreOffice" in make(cloud, office=True).prompt_hint
+
+
+async def test_old_home_snapshot_deleted_never_unpacked(cloud):
+    """Libraries are fixed in the template: old home snapshots are deleted at create (quota), never unpacked; repos
+    still come back only from their mirror."""
+    sb = make(cloud, idle_pause_s=1)
+    env = await sb.open("s1", "u1")
+    await go(env)
+    assert any(r.startswith("rm -f /work/.simp/home.tar.zst") for r in cloud.runs())
+    await sb.stop_idle(now=env.box.last + 10)
+    assert not [r for r in cloud.runs() if "zstd" in r or "tar -" in r]
+
+async def test_sandbox_from_before_the_egress_filter_is_not_adopted(cloud):
+    """A sandbox created without the allowlist (older server) would keep open internet if resumed: kill it."""
+    old = await cloud.create(metadata={"app": "simp", "user_id": "u1"}, lifecycle={"on_timeout": "pause"})
+    old.state = "paused"
+    sb = make(cloud)
+    await sb.start()
+    assert old.sandbox_id not in cloud.boxes and not sb.boxes["u1"].sbx_id
+    await go(await sb.open("s1", "u1"))
+    assert cloud.network and cloud.boxes[sb.boxes["u1"].sbx_id].metadata["egress"] == "allowlist"
+
+
+def test_allowlist_without_store_endpoint_fails_fast(cloud):
+    sb = make(cloud)
+    sb.store.mount_endpoint = ""
+    with pytest.raises(RuntimeError, match="workspace endpoint"):
+        sb._network()
