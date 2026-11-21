@@ -108,7 +108,7 @@ export function compileSkin(code: string, slot?: Slot): Wear {
     inside++; colors.add(out[1].toLowerCase());
     p.forEach((v, k) => { lo[k] = Math.min(lo[k], v); hi[k] = Math.max(hi[k], v); });
     if (Math.hypot(p[0], p[1], p[2]) < 1.2) touches = true;
-    if ((slot === "hat" && (p[1] < -0.6 || (p[1] < 0.3 && p[2] > 0.3 && Math.abs(p[0]) < 0.75))) || (slot === "bottom" && p[1] > -0.15)) misplaced++;
+    if ((slot === "hat" && (p[1] < -1.5 || (p[1] < 0.3 && p[2] > 0.3 && Math.abs(p[0]) < 0.75))) || (slot === "bottom" && p[1] > -0.15)) misplaced++;
   }
   const ms = performance.now() - t0;
   if (ms > 160) throw new Error(`too slow: ${N} calls took ${ms.toFixed(0)} ms (budget 160 ms); simplify the code`);
@@ -123,7 +123,7 @@ export function compileSkin(code: string, slot?: Slot): Wear {
   }
   if (slot && !touches) throw new Error(`it floats: no part touches the head (sphere of radius 1). ${seen}`);
   if (slot && misplaced / inside > 0.08) throw new Error(slot === "hat"
-    ? `${Math.round((misplaced / inside) * 100)}% of the hat/hair is over the face (front, |x| < 0.75, below y = 0.3) or below y = -0.6; bangs end above y = 0.35, side locks go down the sides (|x| > 0.8) or the back. ${seen}`
+    ? `${Math.round((misplaced / inside) * 100)}% of the hat/hair is over the face (front, |x| < 0.75, below y = 0.3) or below y = -1.5; bangs end above y = 0.35, long hair falls down the sides (|x| > 0.8) and the back. ${seen}`
     : `${Math.round((misplaced / inside) * 100)}% of the bottom is above y = -0.15, over the face; it stays below y = -0.3 (use H.below). ${seen}`);
   // sampled extent, padded by a few sample spacings so thin edges between samples stay inside
   const blo = lo.map((v) => v - 0.2), bhi = hi.map((v) => v + 0.2);

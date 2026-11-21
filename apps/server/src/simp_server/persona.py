@@ -10,12 +10,15 @@ from __future__ import annotations
 import re
 
 SLOTS = {
-    "hat": ("a HAT (or hair, crown, hood, horns: whatever the character wears on top of the head)",
-            "It must sit ON the head, touching the sphere. A hat stays above y = 0.55 (a brim or band around "
-            "y = 0.6..0.9 with radius ~0.6..0.9 hugs it); it may rise up to y = 1.9. HAIR may come lower: bangs over the "
-            "forehead end above y = 0.35, side locks fall down the sides (|x| > 0.8) to the cheeks (y >= -0.5), and the "
-            "back may hang lower; the front of the face (|x| < 0.75, y < 0.3) always stays clear for the eyes. Build hair "
-            "from a scalp cap plus many H.lock strands (see the hair example), never one smooth blob."),
+    "hat": ("the TOP: a hat OR hair (or both: hair with a hat on it), crown, hood, horns, ears, headband: whatever is on the head",
+            "It must sit ON the head, touching the sphere; it may rise up to y = 1.9. A HAT stays above y = 0.55 "
+            "(a brim or band around y = 0.6..0.9 with radius ~0.6..0.9 hugs it). HAIR may come lower: bangs end "
+            "above y = 0.35; side and back hair may fall down past the cheeks to y = -1.5 for long hair; the front "
+            "of the face (|x| < 0.75, y < 0.3) always stays clear for the eyes. Pick the style the description asks for: "
+            "hats (beanie, wizard cone, cowboy, top hat, cap, beret, crown, witch hat, chef toque, helmet) or hair "
+            "(spiky, short messy, bob, long straight, twin tails, ponytail, bun, afro, curls). Hair is a scalp cap plus "
+            "H.lock strands (spikes, bangs, tails) or a curtain for long hair (see the examples), never one smooth blob. "
+            "Ponytail / twin tails / bun: a sphere or a bent H.lock attached at the back or sides of the head."),
     "bottom": ("the BOTTOM: shorts, a skirt, a belt or a robe hem (no legs, so no pants)",
                "There is no body: the ball IS the whole character, so it wraps the LOWER half of the sphere, "
                "everything below y = -0.5 (a bit under the cheeks), slightly outside the sphere and a little roomy (trim with H.below). Give it a real silhouette: "
@@ -65,14 +68,14 @@ H gives signed-distance helpers (sizes in head units; c = center [x,y,z]):
 To trim by height ALWAYS use H.above / H.below. Plain Math is available; no other globals. Pure, deterministic,
 fast: it runs for every pixel of every frame.
 
-Example, a red beanie with a pom-pom (a hat):
+Example, a red beanie with a pom-pom (a top):
 <code>
 const cap = H.above([H.sphere(p, [0, 0.1, 0], 1.08), "#d94141"], p, 0.55);
 const band = [H.torus(p, [0, 0.6, 0], 0.85, 0.1), "#b02e2e"];
 const pom = [H.sphere(p, [0, 1.25, 0], 0.18), "#ffffff"];
 return H.union(cap, band, pom);
 </code>
-Example, spiky anime hair (a hat slot): a cap on the scalp, then pointed locks bent outward; bangs end above
+Example, spiky anime hair (a top): a cap on the scalp, then pointed locks bent outward; bangs end above
 the eyes and side locks fall past the ears.
 <code>
 const c = "#5a1d16";
@@ -85,6 +88,20 @@ const spikes = [
   L([0.75, 0.45, 0.2], [1.15, -0.35, 0.3], [1.1, 0.2, 0.2], 0.24), L([-0.75, 0.45, 0.2], [-1.15, -0.35, 0.3], [-1.1, 0.2, 0.2], 0.24),
 ];
 return H.union(cap, ...spikes);
+</code>
+Example, long straight hair with bangs (a top): a scalp cap, a curtain that flares a little toward the ends
+and is open in front for the face, pointed ends and soft bangs.
+<code>
+const c = "#3b2418";
+const scalp = H.above([H.sphere(p, [0, 0.05, -0.05], 1.08), c], p, 0.25);
+// long hair: a soft bell around the head, flaring a little toward the ends, open in front for the face
+const y = Math.max(-1.3, Math.min(0.3, p[1]));
+let d = Math.abs(Math.hypot(p[0], p[2] + 0.12) - (1.0 + 0.2 * Math.max(0, -y) ** 1.5)) - 0.12;
+d = Math.max(d, p[1] - 0.4, -1.35 - p[1]);
+d = Math.max(d, -H.rbox(p, [0, -0.55, 1.1], [0.82, 1.0, 0.9], 0.45));
+const ends = [-2.2, -1.5, -0.8, 0, 0.8, 1.5, 2.2].map((a) => {{ const s = Math.sin(a + Math.PI), k = Math.cos(a + Math.PI); return [H.lock(p, [1.15 * s, -1.15, 1.15 * k - 0.12], [1.25 * s, -1.6, 1.25 * k - 0.12], 0.18), c]; }});
+const bangs = [-0.5, -0.17, 0.17, 0.5].map((x) => [H.lock(p, [x * 0.5, 1.0, 0.3], [x * 1.1, 0.42, 1.0], 0.22, [x * 0.8, 0.95, 0.85]), c]);
+return H.union(scalp, [d, c], ...ends, ...bangs);
 </code>
 Example, blue shorts (a bottom): not skin-tight, a little roomy like a gourd: snug at the waist, bulging
 slightly wider and lower toward the bottom (a soft union of the head with a lower ball).

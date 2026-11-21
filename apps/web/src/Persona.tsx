@@ -7,7 +7,7 @@ import { Mascot3D, readPal, render, SKIN_VIEW } from "./Mascot3D";
 import { combine, compilePaint, compileSkin, getPaint, getSkin, item, setSkin, type Paint, type Slot, type Wear } from "./skin";
 
 type PSlot = Slot | "face";  // face paint is a slot too, but paint, not a 3D piece
-const SLOTS: { slot: PSlot; label: string }[] = [{ slot: "hat", label: "Hat" }, { slot: "bottom", label: "Bottom" }, { slot: "face", label: "Face" }];
+const SLOTS: { slot: PSlot; label: string }[] = [{ slot: "hat", label: "Top" }, { slot: "bottom", label: "Bottom" }, { slot: "face", label: "Face" }];
 const FIX_TRIES = 3;  // the model gets the check's error (with what it measured) back this many times
 const IDEAS = ["a grumpy pirate", "a sleepy wizard", "a cheerful chef", "a cowboy"];
 
@@ -44,8 +44,8 @@ function framing(wear: Wear): { view: number; cy: number } {
   return { cy: (lo[1] + hi[1]) / 2, view: Math.max(0.35, Math.min(2, Math.max(w, h) * 1.08)) };  // w: the farthest it reaches while turning
 }
 const MAX_OUTFITS = 10;  // per kind (outfits, hats, bottoms); matches the server
-const KINDS = [["all", "All"], ["outfit", "Outfits"], ["hat", "Hats"], ["bottom", "Bottoms"], ["face", "Faces"]] as const;
-const NOUN: Record<PSlot, string> = { hat: "hat", bottom: "bottom", face: "face paint" };
+const KINDS = [["all", "All"], ["outfit", "Outfits"], ["hat", "Tops"], ["bottom", "Bottoms"], ["face", "Faces"]] as const;
+const NOUN: Record<PSlot, string> = { hat: "top", bottom: "bottom", face: "face paint" };
 /** faint outline of what goes in an empty slot */
 function SlotShape({ slot, size = 48 }: { slot: PSlot; size?: number }) {
   return (
@@ -56,7 +56,7 @@ function SlotShape({ slot, size = 48 }: { slot: PSlot; size?: number }) {
     </svg>
   );
 }
-const KIND_ONE: Record<Outfit["kind"], string> = { outfit: "Outfit", hat: "Hat", bottom: "Bottom", face: "Face paint" };
+const KIND_ONE: Record<Outfit["kind"], string> = { outfit: "Outfit", hat: "Top", bottom: "Bottom", face: "Face paint" };
 const sameAs = (o: Outfit, d: P) => o.kind === "outfit"
   ? o.hat === (d.hat ?? "") && o.bottom === (d.bottom ?? "") && (o.face ?? "") === (d.face ?? "")
   : (o[o.kind] ?? "") === (d[o.kind] ?? "");
@@ -209,7 +209,7 @@ export function Persona({ onError, menuButton, profiles, models }: {
     try {
       const base = draft.name || draft.description?.slice(0, 30) || "Outfit";
       const one = (s: PSlot) => (k === "outfit" || k === s ? draft[s] ?? "" : "");
-      const o = { kind: k, name: k === "outfit" ? base.slice(0, 40) : `${base.slice(0, 30)} ${k === "face" ? "face" : k}`,
+      const o = { kind: k, name: k === "outfit" ? base.slice(0, 40) : `${base.slice(0, 30)} ${k === "hat" ? "top" : k}`,
         description: draft.description ?? "", hat: one("hat"), bottom: one("bottom"), face: one("face") };
       const { id } = await api.addOutfit(o);
       setOutfits((xs) => [{ ...o, id, created: Date.now() / 1000 }, ...(xs ?? [])]);
@@ -388,7 +388,7 @@ export function Persona({ onError, menuButton, profiles, models }: {
               <div className="composer persona-composer">
                 <div className="composer-card expanded" onClick={(e) => { if (e.target === e.currentTarget) (e.currentTarget.querySelector("textarea") as HTMLTextAreaElement | null)?.focus(); }}>
                   <textarea id="persona-desc" aria-labelledby="persona-look" rows={2} maxLength={1000} value={draft.description ?? ""} disabled={busy} onChange={set("description")}
-                    placeholder="A purple pointy wizard hat with yellow stars and a long blue skirt" aria-describedby="persona-desc-note"
+                    placeholder="Long pink hair with a purple wizard hat and a long blue skirt" aria-describedby="persona-desc-note"
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); generate(); } }} />
                   <div className="composer-bar">
                     {profiles.length > 0 && <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} />}
@@ -441,7 +441,7 @@ export function Persona({ onError, menuButton, profiles, models }: {
                 )}
               </div>
               {outfits === null ? <p className="muted small">Loading…</p>
-                : outfits.length === 0 ? <p className="muted small">Outfits and pieces you save show up here. Pick a hat from one look and a bottom from another.</p>
+                : outfits.length === 0 ? <p className="muted small">Outfits and pieces you save show up here. Pick a top from one look and a bottom from another.</p>
                 : !outfits.some((o) => kind === "all" || o.kind === kind) ? <p className="muted small">Nothing saved here yet.</p>
                 : <ul className="outfit-grid">
                     {outfits.filter((o) => kind === "all" || o.kind === kind).map((o) => {
