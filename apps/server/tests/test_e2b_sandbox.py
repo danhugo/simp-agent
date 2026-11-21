@@ -281,8 +281,8 @@ async def test_snapshot_schedule(cloud, monkeypatch):
 
 
 async def test_orphan_cleanup_on_start(cloud):
-    a = await cloud.create(metadata={"app": "simp", "user_id": "u1"}, lifecycle={"on_timeout": "pause"})
-    b = await cloud.create(metadata={"app": "simp", "user_id": "u1"}, lifecycle={"on_timeout": "pause"})
+    a = await cloud.create(metadata={"app": "simp", "user_id": "u1", "egress": "allowlist"}, lifecycle={"on_timeout": "pause"})
+    b = await cloud.create(metadata={"app": "simp", "user_id": "u1", "egress": "allowlist"}, lifecycle={"on_timeout": "pause"})
     a.state = "paused"
     other = await cloud.create(metadata={"app": "other", "user_id": "u9"}, lifecycle={"on_timeout": "pause"})
     sb = make(cloud)
@@ -680,3 +680,14 @@ async def test_home_snapshot_carries_no_libraries(cloud):
         assert d not in e2b.HOME_DIRS
     await sb.stop_idle(now=env.box.last + 10)
     assert not cloud.runs("zstd -q -f")
+
+
+async def test_sandbox_from_before_the_egress_filter_is_not_adopted(cloud):
+    """A sandbox created without the allowlist (older server) would keep open internet if resumed: kill it."""
+    old = await cloud.create(metadata={"app": "simp", "user_id": "u1"}, lifecycle={"on_timeout": "pause"})
+    old.state = "paused"
+    sb = make(cloud)
+    await sb.start()
+    assert old.sandbox_id not in cloud.boxes and not sb.boxes["u1"].sbx_id
+    await go(await sb.open("s1", "u1"))
+    assert cloud.network and cloud.boxes[sb.boxes["u1"].sbx_id].metadata["egress"] == "allowlist"

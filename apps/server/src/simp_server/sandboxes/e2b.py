@@ -403,7 +403,7 @@ class E2BSandbox:
         if not resumed:
             box.sbx = await self._sdk.create(
                 template=self.template, timeout=self.provider_timeout_s, **self._api(),
-                metadata={"app": self.tag, "user_id": box.user_id},
+                metadata={"app": self.tag, "user_id": box.user_id, "egress": self.egress},
                 lifecycle={"on_timeout": "pause", "auto_resume": False}, **({"network": n} if (n := self._network()) else {}))
             box.started = time.monotonic()
             box.mirror_failed = False
@@ -622,7 +622,7 @@ class E2BSandbox:
         pg, out = self._sdk.list(query=SandboxQuery(metadata={"app": self.tag}), **self._api()), list()
         while pg.has_next:
             for i in await pg.next_items():
-                out.append({"id": i.sandbox_id, "user_id": i.metadata.get("user_id", ""),
+                out.append({"id": i.sandbox_id, "user_id": i.metadata.get("user_id", ""), "egress": i.metadata.get("egress", ""),
                             "state": str(getattr(i.state, "value", i.state)), "started_at": i.started_at})
         return out
 
@@ -639,7 +639,9 @@ class E2BSandbox:
         for i in found:
             box = self.boxes.setdefault(i["user_id"], _Box(i["user_id"])) if i["user_id"] else None
             try:
-                if box is None or box.sbx_id:
+                # egress differs (e.g. made before the allowlist): its network rules are fixed at create, so do not resume
+                # it; files are in /work and repos in their mirror, nothing is lost
+                if box is None or box.sbx_id or i["egress"] != self.egress:
                     log.info("killing orphan sandbox %s", i["id"])
                     await self._sdk.kill(i["id"], **self._api())
                     await self.compute.unpaused(i["id"])

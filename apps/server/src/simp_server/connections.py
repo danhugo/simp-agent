@@ -24,6 +24,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from simp_agent.plugins.mcp import McpPlugin
 
+from . import policy
 from . import protocol as p
 
 log = logging.getLogger("simp_server")
@@ -480,14 +481,15 @@ class UserMcp(McpPlugin):
         for t in session.agent.tools:
             if hasattr(t, "read_only_hint"):  # set by McpPlugin on every MCP tool
                 self.names.add(t.name)
-                if t.read_only_hint is not True:
+                # asked unless read-only; a write-like name is asked even if its server says read-only
+                if t.read_only_hint is not True or policy.MCP_WRITE.search(t.name.partition("__")[2]):
                     session.needs_approval.add(t.name)
         # for the portal detail page; ponytail: in memory, filled when a chat opens the app (empty after a restart)
         known = self.run.mgr.tools_seen.setdefault(self.run.user_id, dict())
         for t in session.agent.tools:
             if t.name in self.names:
                 app, _, tool = t.name.partition("__")
-                known.setdefault(app, dict())[tool] = t.read_only_hint is not True
+                known.setdefault(app, dict())[tool] = t.name in session.needs_approval
 
     async def _tools(self, spec: dict, client):
         out = await super()._tools(spec, client)

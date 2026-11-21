@@ -357,6 +357,9 @@ namespaced per server: two simp instances must not share one Docker host's sandb
   the capability (mount, and the unmount before removal); commands run as 1000 with no capabilities.
 - The E2B template removes sudo; every new sandbox checks that `user` has no passwordless sudo.
 - E2B egress: `allow_out` = workspace endpoint + `egress_allow`, `deny_out` = all. DNS (8.8.8.8) stays reachable.
+  Sound only with an account-specific endpoint (R2: `<account>.r2.cloudflarestorage.com`); on a shared host such as
+  `s3.amazonaws.com` a sandbox could upload to any bucket it has keys for. Sandboxes created with other egress
+  settings (e.g. before the allowlist) are killed at server start, not resumed.
 - Repo backup runs git with hooks and fsmonitor off (`core.hooksPath=/dev/null`, `push --no-verify`).
 - `mount_scope = "sts"` hands the sandbox a 1 h credential limited to `users/<user_id>/` (MinIO refuses AssumeRole for
   its root user, so `make minio` creates a `simp-dev` user). `mount_scope = "none"` (needed for R2, which has no STS)

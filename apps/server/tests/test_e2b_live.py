@@ -45,7 +45,7 @@ async def test_live_e2b_no_bucket(tmp_path):
         box = env.box
         sid = box.sbx_id
         info = await sb._sdk.get_info(sid, api_key=KEY)
-        assert info.metadata == {"app": tag, "user_id": "u1"}
+        assert info.metadata == {"app": tag, "user_id": "u1", "egress": "allowlist"}
         assert info.lifecycle and info.lifecycle["on_timeout"] == "pause", info.lifecycle
 
         # command output, exit codes, stderr merged, file ops in /home/user and /work
