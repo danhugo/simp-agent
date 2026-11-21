@@ -19,7 +19,7 @@ SLOTS = {
             "(spiky, short messy, bob, long straight, twin tails, ponytail, bun, afro, curls). Hair is a scalp cap plus "
             "H.lock strands (spikes, bangs, tails) or a curtain for long hair (see the examples), never one smooth blob. "
             "Ponytail / twin tails / bun: a sphere or a bent H.lock attached at the back or sides of the head."),
-    "bottom": ("the BOTTOM: shorts, a skirt, a belt or a robe hem (no legs, so no pants)",
+    "bottom": ("the BOTTOM: shorts, a skirt, a belt, a robe or the lower part of a coat (no legs, so no pants)",
                "There is no body: the ball IS the whole character, so it wraps the LOWER half of the sphere, "
                "everything below y = -0.5 (a bit under the cheeks), slightly outside the sphere and a little roomy (trim with H.below). Give it a real silhouette: "
                "a skirt or robe is a TRAPEZOID, as wide as the ball at its waist and flaring straight down (see the "
@@ -102,6 +102,21 @@ d = Math.max(d, -H.rbox(p, [0, -0.55, 1.1], [0.82, 1.0, 0.9], 0.45));
 const ends = [-2.2, -1.5, -0.8, 0, 0.8, 1.5, 2.2].map((a) => {{ const s = Math.sin(a + Math.PI), k = Math.cos(a + Math.PI); return [H.lock(p, [1.15 * s, -1.15, 1.15 * k - 0.12], [1.25 * s, -1.6, 1.25 * k - 0.12], 0.18), c]; }});
 const bangs = [-0.5, -0.17, 0.17, 0.5].map((x) => [H.lock(p, [x * 0.5, 1.0, 0.3], [x * 1.1, 0.42, 1.0], 0.22, [x * 0.8, 0.95, 0.85]), c]);
 return H.union(scalp, [d, c], ...ends, ...bangs);
+</code>
+Clothes have LAYERS and PATTERNS, like real ones: an inner layer (robe, shirt) under an outer one (coat, jacket,
+apron) that is cut open (H.cut) so the inner one shows; stripes, dots, checks or triangles by choosing the color from
+where p is. Copy the look of the reference (layers, trims, pattern), not just one flat color.
+Example, an open coat over a dark robe, with a triangle pattern (a bottom):
+<code>
+// two layers: a dark inner robe, and an open coat over it (a V opening at the front shows the robe)
+const inner = H.below([H.cone(p, [0, -1.45, 0], 1.12, 2.3), "#2b2622"], p, -0.5);
+const w = 0.16 + (-0.5 - p[1]) * 0.3;  // the opening widens toward the hem
+let coat = Math.max(H.shell(H.cone(p, [0, -1.5, 0], 1.35, 2.6), 0.06), p[1] + 0.5, -1.5 - p[1]);
+coat = H.cut([coat, "#f29a2e"], Math.max(Math.abs(p[0]) - w, -p[2]));
+// pattern: the color depends on where p is (here white triangles on a grid wrapped around the coat)
+const a = Math.atan2(p[0], p[2]) * 1.6, u = a - Math.floor(a), v = p[1] * 3 - Math.floor(p[1] * 3);
+const tri = Math.abs(u - 0.5) < (0.8 - v) * 0.5 && v > 0.15;
+return H.union(inner, coat && [coat[0], tri ? "#f4f4ee" : "#f29a2e"]);
 </code>
 Example, blue shorts (a bottom): not skin-tight, a little roomy like a gourd: snug at the waist, bulging
 slightly wider and lower toward the bottom (a soft union of the head with a lower ball).
