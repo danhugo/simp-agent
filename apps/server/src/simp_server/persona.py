@@ -28,13 +28,17 @@ SLOTS = {
                "below y = -0.5 (a bit under the cheeks), trimmed with H.below. Use exactly ONE of these 3 forms, always at "
                "the size of its example, never another silhouette and no short or long versions:\n"
                "1. SNUG: a thin shell that hugs the ball itself, so Simp stays one round ball (shorts, a belt, overalls, a swimsuit, "
-               "and anything that is itself round and small: an apple, an orange, a ball, an egg, a bug, a bun). See the overalls example.\n"
+               "and anything that is itself round and small: fruit like an apple, orange, peach, cherry, lemon, plum, tomato, a ball (football, tennis ball, "
+               "basketball, bowling ball, pokeball, snowball), an egg, a pearl, a bubble, a bug, a bun, a donut, a dumpling, a coin, "
+               "a clock, a planet, the moon, a lollipop, a bomb, a slime, a seed). See the overalls example.\n"
                "2. ROUND BODY: a round belly under the ball, about as wide as it and bulging out, rounded at the bottom "
                "(a body, a suit, a superhero costume, a puffy dress). See the round body example.\n"
                "3. BELL: a skirt, robe or coat: slightly rounded sides flaring out to a flat hem at y = -1.65, and under the "
                "hem a ROUND base clearly NARROWER than the hem, so the hem shows as a step. See the skirt and the coat examples.\n"
                "Choose by the overall shape: round and small -> SNUG; taller with a belly -> ROUND BODY; a skirt, robe, coat or "
-               "something wide at the bottom -> BELL. "
+               "something wide at the bottom (a teapot, lamp, pot, bell, vase, lighthouse) -> BELL. A long thin THING (a racket, "
+               "a sword, a pencil, a spoon) is not a shape to copy: Simp holds or wears its look (its colors, a pattern like "
+               "racket strings, a small part of it on the top) on a SNUG bottom. "
                "Patterns and details (stripes, webs, belts, buttons) are colors chosen by where p is, or small parts on the surface."),
 }
 
