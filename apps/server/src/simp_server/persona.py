@@ -22,12 +22,12 @@ SLOTS = {
     "bottom": ("the BOTTOM: shorts, a skirt, a belt, a robe or the lower part of a coat (no legs, so no pants)",
                "There is no body: the ball IS the whole character, so it wraps the LOWER half of the sphere, "
                "everything below y = -0.5 (a bit under the cheeks), slightly outside the sphere and a little roomy (trim with H.below). Give it a real silhouette: "
-               "a skirt or robe is a TRAPEZOID, as wide as the ball at its waist and flaring straight down (see the "
-               "skirt example), never pinched in under the waist. Like everything here it starts at y = -0.5, so it "
+               "a skirt, robe or coat is a BELL: as wide as the ball at its waist, flaring out like a trapezoid, then ending "
+               "in a soft ROUND base, never a flat cut-off edge (see the skirt example); never pinched in under the waist. Like everything here it starts at y = -0.5, so it "
                "does not hide the cheeks. It may flare out to |x|,|z| <= 1.5. "
                "Pick ONE length, the one the description asks for (short / medium / long) or else the one that fits the character, by where the hem ends: 1 SHORT (shorts, mini skirt) "
-               "hem at about y = -1.2, the bottom of the ball; 2 MEDIUM (knee skirt, kilt) hem at y = -1.45; "
-               "3 LONG (gown, robe, wizard cloak) hem at y = -1.8. For round or gourd shorts (the shorts example) "
+               "hem at about y = -1.45; 2 MEDIUM (knee skirt, kilt) hem at y = -1.75; "
+               "3 LONG (gown, robe, wizard cloak) hem at y = -2.0 (the hem is the lowest point of the round base). For round or gourd shorts (the shorts example) "
                "the length is how far the lower ball hangs: center y = -0.4 (short), -0.6 r 0.85 k 0.35 (medium), "
                "-0.85 r 0.9 k 0.4 (long, like puffy bloomers)."),
 }
@@ -108,11 +108,14 @@ apron) that is cut open (H.cut) so the inner one shows; stripes, dots, checks or
 where p is. Copy the look of the reference (layers, trims, pattern), not just one flat color.
 Example, an open coat over a dark robe, with a triangle pattern (a bottom):
 <code>
+// the bell (flared top, soft round base), as a function so both layers share it; s = how much bigger
+const bell = (s) => H.smooth([Math.max(H.cone(p, [0, -1.6, 0], 1.3 * s, 2.9), p[1] + 0.5), ""],
+  [H.sphere([p[0], (p[1] + 1.3) * 1.6, p[2]], [0, 0, 0], 1.15 * s) / 1.6, ""], 0.25)[0];
 // two layers: a dark inner robe, and an open coat over it (a V opening at the front shows the robe)
-const inner = H.below([H.cone(p, [0, -1.45, 0], 1.12, 2.3), "#2b2622"], p, -0.5);
+const inner = H.below([bell(0.92), "#2b2622"], p, -0.5);
 const w = 0.16 + (-0.5 - p[1]) * 0.3;  // the opening widens toward the hem
-let coat = Math.max(H.shell(H.cone(p, [0, -1.5, 0], 1.35, 2.6), 0.06), p[1] + 0.5, -1.5 - p[1]);
-coat = H.cut([coat, "#f29a2e"], Math.max(Math.abs(p[0]) - w, -p[2]));
+let coat = H.below([H.shell(bell(1.04), 0.05), "#f29a2e"], p, -0.5);
+coat = H.cut(coat, Math.max(Math.abs(p[0]) - w, -p[2]));
 // pattern: the color depends on where p is (here white triangles on a grid wrapped around the coat)
 const a = Math.atan2(p[0], p[2]) * 1.6, u = a - Math.floor(a), v = p[1] * 3 - Math.floor(p[1] * 3);
 const tri = Math.abs(u - 0.5) < (0.8 - v) * 0.5 && v > 0.15;
@@ -124,14 +127,16 @@ slightly wider and lower toward the bottom (a soft union of the head with a lowe
 const body = H.smooth([H.head(p), "#3463c9"], [H.sphere(p, [0, -0.4, 0], 0.85), "#3463c9"], 0.3);
 return H.below([H.shell(body[0], 0.06), "#3463c9"], p, -0.5);
 </code>
-Example, a flared skirt (a bottom): a trapezoid starting at y = -0.5, under the face. The cone's tip sits far
-ABOVE the waist, so at y = -0.5 it is already as wide as the ball there (~0.9) and it widens straight down to the
-hem; a tip at the waist would pinch it in.
+Example, a flared skirt with a round base (a bottom), medium length:
 <code>
-const skirt = H.below([H.shell(H.cone(p, [0, -1.4, 0], 1.35, 2.7), 0.06), "#7a4fd0"], p, -0.5);
-const hem = [H.torus(p, [0, -1.36, 0], 1.3, 0.08), "#ffffff"];
+// a skirt: flared like a cone at the top, ending in a soft round base (a cone blended into a squashed ball).
+// hem = its lowest point: -1.45 short, -1.75 medium, -2.0 long; a shorter one is a little narrower
+const c = "#7a4fd0", hem = -1.75, r = 1.3 - (hem + 2) * 0.45;
+const flare = [Math.max(H.cone(p, [0, hem + 0.4, 0], r, 2.9), p[1] + 0.5), c];
+const base = [H.sphere([p[0], (p[1] - hem - 0.72) * 1.6, p[2]], [0, 0, 0], r * 0.88) / 1.6, c];
+const skirt = H.below(H.smooth(flare, base, 0.25), p, -0.5);
 const waist = [H.torus(p, [0, -0.52, 0], 0.88, 0.09), "#4b2e8f"];
-return H.union(skirt, hem, waist);
+return H.union(skirt, waist);
 </code>
 Example, overalls (a bottom): a fitted base plus chunky pieces on the front.
 <code>
