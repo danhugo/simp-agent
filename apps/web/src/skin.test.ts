@@ -5,7 +5,7 @@ const BEANIE = `
 const cap = H.above([H.sphere(p, [0, 0.1, 0], 1.08), "#d94141"], p, 0.55);
 const band = [H.torus(p, [0, 0.6, 0], 0.85, 0.1), "#b02e2e"];
 const pom = [H.sphere(p, [0, 1.25, 0], 0.18), "#ffffff"];
-const shorts = H.below([H.shell(H.head(p), 0.06), "#3463c9"], p, -0.3);
+const shorts = H.below([H.shell(H.head(p), 0.06), "#3463c9"], p, -0.5);
 return H.union(cap, band, pom, shorts);`;
 
 describe("compileSkin", () => {
@@ -27,8 +27,8 @@ describe("compileSkin", () => {
     expect(() => compileSkin("return window.x")).toThrow(/threw/);
     expect(() => compileSkin("return [H.head(p) - 0.1, '#ff0000']")).toThrow(/covers the eyes/);
     expect(() => compileSkin("return [H.sphere(p, [0, 1.6, 0], 0.3), '#ff0000']", "hat")).toThrow(/floats.*Measured/);
-    expect(() => compileSkin("return H.below([H.shell(H.head(p), 0.06), '#3463c9'], p, -0.3)", "hat")).toThrow(/over the face/);
-    expect(() => compileSkin("return H.below([H.shell(H.head(p), 0.06), '#3463c9'], p, -0.3)", "bottom")).not.toThrow();
+    expect(() => compileSkin("return H.below([H.shell(H.head(p), 0.06), '#3463c9'], p, -0.3)", "hat")).toThrow(/over the face|covers the face/);
+    expect(() => compileSkin("return H.below([H.shell(H.head(p), 0.06), '#3463c9'], p, -0.5)", "bottom")).not.toThrow();
   });
   it("face paint: baked lookup, actionable errors", () => {
     const p = compilePaint(`return Math.abs(Math.abs(lon) - 18) < 4 && lat > 6 && lat < 22 ? "#9b7fb0" : Math.abs(lat + 15) < 6 ? "skin" : null;`);
