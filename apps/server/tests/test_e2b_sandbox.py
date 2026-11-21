@@ -205,7 +205,7 @@ async def test_lazy_create_mount_restore_and_file_ops(cloud):
     assert (await env.list("."))[0]["name"] == "a.txt"
     mount = [e for e in cloud.log if e[0] == "run" and "s3fs" in e[3]]
     assert mount and mount[0][2] == "root"
-    assert cloud.runs("home.tar.zst")  # home snapshot restored at create
+    assert cloud.runs("rm -f /work/.simp/home.tar.zst")  # old home snapshot deleted at create
     with pytest.raises(PermissionError):
         await env.read_file("/etc/passwd")
     with pytest.raises(PermissionError):
@@ -217,8 +217,7 @@ async def test_lazy_create_mount_restore_and_file_ops(cloud):
     assert len(cloud.kinds("create")) == 1  # sessions of a user share one sandbox
 
 
-async def test_idle_pause_then_resume_remounts_when_mount_is_dead(cloud, monkeypatch):
-    monkeypatch.setattr("simp_server.sandboxes.e2b.HOME_DIRS", ".data")  # a home dir to pack (none by default)
+async def test_idle_pause_then_resume_remounts_when_mount_is_dead(cloud):
     sb = make(cloud, idle_pause_s=600)
     env = await sb.open("s1", "u1")
     await go(env)
@@ -226,8 +225,6 @@ async def test_idle_pause_then_resume_remounts_when_mount_is_dead(cloud, monkeyp
     assert env.box.state == "running"
     await sb.stop_idle(now=env.box.last + 600)
     assert env.box.state == "paused" and cloud.kinds("pause")
-    snap = [r for r in cloud.runs() if "zstd -q -f" in r]
-    assert snap, "home snapshot at pause"
     cloud.codes["mountpoint -q /work && ls /work >/dev/null"] = 1  # the mount died while paused
     n_mounts = len(cloud.runs("exec s3fs"))
     await go(env, "echo hi")
@@ -261,23 +258,9 @@ async def test_max_life_kill_waits_for_foreground_call(cloud):
     assert (await task)[0] == 0
     await sb.stop_idle(now=env.box.started + 4000)
     assert env.box.state == "none" and cloud.kinds("kill")
-    assert any("umount /work" in r for r in cloud.runs())  # snapshot, sync, unmount before kill
+    assert any("umount /work" in r for r in cloud.runs())  # sync, unmount before kill
     await go(env)
     assert len(cloud.kinds("create")) == 2
-
-
-async def test_snapshot_schedule(cloud, monkeypatch):
-    monkeypatch.setattr("simp_server.sandboxes.e2b.HOME_DIRS", ".data")
-    sb = make(cloud, snapshot_every_s=900, idle_pause_s=10_000)
-    env = await sb.open("s1", "u1")
-    await go(env)
-    n = len(cloud.runs("zstd -q -f"))
-    env.box.active = 1  # a call is running: snapshots still happen on schedule
-    await sb.stop_idle(now=env.box.snap_at + 899)
-    assert len(cloud.runs("zstd -q -f")) == n
-    await sb.stop_idle(now=env.box.snap_at + 900)
-    assert len(cloud.runs("zstd -q -f")) == n + 1
-    env.box.active = 0
 
 
 async def test_orphan_cleanup_on_start(cloud):
@@ -392,16 +375,6 @@ async def until(cond, n=300):
     raise AssertionError("timeout")
 
 
-async def test_home_snapshot_never_holds_repos(cloud):
-    """Review C2: repos come back only from the mirror; the home snapshot neither packs nor unpacks repos/."""
-    sb = make(cloud, idle_pause_s=1)
-    env = await sb.open("s1", "u1")
-    await go(env)
-    assert not cloud.runs("zstd -dc")  # nothing is unpacked into home any more
-    await sb.stop_idle(now=env.box.last + 10)
-    assert not [r for r in cloud.runs() if "tar -cf" in r]
-
-
 async def test_pause_waits_and_aborts_for_a_call_that_started(cloud):
     """Review C3: the tick's pause re-checks active under the lock and aborts if a call started meanwhile."""
     sb = make(cloud, idle_pause_s=1)
@@ -421,17 +394,17 @@ async def test_pause_waits_and_aborts_for_a_call_that_started(cloud):
 
 
 async def test_call_during_a_pause_waits_then_resumes(cloud):
-    """Review C3: while the pause snapshots (state "stopping"), a new call waits for it, then resumes the sandbox;
+    """Review C3: while the pause runs (state "stopping"), a new call waits for it, then resumes the sandbox;
     it never runs in the sandbox being paused."""
     sb = make(cloud, idle_pause_s=1)
     env = await sb.open("s1", "u1")
     await go(env)
-    gate, real = asyncio.Event(), sb.snapshot
+    gate, real = asyncio.Event(), env.box.sbx.pause
 
-    async def slow_snapshot(box):
+    async def slow_pause(*a, **k):
         await gate.wait()
-        await real(box)
-    sb.snapshot = slow_snapshot
+        return await real(*a, **k)
+    env.box.sbx.pause = slow_pause
     tick = asyncio.create_task(sb.stop_idle(now=env.box.last + 100))
     await until(lambda: env.box.state == "stopping")
     call = asyncio.create_task(go(env, "echo after"))
@@ -669,18 +642,15 @@ def test_prompt_hint_lists_tools(cloud):
     assert "LibreOffice" in make(cloud, office=True).prompt_hint
 
 
-async def test_home_snapshot_carries_no_libraries(cloud):
-    """Libraries are fixed in the template: user installs are not packed, old library snapshots are removed (quota)."""
-    from simp_server.sandboxes import e2b
+async def test_old_home_snapshot_deleted_never_unpacked(cloud):
+    """Libraries are fixed in the template: old home snapshots are deleted at create (quota), never unpacked; repos
+    still come back only from their mirror."""
     sb = make(cloud, idle_pause_s=1)
     env = await sb.open("s1", "u1")
     await go(env)
-    assert any(r.startswith("rm -f /work/.simp/home.tar.zst") for r in cloud.runs())  # old snapshot dropped at create
-    for d in (".local", ".npm-global", ".venvs"):
-        assert d not in e2b.HOME_DIRS
+    assert any(r.startswith("rm -f /work/.simp/home.tar.zst") for r in cloud.runs())
     await sb.stop_idle(now=env.box.last + 10)
-    assert not cloud.runs("zstd -q -f")
-
+    assert not [r for r in cloud.runs() if "zstd" in r or "tar -" in r]
 
 async def test_sandbox_from_before_the_egress_filter_is_not_adopted(cloud):
     """A sandbox created without the allowlist (older server) would keep open internet if resumed: kill it."""
@@ -691,3 +661,10 @@ async def test_sandbox_from_before_the_egress_filter_is_not_adopted(cloud):
     assert old.sandbox_id not in cloud.boxes and not sb.boxes["u1"].sbx_id
     await go(await sb.open("s1", "u1"))
     assert cloud.network and cloud.boxes[sb.boxes["u1"].sbx_id].metadata["egress"] == "allowlist"
+
+
+def test_allowlist_without_store_endpoint_fails_fast(cloud):
+    sb = make(cloud)
+    sb.store.mount_endpoint = ""
+    with pytest.raises(RuntimeError, match="workspace endpoint"):
+        sb._network()

@@ -376,7 +376,9 @@ class Run:
 
     def verdict(self, call) -> tuple[str, str]:
         mcp_write = call.name in self.mcp.names and call.name in self.session.needs_approval
-        return policy.classify(call, mcp_write, getattr(self.mgr.sandbox, "toolset_line", ""))
+        sb = self.mgr.sandbox
+        return policy.classify(call, mcp_write, getattr(sb, "toolset_line", ""),
+                               net_blocked=getattr(sb, "egress", "open") == "allowlist")
 
     async def approve(self, call) -> str:
         """AgentSession approve callback: policy `allow` runs at once; otherwise ask every tab and wait. Abort cancels."""

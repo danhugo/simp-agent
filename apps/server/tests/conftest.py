@@ -37,4 +37,4 @@ def _s3_settings(tmp_path, w, prefix, **sandbox):
 @pytest.fixture
 def ask_all(monkeypatch):
     """Every tool call goes to the approval prompt (tests of the approval flow itself, not of the policy)."""
-    monkeypatch.setattr("simp_server.policy.classify", lambda call, mcp_write, available: ("ask", ""))
+    monkeypatch.setattr("simp_server.policy.classify", lambda call, mcp_write, available, net_blocked=True: ("ask", ""))

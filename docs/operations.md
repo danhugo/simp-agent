@@ -306,12 +306,18 @@ pdf, matplotlib, pillow, OCR with Vietnamese, ffmpeg, node, git) into root-owned
 it but cannot install or change packages: `/opt/simp` is read-only, the sandbox cannot reach package indexes (egress
 allowlist), and the policy (`simp_server/policy.py`) answers install attempts with the list. To add a library, edit
 `toolset.py`, rebuild the template, switch `template` to the new alias. About 0.6 GB (1.1 GB with `--office`); the
-template does not count toward user quota. Nothing is snapshotted from home any more (old library snapshots are
-deleted at create).
+template does not count toward user quota. Home is not saved any more: old home snapshots (user-installed
+libraries) are deleted at create; repos still come back from their mirror.
 
-**Approvals.** `simp_server/policy.py` decides per call: most sandbox commands and file edits run without asking;
-`git push` and MCP tools that change data (by the server's hint or by name: send, delete, share, create, ...) are asked,
-even after "always"; installs and network commands are refused with a reason. Deletes inside `/work` run without
+**Rollout order (this change).** 1) Build the new template (`e2b_template.py --alias simp-sandbox-next`) and run
+`test_e2b_live.py` against it with a real bucket mount. 2) Set `template` to the new alias and add `TAVILY_API_KEY`.
+3) Deploy the server at a quiet time: at start it kills every sandbox made without the egress allowlist, so each
+user's next tool call creates a fresh one (slower once; files and repos are kept, self-installed libraries are gone).
+
+**Approvals.** `simp_server/policy.py` decides per call: sandbox commands and file edits run without asking; MCP
+tools that change data (by the server's hint, or a name starting with send_/delete_/share_/create_/update_ ...) are
+asked, even after "always"; installs, and network commands when egress is blocked, are refused with a reason. A
+keyword counts only as the command word (`grep curl notes.md` runs). The regexes are a hint layer, not a boundary. Deletes inside `/work` run without
 asking and are permanent on R2.
 
 Build the E2B template once (`--office` adds LibreOffice, about 500 MB):
@@ -356,7 +362,9 @@ namespaced per server: two simp instances must not share one Docker host's sandb
   unconfined and a `bridge` network that can reach `host.docker.internal` (your host). Only `docker exec -u 0` uses
   the capability (mount, and the unmount before removal); commands run as 1000 with no capabilities.
 - The E2B template removes sudo; every new sandbox checks that `user` has no passwordless sudo.
-- E2B egress: `allow_out` = workspace endpoint + `egress_allow`, `deny_out` = all. DNS (8.8.8.8) stays reachable.
+- E2B egress: `allow_out` = workspace endpoint + `egress_allow`, `deny_out` = all. DNS (8.8.8.8) stays reachable:
+  a slow exfiltration channel (data in DNS queries), accepted for now (2026-11-21), to be handled by the security team
+  (`dns_servers=[]` + the endpoint in `/etc/hosts`).
   Sound only with an account-specific endpoint (R2: `<account>.r2.cloudflarestorage.com`); on a shared host such as
   `s3.amazonaws.com` a sandbox could upload to any bucket it has keys for. Sandboxes created with other egress
   settings (e.g. before the allowlist) are killed at server start, not resumed.

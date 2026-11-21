@@ -145,8 +145,7 @@ async def test_e2b_warn_note_once(cloud):  # noqa: F811
     assert not env.box.ro
 
 
-async def test_e2b_kill_of_full_box_remounts_writable_for_last_snapshot(cloud, monkeypatch):  # noqa: F811
-    monkeypatch.setattr("simp_server.sandboxes.e2b.HOME_DIRS", ".data")  # a home dir to pack (none by default)
+async def test_e2b_kill_of_full_box_remounts_writable_for_last_mirror(cloud):  # noqa: F811
     sb = make(cloud)
     sb.quota, sb.store = FakeQuota(), RoStore()
     sb.quota.u = {"used": 99, "quota": 100, "state": "full"}
@@ -157,4 +156,4 @@ async def test_e2b_kill_of_full_box_remounts_writable_for_last_snapshot(cloud, m
         await sb._kill(env.box)
     runs = cloud.runs()
     kill_users = runs.index("pkill -KILL -u user; true")
-    assert sb.store.ro[-1] is False and kill_users < max(i for i, r in enumerate(runs) if "home.tar" in r)
+    assert sb.store.ro[-1] is False and kill_users < max(i for i, r in enumerate(runs) if "umount /work" in r)

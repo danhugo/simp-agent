@@ -814,14 +814,12 @@ async def test_policy_safe_bash_runs_without_asking(env):
     assert any(e["type"] == "tool_result" and "one" in e["content"] for e in evs)
 
 
-async def test_policy_asks_for_push_and_denies_install_with_reason(env):
-    _, _, _, _, run = await env(FakeProvider(bash("c1", "pip install six"), bash("c2", "git push"), reply()))
+async def test_policy_denies_install_with_reason(env):
+    _, _, _, _, run = await env(FakeProvider(bash("c1", "pip install six"), reply()))
     _, q = run.subscribe(0)
     await run.command(p.Prompt(text="go"))
-    await wait_for(lambda: run.pending and run.pending.call_id == "c2")
-    await run.command(p.Approve(call_id="c2", decision="deny"))
     await wait_for(lambda: run.state == "idle" and run.task.done())
     evs = [e for e in drain(q) if "seq" in e]
-    assert [e["call_id"] for e in evs if e["type"] == "approval_request"] == ["c2"]
+    assert not [e for e in evs if e["type"] == "approval_request"]
     denied = next(e for e in evs if e["type"] == "tool_result" and e.get("call_id", e.get("tool_call_id")) == "c1")
     assert "libraries are fixed" in denied["content"]
