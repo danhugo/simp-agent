@@ -18,7 +18,9 @@ SLOTS = {
             "hats (beanie, wizard cone, cowboy, top hat, cap, beret, crown, witch hat, chef toque, helmet) or hair "
             "(spiky, short messy, bob, long straight, twin tails, ponytail, bun, afro, curls). Hair is a scalp cap plus "
             "H.lock strands (spikes, bangs, tails) or a curtain for long hair (see the examples), never one smooth blob. "
-            "Ponytail / twin tails / bun: a sphere or a bent H.lock attached at the back or sides of the head."),
+            "Hair covers the WHOLE head like real hair: the top, the sides and the back down to the nape (y = -0.7), "
+            "open only for the face in front (see the braids example), so no bald back. Tails, braids, buns and ponytails grow "
+            "from that cover and touch it: braids are a chain of touching balls, ponytails a bent H.lock, a bun a ball."),
     "bottom": ("the BOTTOM: what is under the face: a body, shorts, a skirt, a robe or a coat (no legs, so no pants)",
                "The ball IS the head; the bottom goes on the LOWER half, everything "
                "below y = -0.5 (a bit under the cheeks), trimmed with H.below. Use exactly ONE of these 3 forms, always at "
@@ -87,6 +89,25 @@ const spikes = [
   L([0.75, 0.45, 0.2], [1.15, -0.35, 0.3], [1.1, 0.2, 0.2], 0.24), L([-0.75, 0.45, 0.2], [-1.15, -0.35, 0.3], [-1.1, 0.2, 0.2], 0.24),
 ];
 return H.union(cap, ...spikes);
+</code>
+Example, two braids hanging down the back (a top): hair over the whole head except the face, then two chains of
+touching balls from the back of the head.
+<code>
+const c = "#5a3420", band = "#e85a7a";
+// hair covers the whole head except the face: a shell over the head, open in front below the bangs line
+let hair = Math.max(H.sphere(p, [0, 0.03, -0.04], 1.07), -0.7 - p[1]);
+hair = Math.max(hair, -Math.max(p[1] - 0.3, -p[2] - 0.1, Math.abs(p[0]) - 0.95));
+const parts = [[hair, c]];
+// two braids from the back of the head, hanging down: a chain of touching balls, getting smaller, a band at the end
+for (const s of [-1, 1]) {{
+  for (let i = 0; i < 6; i++) {{
+    const y = -0.25 - i * 0.25, r = 0.25 - i * 0.015;
+    parts.push([H.sphere(p, [s * (0.42 + i * 0.03), y, -0.82 - i * 0.06], r), i % 2 ? "#4a2a18" : c]);
+  }}
+  parts.push([H.sphere(p, [s * 0.6, -1.6, -1.18], 0.1), band]);
+  parts.push([H.lock(p, [s * 0.6, -1.65, -1.18], [s * 0.62, -1.95, -1.2], 0.12), c]);
+}}
+return H.union(...parts);
 </code>
 Example, long straight hair with bangs (a top): a scalp cap, a curtain that flares a little toward the ends
 and is open in front for the face, pointed ends and soft bangs.
