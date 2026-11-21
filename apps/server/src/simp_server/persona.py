@@ -29,9 +29,10 @@ SLOTS = {
     "bottom": ("the BOTTOM: what is under the face: a body, shorts, a skirt, a robe or a coat (no legs, so no pants)",
                "It goes on the LOWER half of the ball, below y = -0.5, trimmed with H.below. Use exactly ONE of 3 forms, "
                "at the size of its example (no other silhouette, no short or long versions):\n"
-               "1. SNUG: a thin shell hugging the ball, so Simp stays one round ball: shorts, belts, overalls, swimsuits, "
-               "and things that are themselves small and round (fruit, balls, eggs, bugs, buns, coins, planets).\n"
-               "2. ROUND BODY: a round belly under the ball, about as wide as it: a body, a suit, a costume, a puffy dress.\n"
+               "1. SNUG: a thin shell hugging the ball, so Simp stays one round ball: for THINGS that are small and round "
+               "(fruit, balls, eggs, bugs, buns, coins, planets), or a character wearing nothing but shorts or a swimsuit.\n"
+               "2. ROUND BODY: a round belly under the ball, about as wide as it: the default for a PERSON or creature in "
+               "clothes: a shirt, a suit, a jumpsuit, overalls, armor, a uniform, a costume, a puffy dress.\n"
                "3. BELL: a skirt, robe, coat, or a thing wide at the bottom (a pot, lamp, vase): slightly rounded sides, a "
                "flat hem at y = -1.65 and a NARROWER round base under it.\n"
                "A thing with a round part (a racket, a pan): SNUG in its color, the top carries the rest. "
