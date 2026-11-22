@@ -27,7 +27,7 @@ Code in this chapter (commits `79faa70`, `76d83ea`):
 - `apps/server/src/simp_server/sandboxes/repos.py` — `mirror_repos`, `restore_repos`
 - `apps/server/src/simp_server/server.py` — `SandboxSync`, the Files endpoints, `sandboxes_cli`, `restore_cli`
 - `apps/server/src/simp_server/devminio.py` — dev MinIO for `make minio`
-- `apps/server/sandboxes/Dockerfile`, `apps/server/sandboxes/e2b_template.py` — the sandbox images
+- `apps/server/sandboxes/e2b_template.py` — the sandbox image, for E2B and (as a generated Dockerfile) for Docker
 
 ## Problem
 

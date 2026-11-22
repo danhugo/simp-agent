@@ -29,6 +29,12 @@ def test_prompt_list():
     assert "LibreOffice" in toolset.prompt_list(office=True)
 
 
-def test_docker_dev_image_has_same_libraries():
-    df = (Path(__file__).parents[1] / "sandboxes" / "Dockerfile").read_text()
-    assert "pip install --no-cache-dir " + " ".join(toolset.PIP) in df
+def test_docker_dev_image_is_the_template(monkeypatch):
+    """No second Dockerfile to keep in sync: build_image feeds the template's Dockerfile to docker build."""
+    import subprocess
+    from simp_server.sandboxes import docker
+    seen = dict()
+    monkeypatch.setattr(subprocess, "run", lambda args, input: seen.update(args=args, df=input.decode()) or subprocess.CompletedProcess(args, 0))
+    assert docker.build_image() == 0
+    assert seen["args"][-1].endswith("apps/server") and "COPY skills /opt/simp/skills" in seen["df"]
+    assert docker.DockerSandbox.has_skills and "pptxgenjs" in docker.DockerSandbox.prompt_hint

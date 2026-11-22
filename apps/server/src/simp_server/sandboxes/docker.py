@@ -24,6 +24,8 @@ from pathlib import Path
 
 from simp_agent.agent.env import LocalEnv
 from simp_agent.coding import SANDBOX_HINT
+
+from . import toolset
 from simp_server import workspace
 from simp_server.sandboxes import Compute, SandboxLimit, gib, user_root, valid_id
 from simp_server.sandboxes.repos import mirror_locked, remirror_if_failed, restore_repos
@@ -50,7 +52,15 @@ exec s3fs "$1" /work -o url="$2" -o endpoint="$3" -o use_path_request_style -o a
 
 
 def build_image(tag: str = IMAGE) -> int:
-    return subprocess.call(["docker", "build", "-t", tag, str(DOCKERFILE_DIR)])
+    """The dev image is the E2B template itself (e2b_template.py as a Dockerfile, build context apps/server), so a
+    local chat has the same libraries, LibreOffice and skills as production."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("e2b_template", DOCKERFILE_DIR / "e2b_template.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    from e2b import Template
+    df = Template.to_dockerfile(mod.template())
+    return subprocess.run(["docker", "build", "-t", tag, "-f", "-", str(DOCKERFILE_DIR.parent)], input=df.encode()).returncode
 
 
 async def _docker(*args: str, stdin: bytes | None = None) -> tuple[int, str]:
@@ -279,7 +289,8 @@ class DockerSandbox:
     Built from the server settings dict; options in its [sandbox] table. open() is cheap (no container); the user's
     container starts on first use and is shared by all their sessions. All containers run as 1000:1000."""
 
-    prompt_hint = SANDBOX_HINT
+    prompt_hint = SANDBOX_HINT + " " + toolset.prompt_list(True)
+    has_skills = True  # the image is built from the E2B template: /opt/simp/skills is there
 
     kind = "docker"
 
