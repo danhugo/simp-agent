@@ -150,8 +150,6 @@ FUNCTION over_budget():
         msg = "budget: server paused by the admin"
     ELSE IF NOT (WAIT for store.user_active(user_id)):
         msg = "budget: user revoked"
-    ELSE IF (WAIT for store.spent(user_id, day_start())) >= limits.user_day_usd:
-        msg = "budget: daily limit $<user_day_usd> reached"
     ELSE IF (WAIT for store.spent(user_id, run_start, sid)) >= limits.run_usd:
         msg = "budget: run limit $<run_usd> reached"
     IF msg:
@@ -167,14 +165,13 @@ Real code: [budget.py](../../apps/server/src/simp_server/budget.py) — `Limits,
 
 ```text
 CLASS Limits:
-    user_day_usd = 2.0
     run_usd = 0.5
 
 FUNCTION limits(settings):
-    RETURN Limits built from settings["budget"] (or defaults)
+    RETURN Limits built from the known keys of settings["budget"] (or defaults); unknown keys are ignored
 ```
 
-`user_day_usd` is the most one user may spend in a day ([daily budget](glossary.md#daily-budget)); its `since` is `budget.day_start()`, midnight in the server's local time. `run_usd` is the most one run may spend ([run budget](glossary.md#run-budget)); its `since` is `run_start`, and the sum is filtered by the session id. Defaults: $2 a day, $0.5 a run.
+`run_usd` is the most one run may spend ([run budget](glossary.md#run-budget)); its `since` is `run_start`, and the sum is filtered by the session id. Default: $0.5 a run. There is no daily cap: with billing on, a user's points are the per-user limit. An old settings file may still carry `user_day_usd`; it is ignored.
 
 The check is `>=` on money **already spent**. It does not guess the next cost. So one call can go a little over, and the *next* call is refused.
 
@@ -234,7 +231,6 @@ Real code: [server.py](../../apps/server/src/simp_server/server.py) — `create_
 ```text
 GET /api/usage (logged-in user u):
     RETURN {today_usd: store.spent(u.id, day_start()) rounded to 4 places,
-            day_limit_usd: limits.user_day_usd,
             paused: manager.paused()}
 ```
 

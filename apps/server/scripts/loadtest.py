@@ -148,7 +148,7 @@ def main():
     (home / "settings.toml").write_text(
         'allow_local_sandbox = true\nmax_open_sessions = 5000\n'
         '[profiles.fake]\napi = "fake"\nmodel = "fake"\nprice_in = 0\nprice_out = 0\ntools = []\n'
-        '[budget]\nuser_day_usd = 1000000\nrun_usd = 1000000\n')
+        '[budget]\nrun_usd = 1000000\n')
     port = a.port or free_port()
     base = f"http://127.0.0.1:{port}"
     env = {**os.environ, "SIMP_SERVER_HOME": str(home), "SIMP_FAKE_TOKENS": str(a.tokens),

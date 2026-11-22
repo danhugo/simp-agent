@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import dataclasses
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -11,12 +12,12 @@ from simp_agent.ai import AssistantMessage
 
 @dataclass
 class Limits:
-    user_day_usd: float = 2.0
-    run_usd: float = 0.5
+    run_usd: float = 0.5  # per run; there is no daily cap (points, when billing is on, are the per-user limit)
 
 
 def limits(settings: dict) -> Limits:
-    return Limits(**settings.get("budget", dict()))
+    keys = {f.name for f in dataclasses.fields(Limits)}  # old settings may still carry user_day_usd: ignored
+    return Limits(**{k: v for k, v in settings.get("budget", dict()).items() if k in keys})
 
 
 OUT_OF_POINTS = "budget: out of points. Ask the admin for more."

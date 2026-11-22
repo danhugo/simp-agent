@@ -18,7 +18,7 @@ ROUTES = [("get", "/api/admin/me"), ("get", "/api/admin/users"), ("get", "/api/a
 
 async def setup(tmp_path, admins="boss@example.com", fp=None):
     (tmp_path / "settings.toml").write_text('allowed_emails = ["boss@example.com", "joe@example.com"]\nallow_local_sandbox = true\n'
-                                            "[budget]\nrun_usd = 100\nuser_day_usd = 100\n" + PROFILE)
+                                            "[budget]\nrun_usd = 100\n" + PROFILE)
     (tmp_path / ".env").write_text(f"ADMIN_EMAILS={admins}\n" if admins is not None else "")
     app = create_app(load_settings(tmp_path), fp or FakeProvider())
     mgr = app.state.mgr
@@ -94,7 +94,7 @@ async def test_settings_validate_persist_take_effect_and_rollback(tmp_path):
     fp = FakeProvider(*[usage_reply(str(i)) for i in range(5)])  # every call costs $1
     app, mgr, c, toks, ids = await setup(tmp_path, fp=fp)
     t, joe = toks["boss@example.com"], ids["joe@example.com"]
-    put = "/api/admin/settings/budget.user_day_usd"
+    put = "/api/admin/settings/budget.run_usd"
     assert (await call(c, "put", "/api/admin/settings/plugins.store", t, {"value": "x", "reason": "r"})).status_code == 400
     assert (await call(c, "put", "/api/admin/settings/allowed_hosts", t, {"value": [], "reason": "r"})).status_code == 400
     assert (await call(c, "put", put, t, {"value": -1, "reason": "r"})).status_code == 400
@@ -105,25 +105,23 @@ async def test_settings_validate_persist_take_effect_and_rollback(tmp_path):
     run = await mgr.get({"id": joe, "name": "joe@example.com"}, row["id"])
     await run.command(p.Prompt(text="a"))
     await wait_for(lambda: not run.busy and run.task.done())
-    assert run.state == "idle" and fp.calls == 1  # $1 spent today, limit 100
+    assert run.state == "idle" and fp.calls == 1  # $1 spent in the run, limit 100
 
     assert (await call(c, "put", put, t, {"value": 0.5, "reason": "tighten"})).status_code == 200
-    await run.command(p.Prompt(text="b"))
-    await wait_for(lambda: not run.busy and run.task.done())
-    assert run.state == "error" and fp.calls == 1  # no restart: the new limit blocks the next run
+    assert mgr.limits.run_usd == 0.5  # no restart: the next run uses the new limit
 
     s = {x["key"]: x for x in (await call(c, "get", "/api/admin/settings", t)).json()}
-    assert s["budget.user_day_usd"]["value"] == 0.5 and s["budget.user_day_usd"]["source"] == "db"
-    assert s["budget.run_usd"]["source"] == "file" and "profiles.test.price_in" in s
+    assert s["budget.run_usd"]["value"] == 0.5 and s["budget.run_usd"]["source"] == "db"
+    assert "budget.user_day_usd" not in s and "profiles.test.price_in" in s  # no daily cap any more
     # never buckets/endpoints/mount scope; the storage quota is the one workspace key an admin may change
     assert not any(k.startswith(("plugins", "workspace")) and k != "workspace.quota_mb" or "ADMIN" in k for k in s)
 
-    hist = (await call(c, "get", "/api/admin/settings/history?key=budget.user_day_usd", t)).json()
+    hist = (await call(c, "get", "/api/admin/settings/history?key=budget.run_usd", t)).json()
     assert len(hist) == 1 and hist[0]["old"] == 100 and hist[0]["new"] == 0.5 and hist[0]["reason"] == "tighten"
     rb = f"/api/admin/settings/history/{hist[0]['id']}/rollback"
     assert (await call(c, "post", rb, t, {})).status_code == 422
     assert (await call(c, "post", rb, t, {"reason": "undo"})).json()["value"] == 100
-    assert mgr.limits.user_day_usd == 100
+    assert mgr.limits.run_usd == 100
 
     # persisted: a fresh app over the same data dir loads the override
     await call(c, "put", "/api/admin/settings/billing.points_per_usd", t, {"value": 7, "reason": "r"})
@@ -131,7 +129,7 @@ async def test_settings_validate_persist_take_effect_and_rollback(tmp_path):
     app2 = create_app(load_settings(tmp_path), FakeProvider())
     async with app2.router.lifespan_context(app2):
         assert app2.state.mgr.settings["billing"]["points_per_usd"] == 7
-        assert app2.state.mgr.limits.user_day_usd == 100
+        assert app2.state.mgr.limits.run_usd == 100
 
 
 async def test_rate_limit(tmp_path, monkeypatch):

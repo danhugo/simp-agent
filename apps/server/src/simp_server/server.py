@@ -466,8 +466,6 @@ class Run:
             msg = "budget: user revoked"
         elif m := await budget.out_of_points(self.mgr.settings, store, self.user_id):
             msg = m
-        elif await store.spent(self.user_id, budget.day_start()) >= lim.user_day_usd:
-            msg = f"budget: daily limit ${lim.user_day_usd:g} reached"
         elif await store.spent(self.user_id, self.run_start, self.sid) >= lim.run_usd:
             msg = f"budget: run limit ${lim.run_usd:g} reached"
         if msg:
@@ -783,7 +781,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         billing = budget.billing(settings)  # read per call: billing.points_per_usd is a runtime setting
         c = await store.credits(u["id"], billing[1]) if billing[0] else {}
         return {"today_usd": round(await store.spent(u["id"], budget.day_start()), 4),
-                "day_limit_usd": mgr.limits.user_day_usd, "paused": mgr.paused(),
+                "paused": mgr.paused(),
                 "billing_enabled": billing[0], "points_balance": c.get("balance"), "points_granted": c.get("granted")}
 
     @app.get("/api/memories")
@@ -854,8 +852,6 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         async def check():
             if mgr.paused():
                 return "budget: server paused by the admin"
-            if await store.spent(u["id"], budget.day_start()) >= mgr.limits.user_day_usd:
-                return f"budget: daily limit ${mgr.limits.user_day_usd:g} reached"
             return await budget.out_of_points(settings, store, u["id"])
 
         ctx = Context(persona_mod.system(body.slot), [UserMessage(persona_mod.user_message(
