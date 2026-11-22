@@ -218,6 +218,9 @@ def tavily_extract(url: str, key: str, post=http_post) -> str:
     raise WebError(f"could not read {url}")
 
 
+EXTRACT_MAX = 200_000  # page chars the helper model reads (cheap model, 1M context)
+
+
 def _cut(text: str, max_chars: int) -> str:
     more = len(text) - max_chars
     return text[:max_chars] + f"\n[truncated: {more} more chars]" if more > 0 else text
@@ -335,7 +338,8 @@ def _obj(props, required):
     return {"type": "object", "properties": props, "required": required, "additionalProperties": False}
 
 
-def make_tools(provider: str = "duckduckgo", key: str | None = None) -> list[AgentTool]:
+def make_tools(provider: str = "duckduckgo", key: str | None = None, extract=None) -> list[AgentTool]:
+    """extract: async fn(question, page_text) -> answer, a cheap model that reads the page (web_fetch prompt=)."""
     async def search(args, ctx):
         try:
             return await asyncio.to_thread(do_search, args["query"], int(args.get("count", 5)), provider, key=key)
@@ -343,11 +347,19 @@ def make_tools(provider: str = "duckduckgo", key: str | None = None) -> list[Age
             return f"web_search error: {e}"
 
     async def fetch(args, ctx):
+        question = (args.get("prompt") or "").strip() if extract and not args.get("raw") else ""
         try:
-            return await asyncio.to_thread(do_fetch, args["url"], int(args.get("max_chars", 20000)),
-                                         raw=bool(args.get("raw")), key=key)
+            page = await asyncio.to_thread(do_fetch, args["url"], EXTRACT_MAX if question else int(args.get("max_chars", 20000)),
+                                           raw=bool(args.get("raw")), key=key)
         except WebError as e:
             return f"web_fetch error: {e}"
+        if not question:
+            return page
+        head, _, body = page.partition("\n\n")
+        try:
+            return f"{head}\nAnswer to {question!r} (read from the page by a helper model):\n\n{await extract(question, body)}"
+        except Exception as e:  # the side model failed: give the page itself, as without prompt
+            return f"{head}\n[extract failed: {e}; page text follows]\n\n{_cut(body, int(args.get('max_chars', 20000)))}"
 
     refused: dict[str, int] = dict()  # host -> 403 count, for this session's tools
 
@@ -387,8 +399,13 @@ def make_tools(provider: str = "duckduckgo", key: str | None = None) -> list[Age
                   _obj({"query": _p("string", "Search query"),
                         "count": _p("integer", "Max results (default 5)")}, ["query"]), search),
         AgentTool("web_fetch", "GET a public http(s) URL; HTML is converted to text, JSON/text returned as is. "
-                               "Weather: https://wttr.in/<city>?format=j1 or api.open-meteo.com.",
+                               + ("Pass `prompt` (what you need from the page) to get only that, read by a helper model: "
+                                  "far shorter than the page, so prefer it; leave it out when you need the exact page text. "
+                                  if extract else "")
+                               + "Weather: https://wttr.in/<city>?format=j1 or api.open-meteo.com.",
                   _obj({"url": _p("string", "http(s) URL"),
+                        **({"prompt": _p("string", "What to get from the page, e.g. 'each image: direct URL, author, "
+                                                   "license' or 'release dates and episode counts'")} if extract else {}),
                         "max_chars": _p("integer", "Max chars returned (default 20000)"),
                         "raw": _p("boolean", "Return the page source (HTML/JS) instead of text")}, ["url"]), fetch),
         AgentTool("web_download", "Download public http(s) files (images, PDFs, data) into the workspace, all in one call. "
@@ -411,13 +428,13 @@ class Web:
 
     name = "web"
 
-    def __init__(self, tavily_key: str | None = None):
-        self.tavily_key = tavily_key
+    def __init__(self, tavily_key: str | None = None, extract=None):
+        self.tavily_key, self.extract = tavily_key, extract
 
     def setup(self, api, config: dict) -> None:
         provider = config.get("search", "duckduckgo")
         if provider not in PROVIDERS:
             raise ValueError(f"unknown web search provider {provider!r}; have {sorted(PROVIDERS)}")
-        for t in make_tools(provider, self.tavily_key):
+        for t in make_tools(provider, self.tavily_key, self.extract):
             api.register_tool(t)
         api.add_prompt_section(self.name, CARDS_HINT, 20)
