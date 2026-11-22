@@ -5,7 +5,7 @@ import { IconCalendar, IconChart, IconCheck, IconChevron, IconCompose, IconFile,
 import { PixelAgent } from "./PixelAgent";
 import { Mascot3D } from "./Mascot3D";
 import { requestLocation, saveLocation, sharedLocation } from "./location";
-import { Files } from "./Files";
+import { Files, FilesPage } from "./Files";
 import { Preview } from "./Preview";
 import { Memory } from "./Memory";
 import { Admin } from "./Admin";
@@ -279,14 +279,10 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
         </>
       ) : page === "memory" ? <Memory onError={guard} menuButton={menu} />
         : page === "files" ? (
-          // the workspace without a chat: the list fills the page; a picked file opens beside it (full screen on a phone)
-          <main className="files-page">
-            <header className="home-head">{menu}</header>
-            <div className="files-page-body">
-              <Files sid="" onError={guard} focus={preview} onPreview={setPreview} />
-              {preview && <Preview sid="" path={preview} writes={0} onError={guard} onClose={() => setPreview(undefined)} />}
-            </div>
-          </main>
+          <>
+            <FilesPage onError={guard} focus={preview} onPreview={setPreview} menuButton={menu} />
+            {preview && <Preview sid="" path={preview} writes={0} onError={guard} onClose={() => setPreview(undefined)} />}
+          </>
         )
         : page === "apps" ? <Apps onError={guard} menuButton={menu} />
         : page === "admin" ? <Admin onError={guard} menuButton={menu} />

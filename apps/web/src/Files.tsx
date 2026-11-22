@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { api, AuthError, type FileEntry, type WorkspaceUsage } from "./api";
 import { errorText } from "./Chat";
 import { IconClose, IconFolder, IconRefresh, IconTrash, IconUpload, fileIcon } from "./icons";
@@ -7,9 +7,9 @@ import { kindOf } from "./fileKind";
 const dirOf = (p: string) => { const i = p.replace(/^\.\//, "").lastIndexOf("/"); return i <= 0 ? (i === 0 ? "/" : ".") : p.replace(/^\.\//, "").slice(0, i); };
 const baseOf = (p: string) => p.split("/").pop() ?? p;
 
-/** `focus`: a file path to start at (its folder) and highlight. sid "" = no session (the Files page): the workspace is
- * the user's either way. `onClose` omitted = the list is the page itself, not a side panel. */
-export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string; onError: (e: unknown) => void; onClose?: () => void; onPreview: (path: string) => void; focus?: string }) {
+/** The workspace list: folder, entries, upload, two-click delete, storage. sid "" = no session (the workspace is the
+ * user's either way). */
+function useFiles(sid: string, onError: (e: unknown) => void, focus?: string) {
   const [path, setPath] = useState(focus ? dirOf(focus) : ".");
   useEffect(() => { if (focus) setPath(dirOf(focus)); }, [focus]);
   const hl = focus && path === dirOf(focus) ? baseOf(focus) : undefined;
@@ -56,8 +56,15 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
     load();
   };
 
+  return { path, setPath, hl, entries, loading, uploading, error, usage, armed, setArmed, picker, join, upload, remove, load, loadUsage };
+}
+
+/** `focus`: a file path to start at (its folder) and highlight. */
+export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string; onError: (e: unknown) => void; onClose: () => void; onPreview: (path: string) => void; focus?: string }) {
+  const f = useFiles(sid, onError, focus);
+  const { uploading, usage, picker, upload, load, loadUsage } = f;
   return (
-    <aside className={`files${onClose ? "" : " files-standalone"}`} aria-label="Files">
+    <aside className="files" aria-label="Files">
       <header>
         <strong>Files</strong>
         <span className="spacer" />
@@ -66,8 +73,21 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
           <IconUpload size={16} />{uploading ? "Uploading…" : "Upload"}
         </button>
         <input ref={picker} type="file" multiple hidden onChange={(e) => upload(e.target.files)} />
-        {onClose && <button className="icon-btn" onClick={onClose} title="Close files" aria-label="Close files"><IconClose size={16} /></button>}
+        <button className="icon-btn" onClick={onClose} title="Close files" aria-label="Close files"><IconClose size={16} /></button>
       </header>
+      <FileList f={f} onPreview={onPreview} />
+      {usage && usage.state !== "off" && <Storage u={usage} />}
+    </aside>
+  );
+}
+
+type FilesState = ReturnType<typeof useFiles>;
+
+/** Breadcrumb, error and the folder's entries (shared by the side panel and the Files page). */
+function FileList({ f, onPreview, emptyText = "Empty" }: { f: FilesState; onPreview: (path: string) => void; emptyText?: string }) {
+  const { path, setPath, hl, entries, loading, error, armed, setArmed, join, remove } = f;
+  return (
+    <>
       <nav className="path" aria-label="Folder">
         {/* "work" is the workspace root (/work in the sandbox); each part opens that folder */}
         {["work", ...path.split("/").filter((x) => x && x !== ".")].map((part, i, all) => (
@@ -98,11 +118,35 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
             </button>
           </li>
         ))}
-        {entries.length === 0 && <li className="empty">{loading ? "Loading…" : error ? "" : path === "." && !onClose
-          ? "Nothing here yet. Upload a file, or ask Simp in a chat to make one." : "Empty"}</li>}
+        {entries.length === 0 && <li className="empty">{loading ? "Loading…" : error ? "" : emptyText}</li>}
       </ul>
-      {usage && usage.state !== "off" && <Storage u={usage} />}
-    </aside>
+    </>
+  );
+}
+
+/** The workspace as a page (no chat needed), laid out like Memory: title and actions, the list, storage at the end. */
+export function FilesPage({ onError, onPreview, focus, menuButton }: { onError: (e: unknown) => void; onPreview: (path: string) => void; focus?: string; menuButton?: ReactNode }) {
+  const f = useFiles("", onError, focus);
+  return (
+    <main className="memory files-page">
+      <header className="home-head">{menuButton}</header>
+      <div className="memory-body">
+        <div className="page-head">
+          <h1 className="page-title">Files</h1>
+          <span className="spacer" />
+          <button className="ghost icon" onClick={() => { f.load(); f.loadUsage(); }} aria-label="Refresh" title="Refresh"><IconRefresh /></button>
+          <button className="primary new-mem" onClick={() => f.picker.current?.click()} disabled={f.uploading}>
+            <IconUpload size={16} />{f.uploading ? "Uploading…" : "Upload"}
+          </button>
+          <input ref={f.picker} type="file" multiple hidden onChange={(e) => f.upload(e.target.files)} />
+        </div>
+        <p className="muted small mem-about">Files you upload and files Simp makes. Every chat sees the same files, in /work.</p>
+        <div className="files files-standalone">
+          <FileList f={f} onPreview={onPreview} emptyText={f.path === "." ? "Nothing here yet. Upload a file, or ask Simp in a chat to make one." : "Empty"} />
+          {f.usage && f.usage.state !== "off" && <Storage u={f.usage} />}
+        </div>
+      </div>
+    </main>
   );
 }
 
