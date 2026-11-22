@@ -841,3 +841,21 @@ async def test_workspace_files_without_a_session(env):
         assert (await api.delete("/api/files?path=notes", headers=h)).status_code == 200
         assert (await api.get("/api/files", headers=h)).json() == []
         assert (await api.get("/api/files")).status_code == 401
+
+
+async def test_skills_start_enabled_and_toggle_per_user(env):
+    """Crafts > Skills: every skill in apps/server/skills is on until the user turns it off."""
+    app, mgr, user, token, run = await env(FakeProvider())
+    tok_b = await mgr.store.add_user("b")
+    h, hb = {"Authorization": f"Bearer {token}"}, {"Authorization": f"Bearer {tok_b}"}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as api:
+        got = (await api.get("/api/skills", headers=h)).json()
+        assert {s["name"] for s in got} >= {"pptx", "docx", "xlsx", "pdf"} and all(s["enabled"] for s in got)
+        assert (await api.post("/api/skills/pptx/disable", headers=h)).status_code == 200
+        assert not next(s for s in (await api.get("/api/skills", headers=h)).json() if s["name"] == "pptx")["enabled"]
+        assert next(s for s in (await api.get("/api/skills", headers=hb)).json() if s["name"] == "pptx")["enabled"]
+        assert mgr.store.disabled_skills_sync(user["id"]) == {"pptx"}
+        assert (await api.post("/api/skills/pptx/enable", headers=h)).status_code == 200
+        assert mgr.store.disabled_skills_sync(user["id"]) == set()
+        assert (await api.post("/api/skills/nope/enable", headers=h)).status_code == 404
+        assert (await api.get("/api/skills")).status_code == 401

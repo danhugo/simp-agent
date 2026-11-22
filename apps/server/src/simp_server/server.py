@@ -46,7 +46,7 @@ from simp_agent.plugins.redact_secrets import RedactSecrets
 from simp_agent.session import AgentSession
 from simp_agent.session.profile import build_model
 
-from . import admin, budget, health, ops, persona as persona_mod, workspace
+from . import admin, budget, health, ops, persona as persona_mod, skills as skills_mod, workspace
 from .quota import Quota
 from . import protocol as p
 from .connections import STATE_TTL, Connections, UserMcp, providers
@@ -261,6 +261,9 @@ class Run:
             "persona", lambda ctx: persona_mod.prompt_section(mgr.store.persona_sync(self.user_id)), 90)
         if (hint := getattr(mgr.sandbox, "prompt_hint", None)) and not no_tools:
             self.session.add_prompt_section("sandbox", hint + " " + PREVIEW_HINT, 5)
+        if getattr(mgr.sandbox, "has_skills", False) and not no_tools:  # read fresh: a switch reaches open chats
+            self.session.add_prompt_section("skills", lambda ctx: skills_mod.prompt_section(
+                mgr.skills, mgr.store.disabled_skills_sync(self.user_id)), 6)
         self.session.subscribe(self.on_event)
 
     @property
@@ -537,6 +540,7 @@ class SessionManager:
         self.admin_emails = {e.strip().lower() for e in self.keys.pop("ADMIN_EMAILS", "").split(",") if e.strip()}
         self.conns = Connections(settings, store, self.keys)
         self.tools_seen: dict[str, dict] = dict()  # user -> app -> tool -> needs approval (portal detail page)
+        self.skills = skills_mod.load()  # apps/server/skills: what the template has at /opt/simp/skills
         self.limits = budget.limits(settings)
         self.redact = RedactSecrets()  # same mask for memory_save content (RedactSecrets never sees tool args)
         self.redact.setup(None, {"secrets": list(self.keys.values())})
@@ -887,6 +891,18 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     @app.get("/api/apps")
     async def list_apps(u=Depends(user)):
         return await mgr.conns.list_apps(u["id"])
+
+    @app.get("/api/skills")
+    async def list_skills(u=Depends(user)):
+        off = await store.disabled_skills(u["id"])
+        return [{**s, "enabled": s["name"] not in off} for s in mgr.skills]
+
+    @app.post("/api/skills/{name}/{action}")
+    async def toggle_skill(name: str, action: str, u=Depends(user)):
+        if action not in ("enable", "disable") or name not in {s["name"] for s in mgr.skills}:
+            raise HTTPException(404, "no such skill")
+        await store.set_skill_disabled(u["id"], name, action == "disable")
+        return {"ok": True}
 
     @app.get("/api/apps/{app_name}")  # portal detail page
     async def app_detail(app_name: str, u=Depends(user)):

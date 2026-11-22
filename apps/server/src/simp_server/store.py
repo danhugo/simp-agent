@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS memories(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, 
 {CONNECTIONS};
 CREATE TABLE IF NOT EXISTS app_off(user_id TEXT NOT NULL, app TEXT NOT NULL, PRIMARY KEY(user_id, app));
 CREATE TABLE IF NOT EXISTS app_on(user_id TEXT NOT NULL, app TEXT NOT NULL, PRIMARY KEY(user_id, app));
+CREATE TABLE IF NOT EXISTS skill_off(user_id TEXT NOT NULL, skill TEXT NOT NULL, PRIMARY KEY(user_id, skill));
 CREATE TABLE IF NOT EXISTS mcp_audit(user_id TEXT, session_id TEXT, server TEXT, tool TEXT, decision TEXT, ok INTEGER,
     at REAL, link_id TEXT);
 CREATE TABLE IF NOT EXISTS credit_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, points INTEGER,
@@ -164,6 +165,18 @@ class SqliteStore:
     async def set_app_disabled(self, user_id: str, app: str, off: bool) -> None:
         sql = "INSERT OR IGNORE INTO app_off VALUES(?,?)" if off else "DELETE FROM app_off WHERE user_id=? AND app=?"
         await self._do(sql, user_id, app)
+
+    # skills the user turned off (no row = on: every skill starts enabled)
+    async def disabled_skills(self, user_id: str) -> set[str]:
+        return {r["skill"] for r in await self._all("SELECT skill FROM skill_off WHERE user_id=?", user_id)}
+
+    def disabled_skills_sync(self, user_id: str) -> set[str]:
+        """For the prompt section, rebuilt every turn, so a switch reaches open chats at once."""
+        return {r["skill"] for r in self.mem.execute("SELECT skill FROM skill_off WHERE user_id=?", (user_id,))}
+
+    async def set_skill_disabled(self, user_id: str, skill: str, off: bool) -> None:
+        sql = "INSERT OR IGNORE INTO skill_off VALUES(?,?)" if off else "DELETE FROM skill_off WHERE user_id=? AND skill=?"
+        await self._do(sql, user_id, skill)
 
     # no-login apps the user turned on (no row = off)
     async def enabled_apps(self, user_id: str) -> set[str]:

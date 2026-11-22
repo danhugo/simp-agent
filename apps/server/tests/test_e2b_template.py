@@ -18,7 +18,9 @@ def test_template_toolset_is_fixed_and_read_only():
     assert "PIP_USER" not in df and "NPM_CONFIG_PREFIX" not in df
     env_path = next(line for line in df.splitlines() if "PATH=" in line)
     assert "PATH=/opt/simp/venv/bin:" in env_path and "/home/user" not in env_path
-    assert "libreoffice" not in df and "libreoffice-nogui" in Template.to_dockerfile(tpl.template(office=True))
+    assert "libreoffice-nogui" in df and "libreoffice" not in Template.to_dockerfile(tpl.template(office=False))
+    assert "COPY skills /opt/simp/skills" in df and "npm install --prefix /opt/simp/node" in df
+    assert "NODE_PATH=/opt/simp/node/node_modules" in env_path
 
 
 def test_prompt_list():

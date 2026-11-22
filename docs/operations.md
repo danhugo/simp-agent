@@ -279,12 +279,12 @@ quota_mb = 10240           # per-user workspace storage (0 = off); admin can cha
 
 [sandbox]
 kind = "e2b"               # mount defaults to "fuse"
-template = "simp-sandbox"
+# template = "auto"      # default: content-hashed name (toolset + skills), built by the release workflow
 tag = "simp"               # metadata app=<tag>: which E2B sandboxes this server owns
 cpus = 2                   # used for cost only; set at template build
 memory_mb = 2048
 idle_pause_s = 600         # pause after 10 min unused
-# office = false           # true if the template was built with --office (names LibreOffice in the prompt)
+# office = true            # false only with a --no-office template (the skills need LibreOffice)
 # egress = "allowlist"     # outbound only to the workspace endpoint + egress_allow; "open" = no filter (dev only)
 # egress_allow = []        # extra hosts the sandbox may reach; web access goes through web_search / web_fetch / web_download (files, max 20 MB, into /work)
 max_life_s = 3300          # kill and recreate after 55 min (E2B Hobby: 1 h continuous cap)
@@ -304,8 +304,10 @@ without it, DuckDuckGo and plain GET.
 **Toolset.** The template bakes a fixed toolset (`simp_server/sandboxes/toolset.py`: pandas, docx, pptx, openpyxl,
 pdf, matplotlib, pillow, OCR with Vietnamese, ffmpeg, node, git) into root-owned `/opt/simp`. Users and the agent use
 it but cannot install or change packages: `/opt/simp` is read-only, the sandbox cannot reach package indexes (egress
-allowlist), and the policy (`simp_server/policy.py`) answers install attempts with the list. To add a library, edit
-`toolset.py`, rebuild the template, switch `template` to the new alias. About 0.6 GB (1.1 GB with `--office`); the
+allowlist), and the policy (`simp_server/policy.py`) answers install attempts with the list. To add a library or a skill, edit
+`toolset.py` or `apps/server/skills/` and release: the template name is a hash of those files, the deploy workflow
+builds it when missing, and the server computes the same name. Locally, run `e2b_template.py --if-missing` before
+starting the server. About 0.6 GB (1.1 GB with `--office`); the
 template does not count toward user quota. Home is not saved any more: old home snapshots (user-installed
 libraries) are deleted at create; repos still come back from their mirror.
 
@@ -320,10 +322,10 @@ asked, even after "always"; installs, and network commands when egress is blocke
 keyword counts only as the command word (`grep curl notes.md` runs). The regexes are a hint layer, not a boundary. Deletes inside `/work` run without
 asking and are permanent on R2.
 
-Build the E2B template once (`--office` adds LibreOffice, about 500 MB):
+Build the E2B template by hand (the deploy workflow does this on release; LibreOffice is in unless `--no-office`):
 
 ```sh
-E2B_API_KEY=... uv run python apps/server/sandboxes/e2b_template.py [--alias simp-sandbox] [--office] [--cpus 2] [--memory-mb 2048]
+E2B_API_KEY=... uv run python apps/server/sandboxes/e2b_template.py [--if-missing] [--alias NAME] [--no-office] [--cpus 2] [--memory-mb 2048]
 ```
 
 Admin:

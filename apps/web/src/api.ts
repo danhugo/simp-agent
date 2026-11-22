@@ -11,6 +11,8 @@ export interface AppItem {
   auth: "oauth" | "token" | null; token_help_url: string | null;  // auth "token": paste a token (POST .../token)
   accounts?: Account[];  // linked accounts that can use this app, default (oldest) first
 }
+/** REST-only (GET /api/skills): instruction folders the agent reads when a task needs them. On until turned off. */
+export interface SkillItem { name: string; label: string; description: string; enabled: boolean }
 export interface Account { link_id: string; email: string | null; status: "ok" | "needs_reconnect"; created: number }
 /** REST-only (GET /api/apps/{app}): the portal detail page. */
 export interface AppDetail extends AppItem {
@@ -112,6 +114,8 @@ export const api = {
   /** html/pdf preview: base URL on the separate preview origin; iframe src = base + path. */
   preview: async (sid: string): Promise<{ base: string }> => (await call(`${filesBase(sid)}/preview`, { method: "POST" })).json(),
   apps: async (): Promise<AppItem[]> => (await call("/api/apps")).json(),
+  skills: async (): Promise<SkillItem[]> => (await call("/api/skills")).json(),
+  setSkill: (name: string, on: boolean) => call(`/api/skills/${name}/${on ? "enable" : "disable"}`, { method: "POST" }),
   setApp: (app: string, on: boolean) => call(`/api/apps/${app}/${on ? "enable" : "disable"}`, { method: "POST" }),
   appDetail: async (app: string): Promise<AppDetail> => (await call(`/api/apps/${app}`)).json(),
   /** linkId: add this app's scopes to that account; none: Google's account chooser (add an account). */

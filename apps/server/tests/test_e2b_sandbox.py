@@ -185,7 +185,7 @@ def cloud(monkeypatch):
 
 
 def make(cloud, **opts):
-    sb = E2BSandbox({"data_dir": "/nonexistent", "sandbox": {"kind": "e2b", **opts}})
+    sb = E2BSandbox({"data_dir": "/nonexistent", "sandbox": {"kind": "e2b", "template": "simp-sandbox", **opts}})
     sb.sdk, sb.store, sb.compute.db = cloud, FakeStore(), FakeDb()
     return sb
 
@@ -638,8 +638,8 @@ def test_prompt_hint_says_no_internet(cloud):
 def test_prompt_hint_lists_tools(cloud):
     from simp_server.sandboxes import toolset
     h = make(cloud).prompt_hint
-    assert toolset.prompt_list(False) in h and "Libraries are fixed: do not install packages" in h and "/opt" not in h
-    assert "LibreOffice" in make(cloud, office=True).prompt_hint
+    assert toolset.prompt_list(True) in h and "Libraries are fixed: do not install packages" in h and "/opt" not in h
+    assert "LibreOffice" not in make(cloud, office=False).prompt_hint  # on by default: the skills need it
 
 
 async def test_old_home_snapshot_deleted_never_unpacked(cloud):
@@ -688,3 +688,10 @@ def test_mount_caches_reads_on_sandbox_disk():
     from simp_server.sandboxes.e2b import S3FS_CACHE
     assert "use_cache=/tmp/s3fs" in S3FS_CACHE and "ensure_diskfree=256" in S3FS_CACHE and "del_cache" in S3FS_CACHE
     assert "stat_cache_expire=5" in S3FS
+
+
+def test_template_auto_is_the_content_hash():
+    from simp_server.sandboxes import toolset
+    sb = E2BSandbox({"data_dir": "/nonexistent", "sandbox": {"kind": "e2b"}})
+    assert sb.template == toolset.template_alias(True) and sb.template.startswith("simp-sandbox-")
+    assert toolset.template_alias(False) != sb.template
