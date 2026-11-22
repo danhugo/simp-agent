@@ -173,7 +173,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
         <Badge state={state.runState} />
         {conn !== "live" && <span className={`conn ${conn}`} role="status">{conn === "reconnecting" ? "reconnecting…" : "connecting…"}</span>}
         {spend?.paused && <span className="pill warn small">Paused</span>}
-        {spend && <span className="spend">${spend.today_usd.toFixed(2)} of ${spend.day_limit_usd} today</span>}
+        {spend && <span className="spend">${spend.today_usd.toFixed(2)} today</span>}
         <span className="spacer" />
         <MoreMenu actions={actions} />
       </header>

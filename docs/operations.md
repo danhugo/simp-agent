@@ -184,8 +184,7 @@ server refuses with a `budget` error when the user's spend since local midnight 
 price_in = 3
 price_out = 15
 
-[budget]  # defaults
-user_day_usd = 2.0
+[budget]  # defaults (no daily cap; with billing on, points limit each user)
 run_usd = 0.5
 ```
 

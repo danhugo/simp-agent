@@ -12,7 +12,7 @@ from simp_server.sandboxes import Compute, SandboxLimit
 from .test_budget import make, usage_reply
 from .test_server import wait_for
 
-ON = "[billing]\nenabled = true\npoints_per_usd = 10\n[budget]\nrun_usd = 100\nuser_day_usd = 100\n"
+ON = "[billing]\nenabled = true\npoints_per_usd = 10\n[budget]\nrun_usd = 100\n"
 
 
 async def ask(run, text="hi"):
@@ -22,7 +22,7 @@ async def ask(run, text="hi"):
 
 async def test_billing_off_does_not_block(tmp_path):
     fp = FakeProvider(usage_reply("a"))
-    app, mgr, user, _, run = await make(tmp_path, fp, "[budget]\nrun_usd = 100\nuser_day_usd = 100\n")
+    app, mgr, user, _, run = await make(tmp_path, fp, "[budget]\nrun_usd = 100\n")
     await ask(run)
     assert run.state == "idle" and fp.calls == 1
     await mgr.store.close()
