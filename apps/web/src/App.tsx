@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { admin, api, AuthError, type ConnStatus, getToken, setToken, subscribe } from "./api";
 import { Chat, Composer, type Send, writtenFile } from "./Chat";
-import { IconCalendar, IconChart, IconCheck, IconChevron, IconCompose, IconFile, IconSearch, IconApps, IconLogout, IconMemory, IconMenu, IconPersona, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
+import { IconCalendar, IconChart, IconCheck, IconChevron, IconCompose, IconFile, IconFolder, IconSearch, IconApps, IconLogout, IconMemory, IconMenu, IconPersona, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
 import { Mascot3D } from "./Mascot3D";
 import { requestLocation, saveLocation, sharedLocation } from "./location";
@@ -130,9 +130,9 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
     return () => window.removeEventListener("keydown", onKey);
   }, [drawer]);
   // Memory / Apps page (only when no session is picked); "#crafts?..." (aliases "#apps", "#connections") is the OAuth return
-  const [page, setPage] = useState<"" | "memory" | "apps" | "persona" | "admin">(() => (isConnHash() ? "apps" : ""));
+  const [page, setPage] = useState<"" | "memory" | "files" | "apps" | "persona" | "admin">(() => (isConnHash() ? "apps" : ""));
   const pick = (id: string) => { setSid(id); setPage(""); setDrawer(false); };
-  const open = (p: "memory" | "apps" | "persona" | "admin") => { pick(""); setPage(p); };
+  const open = (p: "memory" | "files" | "apps" | "persona" | "admin") => { pick(""); setPage(p); };
 
   useEffect(() => {
     refresh();
@@ -232,6 +232,9 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
         <button className={`ghost item new ${page === "memory" && !sid ? "active" : ""}`} onClick={() => open("memory")}
           aria-current={page === "memory" && !sid ? "page" : undefined} aria-label={rail ? "Memory" : undefined} title={rail ? "Memory" : undefined}>
           <IconMemory /><span className="label">Memory</span></button>
+        <button className={`ghost item new ${page === "files" && !sid ? "active" : ""}`} onClick={() => { setPreview(undefined); open("files"); }}
+          aria-current={page === "files" && !sid ? "page" : undefined} aria-label={rail ? "Files" : undefined} title={rail ? "Files" : undefined}>
+          <IconFolder /><span className="label">Files</span></button>
         <button className={`ghost item new ${page === "apps" && !sid ? "active" : ""}`} onClick={() => open("apps")}
           aria-current={page === "apps" && !sid ? "page" : undefined} aria-label={rail ? "Crafts" : undefined} title={rail ? "Crafts" : undefined}>
           <IconApps /><span className="label">Crafts</span></button>
@@ -275,6 +278,16 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
           ) : showFiles && <Files sid={sid} onError={guard} focus={filesFocus} onPreview={(p) => { setPreview(p); setShowFiles(false); }} onClose={() => setShowFiles(false)} />}
         </>
       ) : page === "memory" ? <Memory onError={guard} menuButton={menu} />
+        : page === "files" ? (
+          // the workspace without a chat: the list fills the page; a picked file opens beside it (full screen on a phone)
+          <main className="files-page">
+            <header className="home-head">{menu}</header>
+            <div className="files-page-body">
+              <Files sid="" onError={guard} focus={preview} onPreview={setPreview} />
+              {preview && <Preview sid="" path={preview} writes={0} onError={guard} onClose={() => setPreview(undefined)} />}
+            </div>
+          </main>
+        )
         : page === "apps" ? <Apps onError={guard} menuButton={menu} />
         : page === "admin" ? <Admin onError={guard} menuButton={menu} />
         : page === "persona" ? <Persona onError={guard} menuButton={menu} profiles={profiles} models={models} /> : (

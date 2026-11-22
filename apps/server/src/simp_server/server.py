@@ -1026,13 +1026,17 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             raise HTTPException(400, str(e)) from None
 
     @app.get("/api/sessions/{sid}/files")
-    async def list_files(sid: str, path: str = ".", u=Depends(user)):
-        await mgr.get(u, sid)  # ownership (and the one-time workspace migration); no sandbox starts
+    @app.get("/api/files")  # the workspace is the user's: the Files page works before any session
+    async def list_files(sid: str = "", path: str = ".", u=Depends(user)):
+        if sid:  # a session route: ownership (and the one-time workspace migration); no sandbox starts
+            await mgr.get(u, sid)
         return await fs(files.list(u["id"], path))
 
     @app.get("/api/sessions/{sid}/files/raw")
-    async def download(sid: str, path: str, u=Depends(user)):
-        await mgr.get(u, sid)
+    @app.get("/api/files/raw")
+    async def download(path: str, sid: str = "", u=Depends(user)):
+        if sid:
+            await mgr.get(u, sid)
         data = await fs(files.read(u["id"], path))
         mt = mimetypes.guess_type(path)[0] or "application/octet-stream"
         # allowlist: never render active content (html/svg/xml...) on the API origin
@@ -1043,8 +1047,10 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         return Response(data, media_type=mt, headers={"X-Content-Type-Options": "nosniff"})
 
     @app.post("/api/sessions/{sid}/preview")
-    async def make_preview(sid: str, u=Depends(user)):
-        await mgr.get(u, sid)
+    @app.post("/api/preview")
+    async def make_preview(sid: str = "", u=Depends(user)):
+        if sid:
+            await mgr.get(u, sid)
         now = time.time()
         for t in [t for t, (_, exp) in previews.items() if exp < now]:
             del previews[t]
@@ -1110,8 +1116,10 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
                         headers=preview_headers)
 
     @app.put("/api/sessions/{sid}/files/raw")
-    async def upload(sid: str, path: str, request: Request, u=Depends(user)):
-        await mgr.get(u, sid)
+    @app.put("/api/files/raw")
+    async def upload(path: str, request: Request, sid: str = "", u=Depends(user)):
+        if sid:
+            await mgr.get(u, sid)
         limit = settings.get("files_max_bytes", 50 * 2**20)
         if int(request.headers.get("content-length") or 0) > limit:
             raise HTTPException(413, f"file larger than {limit} bytes")
@@ -1127,9 +1135,11 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         return {"ok": True}
 
     @app.delete("/api/sessions/{sid}/files")
-    async def delete_file(sid: str, path: str, u=Depends(user)):
+    @app.delete("/api/files")
+    async def delete_file(path: str, sid: str = "", u=Depends(user)):
         """A file or a folder. Works while the workspace is full (that is how the user makes room)."""
-        await mgr.get(u, sid)
+        if sid:
+            await mgr.get(u, sid)
         await fs(files.delete(u["id"], path))
         await quota.recount(u["id"])  # the next sandbox call remounts /work read-write if there is room now
         return await quota.usage(u["id"])

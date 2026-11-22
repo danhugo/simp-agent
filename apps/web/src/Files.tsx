@@ -7,8 +7,9 @@ import { kindOf } from "./fileKind";
 const dirOf = (p: string) => { const i = p.replace(/^\.\//, "").lastIndexOf("/"); return i <= 0 ? (i === 0 ? "/" : ".") : p.replace(/^\.\//, "").slice(0, i); };
 const baseOf = (p: string) => p.split("/").pop() ?? p;
 
-/** `focus`: a file path to start at (its folder) and highlight. */
-export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string; onError: (e: unknown) => void; onClose: () => void; onPreview: (path: string) => void; focus?: string }) {
+/** `focus`: a file path to start at (its folder) and highlight. sid "" = no session (the Files page): the workspace is
+ * the user's either way. `onClose` omitted = the list is the page itself, not a side panel. */
+export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string; onError: (e: unknown) => void; onClose?: () => void; onPreview: (path: string) => void; focus?: string }) {
   const [path, setPath] = useState(focus ? dirOf(focus) : ".");
   useEffect(() => { if (focus) setPath(dirOf(focus)); }, [focus]);
   const hl = focus && path === dirOf(focus) ? baseOf(focus) : undefined;
@@ -56,7 +57,7 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
   };
 
   return (
-    <aside className="files" aria-label="Files">
+    <aside className={`files${onClose ? "" : " files-standalone"}`} aria-label="Files">
       <header>
         <strong>Files</strong>
         <span className="spacer" />
@@ -65,7 +66,7 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
           <IconUpload size={16} />{uploading ? "Uploading…" : "Upload"}
         </button>
         <input ref={picker} type="file" multiple hidden onChange={(e) => upload(e.target.files)} />
-        <button className="icon-btn" onClick={onClose} title="Close files" aria-label="Close files"><IconClose size={16} /></button>
+        {onClose && <button className="icon-btn" onClick={onClose} title="Close files" aria-label="Close files"><IconClose size={16} /></button>}
       </header>
       <nav className="path" aria-label="Folder">
         {/* "work" is the workspace root (/work in the sandbox); each part opens that folder */}
@@ -97,7 +98,8 @@ export function Files({ sid, onError, onClose, onPreview, focus }: { sid: string
             </button>
           </li>
         ))}
-        {entries.length === 0 && <li className="empty">{loading ? "Loading…" : error ? "" : "Empty"}</li>}
+        {entries.length === 0 && <li className="empty">{loading ? "Loading…" : error ? "" : path === "." && !onClose
+          ? "Nothing here yet. Upload a file, or ask Simp in a chat to make one." : "Empty"}</li>}
       </ul>
       {usage && usage.state !== "off" && <Storage u={usage} />}
     </aside>
