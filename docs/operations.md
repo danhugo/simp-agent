@@ -286,7 +286,7 @@ memory_mb = 2048
 idle_pause_s = 600         # pause after 10 min unused
 # office = false           # true if the template was built with --office (names LibreOffice in the prompt)
 # egress = "allowlist"     # outbound only to the workspace endpoint + egress_allow; "open" = no filter (dev only)
-# egress_allow = []        # extra hosts the sandbox may reach; web access goes through web_search / web_fetch
+# egress_allow = []        # extra hosts the sandbox may reach; web access goes through web_search / web_fetch / web_download (files, max 20 MB, into /work)
 max_life_s = 3300          # kill and recreate after 55 min (E2B Hobby: 1 h continuous cap)
 # provider_timeout_s = idle_pause_s + 300   # E2B-side pause if this server dies
 max_running = 10           # E2B Hobby allows 20 concurrent
