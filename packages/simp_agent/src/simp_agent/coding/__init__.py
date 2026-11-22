@@ -71,7 +71,8 @@ def system_prompt(tools: list, cwd: str, context: tuple[str, str] | None = None,
 
 
 SANDBOX_HINT = ("Where to put things: user files in /work (the user sees them); git repos under /home/user/repos; "
-                "databases and big intermediates in /tmp.")
+                "databases and big intermediates in /tmp. /work is network storage, slow for many small reads and "
+                "writes: copy inputs to /tmp, build there, and copy only the finished files to /work.")
 
 
 __all__ = ["TOOLS", "make_tools", "CONTEXT_FILES", "load_context_file", "system_prompt", "SANDBOX_HINT", "clean_locale", "clean_location"]
