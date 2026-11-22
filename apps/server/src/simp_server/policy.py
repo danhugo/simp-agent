@@ -15,7 +15,7 @@ Verdict = Literal["allow", "ask", "deny"]
 _AT = r"(?:^|[;&|]\s*|\$\(\s*|`\s*)\s*(?:sudo\s+|env\s+(?:\w+=\S*\s+)*)?(?:\S*/)?"
 INSTALL = re.compile(_AT + r"(?:pip3?\s+install|pipx|conda|apt|apt-get|npx|uv\s+(?:pip|add|tool)|"
                            r"npm\s+(?:i|install|add|ci)|python3?\s+-m\s+pip)\b")
-BROWSE = re.compile(_AT + r"pip3?\s+(?:list|freeze|show)\b|" + _AT + r"(?:ls|find|tree|du)\s+[^;&|]*/opt/simp")
+BROWSE = re.compile(_AT + r"pip3?\s+(?:list|freeze|show)\b|" + _AT + r"(?:ls|find|tree|du)\s+[^;&|]*/opt/simp(?!/skills)")  # skills: browsing is fine
 NET = re.compile(_AT + r"(?:curl|wget|nc|ncat|ssh|scp|sftp|rsync|telnet)\b")
 # MCP tools whose name starts with a write verb are asked even when their server marks them read-only
 MCP_WRITE = re.compile(r"^(?:send|delete|remove|trash|share|create|update|insert|append|move|reply|post|upload|"
@@ -32,7 +32,8 @@ def classify(call, mcp_write: bool, available: str, net_blocked: bool = True) ->
         if INSTALL.search(cmd):
             return "deny", f"packages cannot be installed; libraries are fixed. {available}"
         if BROWSE.search(cmd):
-            return "deny", f"not available. {available}"
+            return "deny", (f"browsing the preinstalled toolset (/opt/simp) is blocked; use what is listed here. Skill "
+                           f"files can be listed (ls /opt/simp/skills/<name>). Other commands still run. {available}")
         if net_blocked and NET.search(cmd):
             return "deny", NO_NET
         return "allow", ""
