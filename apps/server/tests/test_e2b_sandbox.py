@@ -680,3 +680,11 @@ async def test_sandbox_from_another_template_is_not_adopted(cloud):
     assert old.sandbox_id not in cloud.boxes and not sb.boxes["u1"].sbx_id
     await go(await sb.open("s1", "u1"))
     assert cloud.boxes[sb.boxes["u1"].sbx_id].metadata["template"] == "simp-sandbox-next"
+
+
+def test_mount_caches_reads_on_sandbox_disk():
+    """Measured on E2B + R2: a local read cache cuts repeated reads ~3-4x; stat cache stays 5 s so web uploads show up."""
+    from simp_server.sandboxes.docker import S3FS
+    from simp_server.sandboxes.e2b import S3FS_CACHE
+    assert "use_cache=/tmp/s3fs" in S3FS_CACHE and "ensure_diskfree=256" in S3FS_CACHE and "del_cache" in S3FS_CACHE
+    assert "stat_cache_expire=5" in S3FS
