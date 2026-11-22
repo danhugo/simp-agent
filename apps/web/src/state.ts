@@ -19,13 +19,17 @@ export interface ChatState {
   decisions: Record<string, ApprovalResolved["decision"]>;
   pending: PendingApproval | null;
   title: string;
+  /** when the current run began, on this browser's clock (from the server's time, so it survives a remount); null = unknown */
+  runStarted: number | null;
+  /** this browser's clock minus the server's, in ms (from the last snapshot) */
+  skew: number;
 }
 
 const emptyInFlight = (): InFlight => ({ msg_id: null, thinking: "", text: "", tool_outputs: {} });
 
 export const initialState = (): ChatState => ({
   lastSeq: 0, runState: "idle", items: [], inFlight: emptyInFlight(),
-  toolOutputs: {}, results: {}, decisions: {}, pending: null, title: "",
+  toolOutputs: {}, results: {}, decisions: {}, pending: null, title: "", runStarted: null, skew: 0,
 });
 
 /** Append `delta` only when it starts exactly at the end of `cur`; anything else is a dup or a gap. */
@@ -53,7 +57,7 @@ export function reduce(s: ChatState, ev: ServerEvent): ChatState {
         pending: s.pending?.call_id === ev.call_id ? null : s.pending,
       };
     case "run_state":
-      return { ...s, runState: ev.state };
+      return { ...s, runState: ev.state, runStarted: ev.started != null ? ev.started * 1000 + s.skew : null };
     case "notice":
       return { ...s, items: [...s.items, { kind: "notice", seq: ev.seq, level: ev.level, text: ev.text }] };
     case "compaction":
@@ -79,7 +83,10 @@ export function reduce(s: ChatState, ev: ServerEvent): ChatState {
       // The snapshot is the truth for everything live: replace the in-flight bubble and live tool output.
       return {
         ...s, lastSeq: Math.max(s.lastSeq, ev.last_seq), runState: ev.run_state, pending: ev.pending_approval,
-        title: ev.title,
+        title: ev.title, ...(() => {
+          const skew = ev.server_now ? Date.now() - ev.server_now * 1000 : s.skew;
+          return { skew, runStarted: ev.run_started != null ? ev.run_started * 1000 + skew : null };
+        })(),
         inFlight: ev.in_flight, toolOutputs: { ...s.toolOutputs, ...ev.in_flight.tool_outputs },
       };
   }

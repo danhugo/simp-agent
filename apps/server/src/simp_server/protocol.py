@@ -99,6 +99,7 @@ class RunState(_M):
     type: Literal["run_state"] = "run_state"
     seq: int
     state: RunStateName
+    started: float | None = None  # server time (epoch s) the run began, while one is going: the "1m 20s" counter
 
 
 class Compaction(_M):
@@ -164,6 +165,8 @@ class Snapshot(_M):
     in_flight: InFlight
     pending_approval: PendingApproval | None = None
     title: str = ""
+    run_started: float | None = None  # server time (epoch s) the current run began, if one is going
+    server_now: float = 0  # server time when sent, so a client can line its clock up with run_started
 
 
 DURABLE = (UserMessage, AssistantMessage, ToolResult, ApprovalRequest, ApprovalResolved, RunState, Compaction, Notice, SessionTitle)
