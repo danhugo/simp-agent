@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 from dataclasses import dataclass
 
 from .. import ai
@@ -162,6 +163,18 @@ def file_lists(messages: list, prev: CompactionEntry | None) -> tuple[list, list
     return sorted(read - mod), sorted(mod)
 
 
+SKILL_HEADER = re.compile(r"^\[Skill: ([\w.-]+) · ", re.M)  # first line of every loaded skill text
+
+
+def loaded_skills(messages: list) -> list[str]:
+    """Skill names whose text is in these messages (load_skill results and explicit picks)."""
+    names = list()
+    for m in messages:
+        if isinstance(m, (UserMessage, ToolResultMessage)) and isinstance(m.content, str):
+            names += [n for n in SKILL_HEADER.findall(m.content) if n not in names]
+    return names
+
+
 def format_files(read: list, mod: list) -> str:
     s = [f"<{t}>\n" + "\n".join(fs) + f"\n</{t}>" for t, fs in (("read-files", read), ("modified-files", mod)) if fs]
     return "\n\n" + "\n\n".join(s) if s else ""
@@ -193,7 +206,10 @@ async def compact(messages: list, model, stream_fn, settings: CompactionSettings
         raise RuntimeError("nothing to compact")
     old = [m for m in messages[start:cut] if not isinstance(m, (CompactionEntry, CustomEntry))]
     read, mod = file_lists(old, prev)
+    skills = list(dict.fromkeys([*(prev.skills if prev else []), *loaded_skills(old)]))
     if redact:  # e.g. the plugin context chain: secrets must not reach the summary model
         old = await redact(old)
     summary = await summarize(stream_fn, model, old, previous, settings.reserve_tokens)
-    return CompactionEntry(summary + format_files(read, mod), cut, read, mod)
+    note = (f"\n\n<loaded-skills>\n{', '.join(skills)}\n</loaded-skills>\nTheir text is gone from context: call "
+            "load_skill(name) again before relying on one.") if skills else ""
+    return CompactionEntry(summary + format_files(read, mod) + note, cut, read, mod, skills)

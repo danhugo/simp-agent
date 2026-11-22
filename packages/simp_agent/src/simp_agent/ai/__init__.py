@@ -75,6 +75,7 @@ class CompactionEntry:
     first_kept_index: int
     read_files: list = field(default_factory=list)
     modified_files: list = field(default_factory=list)
+    skills: list = field(default_factory=list)  # skills loaded before the cut (text gone; load_skill again)
     role: Literal["compaction"] = "compaction"
 
 
