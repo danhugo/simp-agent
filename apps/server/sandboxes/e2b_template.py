@@ -1,6 +1,6 @@
 """Build the E2B template for `[sandbox] kind = "e2b"` (design 2026-11-16 step 3).
 
-    E2B_API_KEY=... uv run python apps/server/sandboxes/e2b_template.py [--alias simp-sandbox] [--no-office]
+    E2B_API_KEY=... uv run python apps/server/sandboxes/e2b_template.py [--alias NAME] [--no-office] [--if-missing]
 
 Toolset: simp_server.sandboxes.toolset, installed read-only in /opt/simp. LibreOffice (headless, about 500 MB) is on by default:
 the skills (apps/server/skills, copied to /opt/simp/skills) use it; --no-office leaves it out. User `user` (E2B's default, uid 1000), /work is the mount point of
@@ -12,7 +12,7 @@ from e2b import Template, default_build_logger
 
 from pathlib import Path
 
-from simp_server.sandboxes.toolset import APT, NODE_DIR, NPM, OFFICE_APT, PIP, RUN_ENV, SKILLS_DIR, VENV
+from simp_server.sandboxes.toolset import template_alias, APT, NODE_DIR, NPM, OFFICE_APT, PIP, RUN_ENV, SKILLS_DIR, VENV
 
 APP = Path(__file__).parents[1]  # apps/server: the build context, so skills/ copies in
 
@@ -44,11 +44,15 @@ def template(office: bool = True):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--alias", default="simp-sandbox")
+    ap.add_argument("--alias", help="default: the content-hashed name the server uses ([sandbox] template = auto)")
+    ap.add_argument("--if-missing", action="store_true", help="skip the build when the alias already exists")
     ap.add_argument("--no-office", dest="office", action="store_false", help="leave out LibreOffice (the skills need it)")
     ap.add_argument("--cpus", type=int, default=2)
     ap.add_argument("--memory-mb", type=int, default=2048)
     a = ap.parse_args()
+    a.alias = a.alias or template_alias(a.office)
+    if a.if_missing and Template.alias_exists(a.alias):
+        return print(f"{a.alias} exists, nothing to build")
     info = Template.build(template(a.office), alias=a.alias, cpu_count=a.cpus, memory_mb=a.memory_mb,
                           on_build_logs=default_build_logger())
     print(info)

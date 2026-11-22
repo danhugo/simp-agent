@@ -24,3 +24,19 @@ VENV = "/opt/simp/venv"
 # E2B applies template envs only at build time, so E2BSandbox exports these in every command.
 RUN_ENV = {"PYTHONNOUSERSITE": "1", "NODE_PATH": f"{NODE_DIR}/node_modules",
            "PATH": f"{VENV}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+
+
+APP = __import__("pathlib").Path(__file__).parents[3]  # apps/server
+TEMPLATE_INPUTS = ["sandboxes/e2b_template.py", "src/simp_server/sandboxes/toolset.py", "skills"]
+
+
+def template_alias(office: bool = True) -> str:
+    """E2B template name from a hash of everything baked into it. The release workflow builds it when missing and
+    the server computes the same name, so a toolset or skills change never needs a settings edit."""
+    import hashlib
+    h = hashlib.sha256(b"office" if office else b"")
+    for rel in TEMPLATE_INPUTS:
+        root = APP / rel
+        for f in sorted([root] if root.is_file() else (x for x in root.rglob("*") if x.is_file() and "__pycache__" not in x.parts)):
+            h.update(str(f.relative_to(APP)).encode() + b"\0" + f.read_bytes())
+    return f"simp-sandbox-{h.hexdigest()[:12]}"

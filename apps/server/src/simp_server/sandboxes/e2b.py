@@ -310,7 +310,10 @@ class E2BSandbox:
 
     def __init__(self, settings: dict):
         s = settings.get("sandbox", dict())
-        self.template = s.get("template", "simp-sandbox")
+        # "auto" (default): the content-hashed name the release workflow builds; set a name only to pin one
+        self.template = s.get("template", "auto")
+        if self.template == "auto":
+            self.template = toolset.template_alias(bool(s.get("office", True)))
         # egress: "allowlist" (default) = only `egress_allow` + the workspace endpoint; "open" = no filter (dev)
         self.egress, self.egress_allow = s.get("egress", "allowlist"), list(s.get("egress_allow", []))
         self.toolset_line = toolset.prompt_list(bool(s.get("office", True)))  # named in policy deny reasons

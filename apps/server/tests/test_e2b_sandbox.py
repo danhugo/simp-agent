@@ -185,7 +185,7 @@ def cloud(monkeypatch):
 
 
 def make(cloud, **opts):
-    sb = E2BSandbox({"data_dir": "/nonexistent", "sandbox": {"kind": "e2b", **opts}})
+    sb = E2BSandbox({"data_dir": "/nonexistent", "sandbox": {"kind": "e2b", "template": "simp-sandbox", **opts}})
     sb.sdk, sb.store, sb.compute.db = cloud, FakeStore(), FakeDb()
     return sb
 
@@ -688,3 +688,10 @@ def test_mount_caches_reads_on_sandbox_disk():
     from simp_server.sandboxes.e2b import S3FS_CACHE
     assert "use_cache=/tmp/s3fs" in S3FS_CACHE and "ensure_diskfree=256" in S3FS_CACHE and "del_cache" in S3FS_CACHE
     assert "stat_cache_expire=5" in S3FS
+
+
+def test_template_auto_is_the_content_hash():
+    from simp_server.sandboxes import toolset
+    sb = E2BSandbox({"data_dir": "/nonexistent", "sandbox": {"kind": "e2b"}})
+    assert sb.template == toolset.template_alias(True) and sb.template.startswith("simp-sandbox-")
+    assert toolset.template_alias(False) != sb.template

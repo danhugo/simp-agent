@@ -57,8 +57,22 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
+  # The sandbox template is named by a hash of what goes in it (toolset, skills: see toolset.template_alias), and the
+  # server computes the same name, so building it when missing is the whole release step: no settings edit.
+  template:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv sync --locked --package simp-server
+      - name: Build the sandbox template if missing
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: uv run python apps/server/sandboxes/e2b_template.py --if-missing
+
   deploy:
-    needs: build
+    needs: [build, template]
     runs-on: ubuntu-latest
     permissions:
       contents: read
