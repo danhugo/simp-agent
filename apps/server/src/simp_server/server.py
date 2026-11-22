@@ -325,14 +325,14 @@ class Run:
     async def set_state(self, s: str) -> None:
         p.check_transition(self.state, s)
         self.info.run_state = s
-        await self.durable(p.RunState, state=s)
+        await self.durable(p.RunState, state=s, started=self.run_start if s in ("running", "waiting_approval", "aborting") else None)
 
     def subscribe(self, after: int) -> tuple[list[dict], asyncio.Queue]:
         """Missed durable events, then a snapshot, then live. No await here, so nothing slips in between."""
         q = asyncio.Queue(QUEUE_MAX)
         self.subs.add(q)
         snap = p.Snapshot(last_seq=self.seq, run_state=self.state, in_flight=self.inflight, pending_approval=self.pending,
-                          title=self.info.title)
+                          title=self.info.title, run_started=self.run_start if self.busy else None, server_now=time.time())
         return [*(e for e in self.log if e["seq"] > after), snap.model_dump()], q
 
     async def on_event(self, e: dict) -> None:

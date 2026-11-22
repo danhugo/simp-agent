@@ -126,6 +126,7 @@ export interface RunState {
   type: "run_state";
   seq: number;
   state: "idle" | "running" | "waiting_approval" | "aborting" | "error";
+  started: number | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -198,6 +199,8 @@ export interface Snapshot {
   in_flight: InFlight;
   pending_approval: PendingApproval | null;
   title: string;
+  run_started: number | null;
+  server_now: number;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema

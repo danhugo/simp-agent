@@ -214,7 +214,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
                 {f.text && <Md text={f.text} />}
               </div>
             )}
-            {busy || (!!firstPrompt && !state.items.some((i) => i.kind === "user")) ? <RunStatus sid={sid} asking={state.runState === "waiting_approval"} />
+            {busy || (!!firstPrompt && !state.items.some((i) => i.kind === "user")) ? <RunStatus sid={sid} started={state.runStarted} asking={state.runState === "waiting_approval"} />
               : <div className="msg assistant idle-mascot" aria-hidden><Mascot3D size={32} pixels={48} mood={state.runState === "error" ? "error" : after} /></div>}
             {pendingSteers.map((p) => (
               <div key={`steer-${p.id}`} className={`msg user pending ${p.failed ? "failed" : ""}`}>
@@ -837,13 +837,14 @@ function useToolTimer(id: string, running: boolean): number | null {
 const SIMP_WORDS = ["Simping", "Mumbling", "Bumbling", "Noodling", "Pondering", "Fiddling", "Tinkering", "Puttering",
   "Whirring", "Scribbling", "Doodling", "Wobbling", "Murmuring", "Rummaging", "Simmering", "Bonking"];
 const runStarts = new Map<string, { start: number; word: string }>();  // one random word per run
-/** "Simping… 1m 20s" under the conversation for the whole run (client clock from when the run was first seen). */
-function RunStatus({ sid, asking = false }: { sid: string; asking?: boolean }) {
+/** "Simping… 1m 20s" under the conversation for the whole run: counted from when the server started it (so leaving
+ * and coming back keeps counting); before the server says, from when the run was first seen here. */
+function RunStatus({ sid, asking = false, started }: { sid: string; asking?: boolean; started?: number | null }) {
   const now = useNow(true);
   useEffect(() => () => { runStarts.delete(sid); }, [sid]);
   if (!runStarts.has(sid)) runStarts.set(sid, { start: now, word: SIMP_WORDS[Math.floor(Math.random() * SIMP_WORDS.length)] });
   const { start, word } = runStarts.get(sid)!;
-  const ms = now - start;
+  const ms = now - (started ?? start);
   return (
     <div className="msg assistant typing run-status" role="status" aria-label={`Simp is working, ${fmtDuration(ms)}`}>
       <Mascot3D size={32} pixels={48} working={!asking} mood={asking ? "asking" : "idle"} /><span className="run-word">{asking ? "Waiting for you" : `${word}…`}</span><span className="run-time">{fmtDuration(ms)}</span>
