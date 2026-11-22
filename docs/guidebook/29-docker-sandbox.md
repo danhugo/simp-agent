@@ -24,7 +24,7 @@ Code in this chapter (commit `2fc2776`):
 
 - `apps/server/src/simp_server/server.py` — `Sandbox`, `LocalSandbox`, `check_sandbox`, `load_settings`, `take_keys`
 - `apps/server/src/simp_server/sandboxes/docker.py` — `DockerSandbox`, `DockerEnv`, `build_image`
-- `apps/server/sandboxes/Dockerfile` — the sandbox image
+- `apps/server/sandboxes/e2b_template.py` — the sandbox image (the same definition as the E2B template)
 - `packages/simp_agent/src/simp_agent/testing/env_conformance.py` — `EnvConformance`
 - `apps/server/tests/test_docker_sandbox.py` — the Docker sandbox tests
 
@@ -113,19 +113,7 @@ FUNCTION open(session_id, user_id):
 
 The id check comes first because the ids become folder names and a container name; `../x` must never reach either. With the reuse check and `sleep infinity`, the container starts once and then just waits, and every command later enters it with `docker exec`. `docker rm -f` is there because a crashed server can leave a container with the same name behind. The old-folder move is for sessions made by earlier server versions, which kept one folder per session, first in `<data_dir>/sandboxes/<sid>` and later in `workspaces/<sid>`. `user_root` moves such a folder once to `workspaces/<user_id>/<sid>/`, so old files show up as a subfolder of the user workspace. If `workspaces/<user_id>/<sid>/` already exists, it moves nothing, so the move never runs twice.
 
-**The image.** Before `docker run` can start anything, it needs an image. `apps/server/sandboxes/Dockerfile` builds the image `simp-sandbox:latest`, the template each container starts from:
-
-```dockerfile
-FROM python:3.13-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ripgrep fd-find git coreutils procps \
-    && ln -s /usr/bin/fdfind /usr/local/bin/fd && rm -rf /var/lib/apt/lists/* \
-    && useradd -u 1000 -m -s /bin/sh sandbox && mkdir /work && chown 1000:1000 /work
-USER 1000:1000
-WORKDIR /work
-CMD ["sleep", "infinity"]
-```
-
-It has Python and the programs the agent likes to call (`rg`, `fd`, `git`), a normal user with id 1000, and an empty `/work` that this user owns. You build it once with `simp-server build-sandbox`, which runs `build_image()`, that is `docker build -t simp-sandbox:latest apps/server/sandboxes`.
+**The image.** Before `docker run` can start anything, it needs an image. There is no separate Dockerfile: `build_image()` turns the E2B template definition (`apps/server/sandboxes/e2b_template.py`) into a Dockerfile and builds it as `simp-sandbox:latest`, with `apps/server` as the build context so the skills folder copies in. A local chat therefore gets the same libraries, LibreOffice and skills as production: a Python venv in read-only `/opt/simp`, a normal user with id 1000, and an empty `/work` that this user owns. You build it with `simp-server build-sandbox`, and again after changing `toolset.py` or the skills.
 
 The user workspace is a **[bind mount](glossary.md#bind-mount)**: a host folder shown inside the container at `/work`. A file the agent writes in the box is a normal file on the host, so it survives the container.
 
