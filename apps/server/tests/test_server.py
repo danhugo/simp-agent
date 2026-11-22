@@ -823,3 +823,21 @@ async def test_policy_denies_install_with_reason(env):
     assert not [e for e in evs if e["type"] == "approval_request"]
     denied = next(e for e in evs if e["type"] == "tool_result" and e.get("call_id", e.get("tool_call_id")) == "c1")
     assert "libraries are fixed" in denied["content"]
+
+
+async def test_workspace_files_without_a_session(env):
+    """The Files page works before the first chat: /api/files* reach the same per-user workspace."""
+    app, mgr, user, token, run = await env(FakeProvider())
+    other = await mgr.store.user_by_token(tok_b := await mgr.store.add_user("b"))
+    h, hb = {"Authorization": f"Bearer {token}"}, {"Authorization": f"Bearer {tok_b}"}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as api:
+        assert (await api.put("/api/files/raw?path=notes/a.txt", content=b"hi", headers=h)).status_code == 200
+        assert [e["name"] for e in (await api.get("/api/files?path=notes", headers=h)).json()] == ["a.txt"]
+        assert (await api.get("/api/files/raw?path=notes/a.txt", headers=h)).content == b"hi"
+        # same workspace as the session routes
+        assert (await api.get(f"/api/sessions/{run.sid}/files/raw?path=notes/a.txt", headers=h)).content == b"hi"
+        assert (await api.post("/api/preview", headers=h)).json()["base"].startswith("http://localhost:8767/p/")
+        assert (await api.get("/api/files/raw?path=notes/a.txt", headers=hb)).status_code == 404  # B has its own
+        assert (await api.delete("/api/files?path=notes", headers=h)).status_code == 200
+        assert (await api.get("/api/files", headers=h)).json() == []
+        assert (await api.get("/api/files")).status_code == 401

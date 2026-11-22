@@ -81,6 +81,9 @@ export const admin = {
   rollback: (id: number, reason: string) => call(`/api/admin/settings/history/${id}/rollback`, json({ reason })),
 };
 
+/** Workspace files are the user's: session routes when in a chat, /api/files* otherwise ("" = no session). */
+const filesBase = (sid: string) => (sid ? `/api/sessions/${sid}` : "/api");
+
 export const api = {
   me: async (): Promise<{ name: string }> => (await call("/api/me")).json(),
   logout: () => call("/api/logout", { method: "POST" }),
@@ -96,18 +99,18 @@ export const api = {
   usage: async (): Promise<{ today_usd: number; day_limit_usd: number; paused: boolean; billing_enabled: boolean; points_balance: number | null; points_granted: number | null }> => (await call("/api/usage")).json(),
   command: (sid: string, c: Command) => call(`/api/sessions/${sid}/commands`, json(c)),
   files: async (sid: string, path: string): Promise<FileEntry[]> =>
-    (await call(`/api/sessions/${sid}/files?path=${encodeURIComponent(path)}`)).json(),
+    (await call(`${filesBase(sid)}/files?path=${encodeURIComponent(path)}`)).json(),
   download: async (sid: string, path: string): Promise<Blob> =>
-    (await call(`/api/sessions/${sid}/files/raw?path=${encodeURIComponent(path)}`)).blob(),
+    (await call(`${filesBase(sid)}/files/raw?path=${encodeURIComponent(path)}`)).blob(),
   /** path is relative to the workspace root. */
   upload: (sid: string, path: string, data: Blob) =>
-    call(`/api/sessions/${sid}/files/raw?path=${encodeURIComponent(path)}`, { method: "PUT", body: data }),
+    call(`${filesBase(sid)}/files/raw?path=${encodeURIComponent(path)}`, { method: "PUT", body: data }),
   /** A file or a whole folder. Returns the workspace usage after the delete. */
   deleteFile: async (sid: string, path: string): Promise<WorkspaceUsage> =>
-    (await call(`/api/sessions/${sid}/files?path=${encodeURIComponent(path)}`, { method: "DELETE" })).json(),
+    (await call(`${filesBase(sid)}/files?path=${encodeURIComponent(path)}`, { method: "DELETE" })).json(),
   workspace: async (): Promise<WorkspaceUsage> => (await call("/api/workspace")).json(),
   /** html/pdf preview: base URL on the separate preview origin; iframe src = base + path. */
-  preview: async (sid: string): Promise<{ base: string }> => (await call(`/api/sessions/${sid}/preview`, { method: "POST" })).json(),
+  preview: async (sid: string): Promise<{ base: string }> => (await call(`${filesBase(sid)}/preview`, { method: "POST" })).json(),
   apps: async (): Promise<AppItem[]> => (await call("/api/apps")).json(),
   setApp: (app: string, on: boolean) => call(`/api/apps/${app}/${on ? "enable" : "disable"}`, { method: "POST" }),
   appDetail: async (app: string): Promise<AppDetail> => (await call(`/api/apps/${app}`)).json(),

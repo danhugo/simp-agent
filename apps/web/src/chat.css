@@ -438,3 +438,9 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .msg.user .sent-files button.doc { display: inline-flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--panel); border: 1px solid var(--border); font-size: var(--fs-sm); max-width: 260px; }
 .msg.user .sent-files button.doc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .msg.user .sent-files .sent-pic-wait { display: grid; place-items: center; width: 160px; height: 100px; font-size: var(--fs-xs); color: var(--muted); background: var(--panel); }
+
+/* Files page (no chat): the Memory page layout with the panel's list inside, in a bordered box (not a side panel) */
+.files.files-standalone { position: static; width: auto; inset: auto; z-index: auto; box-shadow: none; background: transparent;
+  border: 1px solid var(--border); border-radius: var(--radius); margin-top: var(--sp-3); }
+.files-standalone .path { padding: var(--sp-3) var(--sp-4) 0; font-size: var(--fs-sm); }
+.files-standalone ul { overflow: visible; }
