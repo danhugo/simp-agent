@@ -290,7 +290,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
         <main className="home">
           <header className="home-head">{menu}<span className="brand only-mobile"><PixelAgent size={22} />Simp</span></header>
           <div className="home-hero">
-            <Mascot3D size={112} className="hero-face" working={creating} mood={hello ? "done" : "idle"} />
+            <Mascot3D size={112} fit className="hero-face" working={creating} mood={hello ? "done" : "idle"} />
             <h1>{greeting()}</h1>
             <Composer busy={false} send={start} variant="hero" prefill={prefill} onQueueFiles={(fs) => queued.current.push(...fs)} disabled={creating} tools={profiles.length > 0 && (
               <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} />
