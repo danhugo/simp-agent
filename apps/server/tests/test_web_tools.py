@@ -202,20 +202,47 @@ def test_http_get_max_bytes():
     assert len(http_get("https://ok.com/", lambda u: Resp(body), PUBLIC, max_bytes=web.MAX_BYTES + 5)[2]) == web.MAX_BYTES + 5
 
 
-async def test_download_tool_writes_into_workspace(monkeypatch):
-    monkeypatch.setattr(web, "do_download", lambda url: b"IMG")
+class _Env:
+    def __init__(self):
+        self.written = {}
 
-    class Env:
-        written = {}
+    async def write_bytes(self, path, data):
+        self.written[path] = data
 
-        async def write_bytes(self, path, data):
-            self.written[path] = data
 
-    class Ctx:
-        cwd, env = "/work", Env()
+class _Ctx:
+    def __init__(self):
+        self.cwd, self.env = "/work", _Env()
 
-    tool = next(t for t in web.make_tools() if t.name == "web_download")
-    out = await tool.execute({"url": "https://ok.com/x.png", "path": "img/x.png"}, Ctx())
-    assert Ctx.env.written == {"/work/img/x.png": b"IMG"} and "3 bytes" in out
-    monkeypatch.setattr(web, "do_download", lambda url: (_ for _ in ()).throw(WebError("HTTP 404")))
-    assert "web_download error: HTTP 404" in await tool.execute({"url": "https://ok.com/y", "path": "y"}, Ctx())
+
+def _dl_tool():
+    return next(t for t in web.make_tools() if t.name == "web_download")
+
+
+async def test_download_tool_saves_many_files_in_one_call(monkeypatch):
+    def fake(url):
+        if "bad" in url:
+            raise WebError("HTTP 404 from " + url)
+        return url[-1].encode()
+    monkeypatch.setattr(web, "do_download", fake)
+    ctx = _Ctx()
+    out = await _dl_tool().execute({"files": [{"url": "https://a.com/1", "path": "img/1"},
+                                              {"url": "https://a.com/bad", "path": "img/x"},
+                                              {"url": "https://b.com/2", "path": "/work/img/2"}]}, ctx)
+    assert ctx.env.written == {"/work/img/1": b"1", "/work/img/2": b"2"}
+    assert "saved 1 bytes to /work/img/1" in out and "HTTP 404" in out and "saved 1 bytes to /work/img/2" in out
+
+
+async def test_download_tool_flags_a_domain_that_keeps_refusing(monkeypatch):
+    monkeypatch.setattr(web, "do_download", lambda url: (_ for _ in ()).throw(WebError("HTTP 403 from " + url)))
+    tool = _dl_tool()
+    out = await tool.execute({"files": [{"url": "https://cdn.x.com/a", "path": "a"},
+                                        {"url": "https://cdn.x.com/b", "path": "b"}]}, _Ctx())
+    assert "cdn.x.com blocks automated downloads" in out
+
+
+def test_http_error_carries_the_page_reason():
+    def deny(u):
+        raise urllib.error.HTTPError(u, 400, "Bad", {}, io.BytesIO(b"<html><body><h1>Error</h1><p>Use thumbnail sizes listed on https://w.wiki/GHai</p></body></html>"))
+    with pytest.raises(WebError, match="Use thumbnail sizes listed"):
+        http_get("https://ok.com/x.jpg", deny, PUBLIC)
