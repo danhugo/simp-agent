@@ -859,3 +859,25 @@ async def test_skills_start_enabled_and_toggle_per_user(env):
         assert mgr.store.disabled_skills_sync(user["id"]) == set()
         assert (await api.post("/api/skills/nope/enable", headers=h)).status_code == 404
         assert (await api.get("/api/skills")).status_code == 401
+
+
+async def test_picked_skill_reaches_the_model_and_disabled_one_is_refused(env):
+    """Chat skill picker: Prompt(skills=[...]) attaches SKILL.md before the first LLM call; a disabled or unknown
+    skill is refused before any LLM call. The catalog lists the enabled skills; load_skill is a tool."""
+    stream = FakeProvider(reply("a"))
+    _, mgr, user, _, _ = await env(stream)
+    mgr.sandbox.has_skills = True
+    run = await mgr.get(user, (await mgr.store.add_session(user["id"], "test", "t"))["id"])
+    await mgr.store.set_skill_disabled(user["id"], "docx", True)
+    for bad in (["docx"], ["nope"]):
+        with pytest.raises(HTTPException) as e:
+            await run.command(p.Prompt(text="hi", skills=bad))
+        assert e.value.status_code == 400
+    assert stream.calls == 0
+    await run.command(p.Prompt(text="make a deck", skills=["pptx"]))
+    await wait_for(lambda: run.state == "idle")
+    sent = [m.content for m in stream.messages[0] if m.role == "user"]
+    assert any(c.startswith("[Skill: pptx · SKILL.md]") for c in sent) and "make a deck" in sent
+    prompt = stream.ctxs[0].system_prompt  # plugins are set up on the first prompt
+    assert "- pptx:" in prompt and "- docx:" not in prompt and "/opt/simp/skills/pptx/SKILL.md" not in prompt
+    assert any(t.name == "load_skill" for t in run.session.agent.tools)

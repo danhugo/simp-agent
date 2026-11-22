@@ -245,6 +245,7 @@ class Run:
         self.model = build_model(self.profile)
         self.run_start = time.time()
         no_tools = self.profile.get("tools") == []  # profile `tools = []`: no core coding tools (load tests, pure chat)
+        self.has_skills = getattr(mgr.sandbox, "has_skills", False) and not no_tools  # scripts need the sandbox
         self.session = AgentSession(
             self.model, tools=[] if no_tools else None, store=self, env=env, cwd=getattr(env, "root", None) or "/",
             stream_fn=self.guarded_stream,
@@ -252,7 +253,8 @@ class Run:
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
             plugins=[policy.Policy(self.verdict), *build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(mgr.keys.get("TAVILY_API_KEY")), Memory(store=DbMemoryStore(
-                mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), self.mcp, SandboxSync(env)],
+                mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), self.mcp, SandboxSync(env),
+                     *([skills_mod.plugin(mgr.skill_source, lambda: self.enabled_skills())] if self.has_skills else [])],
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.must_ask = lambda call: self.verdict(call)[0] == "ask"  # "always" never covers these
@@ -261,10 +263,11 @@ class Run:
             "persona", lambda ctx: persona_mod.prompt_section(mgr.store.persona_sync(self.user_id)), 90)
         if (hint := getattr(mgr.sandbox, "prompt_hint", None)) and not no_tools:
             self.session.add_prompt_section("sandbox", hint + " " + PREVIEW_HINT, 5)
-        if getattr(mgr.sandbox, "has_skills", False) and not no_tools:  # read fresh: a switch reaches open chats
-            self.session.add_prompt_section("skills", lambda ctx: skills_mod.prompt_section(
-                mgr.skills, mgr.store.disabled_skills_sync(self.user_id)), 6)
         self.session.subscribe(self.on_event)
+
+    def enabled_skills(self) -> set[str]:  # read every turn: a switch on the Crafts page reaches open chats
+        off = self.mgr.store.disabled_skills_sync(self.user_id)
+        return {s["name"] for s in self.mgr.skills if s["name"] not in off} if self.has_skills else set()
 
     @property
     def guarded_stream(self):
@@ -442,7 +445,7 @@ class Run:
             log.warning("session title failed: %s", e, extra={"session": self.sid})
             self.title_task = None  # the next assistant message tries again
 
-    async def start(self, text, fresh: bool = True, images: list = ()) -> None:  # text: a prompt, or a coroutine factory (continue_, compact)
+    async def start(self, text, fresh: bool = True, images: list = (), skills: list = ()) -> None:  # text: a prompt, or a coroutine factory (continue_, compact)
         if fresh:  # a queued follow-up stays inside the same run budget
             # runtime settings (admin): a new run picks up current limits and prices; a run in progress keeps its own
             self.limits = self.mgr.limits
@@ -451,7 +454,8 @@ class Run:
         await self.set_state("running")
         self.run_id = uuid.uuid4().hex[:8]
         log.info("run start", extra=self._ctx())
-        fn = text if callable(text) else functools.partial(self.session.prompt, text, *([list(images)] if images else []))
+        fn = text if callable(text) else functools.partial(self.session.prompt, text, *([list(images)] if images else []),
+                                                           **({"skills": list(skills)} if skills else {}))
         self.task = asyncio.create_task(self._run(fn))
 
     async def over_budget(self) -> str | None:
@@ -510,8 +514,11 @@ class Run:
 
     async def command(self, c) -> None:
         if isinstance(c, (p.Prompt, p.FollowUp, p.Steer)):
+            picked = list(dict.fromkeys(getattr(c, "skills", [])))
+            if bad := [n for n in picked if n not in self.enabled_skills()]:
+                raise HTTPException(400, f"skill not available: {', '.join(bad)}")
             if not self.busy:
-                await self.start(c.text, images=getattr(c, "images", []))
+                await self.start(c.text, images=getattr(c, "images", []), skills=picked)
             elif len(self.session.agent.steering) + len(self.session.agent.follow_ups) >= MAX_QUEUED:
                 raise HTTPException(429, f"{MAX_QUEUED} messages already queued")
             elif isinstance(c, p.Steer):
@@ -540,7 +547,8 @@ class SessionManager:
         self.admin_emails = {e.strip().lower() for e in self.keys.pop("ADMIN_EMAILS", "").split(",") if e.strip()}
         self.conns = Connections(settings, store, self.keys)
         self.tools_seen: dict[str, dict] = dict()  # user -> app -> tool -> needs approval (portal detail page)
-        self.skills = skills_mod.load()  # apps/server/skills: what the template has at /opt/simp/skills
+        self.skill_source = skills_mod.source()  # apps/server/skills: what the template has at /opt/simp/skills
+        self.skills = self.skill_source.list()
         self.limits = budget.limits(settings)
         self.redact = RedactSecrets()  # same mask for memory_save content (RedactSecrets never sees tool args)
         self.redact.setup(None, {"secrets": list(self.keys.values())})

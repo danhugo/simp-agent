@@ -4,8 +4,10 @@ from .mcp import McpPlugin
 from .memory import FileMemoryStore, Memory, MemoryStore
 from .plan_mode import PlanMode
 from .redact_secrets import RedactSecrets
+from .skills import DirSkillSource, Skills, SkillSource
 
-__all__ = ["FileMemoryStore", "McpPlugin", "Memory", "MemoryStore", "PlanMode", "RedactSecrets", "build_plugins"]
+__all__ = ["FileMemoryStore", "McpPlugin", "Memory", "MemoryStore", "PlanMode", "RedactSecrets", "DirSkillSource", "SkillSource", "Skills",
+           "build_plugins"]
 
 
 def build_plugins(names: list[str]) -> list:

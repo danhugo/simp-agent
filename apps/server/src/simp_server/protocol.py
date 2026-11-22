@@ -179,6 +179,7 @@ class Prompt(_M):
     type: Literal["prompt"] = "prompt"
     text: str
     images: list[str] = Field(default_factory=list)  # workspace paths of attached pictures (the model looks; first 6)
+    skills: list[str] = Field(default_factory=list)  # skills the user picked: their SKILL.md is attached to this turn
 
 
 class Steer(_M):

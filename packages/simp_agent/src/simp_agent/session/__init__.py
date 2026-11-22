@@ -244,8 +244,9 @@ class AgentSession:
         self._abort = asyncio.Event()
         self.agent._cancel = asyncio.Event()
 
-    async def prompt(self, text: str, images: list = ()) -> list:
-        """images: workspace paths of pictures the user attached; the model sees them during this run."""
+    async def prompt(self, text: str, images: list = (), skills: list = ()) -> list:
+        """images: workspace paths of pictures the user attached; the model sees them during this run.
+        skills: names the user picked; the skills plugin attaches their SKILL.md to this turn."""
         self._fresh_abort()
         await self.start()
         for p in self.plugins:
@@ -255,7 +256,7 @@ class AgentSession:
             text = r.get("text", text)
         extra = list()
         for p in self.plugins:
-            r = await self._hook(p, "before_agent_start", {"prompt": text, "messages": self.messages}) or {}
+            r = await self._hook(p, "before_agent_start", {"prompt": text, "messages": self.messages, "skills": list(skills)}) or {}
             extra += [UserMessage(m) if isinstance(m, str) else m for m in r.get("messages", [])]
         pics = list()
         if self.agent.model.vision:

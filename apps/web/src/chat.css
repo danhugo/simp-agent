@@ -444,3 +444,12 @@ details[open] > summary .chev { transform: rotate(90deg); }
   border: 1px solid var(--border); border-radius: var(--radius); margin-top: var(--sp-3); }
 .files-standalone .path { padding: var(--sp-3) var(--sp-4) 0; font-size: var(--fs-sm); }
 .files-standalone ul { overflow: visible; }
+/* skill picker: chips for picked skills, a small menu above the box */
+.attached .skill-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--hover); }
+.skill-chip button { border: 0; background: none; color: var(--muted); padding: 0; cursor: pointer; display: inline-flex; }
+.skill-chip button:hover { color: var(--text); }
+.skill-menu { flex-basis: 100%; list-style: none; margin: 0; padding: var(--sp-1); display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--code); max-height: 240px; overflow-y: auto; }
+.skill-menu button { width: 100%; text-align: left; border: 0; background: none; color: var(--text); padding: var(--sp-1) var(--sp-2); border-radius: 8px; cursor: pointer; }
+.skill-menu button:hover, .skill-menu button:focus-visible { background: var(--hover); }
+.skill-menu li.muted { padding: var(--sp-1) var(--sp-2); font-size: var(--fs-xs); }

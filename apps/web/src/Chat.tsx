@@ -3,11 +3,11 @@ import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { ext, kindOf } from "./fileKind";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { api, AuthError, type ConnStatus } from "./api";
+import { api, AuthError, type ConnStatus, type SkillItem } from "./api";
 import { Badge, chatName } from "./App";
 import {
   IconArrowDown, IconArrowUp, IconBell, IconCheck, IconChevron, IconClose, IconCompact, IconCopy, IconDownload, IconEye, IconFile, IconFolder, IconMore, IconPlus, IconRefresh,
-  IconStop, IconX, fileIcon,
+  IconStop, IconWand, IconX, fileIcon,
 } from "./icons";
 import type { PendingApproval, ToolCall } from "./protocol.gen";
 import { canContinue, type ChatState } from "./state";
@@ -200,7 +200,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
                       {it.msg.text && <CopyButton label="Copy answer" text={() => it.msg.text} />}
                       {it.seq === lastAnswer && !busy && lastUser && (
                         <button type="button" className="icon-btn" aria-label="Try again" title="Ask again"
-                          onClick={() => send({ type: "prompt", text: lastUser, images: [] })}><IconRefresh size={16} /></button>
+                          onClick={() => send({ type: "prompt", text: lastUser, images: [], skills: [] })}><IconRefresh size={16} /></button>
                       )}
                     </div>
                   )}
@@ -682,9 +682,16 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
   // files picked or pasted wait here (removable) and are uploaded when the message is sent
   const [pending, setPending] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  // skills the user picked (menu or "/name "): their instructions go with the next prompt
+  const [skills, setSkills] = useState<SkillItem[] | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [skillMenu, setSkillMenu] = useState(false);
+  useEffect(() => { api.skills().then((s) => setSkills(s.filter((x) => x.enabled)), () => setSkills([])); }, []);
+  const pick = (name: string) => { setPicked((p) => p.includes(name) ? p : [...p, name]); setSkillMenu(false); area.current?.focus(); };
+  const label = (name: string) => skills?.find((s) => s.name === name)?.label ?? name;
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
-  useEffect(() => setPending([]), [sid]);
+  useEffect(() => { setPending([]); setPicked([]); }, [sid]);
   useLayoutEffect(() => {  // grow with the text; CSS max-height caps it and the rest scrolls
     const el = area.current;
     if (!el) return;
@@ -709,9 +716,10 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
     const note = !names.length ? "" : t ? `\n\n${files}` : files;
     // pictures go with a new prompt for the model to look at (a message sent while busy only names them)
     const images = names.filter((n) => /\.(png|jpe?g|webp|gif)$/i.test(n)).slice(0, 6);
-    send(!busy ? { type: "prompt", text: t + note, images } : { type: "steer", text: t + note });
+    send(!busy ? { type: "prompt", text: t + note, images, skills: picked } : { type: "steer", text: t + note });
     setText("");
     setPending([]);
+    if (!busy) setPicked([]);  // a steer can't carry skills: keep the picks for the next prompt
   };
   const stop = () => send({ type: "abort" });
   const add = (files: FileList | File[] | null) => {
@@ -724,6 +732,24 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
       {idle && <IdleSimp enabled={!busy && !disabled} />}
       <div className={`composer-card ${pending.length || text.includes("\n") ? "expanded" : ""}`}
         onClick={(e) => { if (e.target === e.currentTarget) area.current?.focus(); }}>
+        {picked.length > 0 && (
+          <ul className="attached" aria-label="Skills to use" aria-live="polite">
+            {picked.map((n) => (
+              <li key={n} className="skill-chip">{label(n)}
+                <button type="button" aria-label={`Remove skill ${label(n)}`} onClick={() => setPicked((p) => p.filter((x) => x !== n))}><IconClose size={12} /></button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {skillMenu && skills && (
+          <ul className="skill-menu" role="menu" aria-label="Pick a skill">
+            {skills.length === 0 ? <li className="muted">No skills are on. Turn them on in Crafts › Skills.</li>
+              : skills.map((s) => (
+                <li key={s.name}><button type="button" role="menuitem" onClick={() => pick(s.name)}>
+                  <b>{s.label}</b> <span className="muted">/{s.name}</span></button></li>
+              ))}
+          </ul>
+        )}
         {pending.length > 0 && (
           <ul className="attached" aria-label="Files to send" aria-live="polite">
             {pending.map((f) => <PendingFile key={f.name} file={f} disabled={uploading} onRemove={() => setPending((p) => p.filter((x) => x !== f))} />)}
@@ -733,7 +759,11 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
         <textarea
           ref={area} value={text} rows={1} autoFocus aria-label="Message" disabled={disabled}
           placeholder={busy ? "Add to what Simp is doing…" : "Message Simp…"}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {  // "/pptx " at the start picks that skill and drops the command from the text
+            const v = e.target.value, m = /^\/([\w.-]+)\s/.exec(v);
+            const s = m && skills?.find((x) => x.name === m[1].toLowerCase());
+            if (s) { pick(s.name); setText(v.slice(m![0].length)); } else setText(v);
+          }}
           onPaste={(e) => {  // a pasted picture waits with the attached files (named by time: screenshots are all "image.png")
             const imgs = pastedImages(e);
             if (!imgs.length || !(sid || onQueueFiles)) return;
@@ -741,6 +771,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
             add(imgs);
           }}
           onKeyDown={(e) => {
+            if (e.key === "Escape" && skillMenu) { setSkillMenu(false); return; }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
             if (e.key === "Escape" && busy) stop();
           }}
@@ -748,6 +779,10 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
         <div className="composer-bar">
           <span className="spacer" />
           {tools}
+          {skills && skills.length > 0 && (
+            <button type="button" className="round attach" aria-label="Use a skill" title="Use a skill (or type /name)"
+              aria-expanded={skillMenu} onClick={() => setSkillMenu((v) => !v)}><IconWand size={16} /></button>
+          )}
           {(sid || onQueueFiles) && (
             <>
               <button type="button" className="round attach" aria-label="Attach files" title="Attach files"
