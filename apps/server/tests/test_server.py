@@ -553,7 +553,7 @@ async def test_title_empty_reply_is_logged(env, caplog):
     _, _, _, _, run = await env(fp, title="")
     await run.command(p.Prompt(text="hi"))
     await settle(run)
-    assert run.info.title == "" and "empty title" in caplog.text
+    assert run.info.title == "" and "empty reply" in caplog.text
 
 
 async def test_title_budget_refused_keeps_empty(env):

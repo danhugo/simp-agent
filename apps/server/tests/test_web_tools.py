@@ -246,3 +246,39 @@ def test_http_error_carries_the_page_reason():
         raise urllib.error.HTTPError(u, 400, "Bad", {}, io.BytesIO(b"<html><body><h1>Error</h1><p>Use thumbnail sizes listed on https://w.wiki/GHai</p></body></html>"))
     with pytest.raises(WebError, match="Use thumbnail sizes listed"):
         http_get("https://ok.com/x.jpg", deny, PUBLIC)
+
+
+async def test_fetch_with_prompt_returns_only_the_helper_answer(monkeypatch):
+    """web_fetch(prompt=...): a cheap model reads the whole page; only its answer enters the chat context."""
+    page = "x" * 50_000 + " license CC BY 4.0"
+    real = web.do_fetch
+    monkeypatch.setattr(web, "do_fetch", lambda url, n, **kw: real(url, n, get=lambda u: (u, "application/json", page.encode()), **kw))
+    seen = []
+
+    async def extract(q, text):
+        seen.append((q, len(text)))
+        return "- a.jpg, CC BY 4.0"
+    fetch = next(t for t in web.make_tools(extract=extract) if t.name == "web_fetch")
+    assert "prompt" in fetch.parameters["properties"]
+    out = await fetch.execute({"url": "https://x.com/api", "prompt": "image licenses"}, None)
+    assert out.startswith(web.UNTRUSTED) and "URL: https://x.com/api" in out and out.endswith("- a.jpg, CC BY 4.0")
+    assert seen == [("image licenses", len(page))]  # the helper got the whole page, not the 20k cut
+    assert len(out) < 500
+    plain = await fetch.execute({"url": "https://x.com/api"}, None)  # no prompt: the page as before
+    assert "[truncated" in plain and len(seen) == 1
+
+
+async def test_fetch_prompt_falls_back_to_page_when_helper_fails(monkeypatch):
+    real = web.do_fetch
+    monkeypatch.setattr(web, "do_fetch", lambda url, n, **kw: real(url, n, get=lambda u: (u, "text/plain", b"hello page"), **kw))
+
+    async def extract(q, text):
+        raise RuntimeError("budget")
+    fetch = next(t for t in web.make_tools(extract=extract) if t.name == "web_fetch")
+    out = await fetch.execute({"url": "https://x.com", "prompt": "q"}, None)
+    assert "[extract failed: budget" in out and out.endswith("hello page")
+
+
+def test_no_extract_no_prompt_param():
+    fetch = next(t for t in web.make_tools() if t.name == "web_fetch")
+    assert "prompt" not in fetch.parameters["properties"]
