@@ -20,8 +20,8 @@ NET = re.compile(_AT + r"(?:curl|wget|nc|ncat|ssh|scp|sftp|rsync|telnet)\b")
 # MCP tools whose name starts with a write verb are asked even when their server marks them read-only
 MCP_WRITE = re.compile(r"^(?:send|delete|remove|trash|share|create|update|insert|append|move|reply|post|upload|"
                        r"write|add|set|modify|patch|rename|copy|archive)(?:_|$)", re.I)
-NO_NET = ("The sandbox has no internet. Get web data only with web_search / web_fetch (raw=true for page source). "
-          "If they fail, say so; do not try curl.")
+NO_NET = ("The sandbox has no internet. Get web data only with web_search / web_fetch (raw=true for page source); "
+          "save files (images, PDFs) with web_download. If they fail, say so; do not try curl.")
 
 
 def classify(call, mcp_write: bool, available: str, net_blocked: bool = True) -> tuple[Verdict, str]:

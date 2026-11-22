@@ -116,7 +116,7 @@ def test_plugin_registers_tools():
 
     api = Api()
     web.Web().setup(api, {})
-    assert api.tools == ["show_cards", "web_search", "web_fetch"]
+    assert api.tools == ["show_cards", "web_search", "web_fetch", "web_download"]
     with pytest.raises(ValueError):
         web.Web().setup(api, {"search": "bing"})
 
@@ -187,3 +187,35 @@ def test_fetch_falls_back_to_extract_on_403():
 def test_fetch_raw_returns_html():
     out = do_fetch("https://x.com", get=lambda u: (u, "text/html", b"<html><script>api('/r')</script></html>"), raw=True)
     assert "<script>api('/r')</script>" in out
+
+
+def test_download_returns_bytes_and_caps_size():
+    png = b"\x89PNG" + b"x" * 100
+    assert web.do_download("https://ok.com/a.png", get=lambda u, max_bytes: (u, "image/png", png)) == png
+    big = b"x" * (web.DOWNLOAD_MAX + 1)
+    with pytest.raises(WebError, match="too large"):
+        web.do_download("https://ok.com/b.bin", get=lambda u, max_bytes: (u, "", big))
+
+
+def test_http_get_max_bytes():
+    body = b"x" * (web.MAX_BYTES + 10)
+    assert len(http_get("https://ok.com/", lambda u: Resp(body), PUBLIC, max_bytes=web.MAX_BYTES + 5)[2]) == web.MAX_BYTES + 5
+
+
+async def test_download_tool_writes_into_workspace(monkeypatch):
+    monkeypatch.setattr(web, "do_download", lambda url: b"IMG")
+
+    class Env:
+        written = {}
+
+        async def write_bytes(self, path, data):
+            self.written[path] = data
+
+    class Ctx:
+        cwd, env = "/work", Env()
+
+    tool = next(t for t in web.make_tools() if t.name == "web_download")
+    out = await tool.execute({"url": "https://ok.com/x.png", "path": "img/x.png"}, Ctx())
+    assert Ctx.env.written == {"/work/img/x.png": b"IMG"} and "3 bytes" in out
+    monkeypatch.setattr(web, "do_download", lambda url: (_ for _ in ()).throw(WebError("HTTP 404")))
+    assert "web_download error: HTTP 404" in await tool.execute({"url": "https://ok.com/y", "path": "y"}, Ctx())
