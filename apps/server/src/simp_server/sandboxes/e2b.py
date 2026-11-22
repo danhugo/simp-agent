@@ -42,6 +42,9 @@ CLEAN_SNAPSHOT_SH = f"rm -f {SNAPSHOT} {SNAPSHOT}.tmp"
 SUDO_CHECK = "sudo -n true 2>/dev/null && echo SIMP_SUDO_OK; true"  # the template must not give `user` root
 DENIED = ("Transport endpoint is not connected", "AccessDenied", "403 Forbidden")
 CREDS_MARGIN_S = 300
+# file contents cached on the sandbox disk, re-checked against s3fs's 5 s stat cache (a web upload still shows up).
+# Measured on E2B + R2 (2026-11-22): repeated reads ~3-4x faster; writes unchanged (~1.7 s per small file).
+S3FS_CACHE = "use_cache=/tmp/s3fs,del_cache,ensure_diskfree=256,parallel_count=10"
 MOUNT_SH = 'printf "%s\\n%s\\n%s\\n" "$K" "$S" "$T" | sh -c ' + shlex.quote(S3FS) + ' sh "$B" "$U" "$R" "$O"'
 # kill the old s3fs first: a lazy umount alone leaves it serving (and writing for) processes still inside /work
 # then empty the bare mountpoint: a process still writing there (cwd or open dir in the old mount) would otherwise
@@ -425,7 +428,7 @@ class E2BSandbox:
         box.creds_until = time.monotonic() + c["expires_in"] if c.get("expires_in") else 0.0
         envs = {"K": c["access_key"], "S": c["secret_key"], "T": c["session_token"] or "",
                 "B": f"{c['bucket']}:/{c['prefix'].rstrip('/')}", "U": c["endpoint"], "R": c["region"],
-                "O": "ro,nonempty" if ro else "nonempty"}  # nonempty: see UNMOUNT_SH (a writer can race the cleanup)
+                "O": ("ro," if ro else "") + "nonempty," + S3FS_CACHE}  # nonempty: see UNMOUNT_SH (a writer can race the cleanup)
         await box.exec(UNMOUNT_SH, "/", 30, asyncio.Event(), user="root")
         code, out = await _run(box.sbx, MOUNT_SH, "/", 60, asyncio.Event(), user="root", envs=envs)
         if code != 0 or not await self._mounted(box):
