@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "HTTP server for simp-agent (skeleton)"
 requires-python = ">=3.13"
 dependencies = [
-    "simp-agent[mcp]",
+    "simp-agent[mcp,images]",
     "fastapi",
     "uvicorn>=0.54.0",
     "httpx>=0.28.1",
