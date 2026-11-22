@@ -638,8 +638,8 @@ def test_prompt_hint_says_no_internet(cloud):
 def test_prompt_hint_lists_tools(cloud):
     from simp_server.sandboxes import toolset
     h = make(cloud).prompt_hint
-    assert toolset.prompt_list(False) in h and "Libraries are fixed: do not install packages" in h and "/opt" not in h
-    assert "LibreOffice" in make(cloud, office=True).prompt_hint
+    assert toolset.prompt_list(True) in h and "Libraries are fixed: do not install packages" in h and "/opt" not in h
+    assert "LibreOffice" not in make(cloud, office=False).prompt_hint  # on by default: the skills need it
 
 
 async def test_old_home_snapshot_deleted_never_unpacked(cloud):

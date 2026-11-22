@@ -1,6 +1,6 @@
 import { IconChevron, IconSearch } from "./icons";
 import { useCallback, useEffect, useState } from "react";
-import { api, AuthError, type AppDetail, type AppItem } from "./api";
+import { api, AuthError, type AppDetail, type AppItem, type SkillItem } from "./api";
 import { errorText } from "./Chat";
 
 /** "#crafts?error=..." (or older "#apps" / "#connections") from the OAuth callback -> an error message; success shows in the card. */
@@ -22,6 +22,11 @@ const ICONS: Record<string, React.ReactNode> = {
   github: <path fill="var(--text)" d="M12 .3a12 12 0 00-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 016 0C17.3 4.7 18.3 5 18.3 5c.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0012 .3" transform="translate(1.2 1.2) scale(.9)" />,
   calendar: <><rect x="4" y="5" width="16" height="15" rx="2" fill="#fff" stroke="#4285f4" strokeWidth="1.5" /><rect x="4" y="5" width="16" height="4" fill="#4285f4" /><text x="12" y="18" fontSize="8" textAnchor="middle" fill="#4285f4" fontFamily="sans-serif" fontWeight="700">31</text></>,
 };
+const doc = (color: string, letter: string) => <><path d="M6 2.5h8.5L19 7v14a.5.5 0 01-.5.5h-12A.5.5 0 016 21z" fill="#fff" stroke={color} strokeWidth="1.3" /><path d="M14.5 2.5V7H19" fill="none" stroke={color} strokeWidth="1.3" /><rect x="3.5" y="10" width="11" height="8" rx="1.5" fill={color} /><text x="9" y="16.3" fontSize={letter.length > 1 ? 4.6 : 6.5} textAnchor="middle" fill="#fff" fontFamily="sans-serif" fontWeight="700">{letter}</text></>;
+ICONS.pptx = doc("#c43e1c", "P");
+ICONS.docx = doc("#185abd", "W");
+ICONS.xlsx = doc("#107c41", "X");
+ICONS.pdf = doc("#d93025", "PDF");
 const AppIcon = ({ name }: { name: string }) => (
   <svg className="app-icon" viewBox="0 0 24 24" width="52" height="52" aria-hidden="true">{ICONS[name] ?? <><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="var(--muted)" strokeWidth="1.5" /><circle cx="12" cy="12" r="2.5" fill="var(--muted)" /></>}</svg>
 );
@@ -37,9 +42,24 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
   const [tab, setTab] = useState<"Portals" | "Skills">("Portals");
   const [tokenErr, setTokenErr] = useState("");
   const [detail, setDetail] = useState("");  // app whose detail page is open
+  const [skills, setSkills] = useState<SkillItem[] | null>(null);
   const fail = useCallback((e: unknown) => { onError(e); if (!(e instanceof AuthError)) setNote({ ok: false, text: errorText(e) }); }, [onError]);
   const load = useCallback(() => api.apps().then(setItems, fail), [fail]);
   useEffect(() => { load(); }, [load]);
+  const loadSkills = useCallback(() => api.skills().then(setSkills, fail), [fail]);
+  useEffect(() => { if (tab === "Skills" && skills === null) loadSkills(); }, [tab, skills, loadSkills]);
+  const toggleSkill = async (s: SkillItem) => {
+    setSkills((xs) => xs && xs.map((x) => x.name === s.name ? { ...x, enabled: !s.enabled } : x));  // flip now, server catches up
+    try { await api.setSkill(s.name, !s.enabled); } catch (e) { fail(e); loadSkills(); }
+  };
+  const skillTile = (s: SkillItem) => (
+    <li key={s.name} className={`app-tile ${s.enabled ? "on" : ""}`} aria-label={s.label}>
+      <AppIcon name={s.name} />
+      <div className="app-text"><strong>{s.label}</strong><div className="muted small app-desc">{s.description}</div></div>
+      <label className="sw"><button className={`switch ${s.enabled ? "on" : ""}`} role="switch" aria-checked={s.enabled}
+        aria-label={`Use ${s.label}`} onClick={() => toggleSkill(s)}><span /></button></label>
+    </li>
+  );
   useEffect(() => { if (location.hash) history.replaceState(null, "", location.pathname + location.search); }, []);
 
   const connect = async (app: string) => {
@@ -120,16 +140,24 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
             ))}
           </div>
           <span className="spacer" />
-          {tab === "Portals" && (searching || q ? (
+          {(searching || q ? (
             <label className="mem-search"><IconSearch size={16} />
               <input type="search" autoFocus value={q} onChange={(e) => setQ(e.target.value)} onBlur={() => !q && setSearching(false)}
-                onKeyDown={(e) => e.key === "Escape" && (setQ(""), setSearching(false))} placeholder="Search portals…" aria-label="Search portals" />
+                onKeyDown={(e) => e.key === "Escape" && (setQ(""), setSearching(false))} placeholder={`Search ${tab.toLowerCase()}…`} aria-label={`Search ${tab.toLowerCase()}`} />
             </label>
           ) : (
             <button className="ghost icon" aria-label="Search" title="Search" onClick={() => setSearching(true)}><IconSearch /></button>
           ))}
         </div>
-        {tab === "Skills" ? <p className="muted">Skills are coming soon.</p> : <>
+        {tab === "Skills" ? <>
+          <p className="muted small mem-about">Know-how Simp reads before a task that needs it, such as making a deck or a spreadsheet. New skills start on.</p>
+          {skills === null ? <p className="muted">Loading…</p> : skills.length === 0 ? <p className="muted">No skills are set up on this server.</p> : (() => {
+            const needle = q.trim().toLowerCase();
+            const shown = needle ? skills.filter((s) => `${s.label} ${s.description}`.toLowerCase().includes(needle)) : skills;
+            return shown.length === 0 ? <p className="muted">No skills match “{q.trim()}”.</p>
+              : <ul className="app-tiles" aria-label="Skills">{shown.map(skillTile)}</ul>;
+          })()}
+        </> : <>
         {note && <p className={note.ok ? "ok" : "error"} role="status">{note.text}</p>}
         {items === null ? <p className="muted">Loading…</p> : items.length === 0 ? <p className="muted">No portals are set up on this server.</p> : <>
           {(() => {
