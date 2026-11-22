@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import hashlib
 import math
 import os
@@ -35,13 +36,44 @@ def is_image(path: str) -> bool:
     return os.path.splitext(path)[1].lower() in IMAGE_TYPES
 
 
+MAX_IMAGE_SIDE = 2000  # longer side after shrinking: plenty for the model to read text, far under every limit
+
+
+def shrink_image(data: bytes) -> bytes | None:
+    """A JPEG under MAX_IMAGE_BYTES (longest side <= MAX_IMAGE_SIDE), or None without Pillow or for unreadable data."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    try:
+        im = Image.open(io.BytesIO(data))
+        im.seek(0)  # gif/webp: first frame
+        im = im.convert("RGBA")
+        flat = Image.new("RGB", im.size, "white")  # JPEG has no alpha: transparent parts go white
+        flat.paste(im, mask=im.getchannel("A"))
+        side, quality = MAX_IMAGE_SIDE, 85
+        while True:
+            pic = flat.copy()
+            pic.thumbnail((side, side))
+            out = io.BytesIO()
+            pic.save(out, "JPEG", quality=quality, optimize=True)
+            if out.tell() <= MAX_IMAGE_BYTES or side <= 256:
+                return out.getvalue()
+            side, quality = int(side * 0.7), max(60, quality - 10)
+    except Exception:
+        return None
+
+
 async def load_image(env, path: str) -> str:
-    """A picture in the workspace as a data URL; ValueError (a message for the model) when it can't be sent."""
     data = await env.read_bytes(path)
+    mime = IMAGE_TYPES[os.path.splitext(path)[1].lower()]
     if len(data) > MAX_IMAGE_BYTES:
-        raise ValueError(f"{os.path.basename(path)} is {len(data) // 1_000_000} MB; pictures over "
-                         f"{MAX_IMAGE_BYTES // 1_000_000} MB can't be viewed (shrink it first, e.g. with Pillow)")
-    return f"data:{IMAGE_TYPES[os.path.splitext(path)[1].lower()]};base64,{base64.b64encode(data).decode()}"
+        small = shrink_image(data)
+        if small is None or len(small) > MAX_IMAGE_BYTES:
+            raise ValueError(f"{os.path.basename(path)} is {len(data) // 1_000_000} MB; pictures over "
+                             f"{MAX_IMAGE_BYTES // 1_000_000} MB can't be viewed (shrink it first, e.g. with Pillow)")
+        data, mime = small, "image/jpeg"
+    return f"data:{mime};base64,{base64.b64encode(data).decode()}"
 
 
 async def read(args: dict, ctx) -> str:
