@@ -878,6 +878,7 @@ async def test_picked_skill_reaches_the_model_and_disabled_one_is_refused(env):
     await wait_for(lambda: run.state == "idle")
     sent = [m.content for m in stream.messages[0] if m.role == "user"]
     assert any(c.startswith("[Skill: pptx · SKILL.md]") for c in sent) and "make a deck" in sent
+    assert [e["text"] for e in run.log if e["type"] == "user_message"] == ["make a deck"]  # skill text: hidden
     prompt = stream.ctxs[0].system_prompt  # plugins are set up on the first prompt
     assert "- pptx:" in prompt and "- docx:" not in prompt and "/opt/simp/skills/pptx/SKILL.md" not in prompt
     assert any(t.name == "load_skill" for t in run.session.agent.tools)

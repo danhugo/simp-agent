@@ -32,6 +32,7 @@ class ToolContext:
     state: dict = field(default_factory=dict)  # per-agent tool state (edit's read hashes); lives as long as the Agent
     images: list = field(default_factory=list)  # pictures for the next LLM call [(name, data URL)]; `read` of an image adds one
     vision: bool = False  # the model can look at images
+    messages: list = field(default_factory=list)  # a tool may add messages here: they go in right after this turn's tool results
 
 
 async def _maybe_await(r):
@@ -168,6 +169,7 @@ async def agent_loop(
             calls = msg.tool_calls()
             if msg.stop_reason in ("error", "aborted"):
                 return await _end(send, msg, new)
+            extra = list()  # messages tools added (ctx.messages), placed after all the tool results
             for call in calls:
                 if cancel.is_set():  # Stopped: still close the rest, so the UI shows them ended (not running forever)
                     result = ToolResultMessage(call.id, call.name, "Interrupted by the user", True)
@@ -178,7 +180,7 @@ async def agent_loop(
                 else:
                     await send({"type": "tool_execution_start", "call": call})
                     on_update = functools.partial(lambda c, text: send({"type": "tool_execution_update", "call": c, "text": text}), call)
-                    ctx = ToolContext(cancel, config.env, config.cwd, on_update, config.tool_state, config.images, config.model.vision)
+                    ctx = ToolContext(cancel, config.env, config.cwd, on_update, config.tool_state, config.images, config.model.vision, extra)
                     deny = await _maybe_await(config.before_tool_call(call, ctx)) if config.before_tool_call else None
                     if deny is not None:
                         result = ToolResultMessage(call.id, call.name, f"User denied: {deny}", is_error=True)
@@ -188,6 +190,8 @@ async def agent_loop(
                         result = await _maybe_await(config.after_tool_call(call, result, ctx)) or result
                     await send({"type": "tool_execution_end", "call": call, "result": result})
                 await add(result)
+            for m in extra if not cancel.is_set() else []:
+                await add(m)
             if cancel.is_set():
                 msg = _aborted()
                 await add(msg)

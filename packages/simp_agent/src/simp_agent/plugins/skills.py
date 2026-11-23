@@ -3,7 +3,8 @@
 Two ways in:
 - explicit: the app passes session.prompt(text, skills=["pptx"]); SKILL.md is attached to that turn (no tool call);
 - agent-chosen: the prompt lists name + description of each enabled skill; the model calls load_skill(name).
-Both put the same header line `[Skill: <name> · <path>]` above the text, so compaction can list loaded skills."""
+Both put the text in a hidden user message (meta) headed `[Skill: <name> · <path>]`, so compaction can list loaded
+skills; the tool result itself is one line (like Claude Code's Skill tool)."""
 
 from __future__ import annotations
 
@@ -103,13 +104,18 @@ class Skills:
             have = ", ".join(x["name"] for x in self.available()) or "none"
             raise LookupError(f"no enabled skill {name!r} (enabled: {have})")
         path = safe_path(path)
-        body = re.sub(r"(?<![\w/.])scripts/", f"{s['dir']}/scripts/", await self.source.read(name, path))
+        raw = await self.source.read(name, path)
+        if raw.startswith("---\n") and "\n---" in raw[4:]:  # frontmatter is for the catalog, not the model
+            raw = raw[4:].split("\n---", 1)[1].lstrip("-").lstrip("\n")
+        body = re.sub(r"(?<![\w/.])scripts/", f"{s['dir']}/scripts/", raw)
         return f"[Skill: {name} · {path}]\nFolder: {s['dir']} (read-only)\n\n{body}"
 
     async def _load(self, args, ctx) -> str:
-        return await self.text(args["name"], args.get("path") or "SKILL.md")
+        path = args.get("path") or "SKILL.md"
+        ctx.messages.append(UserMessage(await self.text(args["name"], path), meta=True))
+        return f"Launching skill: {args['name']}" + ("" if path == "SKILL.md" else f" ({path})")
 
     async def before_agent_start(self, payload: dict) -> dict:
         """Explicit picks (session.prompt(..., skills=[...])): attach each SKILL.md to this turn."""
-        msgs = [UserMessage(await self.text(n)) for n in dict.fromkeys(payload.get("skills") or [])]
+        msgs = [UserMessage(await self.text(n), meta=True) for n in dict.fromkeys(payload.get("skills") or [])]
         return {"messages": msgs}
