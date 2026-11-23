@@ -174,7 +174,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .composer-bar { display: contents; }
 .composer-bar .spacer { display: none; }
 .composer .round {
-  flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border-radius: 50%; border: 0;
+  flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border-radius: 10px; border: 0;
 }
 /* enabled: accent fill (accent-text on accent 7.9:1 light / 6.6:1 dark); disabled: pale accent tint, clearly off */
 .composer .send { background: var(--accent); color: var(--accent-text); }
@@ -190,7 +190,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
   padding: 2px var(--sp-2); border-radius: 99px; background: var(--code); border: 1px solid var(--border);
 }
 .composer.hero { max-width: 720px; padding: 0 var(--sp-4); }
-.composer.hero .composer-card { padding: var(--sp-2); border-radius: 27px; }
+.composer.hero .composer-card { padding: 12px 10px 10px; border-radius: 20px; }
 .composer.hero textarea { font-size: var(--fs-lg); }
 /* iOS Safari zooms the page when a field under 16px gets focus */
 @media (max-width: 767px) {
@@ -281,6 +281,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .model-btn span { overflow: hidden; text-overflow: ellipsis; }
 .model-btn:hover, .model-btn[aria-expanded="true"] { background: var(--hover); color: var(--text); }
 .model-btn .chev { transform: rotate(90deg); }
+.composer .model-btn { height: 36px; padding: 0 10px; border-radius: 10px; }  /* same height and corners as + and send */
 .model-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 240px; width: max-content; max-width: min(480px, 92vw); max-height: 60vh; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-md); }
 @media (min-width: 768px) {
@@ -312,8 +313,8 @@ details[open] > summary .chev { transform: rotate(90deg); }
 /* expanded composer (attachments or several lines): files on top, text, then a tool bar (+ left, model/send right),
    with roomier padding so nothing is pressed against the rounded corners */
 .composer-card.expanded { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--sp-2);
-  padding: var(--sp-3); border-radius: 24px; }
-.composer-card.expanded textarea { flex: none; width: 100%; padding: 2px var(--sp-1); }
+  padding: 10px 8px 8px; border-radius: 18px; }  /* = 18 - 10 (button radius): corners run parallel */
+.composer-card.expanded textarea { flex: none; width: 100%; padding: 2px 10px; }
 .composer-card.expanded .composer-bar { display: flex; align-items: center; gap: var(--sp-1); }
 .composer-card.expanded .composer-bar .spacer { display: block; flex: 1; }
 .composer-card.expanded .attached { padding: 0; gap: var(--sp-2); flex: none; }
@@ -469,3 +470,6 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .composer-card .attached.chips li { display: inline-flex; align-items: center; gap: 4px; max-width: 220px; padding: 2px var(--sp-2);
   border-radius: 99px; font-size: var(--fs-xs); color: var(--text);
   background: color-mix(in srgb, var(--accent) 14%, var(--bg)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--bg)); }
+.model-btn { gap: 6px; }
+.model-btn > span:not(.effort-tag) { font-weight: 550; color: var(--text); }
+.model-btn .effort-tag { font-weight: 400; color: var(--muted); }
