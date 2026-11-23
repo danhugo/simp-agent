@@ -371,7 +371,8 @@ class Run:
         elif t == "message_end":
             m = e["message"]
             if m.role == "user":
-                await self.durable(p.UserMessage, text=m.content)
+                if not m.meta:  # a loaded skill etc.: kept for the model, not shown in the chat
+                    await self.durable(p.UserMessage, text=m.content)
             elif m.role == "assistant":
                 self.inflight = p.InFlight(tool_outputs=f.tool_outputs)
                 u = {"input": m.usage.get("input", 0), "output": m.usage.get("output", 0)}

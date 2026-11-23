@@ -47,6 +47,7 @@ async def test_load_skill_header_and_absolute_scripts(root):
     assert out.startswith("[Skill: pptx · SKILL.md]\nFolder: /opt/simp/skills/pptx (read-only)")
     assert "python /opt/simp/skills/pptx/scripts/x.py" in out
     assert "./scripts/y.py" in out  # already relative to something explicit: left alone
+    assert "description:" not in out and "---" not in out  # frontmatter is for the catalog only
     assert await plugin(root).text("pptx", "REFERENCE.md") != ""
 
 
@@ -65,8 +66,10 @@ async def test_explicit_pick_attached_before_first_llm_call(root):
     stream = FakeProvider(DONE)
     s = await started(plugin(root), stream)
     await s.prompt("make a deck", skills=["pptx", "pptx"])
-    sent = [m.content for m in stream.messages[0] if isinstance(m, UserMessage)]
-    assert sum(c.startswith("[Skill: pptx · SKILL.md]") for c in sent) == 1
+    sent = [m for m in stream.messages[0] if isinstance(m, UserMessage)]
+    skill = [m for m in sent if m.content.startswith("[Skill: pptx · SKILL.md]")]
+    assert len(skill) == 1 and skill[0].meta  # hidden from the chat UI
+    sent = [m.content for m in sent]
     assert "make a deck" in sent
 
 
@@ -88,3 +91,16 @@ async def test_compaction_keeps_short_note_of_loaded_skills():
     await s.prompt("next")
     entry = next(m for m in s.messages if isinstance(m, CompactionEntry))
     assert entry.skills == ["pptx"] and "<loaded-skills>\npptx\n</loaded-skills>" in entry.summary
+
+
+async def test_load_skill_tool_result_is_one_line_and_text_follows_as_hidden_message(root):
+    call = AssistantMessage([ToolCall("c1", "load_skill", {"name": "pptx"})], stop_reason="tool_use")
+    stream = FakeProvider(call, DONE)
+    s = await started(plugin(root), stream)
+    await s.prompt("make a deck")
+    sent = stream.messages[1]
+    result = next(m for m in sent if isinstance(m, ToolResultMessage))
+    assert result.content == "Launching skill: pptx"
+    after = sent[sent.index(result) + 1]
+    assert isinstance(after, UserMessage) and after.meta and after.content.startswith("[Skill: pptx · SKILL.md]")
+    assert loaded_skills(sent) == ["pptx"]
