@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { admin, api, AuthError, type ConnStatus, getToken, setToken, subscribe } from "./api";
-import { Chat, Composer, type Send, writtenFile } from "./Chat";
+import { Chat, Composer, EFFORT_LABEL, EffortSwitch, type Send, useEffort, writtenFile } from "./Chat";
 import { IconCalendar, IconChart, IconCheck, IconChevron, IconCompose, IconFile, IconFolder, IconSearch, IconApps, IconLogout, IconMemory, IconMenu, IconPersona, IconMoon, IconSidebar, IconSun, IconTrash } from "./icons";
 import { PixelAgent } from "./PixelAgent";
 import { Mascot3D } from "./Mascot3D";
@@ -293,7 +293,7 @@ function Main({ onLogout, onTheme, theme }: { onLogout: () => void; onTheme: () 
             <Mascot3D size={112} fit className="hero-face" working={creating} mood={hello ? "done" : "idle"} />
             <h1>{greeting()}</h1>
             <Composer busy={false} send={start} variant="hero" prefill={prefill} onQueueFiles={(fs) => queued.current.push(...fs)} disabled={creating} tools={profiles.length > 0 && (
-              <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} />
+              <ModelPicker value={profile} options={profiles} labels={models} onChange={setProfile} effort />
             )} />
             <ul className="suggestions" aria-label="Suggestions">
               {SUGGESTIONS.map(({ text, fill, icon }) => (
@@ -412,9 +412,12 @@ function alertUser(title: string, state: string, on: boolean) {
 }
 
 /** Model picker: a themed popover listbox instead of the native <select> (whose menu follows the OS look). */
-export function ModelPicker({ value, options, labels, onChange }: {
+export function ModelPicker({ value, options, labels, onChange, effort: withEffort = false }: {
   value: string; options: string[]; labels: Record<string, string>; onChange: (v: string) => void;
+  /** also hold the thinking switch (under the models); the button names a non-quick level */
+  effort?: boolean;
 }) {
+  const [effort] = useEffort();
   const [open, setOpen] = useState(false);
   const [up, setUp] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -430,7 +433,7 @@ export function ModelPicker({ value, options, labels, onChange }: {
   // no room below the button (e.g. Persona's draw box) → open upward, before the first paint
   useLayoutEffect(() => {
     if (!open) return setUp(false);
-    const b = btn.current!.getBoundingClientRect(), h = box.current!.querySelector("ul")!.offsetHeight + 6;
+    const b = btn.current!.getBoundingClientRect(), h = box.current!.querySelector<HTMLElement>(".model-menu")!.offsetHeight + 6;
     setUp(b.bottom + h > innerHeight && b.top > innerHeight - b.bottom);
   }, [open]);
   const pick = (p: string) => { onChange(p); setOpen(false); btn.current?.focus(); };
@@ -445,17 +448,21 @@ export function ModelPicker({ value, options, labels, onChange }: {
     <div className="model-pick" ref={box} onKeyDown={keys}>
       <button ref={btn} type="button" className="model-btn" aria-haspopup="listbox" aria-expanded={open} aria-label={`Model: ${label(value)}`}
         onClick={() => setOpen(!open)}>
-        <span>{label(value)}</span><IconChevron size={14} className="chev" />
+        <span>{[options.length ? label(value) : "", withEffort && (effort !== "low" || !options.length) ? EFFORT_LABEL[effort] : ""].filter(Boolean).join(" · ")}</span>
+        <IconChevron size={14} className="chev" />
       </button>
       {open && (
-        <ul className={up ? "model-menu up" : "model-menu"} role="listbox" aria-label="Model">
+        <div className={up ? "model-menu up" : "model-menu"}>
+        {options.length > 0 && <ul role="listbox" aria-label="Model">
           {options.map((p) => (
             <li key={p} role="option" aria-selected={p === value} tabIndex={-1}
               onClick={() => pick(p)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(p); } }}>
               <span>{label(p)}</span>{p === value && <IconCheck size={16} />}
             </li>
           ))}
-        </ul>
+        </ul>}
+        {withEffort && <EffortSwitch />}
+        </div>
       )}
     </div>
   );
