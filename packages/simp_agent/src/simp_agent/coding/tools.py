@@ -29,7 +29,7 @@ def _seen(ctx, path: str, text: str) -> None:
 
 IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}
 MAX_IMAGE_BYTES = 5_000_000  # providers reject bigger pictures
-MAX_RUN_IMAGES = 6  # pictures the model looks at in one run (each one is sent with every call of the run)
+MAX_RUN_IMAGES = 6  # pictures sent in one LLM call (each is sent once, then dropped)
 
 
 def is_image(path: str) -> bool:
@@ -76,18 +76,49 @@ async def load_image(env, path: str) -> str:
     return f"data:{mime};base64,{base64.b64encode(data).decode()}"
 
 
+LOOK_SYSTEM = ("You look at pictures for an assistant and answer its question about them. Pictures are numbered in "
+               "the order given. Answer per picture under a heading with its file name, e.g. '## slide-01.jpg'. Be "
+               "compact and exact: copy text and numbers as shown; say plainly if something is broken, cut off, "
+               "overlapping or unreadable.")
+LOOK_QUESTION = "Describe each picture in detail: layout, all text, colors, and anything broken or cut off."
+MAX_LOOK = 10  # pictures per read call
+
+
+async def look(paths: list, question: str | None, ctx) -> str:
+    """Pictures never enter the chat: one helper call (ctx.state["look"]: (system, text, data URLs) -> text) looks at
+    all of them and only its answer, headed by file name, comes back. Read again after a change: always the file now."""
+    notes, names, urls = list(), list(), list()
+    for name in paths[:MAX_LOOK]:
+        try:
+            urls.append(await load_image(ctx.env, _path(ctx, name)))
+            names.append(name)
+        except Exception as e:  # missing, too big: the others are still looked at
+            notes.append(f"Skipped {name}: {e}")
+    notes += [f"Skipped {n}: at most {MAX_LOOK} pictures per read" for n in paths[MAX_LOOK:]]
+    if names:
+        helper = ctx.state.get("look")
+        text = ("Pictures, in order: " + ", ".join(f"{i + 1}) {n}" for i, n in enumerate(names))
+                + f"\n\nQuestion: {question or LOOK_QUESTION}")
+        try:
+            if helper is None:
+                raise RuntimeError("no model here can view images")
+            notes.append(await helper(LOOK_SYSTEM, text, urls))
+        except Exception as e:  # no vision model, provider refused, empty reply: say so, never retry
+            notes.append(f"Could not view {', '.join(names)}: {e}")
+    return "\n".join(notes)
+
+
 async def read(args: dict, ctx) -> str:
-    p = _path(ctx, args["path"])
-    if is_image(p):  # a picture: attached for the model to look at, never dumped as text
-        name = args["path"]
-        if not getattr(ctx, "vision", False):
-            return f"{name} is an image; this model cannot view images."
-        if any(n == name for n, _ in ctx.images):
-            return f"{name} is already attached for you to look at."
-        if len(ctx.images) >= MAX_RUN_IMAGES:
-            return f"Already {MAX_RUN_IMAGES} pictures this turn; look at the attached ones or ask the user."
-        ctx.images.append((name, await load_image(ctx.env, p)))
-        return f"{name} is an image; it is attached below for you to look at."
+    paths = args.get("paths") or ([args["path"]] if args.get("path") else [])
+    if not paths:
+        raise ValueError("give path (or paths for several images)")
+    if any(is_image(x) for x in paths):
+        if not all(is_image(x) for x in paths):
+            raise ValueError("paths takes images only; read text files one at a time")
+        return await look(paths, args.get("prompt"), ctx)
+    if len(paths) > 1:
+        raise ValueError("paths takes images only; read text files one at a time")
+    p = _path(ctx, paths[0])
     text = await ctx.env.read_file(p)
     _seen(ctx, p, text)
     lines = text.splitlines()
@@ -238,11 +269,16 @@ def _p(type_: str, description: str) -> dict:
 
 def make_tools(bash_max_timeout_s: float | None = None) -> list:
     return [
-        AgentTool("read", "Read a text file (output has line numbers; use offset/limit for big files), or look at an image "
-                          "(png, jpg, webp, gif): it is attached for you to see.",
+        AgentTool("read", "Read a text file (output has line numbers; use offset/limit for big files), or look at "
+                          "images (png, jpg, webp, gif): a helper looks at them and answers per file. To check several "
+                          "pictures, pass them together in paths. Read again after a change to see the new version.",
                   _obj({"path": _p("string", "File path, relative to cwd or absolute"),
+                        "paths": {"type": "array", "items": {"type": "string"},
+                                  "description": f"Several images at once (up to {MAX_LOOK}), instead of path"},
+                        "prompt": _p("string", "Images only: what to check, e.g. 'does any title wrap or overlap?'. "
+                                               "Omit for a full description."),
                         "offset": _p("integer", "First line to read, 1-based (default 1)"),
-                        "limit": _p("integer", f"Max lines to read (default {MAX_LINES})")}, ["path"]), read),
+                        "limit": _p("integer", f"Max lines to read (default {MAX_LINES})")}, []), read),
         AgentTool("write", "Create or overwrite a file. Makes parent dirs.",
                   _obj({"path": _p("string", "File path, relative to cwd or absolute"),
                         "content": _p("string", "Full new file content")}, ["path", "content"]), write),

@@ -27,26 +27,60 @@ async def run(tmp_path, replies, vision=True, images=()):
     return fake, history
 
 
-async def test_attached_picture_rides_every_call_of_the_run_but_not_history(tmp_path):
+async def test_attached_picture_rides_the_first_call_only_and_not_history(tmp_path):
     url = "data:image/png;base64," + base64.b64encode(PNG).decode()
     fake, history = await run(tmp_path, [read_call("notes.txt"), DONE], images=[("cat.png", url)])
-    for sent in fake.messages:  # both calls of the run carry it, as the last message
-        assert sent[-1].images == [url] and "cat.png" in sent[-1].content
+    assert fake.messages[0][-1].images == [url] and "cat.png" in fake.messages[0][-1].content
+    assert not any(getattr(m, "images", None) for m in fake.messages[1])  # sent once, then dropped
     assert not any(getattr(m, "images", None) for m in history)  # history: text only
 
 
-async def test_read_of_an_image_attaches_it_for_the_next_call(tmp_path):
-    fake, history = await run(tmp_path, [read_call("cat.png"), DONE])
-    assert not any(getattr(m, "images", None) for m in fake.messages[0])
-    assert fake.messages[1][-1].images[0].startswith("data:image/png;base64,")
-    result = next(m for m in history if m.role == "tool_result")
-    assert "attached below" in result.content and "base64" not in result.content  # no image bytes as text
+class Helper:
+    def __init__(self, reply="## cat.png\na cat"):
+        self.calls, self.reply = [], reply
+
+    async def __call__(self, system, text, images):
+        self.calls.append((text, images))
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        return self.reply
 
 
-async def test_model_without_vision_gets_a_note(tmp_path):
-    fake, history = await run(tmp_path, [read_call("cat.png"), DONE], vision=False)
-    assert "cannot view images" in next(m for m in history if m.role == "tool_result").content
-    assert not any(getattr(m, "images", None) for sent in fake.messages for m in sent)
+async def read_with(tmp_path, args, helper):
+    (tmp_path / "cat.png").write_bytes(PNG)
+    (tmp_path / "dog.png").write_bytes(PNG + b"dog")
+    fake = FakeProvider(AssistantMessage([ToolCall("r1", "read", args)], stop_reason="tool_use"), DONE)
+    history = []
+    cfg = LoopConfig(Model(vision=True), make_tools(), stream_fn=fake, env=LocalEnv(), cwd=str(tmp_path),
+                     tool_state={"look": helper} if helper else {})
+    await agent_loop("sys", history, [UserMessage("look")], cfg)
+    assert not any(getattr(m, "images", None) for sent in fake.messages for m in sent)  # never in the chat
+    return next(m for m in history if m.role == "tool_result").content
+
+
+async def test_read_images_one_helper_call_with_prompt(tmp_path):
+    h = Helper("## cat.png\nA\n## dog.png\nB")
+    out = await read_with(tmp_path, {"paths": ["cat.png", "dog.png"], "prompt": "colors?"}, h)
+    assert out == "## cat.png\nA\n## dog.png\nB" and len(h.calls) == 1
+    text, images = h.calls[0]
+    assert "1) cat.png, 2) dog.png" in text and "Question: colors?" in text and len(images) == 2
+
+
+async def test_read_image_default_question_and_fresh_file(tmp_path):
+    h = Helper()
+    await read_with(tmp_path, {"path": "cat.png"}, h)
+    assert "Describe each picture" in h.calls[0][0]
+
+
+async def test_read_image_errors_are_one_line(tmp_path):
+    out = await read_with(tmp_path, {"paths": ["cat.png", "gone.png"]}, Helper(RuntimeError("refused")))
+    assert out.startswith("Skipped gone.png:") and out.endswith("Could not view cat.png: refused")
+    assert "no model here can view images" in await read_with(tmp_path, {"path": "cat.png"}, None)
+
+
+async def test_paths_take_images_only(tmp_path):
+    (tmp_path / "a.txt").write_text("x")
+    assert "images only" in await read_with(tmp_path, {"paths": ["cat.png", "a.txt"]}, Helper())
 
 
 def test_openai_request_puts_the_picture_after_tool_results():

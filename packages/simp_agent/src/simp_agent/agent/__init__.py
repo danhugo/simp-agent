@@ -30,7 +30,7 @@ class ToolContext:
     cwd: str
     on_update: Callable[[str], Awaitable[None]]  # emits tool_execution_update (progress for the UI)
     state: dict = field(default_factory=dict)  # per-agent tool state (edit's read hashes); lives as long as the Agent
-    images: list = field(default_factory=list)  # this run's pictures [(name, data URL)]; `read` of an image adds one
+    images: list = field(default_factory=list)  # pictures for the next LLM call [(name, data URL)]; `read` of an image adds one
     vision: bool = False  # the model can look at images
 
 
@@ -234,8 +234,9 @@ async def _llm_turn(system_prompt, messages, config, cancel, send, add) -> Assis
         system_prompt = await _maybe_await(system_prompt())
     llm_msgs = ai.transform_messages(config.convert_to_llm(config.transform_context(view)))
     if config.images and config.model.vision:  # last, after any tool results, so the request stays valid
-        llm_msgs.append(UserMessage(f"[Pictures for this turn: {', '.join(n for n, _ in config.images)}]",
-                                    images=[u for _, u in config.images]))
+        llm_msgs.append(UserMessage(f"[Pictures: {', '.join(n for n, _ in config.images)}. Shown in this step only; "
+                                    "read the file again to look again]", images=[u for _, u in config.images]))
+    config.images.clear()  # a picture is sent once (in place: tools hold this list); later calls see only the text
     msg = partial = None
     opts = await api_key_opts(config.get_api_key, config.model)
     async for ev in _stream(config.stream_fn, config.model, Context(system_prompt, llm_msgs, tools), cancel, opts):
@@ -304,7 +305,7 @@ class Agent:
 
     async def prompt(self, text: str, extra: list = (), images: list = ()) -> list:
         """extra: more messages sent with the prompt (e.g. from a plugin). images: [(name, data URL)] the model sees
-        during this run only (history keeps the text, which names the files)."""
+        in the first call only (history keeps the text, which names the files)."""
         return await self._run([UserMessage(text), *extra], images)
 
     async def continue_(self) -> list:
