@@ -262,6 +262,7 @@ class Run:
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.must_ask = lambda call: self.verdict(call)[0] == "ask"  # "always" never covers these
+        self.session.agent.tool_state["look"] = self.look
         self.session.agent.steering_mode = "all"  # all queued steers reach the next turn
         self.session.add_prompt_section(  # the user's persona: style only, fenced, read fresh every turn
             "persona", lambda ctx: persona_mod.prompt_section(mgr.store.persona_sync(self.user_id)), 90)
@@ -420,17 +421,21 @@ class Run:
         if call.name in self.mcp.names:  # only MCP calls are audited (and pop it), so the dict stays small
             self.decisions[call.id] = decision
 
-    async def small_call(self, system: str, text: str, max_tokens: int = 2000) -> str:
+    async def small_call(self, system: str, text: str, max_tokens: int = 2000, images: list = ()) -> str:
         """One cheap side call (title, web_fetch extract): the title_profile model with reasoning off, else the chat
         model at low effort. Budget-guarded and recorded as usage. Raises on failure."""
         # title_profile (e.g. deepseek over openrouter): a model that can turn reasoning off, so "none".
             # Else the chat model: reasoning models think before answering, so leave room and use "low"
             # ("none" is refused by some, e.g. openai/gpt-6.1-sol: "Reasoning is mandatory"; "low" works everywhere)
         pr = self.mgr.settings["profiles"].get(self.mgr.settings.get("title_profile", ""))
+        if images and pr and not build_model(pr).vision:
+            pr = None  # pictures need a model that can see them
         base, effort = (build_model(pr), "none") if pr else (self.model, "low")
+        if images and not base.vision:
+            raise RuntimeError("no model here can view images")
         model = dataclasses.replace(base, max_tokens=max_tokens, compat={**base.compat, "reasoning_effort": effort})
         msg = None
-        async for ev in self.guarded_stream(model, Context(system, [UserMessage(text)], []),
+        async for ev in self.guarded_stream(model, Context(system, [UserMessage(text, images=list(images))], []),
                                             **await api_key_opts(self.mgr.api_key_for(model), model)):
             if ev["type"] in ("done", "error"):
                 msg = ev["message"]
@@ -444,6 +449,9 @@ class Run:
 
     async def extract(self, question: str, page: str) -> str:  # web_fetch(prompt=...): read the page, answer only that
         return await self.small_call(EXTRACT_PROMPT, f"<question>\n{question}\n</question>\n\n<page>\n{page}\n</page>", 4000)
+
+    async def look(self, system: str, text: str, images: list) -> str:  # read of images: a helper looks, the chat gets text
+        return await self.small_call(system, text, 1500, images=images)
 
     async def _title(self) -> None:
         """One extra small LLM call to name the session. Any failure leaves the title empty."""

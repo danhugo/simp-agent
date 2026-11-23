@@ -93,6 +93,7 @@ class AgentSession:
                            get_api_key=get_api_key, env=env or LocalEnv(), cwd=cwd or os.getcwd(), messages=messages,
                            prepare_next_turn=self._prepare, before_tool_call=self._before_tool_call,
                            after_tool_call=self._after_tool_call)
+        self.agent.tool_state["look"] = self._look  # read of images; a host may swap in a cheaper model
         # approval policy: approve(call) -> "allow" | "deny" | "always" (sync or async). None = allow everything.
         self.approve, self.needs_approval, self.always_allowed = approve, {"bash", "write", "edit"}, set()
         self.must_ask: Callable[[ai.ToolCall], bool] | None = None  # app rule: this call is asked even after "always"
@@ -243,6 +244,23 @@ class AgentSession:
         Stop pressed while they run still ends the run."""
         self._abort = asyncio.Event()
         self.agent._cancel = asyncio.Event()
+
+    async def _look(self, system: str, text: str, images: list) -> str:
+        """Default image helper: the chat model, one call with no tools, reasoning low."""
+        a = self.agent
+        if not a.model.vision:
+            raise RuntimeError("no model here can view images")
+        m = dataclasses.replace(a.model, max_tokens=1500, compat={**a.model.compat, "reasoning_effort": "low"})
+        msg = None
+        async for ev in a.stream_fn(m, ai.Context(system, [UserMessage(text, images=list(images))], []),
+                                    **await api_key_opts(a.get_api_key, m)):
+            if ev["type"] in ("done", "error"):
+                msg = ev["message"]
+        if msg is None or msg.stop_reason == "error":
+            raise RuntimeError(msg.error if msg else "no response")
+        if not msg.text().strip():
+            raise RuntimeError("empty reply")
+        return msg.text()
 
     async def prompt(self, text: str, images: list = (), skills: list = ()) -> list:
         """images: workspace paths of pictures the user attached; the model sees them in the first call of the run.
