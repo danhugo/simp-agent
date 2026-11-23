@@ -27,11 +27,11 @@ async def run(tmp_path, replies, vision=True, images=()):
     return fake, history
 
 
-async def test_attached_picture_rides_every_call_of_the_run_but_not_history(tmp_path):
+async def test_attached_picture_rides_the_first_call_only_and_not_history(tmp_path):
     url = "data:image/png;base64," + base64.b64encode(PNG).decode()
     fake, history = await run(tmp_path, [read_call("notes.txt"), DONE], images=[("cat.png", url)])
-    for sent in fake.messages:  # both calls of the run carry it, as the last message
-        assert sent[-1].images == [url] and "cat.png" in sent[-1].content
+    assert fake.messages[0][-1].images == [url] and "cat.png" in fake.messages[0][-1].content
+    assert not any(getattr(m, "images", None) for m in fake.messages[1])  # sent once, then dropped
     assert not any(getattr(m, "images", None) for m in history)  # history: text only
 
 
@@ -41,6 +41,18 @@ async def test_read_of_an_image_attaches_it_for_the_next_call(tmp_path):
     assert fake.messages[1][-1].images[0].startswith("data:image/png;base64,")
     result = next(m for m in history if m.role == "tool_result")
     assert "attached below" in result.content and "base64" not in result.content  # no image bytes as text
+
+
+async def test_read_again_after_a_rebuild_shows_the_new_picture(tmp_path):
+    def rebuild(_):  # the file changes between the two reads
+        (tmp_path / "cat.png").write_bytes(PNG + b"v2")
+        return read_call("cat.png")
+    fake = FakeProvider(read_call("cat.png"), rebuild, DONE)
+    (tmp_path / "cat.png").write_bytes(PNG)
+    cfg = LoopConfig(Model(vision=True), make_tools(), stream_fn=fake, env=LocalEnv(), cwd=str(tmp_path))
+    await agent_loop("sys", [], [UserMessage("look")], cfg)
+    first, second = fake.messages[1][-1].images[0], fake.messages[2][-1].images[0]
+    assert first != second and len(fake.messages[2][-1].images) == 1
 
 
 async def test_model_without_vision_gets_a_note(tmp_path):

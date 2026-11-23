@@ -245,7 +245,7 @@ class AgentSession:
         self.agent._cancel = asyncio.Event()
 
     async def prompt(self, text: str, images: list = (), skills: list = ()) -> list:
-        """images: workspace paths of pictures the user attached; the model sees them during this run.
+        """images: workspace paths of pictures the user attached; the model sees them in the first call of the run.
         skills: names the user picked; the skills plugin attaches their SKILL.md to this turn."""
         self._fresh_abort()
         await self.start()

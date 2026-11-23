@@ -29,7 +29,7 @@ def _seen(ctx, path: str, text: str) -> None:
 
 IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}
 MAX_IMAGE_BYTES = 5_000_000  # providers reject bigger pictures
-MAX_RUN_IMAGES = 6  # pictures the model looks at in one run (each one is sent with every call of the run)
+MAX_RUN_IMAGES = 6  # pictures sent in one LLM call (each is sent once, then dropped)
 
 
 def is_image(path: str) -> bool:
@@ -85,9 +85,9 @@ async def read(args: dict, ctx) -> str:
         if any(n == name for n, _ in ctx.images):
             return f"{name} is already attached for you to look at."
         if len(ctx.images) >= MAX_RUN_IMAGES:
-            return f"Already {MAX_RUN_IMAGES} pictures this turn; look at the attached ones or ask the user."
+            return f"Already {MAX_RUN_IMAGES} pictures in this step; look at them first, then read {name} again."
         ctx.images.append((name, await load_image(ctx.env, p)))
-        return f"{name} is an image; it is attached below for you to look at."
+        return f"{name} is an image; it is attached below for this step only (read it again to look again)."
     text = await ctx.env.read_file(p)
     _seen(ctx, p, text)
     lines = text.splitlines()
