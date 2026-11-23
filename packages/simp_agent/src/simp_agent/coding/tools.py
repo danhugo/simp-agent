@@ -278,7 +278,7 @@ def make_tools(bash_max_timeout_s: float | None = None) -> list:
                         "prompt": _p("string", "Images only: what to check, e.g. 'does any title wrap or overlap?'. "
                                                "Omit for a full description."),
                         "offset": _p("integer", "First line to read, 1-based (default 1)"),
-                        "limit": _p("integer", f"Max lines to read (default {MAX_LINES})")}, []), read),
+                        "limit": _p("integer", f"Max lines to read (default {MAX_LINES})")}, []), read, parallel=True),
         AgentTool("write", "Create or overwrite a file. Makes parent dirs.",
                   _obj({"path": _p("string", "File path, relative to cwd or absolute"),
                         "content": _p("string", "Full new file content")}, ["path", "content"]), write),
@@ -303,14 +303,14 @@ def make_tools(bash_max_timeout_s: float | None = None) -> list:
                         "ignore_case": _p("boolean", "Case-insensitive search"),
                         "literal": _p("boolean", "Treat pattern as plain text"),
                         "context": _p("integer", "Lines of context around each match"),
-                        "limit": _p("integer", "Max output lines (default 100)")}, ["pattern"]), grep),
+                        "limit": _p("integer", "Max output lines (default 100)")}, ["pattern"]), grep, parallel=True),
         AgentTool("find", "Find files by glob name pattern (fd, respects .gitignore).",
                   _obj({"pattern": _p("string", "Glob for file names, e.g. '*.py'"),
                         "path": _p("string", "Dir to search (default cwd)"),
-                        "limit": _p("integer", "Max results (default 1000)")}, ["pattern"]), find),
+                        "limit": _p("integer", "Max results (default 1000)")}, ["pattern"]), find, parallel=True),
         AgentTool("ls", "List a directory, sorted. Dirs end with '/'. Includes dotfiles.",
                   _obj({"path": _p("string", "Dir to list (default cwd)"),
-                        "limit": _p("integer", "Max entries (default 500)")}, []), ls),
+                        "limit": _p("integer", "Max entries (default 500)")}, []), ls, parallel=True),
     ]
 
 

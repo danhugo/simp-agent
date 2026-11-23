@@ -146,7 +146,7 @@ class Memory:
             "memory_search", "Find saved memories. Matches keywords in the text, not meaning: use 1-3 short words, "
             "e.g. 'diet', 'wife', 'email style'. Optional scope. Returns items with id, scope, content, created (unix time).",
             _obj({"query": s, "scope": {**scope, "description": scope["description"] + " (optional)"}}, ["query"]),
-            self._search))
+            self._search, parallel=True))
         api.register_tool(AgentTool(
             "memory_save", "Save ONE lasting fact about the user (scope global) or a lesson for doing tasks (scope agent). "
             "Call it as soon as you learn something worth remembering; do not wait for the end of the chat. "

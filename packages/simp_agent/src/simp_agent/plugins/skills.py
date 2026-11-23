@@ -86,7 +86,7 @@ class Skills:
                 "name": {"type": "string", "description": "skill name from the Skills list"},
                 "path": {"type": "string", "description": "file inside the skill folder (default SKILL.md)"}},
              "required": ["name"]},
-            self._load))
+            self._load, parallel=True))
 
     def prompt(self, ctx=None) -> str:
         on = self.available()

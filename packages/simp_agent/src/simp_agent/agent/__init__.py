@@ -21,6 +21,7 @@ from .env import ExecutionEnv, LocalEnv
 class AgentTool(ai.Tool):
     execute: Callable[[dict, "ToolContext"], Awaitable[str]] | None = None  # (args, ctx) -> text
     prepare_arguments: Callable[[dict], dict] | None = None  # raw args -> args, before validation (pi prepareArguments)
+    parallel: bool = False  # read-only: runs at the same time as the other read-only calls next to it in one message
 
 
 @dataclass
@@ -170,26 +171,40 @@ async def agent_loop(
             if msg.stop_reason in ("error", "aborted"):
                 return await _end(send, msg, new)
             extra = list()  # messages tools added (ctx.messages), placed after all the tool results
-            for call in calls:
+
+            async def execute(call) -> ToolResultMessage:
                 if cancel.is_set():  # Stopped: still close the rest, so the UI shows them ended (not running forever)
                     result = ToolResultMessage(call.id, call.name, "Interrupted by the user", True)
                     await send({"type": "tool_execution_start", "call": call})
                     await send({"type": "tool_execution_end", "call": call, "result": result})
-                elif msg.stop_reason == "length":  # args may be cut off: never run them
-                    result = ToolResultMessage(call.id, call.name, "Tool call was truncated (max tokens); not executed", True)
+                    return result
+                if msg.stop_reason == "length":  # args may be cut off: never run them
+                    return ToolResultMessage(call.id, call.name, "Tool call was truncated (max tokens); not executed", True)
+                await send({"type": "tool_execution_start", "call": call})
+                on_update = functools.partial(lambda c, text: send({"type": "tool_execution_update", "call": c, "text": text}), call)
+                ctx = ToolContext(cancel, config.env, config.cwd, on_update, config.tool_state, config.images, config.model.vision, extra)
+                deny = await _maybe_await(config.before_tool_call(call, ctx)) if config.before_tool_call else None
+                if deny is not None:
+                    result = ToolResultMessage(call.id, call.name, f"User denied: {deny}", is_error=True)
                 else:
-                    await send({"type": "tool_execution_start", "call": call})
-                    on_update = functools.partial(lambda c, text: send({"type": "tool_execution_update", "call": c, "text": text}), call)
-                    ctx = ToolContext(cancel, config.env, config.cwd, on_update, config.tool_state, config.images, config.model.vision, extra)
-                    deny = await _maybe_await(config.before_tool_call(call, ctx)) if config.before_tool_call else None
-                    if deny is not None:
-                        result = ToolResultMessage(call.id, call.name, f"User denied: {deny}", is_error=True)
-                    else:
-                        result = await run_tool(_tools(config), call, ctx)
-                    if config.after_tool_call:
-                        result = await _maybe_await(config.after_tool_call(call, result, ctx)) or result
-                    await send({"type": "tool_execution_end", "call": call, "result": result})
-                await add(result)
+                    result = await run_tool(_tools(config), call, ctx)
+                if config.after_tool_call:
+                    result = await _maybe_await(config.after_tool_call(call, result, ctx)) or result
+                await send({"type": "tool_execution_end", "call": call, "result": result})
+                return result
+
+            # like Claude Code: read-only calls next to each other run at once; anything else runs alone, in order.
+            # Results go into history in call order either way.
+            ro = {t.name for t in _tools(config) if t.parallel}
+            i = 0
+            while i < len(calls):
+                j = i + 1
+                if calls[i].name in ro:
+                    while j < len(calls) and calls[j].name in ro:
+                        j += 1
+                for result in await asyncio.gather(*(execute(c) for c in calls[i:j])):
+                    await add(result)
+                i = j
             for m in extra if not cancel.is_set() else []:
                 await add(m)
             if cancel.is_set():

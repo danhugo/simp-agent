@@ -397,7 +397,7 @@ def make_tools(provider: str = "duckduckgo", key: str | None = None, extract=Non
                   _obj({"items": {"type": "array", "items": card, "description": "Cards to show"}}, ["items"]), cards),
         AgentTool("web_search", "Search the web. Returns title, url, snippet per result. Follow up with web_fetch for details.",
                   _obj({"query": _p("string", "Search query"),
-                        "count": _p("integer", "Max results (default 5)")}, ["query"]), search),
+                        "count": _p("integer", "Max results (default 5)")}, ["query"]), search, parallel=True),
         AgentTool("web_fetch", "GET a public http(s) URL; HTML is converted to text, JSON/text returned as is. "
                                + ("Pass `prompt` (what you need from the page) to get only that, read by a helper model: "
                                   "far shorter than the page, so prefer it; leave it out when you need the exact page text. "
@@ -407,7 +407,7 @@ def make_tools(provider: str = "duckduckgo", key: str | None = None, extract=Non
                         **({"prompt": _p("string", "What to get from the page, e.g. 'each image: direct URL, author, "
                                                    "license' or 'release dates and episode counts'")} if extract else {}),
                         "max_chars": _p("integer", "Max chars returned (default 20000)"),
-                        "raw": _p("boolean", "Return the page source (HTML/JS) instead of text")}, ["url"]), fetch),
+                        "raw": _p("boolean", "Return the page source (HTML/JS) instead of text")}, ["url"]), fetch, parallel=True),
         AgentTool("web_download", "Download public http(s) files (images, PDFs, data) into the workspace, all in one call. "
                                   "The sandbox has no internet: use this instead of curl/wget. "
                                   f"Max {MAX_DOWNLOADS} files, {DOWNLOAD_MAX // 1_000_000} MB each. Pictures: find image URLs with web_search "
