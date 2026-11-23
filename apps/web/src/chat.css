@@ -471,5 +471,5 @@ details[open] > summary .chev { transform: rotate(90deg); }
   border-radius: 99px; font-size: var(--fs-xs); color: var(--text);
   background: color-mix(in srgb, var(--accent) 14%, var(--bg)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--bg)); }
 .model-btn { gap: 6px; }
-.model-btn > span:first-child { font-weight: 550; color: var(--text); }
+.model-btn > span:not(.effort-tag) { font-weight: 550; color: var(--text); }
 .model-btn .effort-tag { font-weight: 400; color: var(--muted); }
