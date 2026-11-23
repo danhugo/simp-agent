@@ -458,11 +458,14 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .plus-menu > button:hover, .plus-menu > button:focus-visible, .plus-menu > button[aria-pressed="true"] { background: var(--hover); }
 .plus-menu .menu-back { color: var(--muted); }
 .plus-menu .menu-back svg { transform: rotate(180deg); }
-.plus-menu .think { display: flex; margin-top: 4px; padding: 3px; gap: 2px; border-radius: 10px; background: var(--hover); }
-.plus-menu .think button { flex: 1; border: 0; background: none; color: var(--muted); border-radius: 7px; padding: 5px 0;
-  font: inherit; font-size: var(--fs-xs); cursor: pointer; }
-.plus-menu .think button[aria-pressed="true"] { background: var(--bg); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .1); }
-/* skill and thinking chips: accent-tinted, so they read apart from attached files */
+.model-menu ul { list-style: none; margin: 0; padding: 0; }
+.model-menu .think-box { margin-top: 4px; padding: 8px 4px 4px; border-top: 1px solid var(--border); }
+.model-menu .think-head { padding: 0 var(--sp-2) 6px; font-size: var(--fs-xs); color: var(--muted); }
+.model-menu .think { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--hover); font-size: var(--fs-xs); }
+.model-menu .think button { flex: 1; }
+.model-menu .think button { border: 0; background: none; color: var(--muted); border-radius: 7px; padding: 5px 10px; font: inherit; cursor: pointer; }
+.model-menu .think button[aria-pressed="true"] { background: var(--bg); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .1); }
+/* skill chips: accent-tinted, so they read apart from attached files */
 .composer-card .attached.chips li { display: inline-flex; align-items: center; gap: 4px; max-width: 220px; padding: 2px var(--sp-2);
   border-radius: 99px; font-size: var(--fs-xs); color: var(--text);
   background: color-mix(in srgb, var(--accent) 14%, var(--bg)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--bg)); }

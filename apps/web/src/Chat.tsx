@@ -4,7 +4,7 @@ import { ext, kindOf } from "./fileKind";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api, AuthError, type ConnStatus, type SkillItem } from "./api";
-import { Badge, chatName } from "./App";
+import { Badge, chatName, ModelPicker } from "./App";
 import {
   IconArrowDown, IconArrowUp, IconBell, IconCheck, IconChevron, IconClose, IconCompact, IconCopy, IconDownload, IconEye, IconFile, IconFolder, IconMore, IconPlus, IconRefresh,
   IconStop, IconWand, IconX, fileIcon,
@@ -687,8 +687,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
   const [picked, setPicked] = useState<string[]>([]);
   const [menu, setMenu] = useState<boolean | "skills">(false);
   // how hard the model thinks on the next run (remembered in this browser); "low" by default
-  const [effort, setEffort] = useState<Effort>(savedEffort);
-  const chooseEffort = (v: Effort) => { setEffort(v); try { localStorage.setItem("simp.effort", v); } catch { /* private mode */ } };
+  const [effort] = useEffort();
   useEffect(() => { api.skills().then((s) => setSkills(s.filter((x) => x.enabled)), () => setSkills([])); }, []);
   const pick = (name: string) => { setPicked((p) => p.includes(name) ? p : [...p, name]); setMenu(false); area.current?.focus(); };
   const label = (name: string) => skills?.find((s) => s.name === name)?.label ?? name;
@@ -744,9 +743,9 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
     document.addEventListener("pointerdown", off);
     return () => document.removeEventListener("pointerdown", off);
   }, [menu]);
-  const expanded = tall || pending.length > 0 || picked.length > 0 || effort !== "low";
+  const expanded = tall || pending.length > 0 || picked.length > 0;
   const plus = (
-    <button type="button" className="round attach" aria-label="More: files, skills, thinking" title="Attach files, use a skill, think harder"
+    <button type="button" className="round attach" aria-label="Attach files or use a skill" title="Attach files or use a skill"
       aria-expanded={!!menu} disabled={uploading} onClick={() => setMenu((v) => !v)}><IconPlus size={16} /></button>
   );
   return (
@@ -767,21 +766,11 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
                 <IconFile size={16} /> Attach files</button>}
               {skills && skills.length > 0 && <button type="button" role="menuitem" onClick={() => setMenu("skills")}>
                 <IconWand size={16} /> Use a skill <IconChevron size={14} className="end" /></button>}
-              <div className="think" role="group" aria-label="How hard Simp thinks" title="How hard Simp thinks">
-                {(["low", "medium", "high"] as const).map((v) => (
-                  <button key={v} type="button" aria-pressed={effort === v} onClick={() => chooseEffort(v)}>{EFFORT[v].slice(6)}</button>
-                ))}
-              </div>
             </>}
           </div>
         )}
-        {(picked.length > 0 || effort !== "low") && (
+        {picked.length > 0 && (
           <ul className="attached chips" aria-label="Used with this message" aria-live="polite">
-            {effort !== "low" && (
-              <li className="skill-chip">{EFFORT[effort]}
-                <button type="button" aria-label="Think quick again" onClick={() => chooseEffort("low")}><IconClose size={12} /></button>
-              </li>
-            )}
             {picked.map((n) => (
               <li key={n} className="skill-chip"><IconWand size={12} /> {label(n)}
                 <button type="button" aria-label={`Remove skill ${label(n)}`} onClick={() => setPicked((p) => p.filter((x) => x !== n))}><IconClose size={12} /></button>
@@ -820,7 +809,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
         <div className="composer-bar">
           {expanded && plus}
           <span className="spacer" />
-          {tools}
+          {tools || <ModelPicker value="" options={[]} labels={{}} onChange={() => {}} effort />}
           {busy && empty ? (
             <button type="button" className="round stop" aria-label="Stop" title="Stop (Esc)" onClick={stop}><IconStop size={16} /></button>
           ) : (
@@ -835,12 +824,34 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
   );
 }
 
-const EFFORT = { low: "Think quick", medium: "Think careful", high: "Think deep" } as const;
 
 /** "20s", "1m 20s", "1h 2m": compact elapsed time. */
-type Effort = "low" | "medium" | "high";
+export type Effort = "low" | "medium" | "high";
 function savedEffort(): Effort {
   try { const v = localStorage.getItem("simp.effort"); return v === "medium" || v === "high" ? v : "low"; } catch { return "low"; }
+}
+// how hard the model thinks on the next run: one value shared by the composer and the model picker, remembered in this browser
+let effortNow: Effort = savedEffort();
+const effortSubs = new Set<(e: Effort) => void>();
+export function useEffort(): [Effort, (e: Effort) => void] {
+  const [e, setE] = useState(effortNow);
+  useEffect(() => { effortSubs.add(setE); return () => { effortSubs.delete(setE); }; }, []);
+  return [e, (v) => { effortNow = v; try { localStorage.setItem("simp.effort", v); } catch { /* private mode */ } effortSubs.forEach((f) => f(v)); }];
+}
+export const EFFORT_LABEL = { low: "Quick", medium: "Careful", high: "Deep" } as const;
+/** The thinking switch shown under the models in the model picker. */
+export function EffortSwitch() {
+  const [effort, setEffort] = useEffort();
+  return (
+    <div className="think-box">
+      <div className="think-head" id="think-head">Thinking</div>
+      <div className="think" role="group" aria-labelledby="think-head">
+        {(["low", "medium", "high"] as const).map((v) => (
+          <button key={v} type="button" aria-pressed={effort === v} onClick={() => setEffort(v)}>{EFFORT_LABEL[v]}</button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function fmtDuration(ms: number): string {
