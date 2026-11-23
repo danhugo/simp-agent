@@ -174,7 +174,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .composer-bar { display: contents; }
 .composer-bar .spacer { display: none; }
 .composer .round {
-  flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border-radius: 50%; border: 0;
+  flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border-radius: 10px; border: 0;
 }
 /* enabled: accent fill (accent-text on accent 7.9:1 light / 6.6:1 dark); disabled: pale accent tint, clearly off */
 .composer .send { background: var(--accent); color: var(--accent-text); }
