@@ -685,12 +685,12 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
   // skills the user picked (menu or "/name "): their instructions go with the next prompt
   const [skills, setSkills] = useState<SkillItem[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
-  const [skillMenu, setSkillMenu] = useState(false);
+  const [menu, setMenu] = useState(false);
   // how hard the model thinks on the next run (remembered in this browser); "low" by default
   const [effort, setEffort] = useState<Effort>(savedEffort);
   const chooseEffort = (v: Effort) => { setEffort(v); try { localStorage.setItem("simp.effort", v); } catch { /* private mode */ } };
   useEffect(() => { api.skills().then((s) => setSkills(s.filter((x) => x.enabled)), () => setSkills([])); }, []);
-  const pick = (name: string) => { setPicked((p) => p.includes(name) ? p : [...p, name]); setSkillMenu(false); area.current?.focus(); };
+  const pick = (name: string) => { setPicked((p) => p.includes(name) ? p : [...p, name]); setMenu(false); area.current?.focus(); };
   const label = (name: string) => skills?.find((s) => s.name === name)?.label ?? name;
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -730,27 +730,55 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
     if (list.length) setPending((p) => [...p.filter((x) => !list.some((f) => f.name === x.name)), ...list]);
     if (picker.current) picker.current.value = "";
   };
+  // one line by default; the box opens up (tools under the text) with chips or once the text wraps past one line
+  const [tall, setTall] = useState(false);
+  useLayoutEffect(() => {
+    const el = area.current;
+    if (!text) setTall(false);
+    else if (el && el.scrollHeight > parseFloat(getComputedStyle(el).lineHeight) * 1.6 + 12) setTall(true);
+  }, [text]);
+  const canAttach = !!(sid || onQueueFiles);
+  const expanded = tall || pending.length > 0 || picked.length > 0 || effort !== "low";
+  const plus = (
+    <button type="button" className="round attach" aria-label="More: files, skills, thinking" title="Attach files, use a skill, think harder"
+      aria-expanded={menu} disabled={uploading} onClick={() => setMenu((v) => !v)}><IconPlus size={16} /></button>
+  );
   return (
     <div className={`composer ${variant ?? ""}`}>
       {idle && <IdleSimp enabled={!busy && !disabled} />}
-      <div className={`composer-card ${pending.length || text.includes("\n") ? "expanded" : ""}`}
+      <div className={`composer-card ${expanded ? "expanded" : ""}`}
         onClick={(e) => { if (e.target === e.currentTarget) area.current?.focus(); }}>
-        {picked.length > 0 && (
-          <ul className="attached" aria-label="Skills to use" aria-live="polite">
+        {menu && (
+          <div className="plus-menu" role="menu" aria-label="Add to the message">
+            {canAttach && <button type="button" role="menuitem" onClick={() => { setMenu(false); picker.current?.click(); }}>
+              <IconPlus size={14} /> Attach files</button>}
+            <div className="think" role="group" aria-label="How hard Simp thinks">
+              <span className="muted">Think</span>
+              {(["low", "medium", "high"] as const).map((v) => (
+                <button key={v} type="button" aria-pressed={effort === v} onClick={() => chooseEffort(v)}>{EFFORT[v]}</button>
+              ))}
+            </div>
+            {skills && skills.length > 0 && <>
+              <span className="muted menu-head"><IconWand size={14} /> Skills <small>(or type /name)</small></span>
+              {skills.map((s) => (
+                <button key={s.name} type="button" role="menuitem" aria-pressed={picked.includes(s.name)} onClick={() => pick(s.name)}>
+                  <b>{s.label}</b> <span className="muted">/{s.name}</span></button>
+              ))}
+            </>}
+          </div>
+        )}
+        {(picked.length > 0 || effort !== "low") && (
+          <ul className="attached chips" aria-label="Used with this message" aria-live="polite">
+            {effort !== "low" && (
+              <li className="skill-chip">Think: {EFFORT[effort]}
+                <button type="button" aria-label="Think quick again" onClick={() => chooseEffort("low")}><IconClose size={12} /></button>
+              </li>
+            )}
             {picked.map((n) => (
-              <li key={n} className="skill-chip">{label(n)}
+              <li key={n} className="skill-chip"><IconWand size={12} /> {label(n)}
                 <button type="button" aria-label={`Remove skill ${label(n)}`} onClick={() => setPicked((p) => p.filter((x) => x !== n))}><IconClose size={12} /></button>
               </li>
             ))}
-          </ul>
-        )}
-        {skillMenu && skills && (
-          <ul className="skill-menu" role="menu" aria-label="Pick a skill">
-            {skills.length === 0 ? <li className="muted">No skills are on. Turn them on in Crafts › Skills.</li>
-              : skills.map((s) => (
-                <li key={s.name}><button type="button" role="menuitem" onClick={() => pick(s.name)}>
-                  <b>{s.label}</b> <span className="muted">/{s.name}</span></button></li>
-              ))}
           </ul>
         )}
         {pending.length > 0 && (
@@ -759,6 +787,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
             {uploading && <li className="muted">Uploading…</li>}
           </ul>
         )}
+        {!expanded && plus}
         <textarea
           ref={area} value={text} rows={1} autoFocus aria-label="Message" disabled={disabled}
           placeholder={busy ? "Add to what Simp is doing…" : "Message Simp…"}
@@ -769,36 +798,21 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
           }}
           onPaste={(e) => {  // a pasted picture waits with the attached files (named by time: screenshots are all "image.png")
             const imgs = pastedImages(e);
-            if (!imgs.length || !(sid || onQueueFiles)) return;
+            if (!imgs.length || !canAttach) return;
             e.preventDefault();
             add(imgs);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Escape" && skillMenu) { setSkillMenu(false); return; }
+            if (e.key === "Escape" && menu) { setMenu(false); return; }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
             if (e.key === "Escape" && busy) stop();
           }}
         />
+        {canAttach && <input ref={picker} type="file" multiple hidden onChange={(e) => add(e.target.files)} />}
         <div className="composer-bar">
+          {expanded && plus}
           <span className="spacer" />
           {tools}
-          <select className="effort" aria-label="Thinking effort" title="How hard Simp thinks (next message)"
-            value={effort} onChange={(e) => chooseEffort(e.target.value as Effort)}>
-            <option value="low">Think: low</option>
-            <option value="medium">Think: medium</option>
-            <option value="high">Think: high</option>
-          </select>
-          {skills && skills.length > 0 && (
-            <button type="button" className="round attach" aria-label="Use a skill" title="Use a skill (or type /name)"
-              aria-expanded={skillMenu} onClick={() => setSkillMenu((v) => !v)}><IconWand size={16} /></button>
-          )}
-          {(sid || onQueueFiles) && (
-            <>
-              <button type="button" className="round attach" aria-label="Attach files" title="Attach files"
-                disabled={uploading} onClick={() => picker.current?.click()}><IconPlus size={16} /></button>
-              <input ref={picker} type="file" multiple hidden onChange={(e) => add(e.target.files)} />
-            </>
-          )}
           {busy && empty ? (
             <button type="button" className="round stop" aria-label="Stop" title="Stop (Esc)" onClick={stop}><IconStop size={16} /></button>
           ) : (
@@ -812,6 +826,8 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
     </div>
   );
 }
+
+const EFFORT = { low: "quick", medium: "careful", high: "deep" } as const;
 
 /** "20s", "1m 20s", "1h 2m": compact elapsed time. */
 type Effort = "low" | "medium" | "high";
