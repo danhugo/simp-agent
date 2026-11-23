@@ -470,4 +470,6 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .composer-card .attached.chips li { display: inline-flex; align-items: center; gap: 4px; max-width: 220px; padding: 2px var(--sp-2);
   border-radius: 99px; font-size: var(--fs-xs); color: var(--text);
   background: color-mix(in srgb, var(--accent) 14%, var(--bg)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--bg)); }
-.model-btn .effort-tag { padding: 1px 7px; border-radius: 99px; background: var(--hover); font-size: var(--fs-xs); color: var(--muted); }
+.model-btn { gap: 6px; }
+.model-btn > span:first-child { font-weight: 550; color: var(--text); }
+.model-btn .effort-tag { font-weight: 400; color: var(--muted); }
