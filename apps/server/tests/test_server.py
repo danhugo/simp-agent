@@ -881,3 +881,16 @@ async def test_picked_skill_reaches_the_model_and_disabled_one_is_refused(env):
     prompt = stream.ctxs[0].system_prompt  # plugins are set up on the first prompt
     assert "- pptx:" in prompt and "- docx:" not in prompt and "/opt/simp/skills/pptx/SKILL.md" not in prompt
     assert any(t.name == "load_skill" for t in run.session.agent.tools)
+
+
+async def test_effort_pick_sets_reasoning_for_that_run_only(env):
+    """Chat 'Think' picker: Prompt(effort=...) sets reasoning_effort for that run; no pick = the profile's own."""
+    stream = FakeProvider(reply("a"), reply("b"))
+    _, mgr, user, _, _ = await env(stream)
+    run = await mgr.get(user, (await mgr.store.add_session(user["id"], "test", "t"))["id"])
+    await run.command(p.Prompt(text="hi", effort="high"))
+    await wait_for(lambda: run.state == "idle" and stream.calls == 1)
+    await run.command(p.Prompt(text="again"))
+    await wait_for(lambda: run.state == "idle" and stream.calls == 2)
+    assert stream.models[0].compat["reasoning_effort"] == "high"
+    assert stream.models[1].compat.get("reasoning_effort") == run.model.compat.get("reasoning_effort")

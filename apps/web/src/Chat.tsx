@@ -200,7 +200,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
                       {it.msg.text && <CopyButton label="Copy answer" text={() => it.msg.text} />}
                       {it.seq === lastAnswer && !busy && lastUser && (
                         <button type="button" className="icon-btn" aria-label="Try again" title="Ask again"
-                          onClick={() => send({ type: "prompt", text: lastUser, images: [], skills: [] })}><IconRefresh size={16} /></button>
+                          onClick={() => send({ type: "prompt", text: lastUser, images: [], skills: [], effort: savedEffort() })}><IconRefresh size={16} /></button>
                       )}
                     </div>
                   )}
@@ -686,6 +686,9 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
   const [skills, setSkills] = useState<SkillItem[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [skillMenu, setSkillMenu] = useState(false);
+  // how hard the model thinks on the next run (remembered in this browser); "low" by default
+  const [effort, setEffort] = useState<Effort>(savedEffort);
+  const chooseEffort = (v: Effort) => { setEffort(v); try { localStorage.setItem("simp.effort", v); } catch { /* private mode */ } };
   useEffect(() => { api.skills().then((s) => setSkills(s.filter((x) => x.enabled)), () => setSkills([])); }, []);
   const pick = (name: string) => { setPicked((p) => p.includes(name) ? p : [...p, name]); setSkillMenu(false); area.current?.focus(); };
   const label = (name: string) => skills?.find((s) => s.name === name)?.label ?? name;
@@ -716,7 +719,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
     const note = !names.length ? "" : t ? `\n\n${files}` : files;
     // pictures go with a new prompt for the model to look at (a message sent while busy only names them)
     const images = names.filter((n) => /\.(png|jpe?g|webp|gif)$/i.test(n)).slice(0, 6);
-    send(!busy ? { type: "prompt", text: t + note, images, skills: picked } : { type: "steer", text: t + note });
+    send(!busy ? { type: "prompt", text: t + note, images, skills: picked, effort } : { type: "steer", text: t + note });
     setText("");
     setPending([]);
     if (!busy) setPicked([]);  // a steer can't carry skills: keep the picks for the next prompt
@@ -779,6 +782,12 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
         <div className="composer-bar">
           <span className="spacer" />
           {tools}
+          <select className="effort" aria-label="Thinking effort" title="How hard Simp thinks (next message)"
+            value={effort} onChange={(e) => chooseEffort(e.target.value as Effort)}>
+            <option value="low">Think: low</option>
+            <option value="medium">Think: medium</option>
+            <option value="high">Think: high</option>
+          </select>
           {skills && skills.length > 0 && (
             <button type="button" className="round attach" aria-label="Use a skill" title="Use a skill (or type /name)"
               aria-expanded={skillMenu} onClick={() => setSkillMenu((v) => !v)}><IconWand size={16} /></button>
@@ -805,6 +814,11 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
 }
 
 /** "20s", "1m 20s", "1h 2m": compact elapsed time. */
+type Effort = "low" | "medium" | "high";
+function savedEffort(): Effort {
+  try { const v = localStorage.getItem("simp.effort"); return v === "medium" || v === "high" ? v : "low"; } catch { return "low"; }
+}
+
 export function fmtDuration(ms: number): string {
   const t = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
   return h ? `${h}h ${m}m` : m ? `${m}m ${sec}s` : `${sec}s`;

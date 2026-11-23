@@ -234,6 +234,7 @@ export interface Prompt {
   text: string;
   images: string[];
   skills: string[];
+  effort: ("low" | "medium" | "high") | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
