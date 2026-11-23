@@ -281,6 +281,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .model-btn span { overflow: hidden; text-overflow: ellipsis; }
 .model-btn:hover, .model-btn[aria-expanded="true"] { background: var(--hover); color: var(--text); }
 .model-btn .chev { transform: rotate(90deg); }
+.composer .model-btn { height: 36px; padding: 0 10px; border-radius: 10px; }  /* same height and corners as + and send */
 .model-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 240px; width: max-content; max-width: min(480px, 92vw); max-height: 60vh; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-md); }
 @media (min-width: 768px) {
