@@ -317,7 +317,6 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .composer-card.expanded .composer-bar { display: flex; align-items: center; gap: var(--sp-1); }
 .composer-card.expanded .composer-bar .spacer { display: block; flex: 1; }
 .composer-card.expanded .attached { padding: 0; gap: var(--sp-2); flex: none; }
-.composer-card.expanded .plus-menu { flex: none; }  /* flex-basis 100% means height in the column */
 .composer-card.expanded .attached li { display: inline-flex; align-items: center; gap: var(--sp-2); max-width: 260px;
   padding: var(--sp-2) var(--sp-3); border-radius: var(--radius); background: var(--panel); font-size: var(--fs-sm); }
 .composer-card.expanded .attached li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -448,18 +447,21 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .attached .skill-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--hover); }
 .skill-chip button { border: 0; background: none; color: var(--muted); padding: 0; cursor: pointer; display: inline-flex; }
 .skill-chip button:hover { color: var(--text); }
-/* the + menu: attach, thinking, skills, opening above the text inside the box */
-.plus-menu { flex-basis: 100%; display: flex; flex-direction: column; gap: 2px; padding: var(--sp-1);
-  border: 1px solid var(--border); border-radius: 14px; background: var(--code); max-height: 300px; overflow-y: auto; }
+/* the + menu: a small popover above the box (attach, skills, thinking) */
+.plus-menu { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 5; width: 240px; display: flex; flex-direction: column; gap: 2px;
+  padding: 6px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg); box-shadow: var(--shadow-md);
+  max-height: 320px; overflow-y: auto; cursor: default; }
 .plus-menu > button { display: flex; align-items: center; gap: var(--sp-2); width: 100%; text-align: left; border: 0; background: none;
-  color: var(--text); padding: var(--sp-1) var(--sp-2); border-radius: 8px; cursor: pointer; }
+  color: var(--text); padding: 8px 10px; border-radius: 8px; cursor: pointer; font: inherit; font-size: var(--fs-sm); }
+.plus-menu > button svg { color: var(--muted); flex: none; }
+.plus-menu > button .end { margin-left: auto; }
 .plus-menu > button:hover, .plus-menu > button:focus-visible, .plus-menu > button[aria-pressed="true"] { background: var(--hover); }
-.plus-menu .menu-head { display: flex; align-items: center; gap: 6px; padding: var(--sp-2) var(--sp-2) 2px; font-size: var(--fs-xs); }
-.plus-menu .think { display: flex; align-items: center; gap: 4px; padding: var(--sp-1) var(--sp-2); font-size: var(--fs-sm); }
-.plus-menu .think .muted { margin-right: var(--sp-1); }
-.plus-menu .think button { border: 1px solid var(--border); background: var(--bg); color: var(--muted); border-radius: 99px;
-  padding: 2px 10px; font: inherit; cursor: pointer; }
-.plus-menu .think button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.plus-menu .menu-back { color: var(--muted); }
+.plus-menu .menu-back svg { transform: rotate(180deg); }
+.plus-menu .think { display: flex; margin-top: 4px; padding: 3px; gap: 2px; border-radius: 10px; background: var(--hover); }
+.plus-menu .think button { flex: 1; border: 0; background: none; color: var(--muted); border-radius: 7px; padding: 5px 0;
+  font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.plus-menu .think button[aria-pressed="true"] { background: var(--bg); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .1); }
 /* skill and thinking chips: accent-tinted, so they read apart from attached files */
 .composer-card .attached.chips li { display: inline-flex; align-items: center; gap: 4px; max-width: 220px; padding: 2px var(--sp-2);
   border-radius: 99px; font-size: var(--fs-xs); color: var(--text);

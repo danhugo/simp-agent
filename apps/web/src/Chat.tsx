@@ -685,7 +685,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
   // skills the user picked (menu or "/name "): their instructions go with the next prompt
   const [skills, setSkills] = useState<SkillItem[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
-  const [menu, setMenu] = useState(false);
+  const [menu, setMenu] = useState<boolean | "skills">(false);
   // how hard the model thinks on the next run (remembered in this browser); "low" by default
   const [effort, setEffort] = useState<Effort>(savedEffort);
   const chooseEffort = (v: Effort) => { setEffort(v); try { localStorage.setItem("simp.effort", v); } catch { /* private mode */ } };
@@ -738,10 +738,16 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
     else if (el && el.scrollHeight > parseFloat(getComputedStyle(el).lineHeight) * 1.6 + 12) setTall(true);
   }, [text]);
   const canAttach = !!(sid || onQueueFiles);
+  useEffect(() => {  // a click outside the box closes the + menu
+    if (!menu) return;
+    const off = (e: PointerEvent) => { if (!(e.target as Element).closest?.(".composer-card")) setMenu(false); };
+    document.addEventListener("pointerdown", off);
+    return () => document.removeEventListener("pointerdown", off);
+  }, [menu]);
   const expanded = tall || pending.length > 0 || picked.length > 0 || effort !== "low";
   const plus = (
     <button type="button" className="round attach" aria-label="More: files, skills, thinking" title="Attach files, use a skill, think harder"
-      aria-expanded={menu} disabled={uploading} onClick={() => setMenu((v) => !v)}><IconPlus size={16} /></button>
+      aria-expanded={!!menu} disabled={uploading} onClick={() => setMenu((v) => !v)}><IconPlus size={16} /></button>
   );
   return (
     <div className={`composer ${variant ?? ""}`}>
@@ -750,27 +756,29 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
         onClick={(e) => { if (e.target === e.currentTarget) area.current?.focus(); }}>
         {menu && (
           <div className="plus-menu" role="menu" aria-label="Add to the message">
-            {canAttach && <button type="button" role="menuitem" onClick={() => { setMenu(false); picker.current?.click(); }}>
-              <IconPlus size={14} /> Attach files</button>}
-            <div className="think" role="group" aria-label="How hard Simp thinks">
-              <span className="muted">Think</span>
-              {(["low", "medium", "high"] as const).map((v) => (
-                <button key={v} type="button" aria-pressed={effort === v} onClick={() => chooseEffort(v)}>{EFFORT[v]}</button>
-              ))}
-            </div>
-            {skills && skills.length > 0 && <>
-              <span className="muted menu-head"><IconWand size={14} /> Skills <small>(or type /name)</small></span>
-              {skills.map((s) => (
+            {menu === "skills" ? <>
+              <button type="button" className="menu-back" onClick={() => setMenu(true)}><IconChevron size={14} /> Skills</button>
+              {skills?.map((s) => (
                 <button key={s.name} type="button" role="menuitem" aria-pressed={picked.includes(s.name)} onClick={() => pick(s.name)}>
-                  <b>{s.label}</b> <span className="muted">/{s.name}</span></button>
+                  {s.label} <span className="muted">/{s.name}</span></button>
               ))}
+            </> : <>
+              {canAttach && <button type="button" role="menuitem" onClick={() => { setMenu(false); picker.current?.click(); }}>
+                <IconFile size={16} /> Attach files</button>}
+              {skills && skills.length > 0 && <button type="button" role="menuitem" onClick={() => setMenu("skills")}>
+                <IconWand size={16} /> Use a skill <IconChevron size={14} className="end" /></button>}
+              <div className="think" role="group" aria-label="How hard Simp thinks" title="How hard Simp thinks">
+                {(["low", "medium", "high"] as const).map((v) => (
+                  <button key={v} type="button" aria-pressed={effort === v} onClick={() => chooseEffort(v)}>{EFFORT[v].slice(6)}</button>
+                ))}
+              </div>
             </>}
           </div>
         )}
         {(picked.length > 0 || effort !== "low") && (
           <ul className="attached chips" aria-label="Used with this message" aria-live="polite">
             {effort !== "low" && (
-              <li className="skill-chip">Think: {EFFORT[effort]}
+              <li className="skill-chip">{EFFORT[effort]}
                 <button type="button" aria-label="Think quick again" onClick={() => chooseEffort("low")}><IconClose size={12} /></button>
               </li>
             )}
@@ -827,7 +835,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
   );
 }
 
-const EFFORT = { low: "quick", medium: "careful", high: "deep" } as const;
+const EFFORT = { low: "Think quick", medium: "Think careful", high: "Think deep" } as const;
 
 /** "20s", "1m 20s", "1h 2m": compact elapsed time. */
 type Effort = "low" | "medium" | "high";
