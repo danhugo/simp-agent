@@ -448,7 +448,8 @@ export function ModelPicker({ value, options, labels, onChange, effort: withEffo
     <div className="model-pick" ref={box} onKeyDown={keys}>
       <button ref={btn} type="button" className="model-btn" aria-haspopup="listbox" aria-expanded={open} aria-label={`Model: ${label(value)}`}
         onClick={() => setOpen(!open)}>
-        <span>{[options.length ? label(value) : "", withEffort ? EFFORT_LABEL[effort] : ""].filter(Boolean).join(" · ")}</span>
+        {options.length > 0 && <span>{label(value)}</span>}
+        {withEffort && <span className="effort-tag">{EFFORT_LABEL[effort]}</span>}
         <IconChevron size={14} className="chev" />
       </button>
       {open && (

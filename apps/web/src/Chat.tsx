@@ -729,13 +729,6 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
     if (list.length) setPending((p) => [...p.filter((x) => !list.some((f) => f.name === x.name)), ...list]);
     if (picker.current) picker.current.value = "";
   };
-  // one line by default; the box opens up (tools under the text) with chips or once the text wraps past one line
-  const [tall, setTall] = useState(false);
-  useLayoutEffect(() => {
-    const el = area.current;
-    if (!text) setTall(false);
-    else if (el && el.scrollHeight > parseFloat(getComputedStyle(el).lineHeight) * 1.6 + 12) setTall(true);
-  }, [text]);
   const canAttach = !!(sid || onQueueFiles);
   useEffect(() => {  // a click outside the box closes the + menu
     if (!menu) return;
@@ -743,7 +736,6 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
     document.addEventListener("pointerdown", off);
     return () => document.removeEventListener("pointerdown", off);
   }, [menu]);
-  const expanded = tall || pending.length > 0 || picked.length > 0;
   const plus = (
     <button type="button" className="round attach" aria-label="Attach files or use a skill" title="Attach files or use a skill"
       aria-expanded={!!menu} disabled={uploading} onClick={() => setMenu((v) => !v)}><IconPlus size={16} /></button>
@@ -751,7 +743,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
   return (
     <div className={`composer ${variant ?? ""}`}>
       {idle && <IdleSimp enabled={!busy && !disabled} />}
-      <div className={`composer-card ${expanded ? "expanded" : ""}`}
+      <div className="composer-card expanded"
         onClick={(e) => { if (e.target === e.currentTarget) area.current?.focus(); }}>
         {menu && (
           <div className="plus-menu" role="menu" aria-label="Add to the message">
@@ -784,7 +776,6 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
             {uploading && <li className="muted">Uploading…</li>}
           </ul>
         )}
-        {!expanded && plus}
         <textarea
           ref={area} value={text} rows={1} autoFocus aria-label="Message" disabled={disabled}
           placeholder={busy ? "Add to what Simp is doing…" : "Message Simp…"}
@@ -807,7 +798,7 @@ export function Composer({ busy, send, variant, disabled, tools, sid, onError, o
         />
         {canAttach && <input ref={picker} type="file" multiple hidden onChange={(e) => add(e.target.files)} />}
         <div className="composer-bar">
-          {expanded && plus}
+          {plus}
           <span className="spacer" />
           {tools || <ModelPicker value="" options={[]} labels={{}} onChange={() => {}} effort />}
           {busy && empty ? (
