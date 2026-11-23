@@ -183,6 +183,7 @@ class Prompt(_M):
     text: str
     images: list[str] = Field(default_factory=list)  # workspace paths of attached pictures (the model looks; first 6)
     skills: list[str] = Field(default_factory=list)  # skills the user picked: their SKILL.md is attached to this turn
+    effort: Literal["low", "medium", "high"] | None = None  # reasoning effort for this run; None = the profile's
 
 
 class Steer(_M):

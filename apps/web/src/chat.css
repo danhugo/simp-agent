@@ -453,3 +453,6 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .skill-menu button { width: 100%; text-align: left; border: 0; background: none; color: var(--text); padding: var(--sp-1) var(--sp-2); border-radius: 8px; cursor: pointer; }
 .skill-menu button:hover, .skill-menu button:focus-visible { background: var(--hover); }
 .skill-menu li.muted { padding: var(--sp-1) var(--sp-2); font-size: var(--fs-xs); }
+.composer-bar select.effort { border: 1px solid var(--line, transparent); background: none; color: var(--muted); font: inherit;
+  font-size: var(--fs-xs); border-radius: 999px; padding: 2px 8px; cursor: pointer; }
+.composer-bar select.effort:hover, .composer-bar select.effort:focus-visible { color: var(--text); background: var(--hover); }

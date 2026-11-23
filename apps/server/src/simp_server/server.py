@@ -467,12 +467,15 @@ class Run:
             log.warning("session title failed: %s", e, extra={"session": self.sid})
             self.title_task = None  # the next assistant message tries again
 
-    async def start(self, text, fresh: bool = True, images: list = (), skills: list = ()) -> None:  # text: a prompt, or a coroutine factory (continue_, compact)
+    async def start(self, text, fresh: bool = True, images: list = (), skills: list = (), effort: str | None = None) -> None:  # text: a prompt, or a coroutine factory (continue_, compact)
         if fresh:  # a queued follow-up stays inside the same run budget
             # runtime settings (admin): a new run picks up current limits and prices; a run in progress keeps its own
             self.limits = self.mgr.limits
             self.profile = self.mgr.settings["profiles"].get(self.profile_name) or self.profile
             self.run_start = time.time()
+            # the user's pick (low/medium/high) for this run; a queued follow-up keeps it
+            self.session.agent.model = dataclasses.replace(
+                self.model, compat={**self.model.compat, "reasoning_effort": effort}) if effort else self.model
         await self.set_state("running")
         self.run_id = uuid.uuid4().hex[:8]
         log.info("run start", extra=self._ctx())
@@ -538,7 +541,7 @@ class Run:
             if bad := [n for n in picked if n not in self.enabled_skills()]:
                 raise HTTPException(400, f"skill not available: {', '.join(bad)}")
             if not self.busy:
-                await self.start(c.text, images=getattr(c, "images", []), skills=picked)
+                await self.start(c.text, images=getattr(c, "images", []), skills=picked, effort=getattr(c, "effort", None))
             elif len(self.session.agent.steering) + len(self.session.agent.follow_ups) >= MAX_QUEUED:
                 raise HTTPException(429, f"{MAX_QUEUED} messages already queued")
             elif isinstance(c, p.Steer):
