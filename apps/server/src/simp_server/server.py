@@ -36,7 +36,7 @@ from simp_agent import ai
 from simp_agent.agent import api_key_opts
 from simp_agent.agent.env import ExecutionEnv, LocalEnv
 from simp_agent.coding import clean_locale, clean_location
-from simp_agent.ai import (Context, Model, ThinkingContent, ToolResultMessage, UserMessage, from_dict,
+from simp_agent.ai import (AssistantMessage, Context, Model, ThinkingContent, ToolResultMessage, UserMessage, from_dict,
                            to_dict)
 from simp_agent.plugins import build_plugins
 from simp_agent.plugins.memory import Memory
@@ -248,11 +248,12 @@ class Run:
         self.mcp = UserMcp(self)
         self.model = build_model(self.profile)
         self.run_start = time.time()
+        self.turns, self.stop_note = 0, "run aborted"
         no_tools = self.profile.get("tools") == []  # profile `tools = []`: no core coding tools (load tests, pure chat)
         self.has_skills = getattr(mgr.sandbox, "has_skills", False) and not no_tools  # scripts need the sandbox
         self.session = AgentSession(
             self.model, tools=[] if no_tools else None, store=self, env=env, cwd=getattr(env, "root", None) or "/",
-            stream_fn=self.guarded_stream,
+            stream_fn=self.counted_stream,
             context_file=False,  # a general agent: no AGENTS.md/CLAUDE.md (reading them woke the sandbox on every first message)
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
@@ -273,6 +274,19 @@ class Run:
     def enabled_skills(self) -> set[str]:  # read every turn: a switch on the Crafts page reaches open chats
         off = self.mgr.store.disabled_skills_sync(self.user_id)
         return {s["name"] for s in self.mgr.skills if s["name"] not in off} if self.has_skills else set()
+
+    async def counted_stream(self, model, ctx, **kw):
+        """The agent's own LLM calls: at most limits.run_turns per run, then the run stops as if the user aborted."""
+        self.turns += 1
+        if self.turns > self.limits.run_turns:
+            if self.state != "aborting":
+                self.stop_note = f"run stopped: {self.limits.run_turns:g} turns reached"
+                await self.set_state("aborting")
+                self.session.abort()
+            yield {"type": "error", "message": AssistantMessage(stop_reason="aborted", error=self.stop_note)}
+            return
+        async for ev in self.guarded_stream(model, ctx, **kw):
+            yield ev
 
     @property
     def guarded_stream(self):
@@ -473,6 +487,7 @@ class Run:
             self.limits = self.mgr.limits
             self.profile = self.mgr.settings["profiles"].get(self.profile_name) or self.profile
             self.run_start = time.time()
+            self.turns, self.stop_note = 0, "run aborted"
             # the user's pick (low/medium/high) for this run; a queued follow-up keeps it
             self.session.agent.model = dataclasses.replace(
                 self.model, compat={**self.model.compat, "reasoning_effort": effort}) if effort else self.model
@@ -526,8 +541,9 @@ class Run:
         if self.state == "aborting":
             agent.clear_queues()
             await self.set_state("idle")
-            await self.durable(p.Notice, level="warning", text="run aborted")
-            log.info("run end", extra={**self._ctx(), "state": "aborted"})
+            await self.durable(p.Notice, level="warning", text=self.stop_note)
+            log.info("run end", extra={**self._ctx(), "state": "aborted", "note": self.stop_note})
+            self.stop_note = "run aborted"
             return
         last = agent.messages[-1] if agent.messages else None
         await self.set_state("error" if last and last.role == "assistant" and last.stop_reason == "error" else "idle")

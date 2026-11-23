@@ -68,7 +68,7 @@ def _emails(v, settings):
 def editable(settings: dict) -> dict:
     """key -> validator. Never secrets, buckets, endpoints, domains, mount scope or ADMIN_EMAILS."""
     keys = {"default_profile": _profile, "allowed_emails": _emails,
-            "budget.run_usd": _num(0, 10_000),
+            "budget.run_usd": _num(0, 10_000), "budget.run_turns": _num(1, 1000),
             "billing.points_per_usd": _num(0, 1e9, lo_open=True), "sandbox.paused_price_ratio": _num(0, 1),
             "workspace.quota_mb": _num(0, 1e7)}
     for name in settings["profiles"]:
@@ -76,7 +76,7 @@ def editable(settings: dict) -> dict:
     return keys
 
 
-DEFAULTS = {"budget.run_usd": budget.Limits.run_usd,
+DEFAULTS = {"budget.run_usd": budget.Limits.run_usd, "budget.run_turns": budget.Limits.run_turns,
             "billing.points_per_usd": 1000.0, "sandbox.paused_price_ratio": 0.1, "allowed_emails": [],
             "workspace.quota_mb": 10240.0}
 

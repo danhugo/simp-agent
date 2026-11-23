@@ -99,3 +99,18 @@ async def test_run_budget_spans_follow_ups(tmp_path):
                    and not run.busy and run.task.done())
     assert fp.calls == 2 and run.state == "error"
     await mgr.store.close()
+
+
+
+async def test_run_stops_after_turn_limit_like_an_abort(tmp_path):
+    """budget.run_turns: the agent's LLM calls per run. Past it the run stops with a notice, like a user abort."""
+    fp = FakeProvider(*[usage_reply("", [ToolCall(f"c{i}", "bash", {"command": "true"})], inp=0) for i in range(10)])
+    app, mgr, user, _, run = await make(tmp_path, fp, "[budget]\nrun_turns = 3\n")
+    await run.command(p.Prompt(text="go"))
+    while run.busy:
+        if run.pending and not run.answer.done():
+            run.answer.set_result("allow")
+        await asyncio.sleep(0.01)
+    await wait_for(lambda: any(e["type"] == "notice" for e in run.log))  # written just after the state goes idle
+    assert fp.calls == 3 and run.state == "idle"
+    assert [e["text"] for e in run.log if e["type"] == "notice"] == ["run stopped: 3 turns reached"]
