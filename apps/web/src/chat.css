@@ -190,7 +190,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
   padding: 2px var(--sp-2); border-radius: 99px; background: var(--code); border: 1px solid var(--border);
 }
 .composer.hero { max-width: 720px; padding: 0 var(--sp-4); }
-.composer.hero .composer-card { padding: var(--sp-2); border-radius: 27px; }
+.composer.hero .composer-card { padding: 14px 14px 12px 18px; border-radius: 20px; }
 .composer.hero textarea { font-size: var(--fs-lg); }
 /* iOS Safari zooms the page when a field under 16px gets focus */
 @media (max-width: 767px) {
@@ -312,7 +312,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 /* expanded composer (attachments or several lines): files on top, text, then a tool bar (+ left, model/send right),
    with roomier padding so nothing is pressed against the rounded corners */
 .composer-card.expanded { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--sp-2);
-  padding: var(--sp-3); border-radius: 24px; }
+  padding: 12px 12px 10px 16px; border-radius: 18px; }
 .composer-card.expanded textarea { flex: none; width: 100%; padding: 2px var(--sp-1); }
 .composer-card.expanded .composer-bar { display: flex; align-items: center; gap: var(--sp-1); }
 .composer-card.expanded .composer-bar .spacer { display: block; flex: 1; }
