@@ -12,7 +12,8 @@ from e2b import Template, default_build_logger
 
 from pathlib import Path
 
-from simp_server.sandboxes.toolset import template_alias, APT, NODE_DIR, NPM, OFFICE_APT, PIP, RUN_ENV, SKILLS_DIR, VENV
+from simp_server.sandboxes.toolset import (template_alias, APT, NODE_DIR, NPM, OFFICE_APT, PIP, RUN_ENV, SKILLS_DIR, VENV,
+                                           officecli_install)
 
 APP = Path(__file__).parents[1]  # apps/server: the build context, so skills/ copies in
 
@@ -28,6 +29,7 @@ def template(office: bool = True):
          # the fixed toolset: root-owned and read-only for `user` (see simp_server.sandboxes.toolset)
          .run_cmd([f"python -m venv {VENV}", f"{VENV}/bin/pip install --no-cache-dir " + " ".join(PIP),
                    f"mkdir -p {NODE_DIR} && npm install --prefix {NODE_DIR} --no-fund --no-audit " + " ".join(NPM)])
+         .run_cmd([officecli_install()])
          .copy("skills", SKILLS_DIR)
          .run_cmd(["chown -R root:root /opt/simp", "chmod -R go-w /opt/simp"])
          # `user` must not get root: commands run as user, only the mount runs as root (via envd, not sudo).
