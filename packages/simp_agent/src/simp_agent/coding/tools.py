@@ -124,11 +124,36 @@ async def read(args: dict, ctx) -> str:
     lines = text.splitlines()
     start = max(args.get("offset", 1), 1) - 1
     end = start + args.get("limit", MAX_LINES)
+    if stub := _same_read(ctx, p, start, end, text, paths[0]):
+        return stub
     out, info = truncate_head("\n".join(f"{i + 1}\t{line}" for i, line in enumerate(lines[start:end], start)))
     end = min(end, len(lines), start + info["kept_lines"])
     if end < len(lines):
         out += f"\n[{len(lines) - end} more lines; use offset={end + 1} to continue]"
     return out
+
+
+MAX_SAME_READ = 4  # the Nth read of the same unchanged lines is refused
+
+
+def _same_read(ctx, p: str, start: int, end: int, text: str, name: str) -> str | None:
+    """A short note instead of the content when these lines were read before and the file has not changed.
+    3rd read: also a loop warning; 4th: refused. Compaction clears ctx.state["reads"] (the old content is gone)."""
+    reads = ctx.state.setdefault("reads", dict())
+    h = hashlib.sha256(text.encode()).hexdigest()
+    prev_h, n = reads.get((p, start, end), (None, 0))
+    n = n + 1 if prev_h == h else 1
+    reads[(p, start, end)] = (h, n)
+    if n == 1:
+        return None
+    if n >= MAX_SAME_READ:
+        raise ValueError(f"BLOCKED: you have read these lines of {name} {n} times and the file has not changed. "
+                         "Stop re-reading it: use the content above and continue with the task.")
+    note = (f"{name} has not changed since you read these lines; the content is still above in this conversation. "
+            "Use it instead of reading again.")
+    if n >= 3:
+        note += " You keep re-reading it: if you are stuck in a loop, stop reading and continue with the task."
+    return note
 
 
 async def write(args: dict, ctx) -> str:
@@ -137,7 +162,27 @@ async def write(args: dict, ctx) -> str:
     return f"Wrote {len(args['content'])} chars to {args['path']}"
 
 
+EDIT_FAILS_NUDGE = 3  # from this many failed edits in a row on one file, the error says to change approach
+
+
 async def edit(args: dict, ctx) -> str:
+    """Counts failed edits per file in a row; from the 3rd, the error tells the model to stop retrying variations."""
+    p = _path(ctx, args["path"])
+    fails = ctx.state.setdefault("edit_fails", dict())
+    try:
+        out = await _edit(args, ctx)
+    except ValueError as e:
+        n = fails[p] = fails.get(p, 0) + 1
+        if n >= EDIT_FAILS_NUDGE:
+            raise ValueError(f"{e}\nThis is failed edit #{n} in a row on {args['path']}. Stop retrying variations of "
+                             "the same old_text. Either read the file again, use a longer and more unique old_text, "
+                             "or rewrite the whole file with write.") from None
+        raise
+    fails.pop(p, None)
+    return out
+
+
+async def _edit(args: dict, ctx) -> str:
     """Every edit matches the ORIGINAL text exactly once; overlaps are an error; then all apply (pi edit.ts)."""
     edits = args.get("edits") or []
     if "old_text" in args:
@@ -153,9 +198,19 @@ async def edit(args: dict, ctx) -> str:
         raise ValueError(f"{args['path']} changed since you last read it; read it again before editing")
     spans = []
     for i, e in enumerate(edits):
-        n = text.count(e["old_text"]) if e["old_text"] else 0
-        if n != 1:
-            raise ValueError(f"edits[{i}].old_text must match exactly once in {args['path']}, found {n} matches")
+        if not e["old_text"]:
+            raise ValueError(f"edits[{i}].old_text is empty")
+        n = text.count(e["old_text"])
+        if n == 0:
+            raise ValueError(f"edits[{i}].old_text not found in {args['path']}. It must match the file exactly, "
+                             "including whitespace and newlines; read the file again if unsure of its current text.")
+        if n > 1:
+            at, idx = [], -1
+            while (idx := text.find(e["old_text"], idx + 1)) != -1 and len(at) < 10:
+                if (line := str(text.count("\n", 0, idx) + 1)) not in at:
+                    at.append(line)
+            raise ValueError(f"edits[{i}].old_text matches {n} places in {args['path']} (lines {', '.join(at)}). "
+                             "It must match exactly once: add surrounding lines to make it unique.")
         start = text.index(e["old_text"])
         spans.append((start, start + len(e["old_text"]), e["new_text"]))
     spans.sort()
@@ -243,15 +298,20 @@ def _elapsed(s: float) -> str:
     return f"{m}m{sec:02d}s" if m else f"{sec}s"
 
 
-def make_bash(max_timeout_s: float | None = None):
-    """No default timeout (pi bash.ts). max_timeout_s: the host's cap; a bigger or missing timeout is clamped to it."""
+BASH_TIMEOUT_S = 180  # default: a hung command must not hold the whole run
+BASH_MAX_TIMEOUT_S = 600
+
+
+def make_bash(max_timeout_s: float | None = BASH_MAX_TIMEOUT_S, default_s: float = BASH_TIMEOUT_S):
+    """Missing timeout -> default_s; max_timeout_s (None: no cap) clamps any timeout."""
 
     async def bash(args: dict, ctx) -> str:
         timeout = args.get("timeout")
         if timeout is not None and not (math.isfinite(timeout) and timeout > 0):
             raise ValueError(f"timeout must be a positive number of seconds, got {timeout}")
+        timeout = timeout or default_s
         if max_timeout_s is not None:
-            timeout = min(timeout or max_timeout_s, max_timeout_s)
+            timeout = min(timeout, max_timeout_s)
         start = time.monotonic()
         code, out = await ctx.env.exec(args["command"], ctx.cwd, timeout, ctx.cancel, ctx.on_update)
         if code is not None:
@@ -267,11 +327,12 @@ def _p(type_: str, description: str) -> dict:
     return {"type": type_, "description": description}
 
 
-def make_tools(bash_max_timeout_s: float | None = None) -> list:
+def make_tools(bash_max_timeout_s: float | None = BASH_MAX_TIMEOUT_S) -> list:
     return [
         AgentTool("read", "Read a text file (output has line numbers; use offset/limit for big files), or look at "
                           "images (png, jpg, webp, gif): a helper looks at them and answers per file. To check several "
-                          "pictures, pass them together in paths. Read again after a change to see the new version.",
+                          "pictures, pass them together in paths. Read again after a change to see the new version. "
+                          "Use this instead of cat/head/tail in bash.",
                   _obj({"path": _p("string", "File path, relative to cwd or absolute"),
                         "paths": {"type": "array", "items": {"type": "string"},
                                   "description": f"Several images at once (up to {MAX_LOOK}), instead of path"},
@@ -292,11 +353,15 @@ def make_tools(bash_max_timeout_s: float | None = None) -> list:
                                                  "new_text": _p("string", "Replacement text")},
                                                 ["old_text", "new_text"])}}, ["path"]), edit),
         AgentTool("bash", "Run a shell command in cwd. Returns stdout+stderr (the tail if long) and exit code. "
-                          "Optional timeout in seconds; no timeout by default.",
+                          f"Timeout {BASH_TIMEOUT_S}s by default, max {BASH_MAX_TIMEOUT_S}s; it returns as soon as the "
+                          "command finishes, so give slow builds or tests a generous timeout. Do not use it for "
+                          "cat/head/tail/grep/find/ls: use read, grep, find and ls.",
                   _obj({"command": _p("string", "Shell command to run"),
-                        "timeout": _p("number", "Timeout in seconds (optional, no default timeout)")}, ["command"]),
+                        "timeout": _p("number", f"Timeout in seconds (default {BASH_TIMEOUT_S}, max {BASH_MAX_TIMEOUT_S})")}, ["command"]),
                   make_bash(bash_max_timeout_s)),
-        AgentTool("grep", "Search file contents (ripgrep, respects .gitignore). Returns file:line: text.",
+        AgentTool("grep", "Search file contents (ripgrep, respects .gitignore). Returns file:line: text. "
+                          "Use this instead of grep/rg in bash. Prefer one broad search, e.g. alternation (a|b|c), "
+                          "over several narrow ones.",
                   _obj({"pattern": _p("string", "Regex (or literal text if literal=true)"),
                         "path": _p("string", "Dir or file to search (default cwd)"),
                         "glob": _p("string", "Only files matching this glob, e.g. '*.py'"),
@@ -304,11 +369,11 @@ def make_tools(bash_max_timeout_s: float | None = None) -> list:
                         "literal": _p("boolean", "Treat pattern as plain text"),
                         "context": _p("integer", "Lines of context around each match"),
                         "limit": _p("integer", "Max output lines (default 100)")}, ["pattern"]), grep, parallel=True),
-        AgentTool("find", "Find files by glob name pattern (fd, respects .gitignore).",
+        AgentTool("find", "Find files by glob name pattern (fd, respects .gitignore). Use this instead of find in bash.",
                   _obj({"pattern": _p("string", "Glob for file names, e.g. '*.py'"),
                         "path": _p("string", "Dir to search (default cwd)"),
                         "limit": _p("integer", "Max results (default 1000)")}, ["pattern"]), find, parallel=True),
-        AgentTool("ls", "List a directory, sorted. Dirs end with '/'. Includes dotfiles.",
+        AgentTool("ls", "List a directory, sorted. Dirs end with '/'. Includes dotfiles. Use this instead of ls in bash.",
                   _obj({"path": _p("string", "Dir to list (default cwd)"),
                         "limit": _p("integer", "Max entries (default 500)")}, []), ls, parallel=True),
     ]

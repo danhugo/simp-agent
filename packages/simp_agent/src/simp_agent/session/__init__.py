@@ -303,6 +303,7 @@ class AgentSession:
             await self._emit({"type": "compaction_end", "error": str(e), "tokens_before": before, "tokens_after": before})
             return False
         a.messages.append(entry)
+        a.tool_state.pop("reads", None)  # summarized: earlier read results are gone, so the next read returns content
         if self.store:
             await _maybe_await(self.store.append(entry))
         await self._emit({"type": "message_end", "message": entry})

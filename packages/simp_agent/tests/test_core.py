@@ -73,7 +73,7 @@ async def test_edit_matches(tmp_path, text, n):
         await edit(args, ToolContext(None, LocalEnv(), str(tmp_path), None))
         assert f.read_text() == "y a b"
     else:
-        with pytest.raises(ValueError, match=f"found {n} matches"):
+        with pytest.raises(ValueError, match="not found" if n == 0 else f"matches {n} places"):
             await edit(args, ToolContext(None, LocalEnv(), str(tmp_path), None))
 
 
