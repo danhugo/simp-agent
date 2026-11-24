@@ -289,20 +289,20 @@ def check_config(settings: dict) -> str | None:
     if kind == "e2b" and store == "local":
         return ('[sandbox] kind = "e2b" with [workspace] store = "local": a cloud sandbox cannot mount a folder on this '
                 'server. Move the workspaces to a bucket first ([workspace] store = "s3"), then use e2b.')
-    if mount not in ("bind", "fuse"):
-        return f'[sandbox] mount must be "bind" or "fuse", not {mount!r}'
-    if mount == "fuse" and store != "s3":
-        return '[sandbox] mount = "fuse" needs [workspace] store = "s3" (it mounts the bucket)'
+    if mount not in ("bind", "fuse", "sync"):
+        return f'[sandbox] mount must be "bind", "fuse" or "sync", not {mount!r}'
+    if mount in ("fuse", "sync") and store != "s3":
+        return f'[sandbox] mount = "{mount}" needs [workspace] store = "s3" (the bucket holds the files)'
     if mount == "bind" and store == "s3" and kind == "docker":
-        return '[workspace] store = "s3" with Docker needs [sandbox] mount = "fuse" (a bind mount needs a local dir)'
-    if kind == "e2b" and mount != "fuse":
-        return '[sandbox] kind = "e2b" needs mount = "fuse"'
+        return '[workspace] store = "s3" with Docker needs [sandbox] mount = "sync" or "fuse" (a bind mount needs a local dir)'
+    if kind == "e2b" and mount not in ("fuse", "sync"):
+        return '[sandbox] kind = "e2b" needs mount = "sync" or "fuse"'
     if kind == "docker" and mount == "fuse" and not s.get("dev_fuse"):
         return ('[sandbox] mount = "fuse" with Docker is for tests only: the container gets CAP_SYS_ADMIN, /dev/fuse, no '
                 'AppArmor and a bridge network with access to host.docker.internal (your host). Set [sandbox] '
                 'dev_fuse = true to use it anyway.')
     w = settings.get("workspace", dict())
-    if store == "s3" and kind != "local" and w.get("mount_scope", "sts") == "none" and not w.get("dev_unscoped_mount"):
+    if store == "s3" and kind != "local" and mount == "fuse" and w.get("mount_scope", "sts") == "none" and not w.get("dev_unscoped_mount"):
         return ('[workspace] mount_scope = "none" hands the store key itself (every user\'s files) to each sandbox. '
                 'Dev only: set [workspace] dev_unscoped_mount = true to use it anyway.')
     return None

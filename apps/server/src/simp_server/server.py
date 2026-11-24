@@ -1195,6 +1195,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             raise HTTPException(507, "workspace full: delete some files first")
         await fs(files.write(u["id"], path, bytes(data)))
         await quota.added(u["id"], len(data))
+        if hasattr(sandbox, "web_changed"):
+            sandbox.web_changed(u["id"])  # sync mode: the running sandbox takes the file in before its next call
         return {"ok": True}
 
     @app.delete("/api/sessions/{sid}/files")
@@ -1204,6 +1206,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         if sid:
             await mgr.get(u, sid)
         await fs(files.delete(u["id"], path))
+        if hasattr(sandbox, "web_changed"):
+            sandbox.web_changed(u["id"])
         await quota.recount(u["id"])  # the next sandbox call remounts /work read-write if there is room now
         return await quota.usage(u["id"])
 

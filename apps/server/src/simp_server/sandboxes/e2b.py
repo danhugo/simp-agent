@@ -1,8 +1,11 @@
 """E2BSandbox (design 2026-11-16 step 3): one E2B sandbox per USER, created lazily on the first tool call that needs it,
 shared by the user's sessions. `[sandbox] kind = "e2b"`, needs `[workspace] store = "s3"`.
 
-- /work is an s3fs mount of the user's bucket prefix (scoped credential from the store); every file op and command
-  runs in the sandbox (one writer). The Files panel goes to the store, never here.
+- [sandbox] mount = "sync": /work is the sandbox's own disk. The server fills it at create (snapshot + bucket), pushes
+  changes after each tool call in the background and before pause/kill, and takes Files panel changes in before the
+  next call (wsync.py). No bucket credential or route in the sandbox.
+- mount = "fuse" (default): /work is an s3fs mount of the user's bucket prefix (scoped credential from the store);
+  every file op and command runs in the sandbox (one writer). The Files panel goes to the store, never here.
 - /home/user is the sandbox's disk and is not saved: libraries are fixed in the template (toolset.py); repos are
   mirrored to /work after each tool call (repos.py). Old home snapshots (/work/.simp/home.tar.zst) are deleted at create.
 - Lifecycle: create (mount, restore repos) -> running -> idle `idle_pause_s` -> pause ->
@@ -31,6 +34,7 @@ from simp_server import policy, workspace
 from simp_server.sandboxes import Compute, toolset, SandboxLimit, valid_id
 from simp_server.sandboxes.docker import S3FS
 from simp_server.sandboxes.repos import mirror_locked, remirror_if_failed, restore_repos
+from simp_server.sandboxes.wsync import WorkSync
 
 log = logging.getLogger("simp_server")
 NO_NET = policy.NO_NET
@@ -147,6 +151,28 @@ async def _began(sbx, marker: str) -> bool:
     return r.stdout.strip() != "no"  # anything unexpected counts as "began": never risk a second run
 
 
+class _Port:
+    """wsync.Port for the box's current sandbox, as `user`."""
+
+    def __init__(self, box: "_Box"):
+        self.box = box
+
+    async def sh(self, command: str, timeout: float = 300) -> tuple[int | None, str]:
+        return await _run(self.box.sbx, command, "/", timeout, asyncio.Event())
+
+    async def put(self, path: str, data: bytes) -> None:
+        await self.box.sbx.files.write(path, data)
+
+    async def get(self, path: str) -> bytes:
+        from e2b.exceptions import NotFoundException
+        try:
+            return bytes(await self.box.sbx.files.read(path, format="bytes"))
+        except NotFoundException as e:
+            if _gone(e):
+                raise
+            raise FileNotFoundError(path) from None
+
+
 class _Box:
     """A user's E2B sandbox state, shared by their sessions' envs. state: none | running | stopping | paused.
     "stopping" (pause/kill in progress, under the lock): ensure() waits for the lock instead of using the box."""
@@ -162,6 +188,7 @@ class _Box:
         self.creds_until = 0.0  # monotonic time the mount credential expires (0 = none)
         self.ro = False  # /work mounted read-only (workspace full)
         self.noted = ""  # last quota state told to the agent ("warn" once; "full" on every command)
+        self.ws: WorkSync | None = None  # mount = "sync": /work is the sandbox's disk, synced with the bucket
 
     async def exec(self, command, cwd, timeout, cancel, on_output=None, user="user"):  # raw: no start, no busy count
         return await _run(self.sbx, command, cwd, timeout, cancel, on_output, user=user)
@@ -189,6 +216,11 @@ class E2BEnv:
             await self.sandbox.ensure(self.box)
             await self.sandbox.fresh_creds(self.box, need_s)
             await self.sandbox.apply_quota(self.box)
+            if self.box.ws is not None:
+                try:
+                    await self.box.ws.before_call(_Port(self.box))
+                except Exception as e:
+                    log.warning("workspace reconcile failed: %s", e, extra={"user": self.box.user_id})
             self.used = True
             yield self.box.sbx
         finally:
@@ -287,13 +319,16 @@ class E2BEnv:
             return
         self.internal = True
         try:
-            await self.exec("sync", "/work", 60, asyncio.Event())
+            if self.box.ws is None:
+                await self.exec("sync", "/work", 60, asyncio.Event())
             if self.sandbox.quota is not None:
                 self.sandbox.quota.touch(self.box.user_id)  # background recount of the bucket prefix, throttled
             if not self.box.ro:  # read-only /work: the mirror fails; it is retried before a kill (remirror_if_failed)
                 await mirror_locked(self, self.box, REPOS, MIRRORS, self.session_id, cwd="/work")
             else:
                 self.box.mirror_failed = True
+            if self.box.ws is not None:
+                self.box.ws.push_soon(_Port(self.box))
         except Exception as e:
             log.warning("after-tool sync failed: %s", e, extra={"session": self.session_id})
         finally:
@@ -316,6 +351,8 @@ class E2BSandbox:
             self.template = toolset.template_alias(bool(s.get("office", True)))
         # egress: "allowlist" (default) = only `egress_allow` + the workspace endpoint; "open" = no filter (dev)
         self.egress, self.egress_allow = s.get("egress", "allowlist"), list(s.get("egress_allow", []))
+        # "fuse": /work is an s3fs mount of the bucket; "sync": the sandbox's own disk, synced by the server (wsync.py)
+        self.mount = s.get("mount", "fuse")
         self.toolset_line = toolset.prompt_list(bool(s.get("office", True)))  # named in policy deny reasons
         fixed = f"{self.toolset_line} Libraries are fixed: do not install packages."
         self.prompt_hint = " ".join([SANDBOX_HINT, fixed, *([] if self.egress == "open" else [NO_NET])])
@@ -334,6 +371,8 @@ class E2BSandbox:
         through the server's web tools. Hosts are matched by name. DNS (8.8.8.8) stays open: a very slow channel."""
         if self.egress == "open":
             return None
+        if self.mount == "sync":  # the server moves the files: the sandbox needs no route to the bucket
+            return {"allow_out": list(self.egress_allow), "deny_out": ["0.0.0.0/0"]}
         host = urllib.parse.urlsplit(getattr(self.store, "mount_endpoint", "") or "").hostname
         if not host:  # deny-all with no store host would leave /work unmountable with an obscure s3fs error
             raise RuntimeError("sandbox egress allowlist needs the workspace endpoint ([workspace] endpoint or "
@@ -407,7 +446,11 @@ class E2BSandbox:
         box.sbx_id, box.state = box.sbx.sandbox_id, "running"
         box.last = box.metered = box.timeout_at = time.monotonic()
         try:
-            if not resumed or not await self._mounted(box):
+            if self.mount == "sync":
+                if box.ws is None or not resumed:
+                    box.ws = WorkSync(self.store, box.user_id, self.quota)
+                    box.ws.web_dirty = resumed  # adopted after a server restart: the panel may have changed files
+            elif not resumed or not await self._mounted(box):
                 await self._mount(box)
             if not resumed:
                 _, out = await box.exec(SUDO_CHECK, "/", 20, asyncio.Event())
@@ -415,6 +458,8 @@ class E2BSandbox:
                     raise RuntimeError("e2b template gives `user` passwordless sudo: rebuild it with "
                                        "apps/server/sandboxes/e2b_template.py")
                 await box.exec(CLEAN_SNAPSHOT_SH, "/home/user", 600, asyncio.Event())
+                if box.ws is not None:
+                    await box.ws.pull(_Port(box))
                 await restore_repos(box, REPOS, MIRRORS, cwd="/work")
         except Exception:
             await self._kill(box, finalize=False)
@@ -451,6 +496,8 @@ class E2BSandbox:
     async def apply_quota(self, box: _Box) -> None:
         """Before a call (and on the idle tick): switch /work to read-only once the workspace is full, back to
         read-write once there is room. Only when no other call uses the mount (like fresh_creds)."""
+        if self.mount == "sync":  # no mount: wsync stops uploading past the quota
+            return
         want = await self._want_ro(box)
         if want == box.ro:
             return
@@ -464,6 +511,9 @@ class E2BSandbox:
     async def quota_note(self, box: _Box) -> str:
         if self.quota is None:
             return ""
+        if box.ws is not None and box.ws.full:
+            return ("[workspace full: new and changed files in /work are NOT saved. Tell the user to delete files in "
+                    "the Files panel; saving resumes once there is room.]")
         try:
             u = await self.quota.usage(box.user_id)
         except Exception:
@@ -509,6 +559,7 @@ class E2BSandbox:
             if box.state != "running" or idle and box.active:
                 return
             box.state = "stopping"  # before any await: a new call waits on box.lock, then resumes
+            await self._flush(box)
             try:
                 await box.sbx.pause()
                 box.state = "paused"
@@ -534,12 +585,31 @@ class E2BSandbox:
         if finalize:
             with contextlib.suppress(Exception):
                 await remirror_if_failed(box, REPOS, MIRRORS)
-            with contextlib.suppress(Exception):
-                await box.exec("sync; umount /work", "/", 60, asyncio.Event(), user="root")
+            if box.ws is not None:
+                await self._flush(box)
+            else:
+                with contextlib.suppress(Exception):
+                    await box.exec("sync; umount /work", "/", 60, asyncio.Event(), user="root")
         with contextlib.suppress(Exception):
             await box.sbx.kill()
-        box.state, box.sbx, box.sbx_id = "none", None, None
+        box.state, box.sbx, box.sbx_id, box.ws = "none", None, None, None
         await self.meter(box)
+
+    async def _flush(self, box: _Box) -> None:
+        """Sync mode, before pause/kill: the last push and the snapshot. A failure is logged: after a pause the
+        changes are still on the paused disk (the next push sends them); after a kill they are lost."""
+        if box.ws is None or box.sbx is None:
+            return
+        try:
+            await box.ws.flush(_Port(box))
+        except Exception as e:
+            log.error("WORKSPACE FLUSH FAILED (changes since the last push only in the sandbox): %s", e,
+                      extra={"user": box.user_id})
+
+    def web_changed(self, user_id: str) -> None:
+        """The Files panel wrote or deleted in the bucket: the sandbox takes it in before its next call."""
+        if (box := self.boxes.get(user_id)) is not None and box.ws is not None:
+            box.ws.web_dirty = True
 
     async def _kill_idle(self, box: _Box) -> None:
         async with box.mirror_lock, box.lock:
