@@ -14,6 +14,11 @@ function oauthResult(): { ok: boolean; text: string } | null {
 const ICONS: Record<string, React.ReactNode> = {
   gmail: <><rect x="3" y="6" width="18" height="13" rx="2" fill="#fff" stroke="#c5221f" /><path d="M3.5 7l8.5 6.5L20.5 7" fill="none" stroke="#ea4335" strokeWidth="2" /></>,
   drive: <><path d="M9 4h6l6 10.5h-6z" fill="#fbbc04" /><path d="M9 4L3 14.5l3 5.5 6-10.5z" fill="#0f9d58" /><path d="M6 20h12l3-5.5H9z" fill="#4285f4" /></>,
+  linear: <><rect x="3" y="3" width="18" height="18" rx="5" fill="#5e6ad2" /><path d="M6.5 13.5l4 4M6.2 10.8l7 7M7.5 8l8.5 8.5M10 6.3l7.7 7.7" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" /></>,
+  notion: <><rect x="4" y="3" width="16" height="18" rx="3" fill="#fff" stroke="var(--text)" strokeWidth="1.5" /><path d="M9 16V8l6 8V8" fill="none" stroke="var(--text)" strokeWidth="1.6" /></>,
+  sentry: <><rect x="3" y="3" width="18" height="18" rx="5" fill="#362d59" /><path d="M7 17h3a5 5 0 00-2.5-4.3L12 6l5.5 11h-2" fill="none" stroke="#fff" strokeWidth="1.5" strokeLinejoin="round" /></>,
+  atlassian: <><rect x="3" y="3" width="18" height="18" rx="5" fill="#0c66e4" /><path d="M9 11l-3 6h5zM12 6c-1.5 2.5-1.5 5 0 8l1.5 3H18z" fill="#fff" /></>,
+  canva: <><circle cx="12" cy="12" r="9.5" fill="#00c4cc" /><path d="M15 9.5a3.5 3.5 0 100 5" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" /></>,
   deepwiki: <><rect x="3" y="3" width="18" height="18" rx="4" fill="#1f6feb" /><path d="M8 7h4a5 5 0 010 10H8z" fill="none" stroke="#fff" strokeWidth="2" /></>,
   context7: <><rect x="3" y="3" width="18" height="18" rx="4" fill="#0e1116" /><path d="M8 7h8l-5 10" fill="none" stroke="#3fd28e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></>,
   mslearn: <><rect x="3" y="3" width="8.5" height="8.5" fill="#f25022" /><rect x="12.5" y="3" width="8.5" height="8.5" fill="#7fba00" /><rect x="3" y="12.5" width="8.5" height="8.5" fill="#00a4ef" /><rect x="12.5" y="12.5" width="8.5" height="8.5" fill="#ffb900" /></>,
