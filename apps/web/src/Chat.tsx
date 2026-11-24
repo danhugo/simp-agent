@@ -146,6 +146,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
   // Tool calls in a row (across the model's steps, until it writes text again) form one group,
   // so 20 page opens are one line ("Searched the web 2 times, opened 18 pages") instead of 20.
   const groupCalls = new Map<number, ToolCall[]>(), absorbed = new Set<number>();
+  const batches = parallelBatches(state.items.flatMap((it) => it.kind === "assistant" ? [it.msg.tool_calls] : []));
   let owner: number | null = null;
   for (const it of state.items) {
     if (it.kind !== "assistant") { owner = null; continue; }
@@ -191,7 +192,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
                   {it.msg.text && <Md text={it.msg.text} onFile={onPreviewFile} />}
                   {it.msg.error && it.msg.error !== "aborted" && <div className="notice error">{it.msg.error}</div>}
                   {(groupCalls.get(it.seq)?.length ?? 0) > 0 &&
-                    <ToolGroup calls={groupCalls.get(it.seq)!} state={state} send={send} sid={sid} onOpenFile={onOpenFile} onPreviewFile={onPreviewFile} onError={onError} />}
+                    <ToolGroup calls={groupCalls.get(it.seq)!} batches={batches} state={state} send={send} sid={sid} onOpenFile={onOpenFile} onPreviewFile={onPreviewFile} onError={onError} />}
                   {/* copy only the answer, not an in-between step that called tools (its button landed under the tool) */}
                   {((it.msg.text && it.msg.tool_calls.length === 0) || it.msg.error === "aborted") && (
                     <div className={`msg-actions ${it.seq === lastAnswer || it.msg.error === "aborted" ? "last" : ""}`}>
@@ -442,14 +443,44 @@ function FileCard({ path, sid, onOpen, onPreview, onError }: { path: string; sid
 type ToolProps = { state: ChatState; send: Send; sid: string; onOpenFile?: (p: string) => void; onPreviewFile?: (p: string) => void; onError: (e: unknown) => void };
 
 /** A few calls show as rows; more fold into one summary line. Calls still running or waiting for you stay visible. */
-function ToolGroup({ calls: all, ...p }: ToolProps & { calls: ToolCall[] }) {
+// Tools the agent runs at once when they sit next to each other in one message (AgentTool.parallel=True).
+const PARALLEL = new Set(["read", "grep", "find", "ls", "web_search", "web_fetch", "load_skill", "memory_search", "office_read"]);
+
+/** call id -> batch number, for runs of 2+ calls of one message that ran at the same time. */
+export function parallelBatches(messages: ToolCall[][]): Map<string, number> {
+  const out = new Map<string, number>();
+  let n = 0;
+  for (const calls of messages) {
+    let run: ToolCall[] = [];
+    const flush = () => { if (run.length > 1) { n++; for (const c of run) out.set(c.id, n); } run = []; };
+    for (const c of calls) { if (PARALLEL.has(c.name)) run.push(c); else flush(); }
+    flush();
+  }
+  return out;
+}
+
+/** Rows; calls that ran at the same time sit together in one box. */
+function Rows({ calls, batches, ...p }: ToolProps & { calls: ToolCall[]; batches: Map<string, number> }) {
+  const chunks: ToolCall[][] = [];
+  for (const c of calls) {
+    const last = chunks[chunks.length - 1], b = batches.get(c.id);
+    if (last && b !== undefined && batches.get(last[0].id) === b) last.push(c); else chunks.push([c]);
+  }
+  return <>{chunks.map((ch) => ch.length === 1 ? <Tool key={ch[0].id} call={ch[0]} {...p} />
+    : <div key={ch[0].id} className="tool-parallel" aria-label={`${ch.length} at once`}>
+        <span className="tool-parallel-label small muted">{ch.length} at once</span>
+        {ch.map((c) => <Tool key={c.id} call={c} {...p} />)}
+      </div>)}</>;
+}
+
+function ToolGroup({ calls: all, batches, ...p }: ToolProps & { calls: ToolCall[]; batches: Map<string, number> }) {
   // link cards are part of the answer: never folded into the summary line
   const cards = all.filter((c) => c.name === "show_cards"), calls = all.filter((c) => c.name !== "show_cards");
   const cardEls = cards.map((c) => <Tool key={c.id} call={c} {...p} />);
   if (!calls.length) return <>{cardEls}</>;
   const finished = calls.filter((c) => p.state.results[c.id]);
   const active = calls.filter((c) => !p.state.results[c.id]);
-  if (calls.length <= 3 || finished.length <= 1) return <>{calls.map((c) => <Tool key={c.id} call={c} {...p} />)}{cardEls}</>;
+  if (calls.length <= 3 || finished.length <= 1) return <><Rows calls={calls} batches={batches} {...p} />{cardEls}</>;
   const failed = finished.filter((c) => p.state.results[c.id].is_error).length;
   return (
     <>
@@ -463,7 +494,7 @@ function ToolGroup({ calls: all, ...p }: ToolProps & { calls: ToolCall[] }) {
         </summary>
         <div className="tool-group-body">{finished.map((c) => <Tool key={c.id} call={c} {...p} />)}</div>
       </details>
-      {active.map((c) => <Tool key={c.id} call={c} {...p} />)}
+      <Rows calls={active} batches={batches} {...p} />
       {cardEls}
     </>
   );
