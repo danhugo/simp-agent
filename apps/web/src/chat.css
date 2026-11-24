@@ -473,3 +473,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .model-btn { gap: 6px; }
 .model-btn > span:not(.effort-tag) { font-weight: 550; color: var(--text); }
 .model-btn .effort-tag { font-weight: 400; color: var(--muted); }
+
+/* calls that ran at the same time: one box */
+.tool-parallel { border-left: 2px solid var(--border); padding-left: 8px; margin: 4px 0; }
+.tool-parallel-label { display: block; margin: 2px 0; }
