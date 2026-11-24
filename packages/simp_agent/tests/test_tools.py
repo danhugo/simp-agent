@@ -89,9 +89,9 @@ async def test_multi_edit(tmp_path):
                                                      {"old_text": "two 3", "new_text": "y"}])
     assert r.is_error and "overlap" in r.content
     r = await call(tmp_path, "edit", path="f", edits=[{"old_text": "two", "new_text": "x"}])
-    assert r.is_error and "found 2" in r.content
+    assert r.is_error and "matches 2 places" in r.content
     r = await call(tmp_path, "edit", path="f", old_text="nine", new_text="x")
-    assert r.is_error and "found 0" in r.content
+    assert r.is_error and "not found" in r.content
     r = await call(tmp_path, "edit", path="f", old_text="3", new_text="three")
     assert not r.is_error and f.read_text() == "two two three"
 
@@ -112,3 +112,50 @@ async def test_edit_fails_when_file_changed_since_read(tmp_path):
     assert r.is_error and "read it again" in r.content and f.read_text() == "ONE\nTWO\nthree\n"
     await run("read", path="f.txt")
     assert not (await run("edit", path="f.txt", old_text="three", new_text="3")).is_error
+
+
+async def _ctx_call(tmp_path, ctx, name, **args):
+    return await run_tool(make_tools(), ToolCall("c", name, args), ctx)
+
+
+def _ctx(tmp_path):
+    async def upd(text):
+        pass
+    return ToolContext(asyncio.Event(), LocalEnv(), str(tmp_path), upd)
+
+
+async def test_read_same_lines_unchanged_gives_note_then_blocks(tmp_path):
+    (tmp_path / "f").write_text("a\nb\n")
+    c = _ctx(tmp_path)
+    assert "1\ta" in (await _ctx_call(tmp_path, c, "read", path="f")).content
+    r2 = await _ctx_call(tmp_path, c, "read", path="f")
+    assert "has not changed" in r2.content and "1\ta" not in r2.content and "loop" not in r2.content
+    r3 = await _ctx_call(tmp_path, c, "read", path="f")
+    assert "loop" in r3.content
+    r4 = await _ctx_call(tmp_path, c, "read", path="f")
+    assert r4.is_error and "BLOCKED" in r4.content
+
+
+async def test_read_full_again_after_change_or_other_range(tmp_path):
+    (tmp_path / "f").write_text("a\nb\n")
+    c = _ctx(tmp_path)
+    await _ctx_call(tmp_path, c, "read", path="f")
+    assert "2\tb" in (await _ctx_call(tmp_path, c, "read", path="f", offset=2)).content
+    (tmp_path / "f").write_text("a\nc\n")
+    assert "2\tc" in (await _ctx_call(tmp_path, c, "read", path="f")).content
+    c.state.pop("reads")  # what compaction does
+    assert "1\ta" in (await _ctx_call(tmp_path, c, "read", path="f")).content
+
+
+async def test_edit_errors_steer_and_nudge_after_three(tmp_path):
+    (tmp_path / "f").write_text("x\ny\nx\n")
+    c = _ctx(tmp_path)
+    r = await _ctx_call(tmp_path, c, "edit", path="f", old_text="x", new_text="z")
+    assert r.is_error and "lines 1, 3" in r.content and "unique" in r.content
+    r = await _ctx_call(tmp_path, c, "edit", path="f", old_text="nope", new_text="z")
+    assert r.is_error and "not found" in r.content and "failed edit" not in r.content
+    r = await _ctx_call(tmp_path, c, "edit", path="f", old_text="nope", new_text="z")
+    assert "failed edit #3" in r.content
+    assert not (await _ctx_call(tmp_path, c, "edit", path="f", old_text="y", new_text="z")).is_error
+    r = await _ctx_call(tmp_path, c, "edit", path="f", old_text="nope", new_text="z")
+    assert "failed edit" not in r.content  # success reset the count

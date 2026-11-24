@@ -80,3 +80,11 @@ async def test_any_tool_abort_says_interrupted(tmp_path):
 
     r = await run_tool([AgentTool("t", "", {"type": "object"}, boom)], ToolCall("c", "t", {}), ctx(tmp_path, cancel))
     assert r.is_error and r.content == "Interrupted by the user"
+
+
+async def test_default_timeout_applies(tmp_path, monkeypatch):
+    from simp_agent.coding import tools
+    bash = tools.make_bash(default_s=0.5)
+    t = time.monotonic()
+    r = await run_tool([tools.AgentTool("bash", "", {}, bash)], ToolCall("c", "bash", {"command": "sleep 30"}), ctx(tmp_path))
+    assert time.monotonic() - t < 5 and "timed out after 0.5 seconds" in r.content
