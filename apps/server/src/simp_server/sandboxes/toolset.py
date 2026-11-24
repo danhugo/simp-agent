@@ -6,7 +6,7 @@ PIP = ["pandas", "numpy", "matplotlib", "openpyxl", "python-docx", "python-pptx"
        "lxml", "pillow", "requests", "beautifulsoup4", "defusedxml", "markitdown", "pdf2image", "pytesseract"]
 APT = ["git", "ripgrep", "fd-find", "zstd", "s3fs", "ffmpeg", "imagemagick", "procps", "util-linux", "curl",
        "ca-certificates", "nodejs", "tesseract-ocr", "tesseract-ocr-vie", "tesseract-ocr-eng", "fonts-noto-core",
-       "fonts-dejavu-core", "npm", "pandoc", "poppler-utils", "qpdf"]
+       "fonts-dejavu-core", "fonts-crosextra-carlito", "fonts-crosextra-caladea", "npm", "pandoc", "poppler-utils", "qpdf"]
 OFFICE_APT = ["libreoffice-nogui"]
 # node libraries the skills (apps/server/skills) use, installed under NODE_DIR and found through NODE_PATH
 NPM = ["pptxgenjs", "docx", "react", "react-dom", "react-icons", "sharp"]

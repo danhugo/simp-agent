@@ -40,17 +40,18 @@ def plain(el) -> list[str]:
     return ["".join(c.itertext()).strip() for c in items] if items else ["".join(el.itertext()).strip()]
 
 
-def est(texts: list[str], w: float, s: float, lh: float = 1.25, gap: float = 0.4) -> float:
-    per = max(1, int(w / (0.5 * s)))
+def est(texts: list[str], w: float, s: float, lh: float = 1.25, gap: float = 0.4, em: float = 0.55) -> float:
+    per = max(1, int(w / (em * s)))
     lines = sum(max(1, math.ceil(len(t) / per)) for t in texts if t) or 1
     return lines * s * lh + max(0, len(texts) - 1) * s * gap
 
 
-def fit(texts: list[str], w: float, h: float, size: float, low: float, lh: float = 1.25, gap: float = 0.4) -> float:
+def fit(texts: list[str], w: float, h: float, size: float, low: float, lh: float = 1.25, gap: float = 0.4,
+        em: float = 0.55) -> float:
     """Largest size from `size` down to `low` whose estimated wrapped height fits w x h (0.52 em per character)."""
     s = size
     while s > low:
-        per = max(1, int(w / (0.5 * s)))
+        per = max(1, int(w / (em * s)))
         lines = sum(max(1, math.ceil(len(t) / per)) for t in texts if t) or 1
         if lines * s * lh + max(0, len(texts) - 1) * s * gap <= h:
             return s
@@ -63,7 +64,17 @@ def E(tag, **a):
 
 
 def text(x, y, w, h, body, font, size, color, **a):
-    """A <text> whose content is the given string or a copy of an element's inline/list content."""
+    """A <text> whose content is the given string or a copy of an element's inline/list content. Last guard: the size
+    shrinks (to 60% at most) until the estimate fits the box, so a layout never emits an overflowing box."""
+    texts = [body] if isinstance(body, str) else plain(body)
+    em = 0.62 if (a.get("bold") == "true" or font in ("display", "heading")) else 0.56
+    lh = float(a.get("line_height") or 1.2)
+    pad = 2 * float(a.get("space_after") or 0) / max(size, 1)
+    floor = max(10.0, size * 0.6)
+    while size > floor and est(texts, w, size, lh, 0.4 + pad, em) > h:
+        size -= 1
+    if "space_after" in a:
+        a["space_after"] = round(size * 0.5)
     el = E("text", x=x, y=y, width=w, height=h, font=font, size=float(size), color=color, **a)
     if isinstance(body, str):
         el.text = body
@@ -97,7 +108,7 @@ class Layouts:
     def chrome(self, el, page, dark=False) -> list:
         c = self.c
         title = el.get("title") or ""
-        size = fit([title], CW, 72, 40, 28, lh=1.15)
+        size = fit([title], CW, 72, 40, 24, lh=1.1, em=0.6)
         out = [E("background", color=c["bg"]),
                E("text", id="title", x=M, y=40, width=CW, height=72, font="heading", size=float(size), color=c["ink"],
                  anchor="bottom", line_height="1.1"),
@@ -107,13 +118,13 @@ class Layouts:
         out[1].text, out[3].text = title, f"{page:02d}"
         return out
 
-    def items_text(self, body, x, y, w, h, size=24.0, low=16.0, color=None, lh=1.3, center=False):
+    def items_text(self, body, x, y, w, h, size=24.0, low=16.0, color=None, lh=1.3, center=False, id="items"):
         """A list or paragraph block, as large as fits; vertically centred when it fills well under the box."""
         texts = plain(body)
         s = fit(texts, w, h, size, low, lh=lh, gap=0.6)
         anchor = "middle" if center and est(texts, w, s, lh, 0.6) < 0.7 * h else "top"
         return text(x, y, w, h, body, "body", s, color or self.c["ink"], line_height=str(lh), space_after=round(s * 0.6),
-                    anchor=anchor)
+                    anchor=anchor, id=id)
 
     # -- layouts --------------------------------------------------------------------------------------------------
     def l_cover(self, el, page, total, closing=False):
@@ -123,9 +134,9 @@ class Layouts:
         out = [E("background", color=c["primary"]),
                E("shape", id="band", type="rect", x=0, y=0, width=24, height=720, fill=c["accent"]),
                E("shape", id="bar", type="rect", x=M + 16, y=196, width=96, height=6, fill=c["accent"]),
-               text(M + 16, 220, 1040, 230, title, "display", ts, c["on"], anchor="bottom", line_height="1.1")]
+               text(M + 16, 220, 1040, 230, title, "display", ts, c["on"], anchor="bottom", line_height="1.1", id="cover-title")]
         if sub:
-            out.append(text(M + 16, 470, 1000, 90, sub, "body", fit([sub], 1000, 90, 26, 18), c["on"]))
+            out.append(text(M + 16, 470, 1000, 90, sub, "body", fit([sub], 1000, 90, 26, 18), c["on"], id="subtitle"))
         if meta:
             out.append(text(M + 16, 640, 1000, 32, meta, "caption", 16.0, c["on"]))
         return out
@@ -138,7 +149,7 @@ class Layouts:
         title, lead = el.get("title") or "", el.get("lead") or ""
         out = [E("background", color=c["primary"]),
                text(M, 150, 400, 140, el.get("number") or f"{page:02d}", "display", 96.0, c["accent"]),
-               text(M, 300, 1100, 170, title, "display", fit([title], 1100, 170, 56, 36, lh=1.1), c["on"],
+               text(M, 300, 1100, 170, title, "display", fit([title], 1100, 170, 56, 36, lh=1.1), c["on"], id="section-title",
                     line_height="1.1")]
         if lead:
             out.append(text(M, 490, 1000, 100, lead, "body", fit([lead], 1000, 100, 24, 18), c["on"]))
@@ -149,7 +160,7 @@ class Layouts:
         q, by = el.get("quote") or "".join(el.itertext()).strip(), el.get("by") or ""
         out = [E("background", color=c["primary"]),
                text(M + 40, 60, 240, 220, "“", "display", 160.0, c["accent"]),
-               text(M + 40, 230, 1060, 300, q, "display", fit([q], 1060, 300, 44, 26, lh=1.25), c["on"], line_height="1.25")]
+               text(M + 40, 230, 1060, 300, q, "display", fit([q], 1060, 300, 44, 26, lh=1.25), c["on"], line_height="1.25", id="quote")]
         if by:
             out.append(text(M + 40, 560, 1060, 40, f"— {by}", "body", 22.0, c["on"]))
         return out
@@ -161,9 +172,12 @@ class Layouts:
         w = CW if note is None else 740
         out.append(self.items_text(el, M, TOP, w, BOTTOM - TOP, 30, 18, center=True))
         if note is not None:
-            out += [E("shape", id="note-card", type="rect", x=840, y=TOP, width=376, height=BOTTOM - TOP, fill=c["surface"],
+            nt = plain(note)
+            ns = fit(nt, 320, BOTTOM - TOP - 56, 22, 15, lh=1.35, gap=0.6)
+            nh = min(BOTTOM - TOP, max(160, est(nt, 320, ns, 1.35, 0.6) + ns + 56))
+            out += [E("shape", id="note-card", type="rect", x=840, y=TOP, width=376, height=nh, fill=c["surface"],
                       corner_radius=12),
-                    self.items_text(note, 868, TOP + 28, 320, BOTTOM - TOP - 56, 22, 15, lh=1.35)]
+                    self.items_text(note, 868, TOP + 28, 320, nh - 56, ns, ns, lh=1.35, id="note")]
         return out
 
     def l_two_col(self, el, page, total):
@@ -177,8 +191,8 @@ class Layouts:
             x = M + i * (w + 32)
             out += [E("shape", id=f"col{i + 1}", type="rect", x=x, y=TOP, width=w, height=BOTTOM - TOP, fill=c["surface"],
                       corner_radius=12),
-                    text(x + 32, TOP + 28, w - 64, 44, col.get("title") or "", "heading", 26.0, c["primary"], bold="true"),
-                    self.items_text(col, x + 32, TOP + 84, w - 64, BOTTOM - TOP - 112, 26, 16)]
+                    text(x + 32, TOP + 28, w - 64, 44, col.get("title") or "", "heading", 26.0, c["primary"], bold="true", id=f"col{i + 1}-title"),
+                    self.items_text(col, x + 32, TOP + 84, w - 64, BOTTOM - TOP - 112, 26, 16, id=f"col{i + 1}-items")]
         return out
 
     def l_cards(self, el, page, total):
@@ -191,11 +205,13 @@ class Layouts:
         gap, pad = 24, 28
         w = (CW - gap * (n - 1)) / n
         has_value = any(cd.get("value") for cd in cards)
-        head = (84 if has_value else 0) + 76  # value row + title row
+        head = None
         avail = BOTTOM - TOP - 20
         bodies = [plain(cd) for cd in cards]
-        bs = min(fit(b, w - 2 * pad, avail - head - 2 * pad, 26, 15, lh=1.35) for b in bodies)
-        ts = min(fit([cd.get("title") or ""], w - 2 * pad, 64, 28, 18, lh=1.15) for cd in cards)
+        ts = min(fit([cd.get("title") or ""], w - 2 * pad, 96, 28, 16, lh=1.15, em=0.62) for cd in cards)
+        th = max(est([cd.get("title") or ""], w - 2 * pad, ts, 1.15, em=0.62) for cd in cards) + 8
+        head = (84 if has_value else 0) + th + 12  # value row + title rows
+        bs = min(fit(b, w - 2 * pad, avail - head - 2 * pad, 26, 14, lh=1.35) for b in bodies)
         body_h = max(est(b, w - 2 * pad, bs, 1.35) for b in bodies) + bs
         ch = min(avail, max(240, head + body_h + 2 * pad))
         y0 = TOP + (avail - ch) / 2
@@ -206,10 +222,11 @@ class Layouts:
             y = y0 + pad
             if has_value:
                 v = cd.get("value") or ""
-                out.append(text(x + pad, y, w - 2 * pad, 72, v, "display", fit([v], w - 2 * pad, 72, 52, 28), c["primary"], bold="true"))
+                out.append(text(x + pad, y, w - 2 * pad, 72, v, "display", fit([v], w - 2 * pad, 64, 52, 20, lh=1.1, em=0.62),
+                                c["primary"], bold="true", line_height="1.1", id=f"card{i + 1}-value"))
                 y += 84
-            out += [text(x + pad, y, w - 2 * pad, 64, cd.get("title") or "", "heading", ts, c["ink"], bold="true", line_height="1.15"),
-                    text(x + pad, y + 76, w - 2 * pad, y0 + ch - pad - (y + 76), cd, "body", bs, c["ink"], line_height="1.35",
+            out += [text(x + pad, y, w - 2 * pad, th, cd.get("title") or "", "heading", ts, c["ink"], bold="true", line_height="1.15", id=f"card{i + 1}-title"),
+                    text(x + pad, y + th + 12, w - 2 * pad, y0 + ch - pad - (y + th + 12), cd, "body", bs, c["ink"], line_height="1.35", id=f"card{i + 1}-text",
                          space_after=round(bs * 0.4))]
         return out
 
@@ -222,15 +239,15 @@ class Layouts:
             raise ValueError("layout kpis needs 2 to 4 <kpi value=... label=.../> children")
         gap = 32
         w = (CW - gap * (n - 1)) / n
-        vs = min(fit([k.get("value") or ""], w, 110, 72, 36) for k in ks)
+        vs = min(fit([k.get("value") or ""], w, 90, 72, 28, lh=1.1) for k in ks)
         for i, k in enumerate(ks):
             x = M + i * (w + gap)
             out += [E("shape", id=f"kpi{i + 1}-bar", type="rect", x=x, y=TOP + 40, width=w, height=4, fill=c["accent"]),
-                    text(x, TOP + 64, w, 110, k.get("value") or "", "display", vs, c["primary"], bold="true"),
-                    text(x, TOP + 190, w, 70, k.get("label") or "", "heading", fit([k.get("label") or ""], w, 70, 24, 16), c["ink"], bold="true")]
+                    text(x, TOP + 64, w, 110, k.get("value") or "", "display", vs, c["primary"], bold="true", line_height="1.1", id=f"kpi{i + 1}-value"),
+                    text(x, TOP + 190, w, 70, k.get("label") or "", "heading", fit([k.get("label") or ""], w, 70, 24, 14, em=0.62), c["ink"], bold="true", id=f"kpi{i + 1}-label")]
             if k.get("note") or (k.text or "").strip():
                 note = k.get("note") or k.text.strip()
-                out.append(text(x, TOP + 270, w, 200, note, "body", fit([note], w, 200, 20, 14), c["muted"], line_height="1.35"))
+                out.append(text(x, TOP + 270, w, 200, note, "body", fit([note], w, 200, 20, 14), c["muted"], line_height="1.35", id=f"kpi{i + 1}-note"))
         return out
 
     def l_chart(self, el, page, total):
@@ -241,7 +258,7 @@ class Layouts:
         ch = E("chart", id="chart", x=M, y=TOP, width=w, height=BOTTOM - TOP, font="caption", size=20.0,
                text_color=c["muted"], type=el.get("type") or "column", categories=el.get("categories") or "",
                color=el.get("color") or ",".join([c["primary"], c["accent"], c["muted"], c["ink"]]),
-               legend=el.get("legend") or ("bottom" if len(el.findall("series")) > 1 else "none"),
+               legend=el.get("legend") or ("bottom" if len(el.findall("series")) > 1 or el.get("type") in ("pie", "donut") else "none"),
                data_labels=el.get("data-labels") or "true")
         for s in el.findall("series"):
             ch.append(copy.deepcopy(s))
@@ -250,7 +267,7 @@ class Layouts:
             out += [E("shape", id="insight-card", type="rect", x=832, y=TOP, width=384, height=BOTTOM - TOP,
                       fill=c["surface"], corner_radius=12),
                     text(860, TOP + 28, 328, 40, el.get("insight-title") or "Key points", "heading", 22.0, c["primary"], bold="true"),
-                    self.items_text(el, 860, TOP + 84, 328, BOTTOM - TOP - 112, 24, 15, lh=1.35)]
+                    self.items_text(el, 860, TOP + 84, 328, BOTTOM - TOP - 112, 24, 15, lh=1.35, id="insights")]
         return out
 
     def l_table(self, el, page, total):
@@ -284,14 +301,16 @@ class Layouts:
         w = CW / n
         out.append(E("shape", id="track", type="line", x=M + w / 2, y=TOP + 52, width=CW - w, height=0, stroke=c["accent"],
                      stroke_width=3.0))
-        ts = min(fit([s.get("title") or ""], w - 24, 64, 24, 16, lh=1.15) for s in st)
-        bs = min(fit(plain(s), w - 24, 300, 22, 14) for s in st)
+        ts = min(fit([s.get("title") or ""], w - 24, 92, 24, 14, lh=1.15, em=0.62) for s in st)
+        th = max(est([s.get("title") or ""], w - 24, ts, 1.15, em=0.62) for s in st) + 8
+        by = TOP + 104 + th + 12
+        bs = min(fit(plain(s), w - 24, BOTTOM - by, 22, 13, lh=1.35) for s in st)
         for i, s in enumerate(st):
             x = M + i * w
             out += [E("shape", id=f"dot{i + 1}", type="ellipse", x=x + w / 2 - 28, y=TOP + 24, width=56, height=56, fill=c["primary"]),
                     text(x + w / 2 - 28, TOP + 24, 56, 56, str(i + 1), "heading", 24.0, c["on"], align="center", anchor="middle", bold="true"),
-                    text(x + 12, TOP + 104, w - 24, 64, s.get("title") or "", "heading", ts, c["ink"], align="center", bold="true", line_height="1.15"),
-                    text(x + 12, TOP + 180, w - 24, 300, s, "body", bs, c["muted"], align="center", line_height="1.35")]
+                    text(x + 12, TOP + 104, w - 24, th, s.get("title") or "", "heading", ts, c["ink"], align="center", bold="true", line_height="1.15", id=f"step{i + 1}-title"),
+                    text(x + 12, by, w - 24, BOTTOM - by, s, "body", bs, c["muted"], align="center", line_height="1.35", id=f"step{i + 1}-text")]
         return out
 
     def l_image(self, el, page, total):

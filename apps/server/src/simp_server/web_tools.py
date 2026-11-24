@@ -79,8 +79,19 @@ def _reason(e: urllib.error.HTTPError) -> str:
     return f": {text[:200]}" if text else ""
 
 
+def iri_to_uri(url: str) -> str:
+    """Percent-encode non-ASCII characters (e.g. Vietnamese in a path or query); http.client only sends ASCII."""
+    if url.isascii():
+        return url
+    p = urllib.parse.urlsplit(url)
+    q = lambda s, safe: urllib.parse.quote(s, safe=safe)  # noqa: E731
+    return urllib.parse.urlunsplit((p.scheme, p.netloc.encode("idna").decode() if not p.netloc.isascii() else p.netloc,
+                                    q(p.path, "/%:@!$&'()*+,;="), q(p.query, "=&%:@!$'()*+,;/?"), q(p.fragment, "%")))
+
+
 def http_get(url: str, open_=_open, resolve=_resolve, max_bytes: int = MAX_BYTES) -> tuple[str, str, bytes]:
     """-> (final_url, content_type, body). Raises WebError."""
+    url = iri_to_uri(url)
     for _ in range(MAX_REDIRECTS + 1):
         check_url(url, resolve)
         try:
@@ -184,7 +195,7 @@ def ddg_search(query: str, count: int, get=http_get) -> list[dict]:
     src = body.decode("utf-8", errors="replace")
     results = parse_ddg(src, count)
     if not results and "anomaly" in src.lower():
-        raise WebError("DuckDuckGo refused the request (bot challenge); try web_fetch on a known site")
+        raise WebError("search is unavailable right now (DuckDuckGo bot challenge). Do not guess URLs to fetch instead: answer from what you know or the sources you already have, mark uncertain figures as approximate, and tell the user web search was unavailable")
     return results
 
 
@@ -352,7 +363,7 @@ def make_tools(provider: str = "duckduckgo", key: str | None = None, extract=Non
             page = await asyncio.to_thread(do_fetch, args["url"], EXTRACT_MAX if question else int(args.get("max_chars", 20000)),
                                            raw=bool(args.get("raw")), key=key)
         except WebError as e:
-            return f"web_fetch error: {e}"
+            return f"web_fetch error: {e}. Do not retry it or try search-engine pages; go on with the sources you have."
         if not question:
             return page
         head, _, body = page.partition("\n\n")

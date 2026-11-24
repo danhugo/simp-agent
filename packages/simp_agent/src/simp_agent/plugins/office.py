@@ -10,6 +10,7 @@ A build remembers the output's hash, so a file changed elsewhere (e.g. in PowerP
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import re
@@ -103,6 +104,7 @@ class Deck:
         except ET.ParseError as e:
             self.errors.append(f"{fname}: {e}")
             return
+        unescape(root)
         if root.tag != "slide":
             self.errors.append(f"{fname}: the root element must be <slide>")
             return
@@ -278,7 +280,7 @@ class Deck:
             data.append(f"{(s.get('name') or f'Series {i + 1}').replace(':', ' ').replace(';', ' ')}:{','.join(vals)}")
         colors = [self.d.color(c.strip(), where) for c in (el.get("color") or "").split(",") if c.strip()]
         props = {"id": str(sid), "name": name, **self._box(el, where), "chartType": CHARTS[kind], "data": ";".join(data),
-                 "legend": el.get("legend") or "none"}
+                 "legend": el.get("legend") or ("right" if kind in ("pie", "donut") else "none")}
         if cats:
             props["categories"] = ",".join(cats)
         if colors:
@@ -289,7 +291,8 @@ class Deck:
         spec = f"{round(size * PT, 1):g}:{tc}" + (f":{family}" if family else "")
         props.update({"axisfont": spec, "legendFont": spec, "gridlines": el.get("gridlines") or "E6E6E6:0.5"})
         if el.get("data-labels") == "true":
-            props["dataLabels"], props["labelfont"] = "value", spec
+            props["dataLabels"] = "percent" if kind in ("pie", "donut") else "value"
+            props["labelfont"] = spec
         self.ops.append({"command": "add", "parent": f"/slide[{n}]", "type": "chart", "props": props})
 
     def _table(self, n, sid, name, el, where):
@@ -325,6 +328,18 @@ class Deck:
                                  "props": head if r == 0 else cell})
 
 
+def unescape(root: ET.Element) -> None:
+    """Models often escape twice (&amp;amp; shows as "&amp;" on the slide): decode leftover entities once."""
+    for el in root.iter():
+        if el.text and "&" in el.text:
+            el.text = html.unescape(el.text)
+        if el.tail and "&" in el.tail:
+            el.tail = html.unescape(el.tail)
+        for k, v in el.attrib.items():
+            if "&" in v:
+                el.attrib[k] = html.unescape(v)
+
+
 def parse_deck(design_text: str, slides: list[tuple[str, str]]) -> Deck:
     try:
         deck = Deck(Design(design_text))
@@ -339,6 +354,8 @@ def parse_deck(design_text: str, slides: list[tuple[str, str]]) -> Deck:
     return deck
 
 
+# officecli also reports house-style opinions; they are not defects of a generated file
+NOT_PROBLEMS = re.compile(r"first-line indent|widow|orphan|Empty paragraph", re.I)
 ISSUE = re.compile(r"\[\w+\]\s+/slide\[(\d+)\]/\w+\[@id=(\d+)\][^:]*:\s*(.*)")
 
 
@@ -346,6 +363,8 @@ def explain(issues: str, ids: dict) -> list[str]:
     """officecli `view issues` lines -> 'file #element: problem' (sizes in px, like the source)."""
     out = list()
     for line in issues.splitlines():
+        if NOT_PROBLEMS.search(line):
+            continue
         m = ISSUE.search(line)
         if not m:
             if re.match(r"\s*\[\w+\]", line):
@@ -464,6 +483,15 @@ class Office:
         if "passed" not in valid.lower():
             problems.insert(0, f"schema: {valid}")
         what = f" ({len({n for n, _ in ids})} slides)" if kind == "pptx" else ""
+        if kind == "docx":  # page count (LibreOffice layout; Word's may differ by a little)
+            _, pages = await self._sh(ctx, f"cd /tmp && soffice --headless --convert-to pdf {shlex.quote(out)} >/dev/null 2>&1; "
+                                           f"pdfinfo /tmp/{shlex.quote(os.path.basename(out)[:-5])}.pdf 2>/dev/null | "
+                                           f"awk '/^Pages:/{{print $2}}'; rm -f /tmp/{shlex.quote(os.path.basename(out)[:-5])}.pdf", 120)
+            _, words = await self._sh(ctx, f"pandoc -t plain {shlex.quote(src)} 2>/dev/null | wc -w", 60)
+            if pages.strip().isdigit() and words.strip().isdigit():
+                p, w = int(pages.strip()), int(words.strip())
+                what = (f" (about {p} pages, {w} words, so about {w // max(p, 1)} words a page here; to change the length, "
+                        "cut or add words once by that ratio)")
         if not problems:
             return f"Built {out}{what}. No problems found."
         return f"Built {out}{what}, with problems to fix in the source:\n" + "\n".join(f"- {p}" for p in problems)

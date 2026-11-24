@@ -1,56 +1,64 @@
 ---
 name: docx
 label: Word
-description: "Create, read and edit Word documents (.docx): reports, letters, tracked changes, comments."
+description: "Create, read and edit Word documents (.docx): reports, letters, proposals, tracked changes, comments."
 license: Complete terms in LICENSE.txt
 ---
 
-# DOCX creation, editing, and analysis
+# Word documents
+
+**Create** = write ONE Markdown file `/work/<name>.md`, then `office_build(source="/work/<name>.md")` →
+`/work/<name>.docx` in the house style (title page block, heading scale, tidy tables), checked for schema problems.
+Fix the .md and build again. Aim: 3–5 turns. Never write docx-js/python-docx code for a new document.
 
 
-A `.docx` is a ZIP archive of XML files. Choose your approach by task:
+**Research budget:** at most TWO messages of research in total: one of parallel `web_search` calls (2–4 queries), then optionally one of parallel `web_fetch(url, prompt=...)` calls. Never fetch search-engine pages (google, bing, duckduckgo…), never retry failed fetches, never curl. Then write with what you have: mark uncertain figures "≈" or "approx." and name the source you did get.
 
-| Task | Approach |
-|---|---|
-| **Create** a new document | Write a `docx` (npm) script — see gotchas below |
-| **Edit** an existing document | unpack → edit `word/document.xml` → `zip` (docx-js cannot open existing files) |
-| **Read** content | `pandoc -t markdown file.docx` |
+**Done rule:** `office_build` already validates, recalculates and checks the file. When it says "No problems found", answer the user right away. Never unpack, render, re-open or re-check the built file yourself, and never run recalc.py or other checks after a clean build. It reports pages and words: within ±1 page of the asked length is fine. To change the length, cut or add words ONCE using its words-per-page figure, build, and answer. Never convert to PDF, pdftotext or render pages to measure length.
 
-> Script paths below are relative to this skill's directory.
+```markdown
+---
+title: "Báo cáo …"
+subtitle: "One line"
+author: "…"
+date: "11/2025"
+toc: true                 # only for 4+ sections
+toc-title: "Mục lục"      # in the document's language
+---
+
+# Heading 1
+Paragraph with **bold**, *italic*, [link](https://…) and a footnote.[^1]
+
+- bullet            1. numbered
+
+| Column | Number |
+|---|---:|
+| a | 1.234 |
+
+: Table caption (source)
+
+![Figure caption](/work/chart.png){width=80%}
+
+> Quote or call-out
+
+[^1]: Source text.
+```
+
+Page break: a raw block on its own lines — ```` ```{=openxml} ```` / `<w:p><w:r><w:br w:type="page"/></w:r></w:p>` / ```` ``` ````.
+A chart: draw it with matplotlib to `/work/<name>-fig1.png` in the same message as the .md, then reference it.
+**Read** a .docx: `office_read(path, view="text")` or `pandoc -t markdown file.docx`.
+**Edit** a .docx the user brought: small changes with `office_read(view="annotated")` + `office_edit` (keeps its
+styles); tracked changes and comments: see below. Never rebuild someone's document from Markdown: it loses their styling.
+
+## A document worth handing over
+
+- Clear structure: title block, short summary first, numbered or named sections, conclusions/recommendations.
+- Specifics over filler: numbers with sources, names, dates. Tables for comparisons; never a wall of bullets.
+- The user's language and the length they asked for.
 
 ## Fitting a page limit
 
 When a document runs over the page limit the user asked for, cut words. Don't shrink the type, narrow the margins or tighten the spacing to fit — that makes the page harder to read. Keep body text at 11–12 pt and margins at 0.75–1 in, or at the size and margins the user's own file already uses. Cut filler and repetition before facts, and cut no more than the limit needs. Safety warnings, doses, limits, fees and contract terms are an exception: keep their full meaning, with every condition attached, because readers act on them and a dropped condition can cause harm or cost money. If a document can't fit without dropping or weakening one of these items, make the margins, spacing or type slightly smaller (body text no smaller than 10 pt) or let the document run over, and tell the user which change you made and why. Then compare your version with the original and list every fact, name, number or point you removed; don't say everything was kept unless it was. If the user asks for or allows smaller type, narrower margins or tighter spacing, or says not to cut any text, do what they said.
-
-## Creating with docx-js — gotchas
-
-`docx` is preinstalled — do not run `npm install` first; write the script and `require('docx')` directly. Only if that require fails: `npm install docx`. The model knows the API; these are the footguns:
-
-- **Page size defaults to A4.** For US Letter set `page: { size: { width: 12240, height: 15840 } }` (DXA; 1440 = 1″).
-- **Landscape:** pass portrait dimensions and `orientation: PageOrientation.LANDSCAPE` — docx-js swaps width/height internally.
-- **Tables need dual widths:** set `columnWidths` on the table AND `width` on every cell, both in `WidthType.DXA` (PERCENTAGE breaks in Google Docs). Column widths must sum to the table width.
-- **Table shading:** use `ShadingType.CLEAR`, never `SOLID` (renders black).
-- **Lists:** never insert `•` literally; use a `numbering` config with `LevelFormat.BULLET`.
-- **`ImageRun` requires `type:`** (`"png"`, `"jpg"`, …).
-- **`PageBreak` must be inside a `Paragraph`.**
-- **Never use `\n`** — use separate `Paragraph` elements.
-- **Headings:** style every level you use (`title`, `heading1`, `heading2`…) in `styles.default`: `heading1: { run: { font: "Arial", size: 32, bold: true }, paragraph: { spacing: { before: 240, after: 120 }, keepNext: true } }`. Every level needs its own font (even with a document default), `before` and `after` (even if 0) and `keepNext`: the built-in styles set none of them.
-- **TOC:** headings must use built-in `HeadingLevel.*`; custom heading styles need `outlineLevel` set or they won't appear.
-- **Don't use a table as a horizontal rule** — use a paragraph bottom border instead.
-- **Dot-leader / right-aligned-on-same-line:** use `PositionalTab` (`alignment: PositionalTabAlignment.RIGHT`, `leader: PositionalTabLeader.DOT`) inside a `TextRun`, not literal `.` or space padding.
-
-## Verify the output
-
-After writing a `.docx`, render it and look at it:
-
-```bash
-zip -d output.docx '*/' >/dev/null || true   # drop the ZIP's folder entries: Word has refused a file that has them when opened through a cloud co-editing service
-python scripts/office/soffice.py --headless --convert-to pdf output.docx
-pdftoppm -jpeg -r 100 output.pdf page
-ls page-*.jpg   # then Read the images
-```
-
-`pdftoppm` zero-pads page numbers to the width of the page count (`page-01.jpg`…`page-12.jpg`).
 
 ## Editing existing documents
 
@@ -95,4 +103,4 @@ The script writes `comments.xml`, `commentsExtended.xml`, `commentsIds.xml`, `co
 
 ## Dependencies
 
-`docx` (npm, preinstalled — install only if `require('docx')` fails) · `pandoc` · LibreOffice (`soffice`) · `pdftoppm` (Poppler)
+`pandoc` · LibreOffice (`soffice`) · `pdftoppm` (Poppler)

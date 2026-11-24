@@ -1,41 +1,68 @@
 ---
 name: xlsx
 label: Excel
-description: "Create, read and edit spreadsheets (.xlsx, .csv): formulas, formatting, charts, data cleanup."
+description: "Create, read and edit spreadsheets (.xlsx, .csv): workbooks with formulas, formatting, charts, dashboards, data cleanup."
 license: Complete terms in LICENSE.txt
 ---
 
-# XLSX creation, editing, and analysis
+# Spreadsheets
 
-| Task | Approach |
-|---|---|
-| **Create** or **edit** with formulas/formatting | `openpyxl` — see gotchas below |
-| **Bulk data** in or out | `pandas` (`read_excel`, `to_excel`) |
-| **Quick look** at a sheet | `markitdown file.xlsx` — `## SheetName` per sheet; reads `.xlsm` too. No cell coordinates, so don't plan edits from it |
-| **Read** a model (formulas *and* values) | two `load_workbook` passes — see gotchas |
+**Create** = write ONE Python source `/work/<name>.xlsx.py`, then `office_build(source="/work/<name>.xlsx.py")`.
+It runs the script, stores calculated values (LibreOffice), and checks every formula and column: problems come back
+as `Sheet!Cell: what is wrong`. Fix the script, build again. Aim: 3–5 turns for a 10-sheet workbook.
 
-> `openpyxl`, `pandas`, and `markitdown` are preinstalled — do not run `pip install` first; write the script and import directly. Only if an import fails (or the `markitdown` command is missing): `pip install` the missing package.
 
-> Script paths below are relative to this skill's directory.
+**Research budget:** at most TWO messages of research in total: one of parallel `web_search` calls (2–4 queries), then optionally one of parallel `web_fetch(url, prompt=...)` calls. Never fetch search-engine pages (google, bing, duckduckgo…), never retry failed fetches, never curl. Then write with what you have: mark uncertain figures "≈" or "approx." and name the source you did get.
 
-## Requirements for every output
+**Done rule:** `office_build` already validates, recalculates and checks the file. When it says "No problems found", answer the user right away. Never unpack, render, re-open or re-check the built file yourself, and never run recalc.py or other checks after a clean build.
 
-- **Professional font** (Arial, Times New Roman) throughout, unless the user says otherwise.
-- **Zero formula errors.** Never ship while `recalc.py` reports `errors_found`; the one exception is under `not_computed` below. If you think an error predates you, prove it: load the *original* with `data_only=True` and look at that cell. An error you introduced looks exactly like one you inherited.
-- **Use formulas, never hardcoded results.** Write `sheet['B10'] = '=SUM(B2:B9)'`, not the Python-computed total. The sheet must recalculate when its inputs change.
-- **Follow the user's spec literally.** Exact tab names, exact column headers, and the formula they spelled out. A redesign that computes something else fails, however elegant.
-- **Document every assumption and hardcoded number** where the reader will see it — a cell comment, or an adjacent cell at a table's end. Cite a real source when one exists (`Source: Company 10-K, FY2024, Page 45, Revenue Note, [SEC EDGAR URL]`); when the number came from the user, say so plainly.
-- **A workbook *you create* for someone to fill in** needs a short legend naming which cells to edit, and one example row of realistic values showing the expected format. Never add such a row to a file you were asked to edit.
-- **Editing an existing file: match its conventions exactly.** They override every guideline here. Find its designated input cells first — a distinct font color, fill, or shading marks them — write only there, and leave every existing formula untouched.
+```python
+import os, sys; sys.path.insert(0, "/opt/simp/skills/xlsx/scripts")
+from xlsx_kit import Book                       # styled tables + charts, every openpyxl chart gotcha handled
+b = Book("navy")                                # navy | ocean | forest | mono
+ws = b.sheet("Sales")                           # one call per sheet, in tab order
+b.title(ws, "Sales 2025", "USD, monthly")       # optional heading in A1/A2 → start tables at "A4"
+first, last = b.table(ws, ["Month", "Revenue", "Cost", "Profit", "Margin"], rows, start="A4",
+                      formats=[None, "usd", "usd", "usd", "pct"],         # usd money money2 int num pct date x vnd
+                      formulas={"Profit": "=B{r}-C{r}", "Margin": "=IFERROR(D{r}/B{r},0)"},   # {r} = row number
+                      total=["Revenue", "Cost", "Profit"])               # SUM row under the table
+b.chart(ws, "column", "Revenue vs cost", cats="A", series=["B", "C"], at="H4", header_row=first, last_row=last)
+b.save()                                        # saves to os.environ["OUT"]; never pick your own path
+```
 
-## Recalculate (mandatory whenever the file contains formulas)
+Complete API (do not read the module): `Book(theme="navy", font="Arial")` · `sheet(title, tab=None, index=None)`
+(`index=0` = first tab) · `title(ws, text, sub=None)` · `table(ws, headers, rows, start="A1", formats=None,
+formulas=None, total=False, widths=None, freeze=True)` → (header_row, last_row) · `chart(ws, kind, title, cats,
+series, at, header_row=1, last_row=None, y_title=None, x_title=None, width=18, height=9, stacked=False,
+data_ws=None)` · `note(ws, cell, text)` · `save()`.
+
+`b.wb` is the openpyxl Workbook for anything else (conditional formatting, data validation, merged headers).
+Chart kinds: column, bar, line, area, pie, donut, scatter; `data_ws=` charts a table on another sheet.
+
+**Read** a workbook: `office_read(path, view="text")` (cells with values) or `view="outline"`. **Edit** one the user
+brought: `office_read(view="annotated")`, then `office_edit(path, ops=[{"command":"set","path":"/Sheet1/B5",
+"props":{"value":"=SUM(B2:B4)"}}])`, or for larger edits load it with openpyxl in a `.xlsx.py` that saves to OUT.
+For bulk data in or out use `pandas`.
+
+## A workbook worth handing over
+
+- **A Summary/Dashboard sheet first** for 3+ sheets: key totals pulled by formulas from the detail sheets
+  (`='North'!B14`), one or two charts.
+- **Every number is a formula or a labeled input.** Totals, growth, margins, shares: formulas, never Python results.
+- **Real data** from the user or research; if you must assume, put assumptions in labeled input cells (blue text).
+- **Follow the user's spec literally**: exact tab names, headers and formulas they named.
+- **Editing an existing file: match its conventions** (fonts, colors, input cells) and leave its formulas alone.
+- One table per sheet starting at A1 (or A4 under a title), header row styled, frozen panes, number formats on every
+  numeric column, a chart where a trend or comparison matters. Sheet names short, no special characters.
+
+## Recalculating by hand (editing an existing file)
 
 openpyxl writes formulas as strings with **no cached values**. Until you recalculate, every
 formula cell reads back as `None` to anything reading cached values — `pandas`,
 `load_workbook(data_only=True)`, and most previewers.
 
 ```bash
-python scripts/recalc.py output.xlsx [timeout_seconds]   # default 30
+python /opt/simp/skills/xlsx/scripts/recalc.py output.xlsx [timeout_seconds]   # default 30
 ```
 
 LibreOffice computes the formulas **on a copy**, only their values go into your file, and you get JSON:
