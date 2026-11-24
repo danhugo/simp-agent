@@ -40,6 +40,7 @@ from simp_agent.ai import (AssistantMessage, Context, Model, ThinkingContent, To
                            to_dict)
 from simp_agent.plugins import build_plugins
 from simp_agent.plugins.memory import Memory
+from simp_agent.plugins.office import Office
 from simp_server import policy
 from simp_server.sandboxes import user_root
 from simp_agent.plugins.redact_secrets import RedactSecrets
@@ -259,7 +260,7 @@ class Run:
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
             plugins=[policy.Policy(self.verdict), *build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(mgr.keys.get("TAVILY_API_KEY"), extract=self.extract), Memory(store=DbMemoryStore(
                 mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), self.mcp, SandboxSync(env),
-                     *([skills_mod.plugin(mgr.skill_source, lambda: self.enabled_skills())] if self.has_skills else [])],
+                     *([skills_mod.plugin(mgr.skill_source, lambda: self.enabled_skills()), Office(f"{skills_mod.SKILLS_DIR}/docx/reference.docx", f"{skills_mod.SKILLS_DIR}/xlsx/scripts/recalc.py")] if self.has_skills else [])],
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.must_ask = lambda call: self.verdict(call)[0] == "ask"  # "always" never covers these

@@ -6,16 +6,28 @@ PIP = ["pandas", "numpy", "matplotlib", "openpyxl", "python-docx", "python-pptx"
        "lxml", "pillow", "requests", "beautifulsoup4", "defusedxml", "markitdown", "pdf2image", "pytesseract"]
 APT = ["git", "ripgrep", "fd-find", "zstd", "s3fs", "ffmpeg", "imagemagick", "procps", "util-linux", "curl",
        "ca-certificates", "nodejs", "tesseract-ocr", "tesseract-ocr-vie", "tesseract-ocr-eng", "fonts-noto-core",
-       "fonts-dejavu-core", "npm", "pandoc", "poppler-utils", "qpdf"]
+       "fonts-dejavu-core", "fonts-crosextra-carlito", "fonts-crosextra-caladea", "npm", "pandoc", "poppler-utils", "qpdf"]
 OFFICE_APT = ["libreoffice-nogui"]
 # node libraries the skills (apps/server/skills) use, installed under NODE_DIR and found through NODE_PATH
 NPM = ["pptxgenjs", "docx", "react", "react-dom", "react-icons", "sharp"]
 NODE_DIR = "/opt/simp/node"
+# officecli (github.com/iOfficeAI/OfficeCLI, Rust): builds and checks .pptx/.docx/.xlsx for the office_* tools
+OFFICECLI = ("v1.0.162", {"x86_64": "df40e8f21b5c84826565f7c9c96f7e1a70ffbfe141b507bdad70533eaeacc190",
+                          "aarch64": "59763bc3e9f03784fb4ddb7a2571deabaaf5fb999f42aaee6407191424c38816"})
+
+
+def officecli_install() -> str:
+    """Shell for the template: the binary for this machine's arch, checked against its pinned sha256."""
+    ver, sums = OFFICECLI
+    url = f"https://github.com/iOfficeAI/OfficeCLI/releases/download/{ver}/officecli-linux-"
+    return ("arch=$(uname -m) && case $arch in x86_64) f=x64 s=" + sums["x86_64"] + ";; aarch64) f=arm64 s=" + sums["aarch64"]
+            + ";; *) echo unsupported arch $arch; exit 1;; esac && curl -fsSL -o /usr/local/bin/officecli " + url + "$f"
+            + " && echo \"$s  /usr/local/bin/officecli\" | sha256sum -c - && chmod 755 /usr/local/bin/officecli")
 SKILLS_DIR = "/opt/simp/skills"  # apps/server/skills, copied read-only into the template
 
 
 def prompt_list(office: bool) -> str:
-    cli = "ffmpeg, imagemagick, tesseract OCR (vie, eng), git, node" + (", LibreOffice (soffice --headless)" if office else "")
+    cli = "ffmpeg, imagemagick, tesseract OCR (vie, eng), git, node, officecli" + (", LibreOffice (soffice --headless)" if office else "")
     return (f"Preinstalled Python libraries: {', '.join(PIP)}. Node libraries (require directly): {', '.join(NPM)}. "
             f"Command-line tools: {cli}, pandoc, pdftoppm, qpdf.")
 
