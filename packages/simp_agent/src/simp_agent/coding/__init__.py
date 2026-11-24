@@ -70,9 +70,12 @@ def system_prompt(tools: list, cwd: str, context: tuple[str, str] | None = None,
     return out + f"Current date: {today}\nCurrent working directory: {cwd}"
 
 
-SANDBOX_HINT = ("Where to put things: user files in /work (the user sees them); git repos under /home/user/repos; "
-                "databases and big intermediates in /tmp. /work is network storage, slow for many small reads and "
-                "writes: copy inputs to /tmp, build there, and copy only the finished files to /work.")
+SANDBOX_HINT = ("Where to put things: user files in /work (the user sees them; work there directly, it is a local "
+                "disk saved after each step); git repos under /home/user/repos; scratch files and big intermediates in "
+                "/tmp (not saved, not shown to the user).")
+# only when /work is an s3fs mount ([sandbox] mount = "fuse"): every file op there is a network round trip
+FUSE_HINT = ("/work is network storage here, slow for many small reads and writes: copy inputs to /tmp, build there, "
+             "and copy only the finished files to /work.")
 
 
-__all__ = ["TOOLS", "make_tools", "CONTEXT_FILES", "load_context_file", "system_prompt", "SANDBOX_HINT", "clean_locale", "clean_location"]
+__all__ = ["TOOLS", "make_tools", "CONTEXT_FILES", "load_context_file", "system_prompt", "SANDBOX_HINT", "FUSE_HINT", "clean_locale", "clean_location"]
