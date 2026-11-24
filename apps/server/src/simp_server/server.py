@@ -971,7 +971,7 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             link = None
             if body.get("link_id") and (link := await mgr.conns.link(u["id"], str(body["link_id"]))) is None:
                 raise LookupError("unknown link")
-            url, nonce = mgr.conns.start(u["id"], app_name, link)
+            url, nonce = await mgr.conns.start(u["id"], app_name, link)
             # binds the OAuth start to this browser (cookies ignore the port: web and API share the host)
             response.set_cookie(OAUTH_COOKIE, nonce, max_age=STATE_TTL, httponly=True, samesite="lax",
                                 path="/api/connections", secure=settings.get("public_url", "").startswith("https"))

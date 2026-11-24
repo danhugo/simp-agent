@@ -559,3 +559,59 @@ async def test_mislabeled_write_tool_is_still_asked(tmp_path):
     await wait_for(lambda: not run.busy and run.task.done())
     await run.session.shutdown()
     await mgr.store.close()
+
+
+async def test_mcp_oauth_discovers_registers_once_and_connects(tmp_path):
+    """Linear-like app: endpoints found from the MCP URL, our client registered once (kept), no refresh token OK."""
+    _, mgr, _, [(ta, ua), (tb, ub)], c = await make(tmp_path)
+    seen = list()
+
+    def linear(req: httpx.Request) -> httpx.Response:
+        seen.append(req.url.path)
+        if req.url.path == "/.well-known/oauth-protected-resource/mcp":
+            return httpx.Response(200, json={"authorization_servers": ["https://auth.linear.test"]})
+        if req.url.path == "/.well-known/oauth-authorization-server":
+            return httpx.Response(200, json={"authorization_endpoint": "https://auth.linear.test/authorize",
+                                             "token_endpoint": "https://auth.linear.test/token",
+                                             "registration_endpoint": "https://auth.linear.test/register"})
+        if req.url.path == "/register":
+            body = json.loads(req.content)
+            assert body["token_endpoint_auth_method"] == "none" and body["redirect_uris"][0].endswith("/linear/callback")
+            return httpx.Response(201, json={"client_id": "dyn-1"})
+        if req.url.path == "/token":
+            form = dict(urllib.parse.parse_qsl(req.content.decode()))
+            assert form["client_id"] == "dyn-1" and "client_secret" not in form and form["resource"] == "https://mcp.linear.app/mcp"
+            return httpx.Response(200, json={"access_token": "LIN-AT", "expires_in": 3600})
+        return httpx.Response(404)
+
+    mgr.conns.http = httpx.AsyncClient(transport=httpx.MockTransport(linear))
+    for tok in (ta, tb):
+        r = await c.post("/api/apps/linear/connect", headers={"Authorization": f"Bearer {tok}"})
+        q = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(r.json()["url"]).query))
+        assert r.json()["url"].startswith("https://auth.linear.test/authorize?") and q["client_id"] == "dyn-1"
+        assert q["resource"] == "https://mcp.linear.app/mcp" and "access_type" not in q
+        cb = await c.get("/api/connections/linear/callback", params={"code": "x", "state": q["state"]})
+        assert cb.headers["location"].endswith("#crafts?ok=linear")
+    assert seen.count("/register") == 1  # one client for every user
+    assert "dyn-1" not in (tmp_path / "mcp_clients.json").read_text()  # kept encrypted
+    servers, problems = await mgr.conns.servers(ua["id"])
+    lin = [s for s in servers if s["name"] == "linear"]
+    assert not problems and lin[0]["headers"] == {"Authorization": "Bearer LIN-AT"} and lin[0]["url"] == "https://mcp.linear.app/mcp"
+    # reconnect keeps one account (no email to tell logins apart)
+    r = await c.post("/api/apps/linear/connect", headers={"Authorization": f"Bearer {ta}"})
+    q = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(r.json()["url"]).query))
+    await c.get("/api/connections/linear/callback", params={"code": "x", "state": q["state"]})
+    assert len(await mgr.conns.links(ua["id"], "linear")) == 1
+    # a new server process reads the saved client instead of registering again
+    mgr.conns.found.clear()
+    await c.post("/api/apps/linear/connect", headers={"Authorization": f"Bearer {tb}"})
+    assert seen.count("/register") == 1
+    await mgr.store.close()
+
+
+async def test_mcp_oauth_without_registration_is_a_clear_error(tmp_path):
+    _, mgr, _, [(ta, _), _], c = await make(tmp_path)
+    mgr.conns.http = httpx.AsyncClient(transport=httpx.MockTransport(lambda req: httpx.Response(404)))
+    r = await c.post("/api/apps/notion/connect", headers={"Authorization": f"Bearer {ta}"})
+    assert r.status_code == 503 and "OAuth" in r.json()["detail"]
+    await mgr.store.close()

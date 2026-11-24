@@ -43,6 +43,16 @@ PROVIDERS = {"google": {
     "header": "Authorization: Bearer {token}",
     "validate_url": "https://api.github.com/user",  # optional: GET once on save; 401/403 = rejected; json login/email kept
 }}
+# kind "mcp_oauth": the MCP server's own OAuth, found from its URL (RFC 9728 / 8414) with a client we register ourselves
+# (RFC 7591), so there is no app to register by hand. The provider name is the app name.
+_MCP_OAUTH = {
+    "notion": ("Notion", "Pages, databases and comments in Notion.", "https://mcp.notion.com/mcp"),
+    "linear": ("Linear", "Issues, projects and cycles in Linear.", "https://mcp.linear.app/mcp"),
+    "sentry": ("Sentry", "Errors, issues and releases in Sentry.", "https://mcp.sentry.dev/mcp"),
+    "atlassian": ("Atlassian", "Jira issues and Confluence pages.", "https://mcp.atlassian.com/v1/mcp"),
+    "canva": ("Canva", "Find, make and export Canva designs.", "https://mcp.canva.com/mcp"),
+}
+PROVIDERS.update({n: {"kind": "mcp_oauth", "label": lab, "mcp_url": url} for n, (lab, _, url) in _MCP_OAUTH.items()})
 NO_EXPIRY = 1e18  # expires_at for pasted tokens: never refreshed
 APPS = {  # the app name is also the MCP server name, so its tools are "<app>__<tool>"
     "gmail": {"label": "Gmail", "description": "Search, read, label and draft email.", "icon": "gmail",
@@ -68,6 +78,7 @@ APPS = {  # the app name is also the MCP server name, so its tools are "<app>__<
                "provider": None, "url": "https://docs.mcp.cloudflare.com/mcp"},
     "awsknowledge": {"label": "AWS Knowledge", "description": "Search AWS documentation.", "icon": "aws",
                      "provider": None, "url": "https://knowledge-mcp.global.api.aws"},
+    **{n: {"label": lab, "description": d, "icon": n, "provider": n, "url": url} for n, (lab, d, url) in _MCP_OAUTH.items()},
 }
 STATE_TTL = 600  # s: an OAuth start must finish within 10 minutes
 REFRESH_EARLY = 300  # s: refresh tokens that expire within 5 minutes
@@ -134,6 +145,72 @@ class Connections:
         self.fernet = Fernet(secret_key(keys, settings["data_dir"]))
         self.pending: dict[str, tuple] = dict()  # ponytail: in memory, a restart drops OAuth starts in flight
         self.http = httpx.AsyncClient(timeout=20)
+        self.found: dict[str, dict] = dict()  # mcp_oauth provider -> its endpoints + our registered client
+        self.clients_file = Path(settings["data_dir"]) / "mcp_clients.json"  # registered clients, encrypted
+
+    async def _oauth(self, name: str) -> dict:
+        """Endpoints and client of an OAuth provider: auth_url, token_url, revoke_url?, client_id, client_secret?.
+        RuntimeError when it can't be set up (no keys in .env, no OAuth metadata, registration refused)."""
+        a = self.app(name)
+        if a.get("kind") != "mcp_oauth":
+            cid, sec = self._client(a)
+            return {**a, "client_id": cid, "client_secret": sec}
+        if name not in self.found:
+            ep = await self._discover(a["mcp_url"])
+            self.found[name] = {**ep, **await self._register(name, ep)}
+        return self.found[name]
+
+    async def _get_json(self, url: str) -> dict | None:
+        try:
+            r = await self.http.get(url)
+            return r.json() if r.status_code == 200 else None
+        except (httpx.HTTPError, ValueError):
+            return None
+
+    async def _discover(self, mcp_url: str) -> dict:
+        """The MCP server's resource metadata names its authorization server; that one's metadata has the endpoints."""
+        u = urllib.parse.urlsplit(mcp_url)
+        origin, auth_server = f"{u.scheme}://{u.netloc}", f"{u.scheme}://{u.netloc}"
+        for url in (f"{origin}/.well-known/oauth-protected-resource{u.path.rstrip('/')}", f"{origin}/.well-known/oauth-protected-resource"):
+            if (j := await self._get_json(url)) and j.get("authorization_servers"):
+                auth_server = j["authorization_servers"][0]
+                break
+        s = urllib.parse.urlsplit(auth_server)
+        base, path = f"{s.scheme}://{s.netloc}", s.path.rstrip("/")
+        for url in (f"{base}/.well-known/oauth-authorization-server{path}", f"{base}/.well-known/openid-configuration{path}",
+                    f"{base}{path}/.well-known/openid-configuration"):
+            if (j := await self._get_json(url)) and j.get("authorization_endpoint") and j.get("token_endpoint"):
+                return {"auth_url": j["authorization_endpoint"], "token_url": j["token_endpoint"],
+                        "registration_url": j.get("registration_endpoint"), "revoke_url": j.get("revocation_endpoint"),
+                        "resource": mcp_url}
+        raise RuntimeError("this app has no OAuth sign-in we can use")
+
+    async def _register(self, name: str, ep: dict) -> dict:
+        """Our client at this provider: registered once per redirect URI and kept (encrypted) in mcp_clients.json."""
+        key, saved = f"{name} {self.redirect_uri(name)}", dict()
+        try:
+            saved = json.loads(self.clients_file.read_text())
+            return json.loads(self.fernet.decrypt(saved[key]).decode())
+        except (OSError, ValueError, KeyError, InvalidToken):
+            pass
+        if not ep.get("registration_url"):
+            raise RuntimeError("this app needs a registered client; it can't be connected yet")
+        r = await self.http.post(ep["registration_url"], json={
+            "client_name": "Simp", "redirect_uris": [self.redirect_uri(name)], "grant_types": ["authorization_code", "refresh_token"],
+            "response_types": ["code"], "token_endpoint_auth_method": "none"})
+        if r.status_code not in (200, 201) or not r.json().get("client_id"):
+            raise RuntimeError(f"the app refused our sign-in client ({r.status_code})")
+        c = {"client_id": r.json()["client_id"], "client_secret": r.json().get("client_secret")}
+        saved[key] = self.fernet.encrypt(json.dumps(c).encode()).decode()
+        self.clients_file.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self.clients_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(saved, f)
+        return c
+
+    @staticmethod
+    def _creds(o: dict) -> dict:  # client auth in the token request body (public clients: no secret)
+        return {"client_id": o["client_id"], **({"client_secret": o["client_secret"]} if o.get("client_secret") else dict())}
 
     def app(self, name: str) -> dict:
         if name not in self.apps:
@@ -190,7 +267,7 @@ class Connections:
     async def link(self, user_id: str, link_id: str) -> dict | None:
         return next((r for r in await self.store.connections(user_id) if r["link_id"] == link_id), None)
 
-    def start(self, user_id: str, app_name: str, link: dict | None = None) -> tuple[str, str]:
+    async def start(self, user_id: str, app_name: str, link: dict | None = None) -> tuple[str, str]:
         """(auth URL, browser nonce) for one app: only its scopes (+ the provider's base ones); Google adds them to
         earlier grants. The nonce goes in an HttpOnly cookie; the callback needs it, so a URL sent to someone else fails.
         link None: Google shows the account chooser (add an account); a link: add scopes to that account only."""
@@ -200,17 +277,21 @@ class Connections:
         a = self.app(name)
         if a.get("kind") == "token":
             raise LookupError(f"{name!r} takes a pasted token, not OAuth")
-        cid, _ = self._client(a)
+        o = await self._oauth(name)
         now = time.time()
         self.pending = {s: v for s, v in self.pending.items() if v[3] > now}
         state, verifier, nonce = secrets.token_urlsafe(32), secrets.token_urlsafe(64), secrets.token_urlsafe(32)
         self.pending[state] = (user_id, name, verifier, now + STATE_TTL, app_name, _hash(nonce), link and link["link_id"])
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
-        q = {"client_id": cid, "redirect_uri": self.redirect_uri(name), "response_type": "code",
-             "scope": " ".join(a["scopes"] + self.app_list[app_name].get("scopes", [])), "state": state, "code_challenge": challenge,
-             "code_challenge_method": "S256", "access_type": "offline", "prompt": "consent select_account",
-             "include_granted_scopes": "true", **({"login_hint": link["account_email"]} if link else dict())}
-        return f"{a['auth_url']}?{urllib.parse.urlencode(q)}", nonce
+        scope = " ".join(a.get("scopes", []) + self.app_list[app_name].get("scopes", []))
+        q = {"client_id": o["client_id"], "redirect_uri": self.redirect_uri(name), "response_type": "code", "state": state,
+             "code_challenge": challenge, "code_challenge_method": "S256", **({"scope": scope} if scope else dict())}
+        if a.get("kind") == "mcp_oauth":
+            q["resource"] = o["resource"]  # RFC 8707: a token for this MCP server only
+        else:  # Google: a refresh token, the account chooser, scopes added to earlier grants
+            q |= {"access_type": "offline", "prompt": "consent select_account", "include_granted_scopes": "true",
+                  **({"login_hint": link["account_email"]} if link and link["account_email"] else dict())}
+        return f"{o['auth_url']}?{urllib.parse.urlencode(q)}", nonce
 
     async def callback(self, name: str, code: str, state: str, nonce: str = "") -> str:
         """The user id. Raises ValueError with a short, token-free reason."""
@@ -219,28 +300,31 @@ class Connections:
             raise ValueError("bad or expired state")
         user_id, _, verifier, _, app_name, _, link_id = v
         a = self.app(name)
-        cid, sec = self._client(a)
-        r = await self.http.post(a["token_url"], data={
+        o = await self._oauth(name)
+        mcp = a.get("kind") == "mcp_oauth"
+        r = await self.http.post(o["token_url"], data={
             "grant_type": "authorization_code", "code": code, "redirect_uri": self.redirect_uri(name),
-            "client_id": cid, "client_secret": sec, "code_verifier": verifier})
+            **self._creds(o), "code_verifier": verifier, **({"resource": o["resource"]} if mcp else dict())})
         if r.status_code != 200:
             raise ValueError(f"token exchange failed ({r.status_code})")
         t = r.json()
-        if not t.get("refresh_token"):
+        if not t.get("refresh_token") and not mcp:  # an MCP app may give none: reconnect when the token ends
             raise ValueError("no refresh token returned")
         email = _email(t.get("id_token"))
         mine = await self.links(user_id, name)
-        if link_id:  # adding scopes to one account: the user must not pick another one in Google's chooser
+        if mcp and not email:  # no account name to tell logins apart: one account, updated on reconnect
+            old = mine[0] if mine else None
+        elif link_id:  # adding scopes to one account: the user must not pick another one in Google's chooser
             old = next((r for r in mine if r["link_id"] == link_id), None)
             if old is None or not email or email != old["account_email"]:
                 raise ValueError("signed in with a different account; nothing saved")
         else:  # same account again -> update it, else a new account
             old = next((r for r in mine if email and r["account_email"] == email), None)
         # Google's "scope" = everything granted so far (include_granted_scopes); missing -> what we asked for
-        scopes = t.get("scope") or " ".join(sorted(_granted(old) | set(a["scopes"]) |
+        scopes = t.get("scope") or " ".join(sorted(_granted(old) | set(a.get("scopes", [])) |
                                                   set(self.app_list[app_name].get("scopes", []))))
         await self.store.save_connection(user_id, old["link_id"] if old else new_link_id(), name, email, self.fernet.encrypt(
-            t["access_token"].encode()).decode(), self.fernet.encrypt(t["refresh_token"].encode()).decode(),
+            t["access_token"].encode()).decode(), self.fernet.encrypt(t["refresh_token"].encode()).decode() if t.get("refresh_token") else "",
             time.time() + float(t.get("expires_in", 3600)), scopes)
         await self.store.set_app_disabled(user_id, app_name, False)  # only the app just connected turns on
         return user_id
@@ -312,9 +396,11 @@ class Connections:
         if row is None:
             raise LookupError(f"unknown link {link_id!r}")
         name = row["app"]
-        if row["refresh_token_enc"] and (url := self.apps.get(name, dict()).get("revoke_url")):
+        url = (self.found.get(name) or self.apps.get(name, dict())).get("revoke_url")
+        if row["refresh_token_enc"] and url:
             try:  # best effort: the row goes either way
-                await self.http.post(url, data={"token": self.fernet.decrypt(row["refresh_token_enc"]).decode()})
+                extra = {"client_id": self.found[name]["client_id"]} if name in self.found else dict()
+                await self.http.post(url, data={"token": self.fernet.decrypt(row["refresh_token_enc"]).decode(), **extra})
             except Exception as e:
                 log.warning("revoke %s failed: %s", name, type(e).__name__)
         await self.store.delete_connection(user_id, link_id)
@@ -336,7 +422,7 @@ class Connections:
             ok = [r for r in rows if r["app"] == a["provider"] and self.authorized(a, r)]
             row = ok[0] if ok else None  # the default account for this app
             out.append({"app": n, "label": a.get("label", n), "description": a.get("description", ""),
-                        "icon": a.get("icon", n), "provider": a["provider"], "auth": prov.get("kind", "oauth"),
+                        "icon": a.get("icon", n), "provider": a["provider"], "auth": "token" if prov.get("kind") == "token" else "oauth",
                         **({"token_help": prov.get("token_help", ""), "token_help_url": prov.get("token_help_url")}
                            if prov.get("kind") == "token" else dict()), "connected": row is not None,
                         "enabled": row is not None and n not in off, "email": row and row["account_email"],
@@ -365,11 +451,10 @@ class Connections:
         except InvalidToken:  # SIMP_SECRET_KEY changed: only this login is lost
             await self.store.set_connection_status(user_id, row["link_id"], "needs_reconnect")
             return None
-        a = self.apps[row["app"]]
         try:
-            cid, sec = self._client(a)
-            r = await self.http.post(a["token_url"], data={
-                "grant_type": "refresh_token", "refresh_token": refresh, "client_id": cid, "client_secret": sec})
+            o = await self._oauth(row["app"])
+            r = await self.http.post(o["token_url"], data={"grant_type": "refresh_token", "refresh_token": refresh, **self._creds(o),
+                                                           **({"resource": o["resource"]} if o.get("resource") else dict())})
         except Exception as e:  # network, config: try again next run, the login itself may be fine
             log.warning("refresh %s failed: %s", row["app"], type(e).__name__)
             return None
