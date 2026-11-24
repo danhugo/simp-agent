@@ -695,3 +695,42 @@ def test_template_auto_is_the_content_hash():
     sb = E2BSandbox({"data_dir": "/nonexistent", "sandbox": {"kind": "e2b"}})
     assert sb.template == toolset.template_alias(True) and sb.template.startswith("simp-sandbox-")
     assert toolset.template_alias(False) != sb.template
+
+
+class RecSync:
+    """Stands in for wsync.WorkSync: records what the E2B box asks of it."""
+
+    def __init__(self, store, user_id, quota=None):
+        self.user_id, self.calls, self.web_dirty, self.full, self.task = user_id, list(), False, False, None
+
+    async def pull(self, port):
+        self.calls.append("pull")
+
+    async def before_call(self, port):
+        self.calls.append(f"before:{self.web_dirty}")
+        self.web_dirty = False
+
+    def push_soon(self, port):
+        self.calls.append("push")
+
+    async def flush(self, port, snapshot=True):
+        self.calls.append("flush")
+
+
+async def test_sync_mode_no_mount_pull_push_flush(cloud, monkeypatch):
+    monkeypatch.setattr(e2b_mod, "WorkSync", RecSync)
+    sb = make(cloud, mount="sync", egress_allow=["pypi.org"])
+    assert sb._network() == {"allow_out": ["pypi.org"], "deny_out": ["0.0.0.0/0"]}  # no route to the bucket
+    env = await sb.open("s1", "u1")
+    await go(env)
+    box = sb.boxes["u1"]
+    assert not cloud.runs("s3fs")  # nothing mounted
+    sb.web_changed("u1")
+    await go(env)
+    await env.after_tool()
+    ws = box.ws
+    assert ws.calls == ["pull", "before:False", "before:True", "push"]
+    await sb._pause(box)
+    assert ws.calls[-1] == "flush" and box.state == "paused"
+    await go(env)  # resumed: same disk, no pull
+    assert box.ws is ws and ws.calls.count("pull") == 1

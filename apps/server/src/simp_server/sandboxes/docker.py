@@ -6,7 +6,9 @@ host (LocalEnv with root containment): same files, one writer. mount = "fuse" (n
 container mounts the user's bucket prefix at /work with s3fs, and every file op runs in the container. Security
 trade-off of fuse mode: the container gets /dev/fuse and CAP_SYS_ADMIN (only root, used once by `docker exec -u 0` for
 the mount; commands run as 1000 with no capabilities and no-new-privileges), AppArmor is unconfined (the default profile
-blocks mount), and it needs a network to reach the store (default "bridge" instead of "none"). Paths outside /work (/home/user/repos, /tmp) and all commands go through
+blocks mount), and it needs a network to reach the store (default "bridge" instead of "none"). mount = "sync" (needs
+store = "s3"): /work is a fresh volume per start, filled and pushed by the server (wsync.py), like E2B sync mode; no
+network, no extra capabilities. Paths outside /work (/home/user/repos, /tmp) and all commands go through
 `docker exec`. /home/user is a per-user named volume (simp-home-<user_id>), so repos and libraries survive a
 container restart; repos are also mirrored to /work/.simp/repos after each tool call (repos.py)."""
 
@@ -29,6 +31,7 @@ from . import toolset
 from simp_server import workspace
 from simp_server.sandboxes import Compute, SandboxLimit, gib, user_root, valid_id
 from simp_server.sandboxes.repos import mirror_locked, remirror_if_failed, restore_repos
+from simp_server.sandboxes.wsync import WorkSync
 
 log = logging.getLogger("simp_server")
 
@@ -119,6 +122,30 @@ async def _exec_in(container, command, cwd, timeout, cancel, on_output=None) -> 
     return proc.returncode, "".join(chunks)
 
 
+class _Port:
+    """wsync.Port for a container: commands and files as uid 1000."""
+
+    def __init__(self, container: str):
+        self.container = container
+
+    async def sh(self, command: str, timeout: float = 300) -> tuple[int | None, str]:
+        return await _docker("exec", *USER, self.container, "sh", "-c", command)
+
+    async def put(self, path: str, data: bytes) -> None:
+        code, out = await _docker("exec", *USER, "-i", self.container, "sh", "-c",
+                                  'mkdir -p "$(dirname "$1")" && cat > "$1"', "sh", path, stdin=data)
+        if code:
+            raise RuntimeError(f"cannot write {path}: {out.strip()}")
+
+    async def get(self, path: str) -> bytes:
+        p = await asyncio.create_subprocess_exec("docker", "exec", *USER, self.container, "cat", "--", path,
+                                                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out, err = await p.communicate()
+        if p.returncode:
+            raise FileNotFoundError(err.decode(errors="replace").strip() or path)
+        return out
+
+
 class ContainerGone(RuntimeError):
     """`docker exec` found no running container: the command did not start, so running it again is safe."""
 
@@ -135,6 +162,7 @@ class _Box:
         self.starting = self.over = False  # starting: holds a running slot (M8); over: daily budget used up
         self.mirror_lock, self.mirror_failed, self.mirror_sid, self.mirror_bg = asyncio.Lock(), False, None, None
         self.creds_until = 0.0  # fuse: monotonic time the mount credential expires (0 = none)
+        self.ws: WorkSync | None = None  # sync mode: set at start
 
     async def exec(self, command, cwd, timeout, cancel, on_output=None):  # raw: no start, no busy count
         return await _exec_in(self.name, command, "/work", timeout, cancel, on_output)
@@ -160,6 +188,11 @@ class DockerEnv(LocalEnv):
                 self.box.over = False
             await self.sandbox.ensure(self.box)
             await self.sandbox.fresh_creds(self.box, need_s)
+            if self.box.ws is not None:
+                try:
+                    await self.box.ws.before_call(_Port(self.container))
+                except Exception as e:
+                    log.warning("workspace reconcile failed: %s", e, extra={"user": self.box.user_id})
             self.used = True
             yield
         finally:
@@ -202,7 +235,7 @@ class DockerEnv(LocalEnv):
     def _in_container(self, path: str) -> bool:
         path = str(path)
         if self._host_rel(path) is not None:
-            return self.sandbox.mount == "fuse"  # /work is the container's s3fs mount
+            return self.sandbox.mount in ("fuse", "sync")  # /work is the container's s3fs mount or its own disk
         return any(path == d or path.startswith(d + "/") for d in CONTAINER_DIRS) and "/../" not in path + "/"
 
     def _cpath(self, path: str) -> str:
@@ -276,8 +309,11 @@ class DockerEnv(LocalEnv):
         if not self.used:
             return
         try:
-            await self.exec("sync", "/work", 60, asyncio.Event())
+            if self.box.ws is None:
+                await self.exec("sync", "/work", 60, asyncio.Event())
             await mirror_locked(self, self.box, REPOS, MIRRORS, self.session_id, cwd="/work")
+            if self.box.ws is not None:
+                self.box.ws.push_soon(_Port(self.container))
         except Exception as e:
             log.warning("after-tool sync failed: %s", e, extra={"session": self.session_id})
         finally:
@@ -297,11 +333,12 @@ class DockerSandbox:
     def __init__(self, settings: dict):
         s = settings.get("sandbox", dict())
         self.mount = s.get("mount", "bind")
-        self.store = None  # workspace store (fuse mode: mount creds), set by create_app
+        self.store = None  # workspace store (fuse mode: mount creds; sync mode: the bucket), set by create_app
+        self.quota = None  # quota.Quota (sync mode: no upload past the quota), set by create_app
         self.compute = Compute(settings, "docker")
         self.max_life_s = s.get("max_life_s", 3300)  # fuse: restart before the mount credential expires
         self.workspaces_dir = Path(s.get("workspaces_dir", Path(settings["data_dir"]) / "workspaces")).expanduser()
-        self.image, self.network = s.get("image", IMAGE), s.get("network", "bridge" if self.mount == "fuse" else "none")
+        self.image, self.network = s.get("image", IMAGE), s.get("network", "bridge" if self.mount == "fuse" else "none")  # sync: the server moves the files
         self.memory, self.cpus, self.pids_limit = s.get("memory", "1g"), str(s.get("cpus", "1")), s.get("pids_limit", 256)
         self.tmp_size = s.get("tmp_size", "256m")
         self.idle_pause_s = s.get("idle_pause_s", 600)
@@ -338,8 +375,11 @@ class DockerSandbox:
 
     async def _start(self, box: _Box) -> None:
         await _docker("rm", "-f", box.name)  # leftover from a crash
+        if self.mount == "sync":  # a fresh disk each start, like a new E2B sandbox; the volume copies the image's /work (uid 1000)
+            await _docker("volume", "rm", "-f", f"simp-work-{box.user_id}")
         work = (["--device", "/dev/fuse", "--cap-add", "SYS_ADMIN", "--security-opt", "apparmor=unconfined",
                  "--add-host", "host.docker.internal:host-gateway"] if self.mount == "fuse"
+                else ["--mount", f"type=volume,src=simp-work-{box.user_id},dst=/work"] if self.mount == "sync"
                 else ["-v", f"{box.root.resolve()}:/work"])
         code, out = await _docker(
             "run", "-d", "--name", box.name, "--user", "1000:1000", "--network", self.network,
@@ -355,6 +395,14 @@ class DockerSandbox:
             try:
                 await self._mount(box)
             except Exception:
+                await _docker("rm", "-f", box.name)
+                raise
+        if self.mount == "sync":
+            box.ws = WorkSync(self.store, box.user_id, self.quota)
+            try:
+                await box.ws.pull(_Port(box.name))
+            except Exception:
+                box.ws = None
                 await _docker("rm", "-f", box.name)
                 raise
         box.running, box.last = True, time.monotonic()
@@ -419,11 +467,20 @@ class DockerSandbox:
             box.running = False  # before any await: a new call now waits on box.lock and starts a new container
             try:
                 await remirror_if_failed(box, REPOS, MIRRORS)
+                if box.ws is not None:
+                    try:
+                        await box.ws.flush(_Port(box.name))
+                    except Exception as e:
+                        log.error("WORKSPACE FLUSH FAILED before stop: changes since the last push are lost: %s", e,
+                                  extra={"user": box.user_id})
                 if self.mount == "fuse":  # M10: let s3fs flush: stop user processes, unmount as root, then remove
                     await _docker("exec", "-u", "0", box.name, "sh", "-c", FUSE_STOP)
             finally:
                 await self.meter(box)
                 await _docker("rm", "-f", box.name)
+                if box.ws is not None:
+                    box.ws = None
+                    await _docker("volume", "rm", "-f", f"simp-work-{box.user_id}")
             return True
 
     async def stop_idle(self, now: float | None = None) -> None:
@@ -446,6 +503,11 @@ class DockerSandbox:
                     log.warning("sandbox budget used up (daily minutes or points): stopping after the current call",
                                 extra={"user": box.user_id})
                     box.over = True  # M8: no new calls; stopped on the next tick with active == 0
+
+    def web_changed(self, user_id: str) -> None:
+        """The Files panel wrote or deleted in the bucket: a running container takes it in before its next call."""
+        if (box := self.boxes.get(user_id)) is not None and box.ws is not None:
+            box.ws.web_dirty = True
 
     async def close(self, session_id: str) -> None:
         """The session is done with the sandbox; the container goes when the user's last session closes."""
