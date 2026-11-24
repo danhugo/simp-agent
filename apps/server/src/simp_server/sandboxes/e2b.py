@@ -29,7 +29,7 @@ import urllib.parse
 import uuid
 from datetime import datetime, timezone
 
-from simp_agent.coding import SANDBOX_HINT
+from simp_agent.coding import FUSE_HINT, SANDBOX_HINT
 from simp_server import policy, workspace
 from simp_server.sandboxes import Compute, toolset, SandboxLimit, valid_id
 from simp_server.sandboxes.docker import S3FS
@@ -355,7 +355,8 @@ class E2BSandbox:
         self.mount = s.get("mount", "fuse")
         self.toolset_line = toolset.prompt_list(bool(s.get("office", True)))  # named in policy deny reasons
         fixed = f"{self.toolset_line} Libraries are fixed: do not install packages."
-        self.prompt_hint = " ".join([SANDBOX_HINT, fixed, *([] if self.egress == "open" else [NO_NET])])
+        self.prompt_hint = " ".join([SANDBOX_HINT, *([FUSE_HINT] if self.mount == "fuse" else []), fixed,
+                                     *([] if self.egress == "open" else [NO_NET])])
         self.tag = s.get("tag", "simp")  # metadata app=<tag>: which sandboxes this server owns
         self.idle_pause_s, self.max_life_s = s.get("idle_pause_s", 600), s.get("max_life_s", 3300)
         self.provider_timeout_s = s.get("provider_timeout_s", self.idle_pause_s + 300)

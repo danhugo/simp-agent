@@ -25,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 
 from simp_agent.agent.env import LocalEnv
-from simp_agent.coding import SANDBOX_HINT
+from simp_agent.coding import FUSE_HINT, SANDBOX_HINT
 
 from . import toolset
 from simp_server import workspace
@@ -333,6 +333,8 @@ class DockerSandbox:
     def __init__(self, settings: dict):
         s = settings.get("sandbox", dict())
         self.mount = s.get("mount", "bind")
+        if self.mount == "fuse":
+            self.prompt_hint = " ".join([SANDBOX_HINT, FUSE_HINT, toolset.prompt_list(True)])
         self.store = None  # workspace store (fuse mode: mount creds; sync mode: the bucket), set by create_app
         self.quota = None  # quota.Quota (sync mode: no upload past the quota), set by create_app
         self.compute = Compute(settings, "docker")

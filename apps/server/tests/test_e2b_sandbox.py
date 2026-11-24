@@ -734,3 +734,9 @@ async def test_sync_mode_no_mount_pull_push_flush(cloud, monkeypatch):
     assert ws.calls[-1] == "flush" and box.state == "paused"
     await go(env)  # resumed: same disk, no pull
     assert box.ws is ws and ws.calls.count("pull") == 1
+
+
+def test_prompt_hint_slow_note_only_for_fuse(cloud):
+    from simp_agent.coding import FUSE_HINT
+    assert FUSE_HINT in make(cloud).prompt_hint
+    assert FUSE_HINT not in make(cloud, mount="sync").prompt_hint
