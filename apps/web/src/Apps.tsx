@@ -198,19 +198,18 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
           ))}
         </div>
         {tab === "Skills" ? <>
-          <p className="muted small mem-about">Know-how Simp reads before a task that needs it, such as making a deck or a spreadsheet.
-            Add skills from the library or import your own (.zip with a SKILL.md).
-            <label className="ghost small skill-import"><IconUpload size={14} /> Import .zip
-              <input type="file" accept=".zip,application/zip" hidden onChange={importZip} /></label></p>
+          <p className="muted small mem-about">Know-how Simp reads before a task that needs it, such as making a deck or a spreadsheet.</p>
           {skills === null || lib === null ? <p className="muted">Loading…</p> : (() => {
             const needle = q.trim().toLowerCase();
             const hit = (s: { label: string; description: string }) => !needle || `${s.label} ${s.description}`.toLowerCase().includes(needle);
             const mine = skills.filter(hit), more = lib.filter((s) => !s.added && hit(s));
             return <>
-              <h3 className="skill-head">Your skills</h3>
+              <div className="skill-head"><h3>Your skills</h3>
+                <label className="btn-outline small" title="A .zip with a SKILL.md inside"><IconUpload size={14} /> Import
+                  <input type="file" accept=".zip,application/zip" hidden onChange={importZip} /></label></div>
               {mine.length === 0 ? <p className="muted">{needle ? `None of yours match “${q.trim()}”.` : "No skills yet. Add some from the library below."}</p>
                 : <ul className="app-tiles" aria-label="Your skills">{mine.map(skillTile)}</ul>}
-              {(more.length > 0 || !needle) && <h3 className="skill-head">Library</h3>}
+              {(more.length > 0 || !needle) && <div className="skill-head"><h3>Library</h3></div>}
               {more.length === 0 ? !needle && <p className="muted">You have every skill in the library.</p>
                 : <ul className="app-tiles" aria-label="Skill library">{more.map(libTile)}</ul>}
             </>;
