@@ -1,8 +1,9 @@
 """Skills per user: the server's library (apps/server/skill_library) is a catalog; adding a skill copies its folder into
 the user's own skill store. The agent only sees that store.
 
-Storage: the workspace store under the pseudo id "<user_id>.skills" (local: <workspaces>/<id>.skills/, S3:
-users/<id>.skills/): beside the workspace, so not in the Files panel, the quota or the sandbox's /work.
+Storage: the server's disk, <data_dir>/skills/<user_id>/<name>/ (only the server reads skills; it writes them into the
+sandbox itself), so loading is a local read. v0.15.0 kept them in the workspace store under "<user_id>.skills": a
+user with nothing on disk yet gets those copied over once (and deleted there).
 In the sandbox: the user's skills are written (as root, read-only for the agent) to SKILLS_DIR before a command runs,
 whenever they changed since the sandbox last got them (box.skills_ver).
 New users start with DEFAULT (the office skills). Enable/disable stays as before (store.skill_off)."""
@@ -15,6 +16,7 @@ import io
 import posixpath
 import re
 import shlex
+import shutil
 import tarfile
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -66,20 +68,25 @@ class _Source:
 
 
 class UserSkills:
-    def __init__(self, store, lib: dict[str, dict] | None = None):
-        self.store, self.lib = store, library() if lib is None else lib
+    def __init__(self, root: Path, lib: dict[str, dict] | None = None, legacy=None):
+        """root: <data_dir>/skills. legacy: the workspace store v0.15.0 kept skills in (moved here on first load)."""
+        self.root, self.store, self.lib = Path(root), legacy, library() if lib is None else lib
         self.cache: dict[str, dict[str, dict]] = dict()  # user -> name -> meta + files
         self.locks: dict[str, asyncio.Lock] = dict()
 
     @staticmethod
-    def sid(user_id: str) -> str:
+    def sid(user_id: str) -> str:  # the legacy store's pseudo user
         return f"{user_id}.skills"
 
     def source(self, user_id: str) -> _Source:
         return _Source(self, user_id)
 
-    async def _files(self, user_id: str, folder: str = "") -> dict[str, bytes]:
-        """Every file under folder in the user's store (relative paths)."""
+    def _dir(self, user_id: str) -> Path:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", user_id):
+            raise ValueError(f"bad user id {user_id!r}")
+        return self.root / user_id
+
+    async def _legacy_files(self, user_id: str, folder: str = "") -> dict[str, bytes]:
         out, sid = dict(), self.sid(user_id)
         try:
             entries = await self.store.list(sid, folder)
@@ -88,9 +95,41 @@ class UserSkills:
         for e in entries:
             p = posixpath.join(folder, e["name"]) if folder else e["name"]
             if e["is_dir"]:
-                out |= {posixpath.join(e["name"], k): v for k, v in (await self._files(user_id, p)).items()}
+                out |= {posixpath.join(e["name"], k): v for k, v in (await self._legacy_files(user_id, p)).items()}
             else:
                 out[e["name"]] = await self.store.read(sid, p)
+        return out
+
+    async def _from_legacy(self, user_id: str) -> bool:
+        """Copy skills from the v0.15.0 store to disk, then drop them there. True when the user had some."""
+        if self.store is None:
+            return False
+        try:
+            top = await self.store.list(self.sid(user_id), "")
+        except Exception:
+            return False
+        if not top:
+            return False
+        for e in top:
+            if e["is_dir"] and NAME.fullmatch(e["name"]):
+                files = await self._legacy_files(user_id, e["name"])
+                if "SKILL.md" in files:
+                    self._write(user_id, e["name"], files)
+        (self._dir(user_id) / SEEDED).write_bytes(b"1")
+        for e in top:
+            try:
+                await self.store.delete(self.sid(user_id), e["name"])
+            except Exception:
+                pass
+        return True
+
+    def _read_all(self, user_id: str) -> dict[str, dict]:
+        out = dict()
+        for d in sorted(self._dir(user_id).iterdir()):
+            if d.is_dir() and NAME.fullmatch(d.name) and (d / "SKILL.md").is_file():
+                files = {p.relative_to(d).as_posix(): p.read_bytes() for p in sorted(d.rglob("*"))
+                         if p.is_file() and not p.is_symlink()}
+                out[d.name] = {**_meta(files["SKILL.md"].decode(errors="replace"), d.name), "files": files}
         return out
 
     async def load(self, user_id: str) -> dict[str, dict]:
@@ -100,40 +139,38 @@ class UserSkills:
         async with self.locks.setdefault(user_id, asyncio.Lock()):
             if user_id in self.cache:
                 return self.cache[user_id]
-            sid, skills = self.sid(user_id), dict()
-            try:
-                top = {e["name"]: e for e in await self.store.list(sid, "")}
-            except FileNotFoundError:
-                top = dict()
-            if SEEDED not in top:
-                for n in DEFAULT:
-                    if n in self.lib:
-                        await self._write(user_id, n, self.lib[n]["files"])
-                        top[n] = {"name": n, "is_dir": True}
-                await self.store.write(sid, SEEDED, b"1")
-            for n, e in top.items():
-                if e["is_dir"] and NAME.fullmatch(n):
-                    files = await self._files(user_id, n)
-                    if "SKILL.md" in files:
-                        skills[n] = {**_meta(files["SKILL.md"].decode(errors="replace"), n), "files": files}
-            self.cache[user_id] = skills
-            return skills
+            d = self._dir(user_id)
+            if not (d / SEEDED).exists():
+                d.mkdir(parents=True, exist_ok=True)
+                if not await self._from_legacy(user_id):
+                    for n in DEFAULT:
+                        if n in self.lib:
+                            self._write(user_id, n, self.lib[n]["files"])
+                    (d / SEEDED).write_bytes(b"1")
+            self.cache[user_id] = await asyncio.to_thread(self._read_all, user_id)
+            return self.cache[user_id]
 
-    async def _write(self, user_id: str, name: str, files: dict[str, bytes]) -> None:
-        sid = self.sid(user_id)
-        try:
-            await self.store.delete(sid, name)
-        except FileNotFoundError:
-            pass
+    def _write(self, user_id: str, name: str, files: dict[str, bytes]) -> None:
+        """Replace the skill's folder: written beside it, then swapped in."""
+        d = self._dir(user_id)
+        tmp, old = d / f".{name}.new", d / f".{name}.old"
+        for x in (tmp, old):
+            shutil.rmtree(x, ignore_errors=True)
         for p, data in files.items():
-            await self.store.write(sid, f"{name}/{p}", data)
+            f = tmp / p
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(data)
+        if (d / name).exists():
+            (d / name).rename(old)
+        tmp.rename(d / name)
+        shutil.rmtree(old, ignore_errors=True)
 
     async def add(self, user_id: str, name: str) -> None:
         """Copy a library skill into the user's store (again = update to the library's version). LookupError: unknown."""
         if name not in self.lib:
             raise LookupError(f"no library skill {name!r}")
         await self.load(user_id)
-        await self._write(user_id, name, self.lib[name]["files"])
+        await asyncio.to_thread(self._write, user_id, name, self.lib[name]["files"])
         self.cache[user_id][name] = {k: v for k, v in self.lib[name].items()}
 
     async def add_files(self, user_id: str, name: str, files: dict[str, bytes]) -> None:
@@ -149,14 +186,14 @@ class UserSkills:
             if pp.is_absolute() or ".." in pp.parts:
                 raise ValueError(f"bad path in skill: {p}")
         await self.load(user_id)
-        await self._write(user_id, name, files)
+        await asyncio.to_thread(self._write, user_id, name, files)
         self.cache[user_id][name] = {**_meta(files["SKILL.md"].decode(errors="replace"), name), "files": files}
 
     async def remove(self, user_id: str, name: str) -> None:
         skills = await self.load(user_id)
         if name not in skills:
             raise LookupError(f"no skill {name!r}")
-        await self.store.delete(self.sid(user_id), name)
+        await asyncio.to_thread(shutil.rmtree, self._dir(user_id) / name, True)
         del skills[name]
 
     async def zip(self, user_id: str, name: str) -> bytes:

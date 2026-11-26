@@ -46,7 +46,7 @@ def backup(data_dir: Path, dest: Path, keep: int = 0) -> Path:
             src.close()
             dst.close()
             tar.add(snap, "simp.db")
-        for name in ("settings.toml", "workspaces", "sandboxes"):
+        for name in ("settings.toml", "workspaces", "sandboxes", "skills"):
             if (data_dir / name).exists():
                 tar.add(data_dir / name, name)
     if keep > 0:  # names sort by time
