@@ -1,4 +1,6 @@
 """Deck source -> officecli batch ops (no officecli needed), plus problem mapping back to file #element."""
+import os
+import re
 import shutil
 
 import pytest
@@ -117,3 +119,40 @@ def test_too_much_text_is_reported():
     long = "".join(f"<li>{'word ' * 150}</li>" for _ in range(6))
     deck = parse_deck(DESIGN, [("01.xml", f'<slide layout="bullets" title="T">{long}</slide>')])
     assert deck.errors == [] and any("01.xml #items: text shrank" in w for w in deck.warnings), deck.warnings
+
+
+@pytest.mark.skipif(not shutil.which("officecli"), reason="officecli not installed")
+async def test_xlsx_build_stores_formula_values(tmp_path):
+    """officecli calculates the formulas and writes their values, so viewers that don't calculate show numbers."""
+    import asyncio
+    import sys
+    import zipfile
+
+    from simp_agent.agent.env import LocalEnv
+    from simp_agent.plugins.office import Office
+
+    pytest.importorskip("openpyxl")
+    (tmp_path / "m.xlsx.py").write_text(
+        "import os, openpyxl\nwb = openpyxl.Workbook(); ws = wb.active; ws.title = 'Báo cáo'\n"
+        "ws['A1'] = 5; ws['A2'] = 7; ws['A3'] = '=SUM(A1:A2)*2'; ws['A4'] = '=A1/0'\nwb.save(os.environ['OUT'])\n")
+
+    class Api:
+        tools = {}
+
+        def register_tool(self, t):
+            self.tools[t.name] = t
+
+    class Ctx:
+        env, cwd, cancel, state = LocalEnv(), str(tmp_path), asyncio.Event(), {}
+
+    api = Api()
+    Office().setup(api, {})
+    old = os.environ["PATH"]
+    os.environ["PATH"] = os.path.dirname(sys.executable) + os.pathsep + old  # `python` with openpyxl
+    try:
+        out = await api.tools["office_build"].execute({"source": "m.xlsx.py"}, Ctx())
+    finally:
+        os.environ["PATH"] = old
+    assert out.startswith(f"Built {tmp_path}/m.xlsx") and "#DIV/0!" in out, out
+    sheet = zipfile.ZipFile(tmp_path / "m.xlsx").read("xl/worksheets/sheet1.xml").decode()
+    assert re.search(r"<(x:)?v>24</(x:)?v>", sheet) and "XFD" not in sheet

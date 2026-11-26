@@ -59,10 +59,10 @@ def _props(props: dict) -> dict:
     return {k.replace("__", "."): _str(v) for k, v in props.items() if v is not None}
 
 
-def _call(args: list, stdin: str | None = None, raw: bool = False):
+def _call(args: list, stdin: str | None = None, raw: bool = False, cwd: str | None = None):
     """Run officecli with --json; return its data, raise OfficeError on failure. raw: return stdout text."""
     p = subprocess.run([BIN, *[str(a) for a in args], *([] if raw else ["--json"])], input=stdin,
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, cwd=cwd)
     if raw:
         if p.returncode not in (0, 2):
             raise OfficeError((p.stderr or p.stdout).strip())
@@ -280,59 +280,40 @@ class Doc:
             self._q(dict(it))
 
     # ---- look ----
-    def screenshot(self, page=1, *, grid=None, range: str | None = None, width: int = 1600, height: int = 1200,
+    def screenshot(self, page=None, *, grid=None, range: str | None = None, width: int = 1600, height: int = 1200,
                    out: str | None = None, show: bool = True) -> str:
         """PNG of a page/slide (page=1, '2-4'), a contact sheet of all (grid=True or a column count), or one element
         (range='/slide[1]/shape[@id=3]', 'Sheet1!A1:D9'). show=True: the model sees it after the run."""
         self.flush()
         out = os.path.abspath(out or os.path.join(RUN_DIR, f"shot-{len(_images) + 1}.png"))
         args = ["view", self.path, "screenshot", "-o", out, "--screenshot-width", width, "--screenshot-height", height]
-        if grid:
+        if grid and not self.path.endswith(".xlsx"):  # an .xlsx shows its active sheet; range= for a part
             args += ["--grid", "auto" if grid is True else grid]
-        else:
+        elif page is not None and not self.path.endswith(".xlsx"):
             args += ["--page", _str(page)]
         if range:
             args += ["--range", range]
-        try:
-            _call(args)
-        except OfficeError as e:
-            if "headless browser" not in str(e) or range:
-                raise
-            self._shot_via_pdf(out, page, grid, width)  # no browser in the sandbox: LibreOffice -> PDF -> PNG
+        _call(args, cwd=RUN_DIR)  # officecli leaves a preview file in its working directory
         if show:
             _images.append(out)
         return out
 
-    def _shot_via_pdf(self, out: str, page, grid, width: int) -> None:
-        if self.path.endswith(".xlsx"):
-            raise OfficeError("screenshot of .xlsx needs a browser here; print d.view('text', range='Sheet1!A1:F20')")
-        self.save()
-        tmp = tempfile.mkdtemp(dir=RUN_DIR)
-        p = subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", tmp, self.path],
-                           capture_output=True, text=True, timeout=180)
-        pdf = os.path.join(tmp, os.path.splitext(os.path.basename(self.path))[0] + ".pdf")
-        if not os.path.exists(pdf):
-            raise OfficeError(f"screenshot failed (LibreOffice): {(p.stderr or p.stdout).strip()[-300:]}")
-        first, _, last = _str(page).partition("-")
-        rng = [] if grid else ["-f", first, "-l", last or first]
-        cols = 800 if grid else width
-        subprocess.run(["pdftoppm", "-png", "-scale-to-x", str(cols), "-scale-to-y", "-1", *rng, pdf, f"{tmp}/p"],
-                       check=True, capture_output=True)
-        pages = sorted(f for f in os.listdir(tmp) if f.startswith("p") and f.endswith(".png"))
-        if not pages:
-            raise OfficeError(f"no page {page}")
-        if len(pages) == 1:
-            os.replace(os.path.join(tmp, pages[0]), out)
-            return
-        n = grid if isinstance(grid, int) and grid is not True else max(1, round(len(pages) ** 0.5 + 0.49))
-        subprocess.run(["montage", *[os.path.join(tmp, f) for f in pages], "-tile", f"{n}x", "-geometry", "+8+8",
-                        "-background", "#888888", out], check=True, capture_output=True)
-
-    def export(self, out: str, mode: str | None = None) -> str:
-        """Write pdf / html / svg (mode from out's extension)."""
+    def export(self, out: str) -> str:
+        """Write .html, .svg or (for a .docx) .pdf: the HTML printed by headless chromium, pages within about one of Word's."""
         self.flush()
-        mode = mode or os.path.splitext(out)[1].lstrip(".").lower()
-        _call(["view", self.path, mode, "-o", os.path.abspath(out)])
+        out = os.path.abspath(out)
+        mode = os.path.splitext(out)[1].lstrip(".").lower()
+        if mode != "pdf":
+            _call(["view", self.path, mode, "-o", out], cwd=RUN_DIR)
+            return out
+        if not self.path.endswith(".docx"):
+            raise OfficeError("pdf export works for .docx only here; for slides use screenshot(page=...) or export('x.html')")
+        html = os.path.join(RUN_DIR, "export.html")
+        _call(["view", self.path, "html", "-o", html], cwd=RUN_DIR)
+        p = subprocess.run(["chromium", "--headless", "--no-sandbox", "--disable-gpu", "--no-pdf-header-footer",
+                            f"--print-to-pdf={out}", "file://" + html], capture_output=True, text=True, timeout=180)
+        if not os.path.exists(out):
+            raise OfficeError(f"pdf export failed: {(p.stderr or p.stdout).strip()[-300:]}")
         return out
 
     # ---- lifecycle ----

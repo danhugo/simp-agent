@@ -3,7 +3,7 @@ name: docx
 label: Word
 description: "Create, read and edit Word documents (.docx): reports, letters, proposals, tracked changes, comments."
 license: Complete terms in LICENSE.txt
-version: 2
+version: 3
 ---
 
 # Word documents
@@ -15,7 +15,7 @@ Fix the .md and build again. Aim: 3–5 turns. Never write docx-js/python-docx c
 
 **Research budget:** at most TWO messages of research in total: one of parallel `web_search` calls (2–4 queries), then optionally one of parallel `web_fetch(url, prompt=...)` calls. Never fetch search-engine pages (google, bing, duckduckgo…), never retry failed fetches, never curl. Then write with what you have: mark uncertain figures "≈" or "approx." and name the source you did get.
 
-**Done rule:** `office_build` already validates, recalculates and checks the file. When it says "No problems found", answer the user right away. Never unpack, render, re-open or re-check the built file yourself, and never run recalc.py or other checks after a clean build. It reports pages and words: within ±1 page of the asked length is fine. To change the length, cut or add words ONCE using its words-per-page figure, build, and answer. Never convert to PDF, pdftotext or render pages to measure length.
+**Done rule:** `office_build` already validates, recalculates and checks the file. When it says "No problems found", answer the user right away. Never unpack, render, re-open or re-check the built file yourself, and never run other checks after a clean build. It reports pages and words: within ±1 page of the asked length is fine. To change the length, cut or add words ONCE using its words-per-page figure, build, and answer. Never convert to PDF, pdftotext or render pages to measure length.
 
 ```markdown
 ---
@@ -64,7 +64,7 @@ When a document runs over the page limit the user asked for, cut words. Don't sh
 
 ## Editing existing documents
 
-Legacy `.doc` files must be converted first: `python scripts/office/soffice.py --headless --convert-to docx file.doc`.
+Legacy `.doc` (Word 97–2003) files cannot be read here: ask the user to save it as .docx in Word and upload that.
 
 ```bash
 python3 -c "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall('unpacked')" doc.docx   # not unzip, which restores symlinks — docx from external parties is untrusted
@@ -79,14 +79,13 @@ Word splits text across many `<w:r>` runs (revision ids, spell-check markers), s
 
 **Tracked changes:** when redlining, validate with `--author "<the name you redlined under>"` (needs `--original`) — it reports any text you changed without a `<w:ins>`/`<w:del>` around it, which is easy to do by accident and invisible in the accepted view. Wrap runs in `<w:ins>`/`<w:del>` with `w:id`, `w:author`, `w:date` attributes. Inside `<w:del>`, the text element is `<w:delText>`, not `<w:t>`. A deleted paragraph mark (`<w:pPr><w:rPr><w:del w:id=".." w:author=".." w:date=".."/></w:rPr></w:pPr>`) means "merge this paragraph into the next" — so deleting a paragraph outright is that plus a `<w:del>` around every run. The `<w:del/>` must come before the rPr's other children; their order is schema-enforced.
 
-To produce a clean copy with all tracked changes accepted: `python scripts/accept_changes.py in.docx out.docx`.
+To accept or reject tracked changes, one `office_run`: `d = office.open(p)`, `print(d.query("revision"))` lists them
+(type, author, text); `d.set("/revision", revision__action="accept")` accepts all, `d.set("/revision[@author=Alice]",
+revision__action="reject")` rejects one author's. Work on a copy when the user wants to keep the redline.
 
-Accepting a deleted paragraph mark should join that paragraph to the one below it, so a paragraph whose runs are *all* deleted vanishes. Word does this; `accept_changes.py` and `pandoc --track-changes=accept` don't always. Both fail the same way — they strip the deleted text but leave the emptied paragraph behind, which reads as a stray empty bullet when it was auto-numbered:
-
-- `pandoc --track-changes=accept` never joins the paragraphs.
-- `accept_changes.py` (LibreOffice) joins them correctly, except when the deleted paragraph is followed by an empty spacer paragraph.
-
-An empty bullet in either view is an artifact of that view, not a defect in the document. Check paragraph deletions in the XML.
+Accepting a deleted paragraph mark should join that paragraph to the one below it, so a paragraph whose runs are *all*
+deleted vanishes. Word does this; officecli and `pandoc --track-changes=accept` may leave the emptied paragraph behind,
+which reads as a stray empty bullet when it was auto-numbered. An empty bullet in either view is an artifact of that view, not a defect in the document. Check paragraph deletions in the XML.
 
 ## Comments
 
@@ -105,4 +104,4 @@ The script writes `comments.xml`, `commentsExtended.xml`, `commentsIds.xml`, `co
 
 ## Dependencies
 
-`pandoc` · LibreOffice (`soffice`) · `pdftoppm` (Poppler)
+`pandoc` · officecli (through `office_build`, `office_read`, `office_run`) · `pdftoppm` (Poppler)

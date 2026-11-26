@@ -3,19 +3,19 @@ name: xlsx
 label: Excel
 description: "Create, read and edit spreadsheets (.xlsx, .csv): workbooks with formulas, formatting, charts, dashboards, data cleanup."
 license: Complete terms in LICENSE.txt
-version: 2
+version: 3
 ---
 
 # Spreadsheets
 
 **Create** = write ONE Python source `/work/<name>.xlsx.py`, then `office_build(source="/work/<name>.xlsx.py")`.
-It runs the script, stores calculated values (LibreOffice), and checks every formula and column: problems come back
+It runs the script, stores calculated values (officecli), and checks every formula and column: problems come back
 as `Sheet!Cell: what is wrong`. Fix the script, build again. Aim: 3–5 turns for a 10-sheet workbook.
 
 
 **Research budget:** at most TWO messages of research in total: one of parallel `web_search` calls (2–4 queries), then optionally one of parallel `web_fetch(url, prompt=...)` calls. Never fetch search-engine pages (google, bing, duckduckgo…), never retry failed fetches, never curl. Then write with what you have: mark uncertain figures "≈" or "approx." and name the source you did get.
 
-**Done rule:** `office_build` already validates, recalculates and checks the file. When it says "No problems found", answer the user right away. Never unpack, render, re-open or re-check the built file yourself, and never run recalc.py or other checks after a clean build.
+**Done rule:** `office_build` already validates, recalculates and checks the file. When it says "No problems found", answer the user right away. Never unpack, render, re-open or re-check the built file yourself, and never run other checks after a clean build.
 
 ```python
 import os, sys; sys.path.insert(0, "/opt/simp/skills/xlsx/scripts")
@@ -59,49 +59,38 @@ For bulk data in or out use `pandas`.
 
 ## Recalculating by hand (editing an existing file)
 
-openpyxl writes formulas as strings with **no cached values**. Until you recalculate, every
-formula cell reads back as `None` to anything reading cached values — `pandas`,
-`load_workbook(data_only=True)`, and most previewers.
+openpyxl writes formulas as strings with **no cached values**: until something calculates them, every formula cell
+reads back as `None` to `pandas`, `load_workbook(data_only=True)` and most previewers. `office_build` and `office_run`
+store the values for you (officecli calculates when it writes). For a file you saved with openpyxl yourself, one
+`office_run` with any edit stores them, and `view issues` lists every formula error (`#DIV/0!`, `#REF!`…) and every
+formula it cannot evaluate:
 
-```bash
-python /opt/simp/skills/xlsx/scripts/recalc.py output.xlsx [timeout_seconds]   # default 30
+```python
+d = office.open("/work/model.xlsx"); d.set("/sheet[1]/XFD1", value="x"); d.remove("/sheet[1]/XFD1")
+print(d.view("issues"))
 ```
 
-LibreOffice computes the formulas **on a copy**, only their values go into your file, and you get JSON:
-`status` (`success` | `errors_found`), `total_formulas`, `total_errors`, and an
-`error_summary` naming up to 100 cells per error type (`locations_truncated` says how many it
-withheld — trust `total_errors`, not the length of the list). Fix what it names and run it
-again. **JSON with an `error` key instead of a `status` means nothing was recalculated**, and
-only that case exits non-zero — `errors_found` exits 0, so never treat a clean exit as a clean
-workbook.
+**A clean file proves your formulas *evaluate*, not that they are *right*.** An off-by-one range or a reference to
+the wrong row yields an error-free file with wrong numbers. Write 2–3 formulas first and check they pull the values
+you expect (`print(d.view("text", range="Sheet1!A1:F10"))`), before building out a grid.
 
-**A green recalc proves your formulas *evaluate*, not that they are *right*.** An off-by-one
-range or a reference to the wrong row yields a clean, error-free file with wrong numbers.
-Write 2–3 formulas first and check they pull the values you expect, before building out a grid.
-
-**`not_computed` lists formulas LibreOffice cannot evaluate, even on `success`**: a function it lacks
-(`_xlfn.XLOOKUP`, `_xlfn.LET`…) or a link to another workbook (`='[1]Returns Analysis'!$B$2`). They
-keep what they held: after an openpyxl save, nothing until Excel opens it. For their numbers sooner,
-read the original with `data_only=True`; keep the formulas. A sound formula depending on a listed one,
-directly or not, reports `#NAME?` too: leave it and tell the user. A cell that tests one
-(`IFERROR(B1,0)`) gets LibreOffice's fallback, and a kept value may be stale: say so. After editing
-sheet XML, delete each changed formula's `<v>`: a mistake that keeps its value is listed, not reported.
+A formula listed as "not evaluated" (a function officecli lacks, or a link to another workbook) keeps no value until
+Excel opens the file: leave it, and tell the user.
 
 ## Choosing formulas that survive verification
 
-LibreOffice implements fewer functions than Excel, and a formula it cannot evaluate has no value
-until Excel opens the file.
-
-- **Prefer Excel-2007-era functions** — `SUMIFS`, `INDEX`, `MATCH`, `IFERROR`, `SUMPRODUCT` — which need no prefix.
-- **Six post-2007 functions work, but only with an `_xlfn.` prefix**, because openpyxl writes your formula into the XML verbatim and Excel stores post-2007 names prefixed (its UI hides the prefix): `_xlfn.TEXTJOIN`, `_xlfn.CONCAT`, `_xlfn.IFS`, `_xlfn.SWITCH`, `_xlfn.MAXIFS`, `_xlfn.MINIFS`. Written bare, each yields `#NAME?`.
-- **Never use `XLOOKUP`, `XMATCH`, `SORT`, `FILTER`, `UNIQUE`, or `SEQUENCE`.** The runtime's LibreOffice cannot evaluate them, and one that can fills only the top-left cell of their result, since an openpyxl-written file has no spill metadata. Use `INDEX`/`MATCH` for lookups, and sort, filter, and de-duplicate in Python before writing the cells.
-- A missing `)` is reported as `unbalanced brackets`. Too few arguments (`=ROUND(A1)`) is not: LibreOffice returns a value, and Excel may offer to repair the file.
+- **Prefer widely supported functions**: `SUMIFS`, `INDEX`, `MATCH`, `XLOOKUP`, `IFERROR`, `SUMPRODUCT`, `TEXTJOIN`.
+- **Post-2007 functions need an `_xlfn.` prefix** when written with openpyxl (it writes the formula verbatim; Excel
+  stores those names prefixed and hides it): `_xlfn.XLOOKUP`, `_xlfn.TEXTJOIN`, `_xlfn.IFS`, `_xlfn.MAXIFS`… Written
+  bare, Excel shows `#NAME?`.
+- **Avoid spilling functions** (`SORT`, `FILTER`, `UNIQUE`, `SEQUENCE`): an openpyxl-written file has no spill
+  metadata, so only the top-left cell fills. Sort, filter and de-duplicate in Python before writing the cells.
 
 ## openpyxl gotchas
 
 - **Reading a model takes two loads.** `data_only=True` yields cached values with the formulas gone; the default yields formula strings with no values. One pass cannot give you both.
 - **`data_only=True` is destructive if you save.** That workbook has no formulas left, so saving replaces every one with a literal — permanently.
-- **`data_only=True` on a file openpyxl just wrote returns `None` everywhere** — run `recalc.py` first. (A formula whose result is `""` also reads back as `None`.)
+- **`data_only=True` on a file openpyxl just wrote returns `None` everywhere** — store the values first (above). (A formula whose result is `""` also reads back as `None`.)
 - **Merged cells: write the top-left anchor only.** Every other cell in the range is a `MergedCell` whose `.value` is read-only.
 - **`.xlsm` loses its macros unless you pass `keep_vba=True`** to `load_workbook`.
 - **A sheet name containing a space must be quoted** in a cross-sheet reference: `='Assumptions Inputs'!$B$5`. Unquoted, it evaluates to `#VALUE!`.
@@ -131,4 +120,4 @@ lone edited cell mid-row is the commonest silent error · guard denominators tha
 
 ## Dependencies
 
-`openpyxl`, `pandas`, `markitdown` (pip, preinstalled — install only if an import fails or the command is missing) · LibreOffice (`soffice`, auto-configured for sandboxed environments via `scripts/office/soffice.py`)
+`openpyxl`, `pandas`, `markitdown` (pip, preinstalled) · officecli (through `office_build`, `office_read`, `office_run`)

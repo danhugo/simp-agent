@@ -56,7 +56,7 @@ exec s3fs "$1" /work -o url="$2" -o endpoint="$3" -o use_path_request_style -o a
 
 def build_image(tag: str = IMAGE) -> int:
     """The dev image is the E2B template itself (e2b_template.py as a Dockerfile, build context apps/server), so a
-    local chat has the same libraries, LibreOffice and skills as production."""
+    local chat has the same libraries, chromium and skills as production."""
     import importlib.util
     spec = importlib.util.spec_from_file_location("e2b_template", DOCKERFILE_DIR / "e2b_template.py")
     mod = importlib.util.module_from_spec(spec)

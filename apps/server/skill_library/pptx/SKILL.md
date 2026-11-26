@@ -2,7 +2,7 @@
 name: pptx
 label: PowerPoint
 description: "Create or edit PowerPoint decks (.pptx): slides, presentations, decks of any length, in any language."
-version: 2
+version: 3
 ---
 
 # Slides
@@ -22,7 +22,7 @@ Never write pptxgenjs/python-pptx code, never render screenshots to review, neve
    "Text shrank … cut its words" means the slide says too much: shorten it (or split it in two), never ignore it.
 5. Answer in 2–3 lines: the file path, slide count, theme. No slide-by-slide recap.
 
-**Done rule:** `office_build` already validates, recalculates and checks the file. When it says "No problems found", answer the user right away. Never unpack, render, re-open or re-check the built file yourself, and never run recalc.py or other checks after a clean build.
+**Done rule:** `office_build` already validates, recalculates and checks the file. When it says "No problems found", answer the user right away. Never unpack, render, re-open or re-check the built file yourself, and never run other checks after a clean build.
 
 
 ## design.xml

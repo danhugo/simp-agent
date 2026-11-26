@@ -28,7 +28,7 @@ async def test_new_user_gets_office_skills_with_sandbox_paths(tmp_path):
     assert next(s for s in src.list() if s["name"] == "pptx")["dir"] == "/opt/simp/skills/pptx"
     text = await skills.plugin(src, None).text("xlsx")
     assert text.startswith("[Skill: xlsx · SKILL.md]")
-    assert "python /opt/simp/skills/xlsx/scripts/recalc.py" in text and "python scripts/" not in text
+    assert 'sys.path.insert(0, "/opt/simp/skills/xlsx/scripts")' in text and "python scripts/" not in text
     assert (tmp_path / "skills" / "u1" / "xlsx" / "SKILL.md").exists()  # on the server's disk
 
 
@@ -72,7 +72,7 @@ async def test_to_sandbox_only_when_changed(tmp_path):
     assert len(cmds) == 1 and "/opt/simp/skills" in cmds[0] and "go-w" in cmds[0]
     import tarfile
     t = tarfile.open(fileobj=io.BytesIO(puts[0][1]))
-    assert "xlsx/scripts/recalc.py" in t.getnames()
+    assert "xlsx/scripts/xlsx_kit.py" in t.getnames()
     await m.remove("u1", "pdf")
     await m.to_sandbox(box, root_sh, put)
     assert len(cmds) == 2

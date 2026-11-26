@@ -26,6 +26,7 @@ from .office_layouts import LAYOUTS, THEMES, Layouts, theme_design
 W, H, PT = 1280, 720, 0.75  # canvas px; 1 px = 0.75 pt (960 x 540 pt = 16:9)
 CM_PX = 1 / 0.026458333  # px per cm
 OUT_MAX = 12_000
+PRINT_PDF = "chromium --headless --no-sandbox --disable-gpu --no-pdf-header-footer"
 READABLE = 18  # px on the 1280x720 canvas (13.5 pt): smaller body text is not readable when presented
 RUNTIME = open(os.path.join(os.path.dirname(__file__), "office_rt.py"), encoding="utf-8").read()  # copied into the env
 # runs the agent's main.py with `office` imported; its traceback keeps main.py's own line numbers
@@ -46,7 +47,7 @@ Edit (queued): d.add(parent, type, before=, after=, index=, **props) -> .path of
   d.remove(path); d.move(path, to=, before=, after=, index=); d.swap(p1, p2); d.replay(batch_items); d.flush()
 Low level: d.raw_set(part, xpath, action, xml); d.add_part(parent, type); d.import_csv('/Sheet1', csv, header=True);
   d.refresh(); office.merge(template, out, data_dict)
-Look: d.screenshot(page=1 | grid=True | range='/slide[1]/shape[@id=3]' or 'Sheet1!A1:D9') ; d.export('x.pdf'|'.html'|'.svg')
+Look: d.screenshot(page=2 | grid=True | range='/slide[1]/shape[@id=3]' or 'Sheet1!A1:D9'); d.export('x.html'|'x.svg', or 'x.pdf' for a .docx)
 Docs: office.help('pptx') lists elements; office.help('pptx', 'shape') gives its props; office.search('shadow', 'pptx')
 Any other command: office.cli('view', 'a.pptx', 'stats')
 Paths: /slide[2]/shape[@id=5], /slide[1]/table[1]/tr[2]/tc[1], /body/p[3], /Sheet1/B4. Selectors: 'shape',
@@ -451,10 +452,9 @@ class Office:
 
     name = "office"
 
-    def __init__(self, docx_reference: str | None = None, xlsx_recalc: str | None = None):
-        """docx_reference: pandoc --reference-doc (the house style). xlsx_recalc: a recalc.py that stores computed
-        values (LibreOffice) so viewers that don't calculate still show numbers."""
-        self.docx_reference, self.xlsx_recalc = docx_reference, xlsx_recalc
+    def __init__(self, docx_reference: str | None = None):
+        """docx_reference: pandoc --reference-doc (the house style)."""
+        self.docx_reference = docx_reference
 
     def setup(self, api, config: dict) -> None:
         s = {"type": "string"}
@@ -515,9 +515,11 @@ class Office:
         elif kind == "xlsx":
             cmd = f"cd {shlex.quote(os.path.dirname(src))} && OUT={made} python {shlex.quote(src)} 2>&1 | tail -30"
             cmd += f" && test -f {made} || {{ echo 'the script did not save to OUT'; exit 1; }}"
-            if self.xlsx_recalc:
-                d, f = os.path.split(self.xlsx_recalc)
-                cmd += f"; cd {shlex.quote(d)} && python {shlex.quote(f)} {made} 60 >/dev/null 2>&1; true"
+            # officecli evaluates formulas and stores their values when it writes the file; a throwaway cell makes it
+            # write (viewers that don't calculate then show numbers). Errors come back from `view issues` below.
+            cmd += (f" && echo '[{{\"command\":\"set\",\"path\":\"/sheet[1]/XFD1\",\"props\":{{\"value\":\"x\"}}}},"
+                    f"{{\"command\":\"remove\",\"path\":\"/sheet[1]/XFD1\"}}]' | officecli batch {made} >/dev/null"
+                    f" && officecli close {made} >/dev/null")
         else:
             entries = sorted(e["name"] for e in await ctx.env.list(src) if not e["is_dir"] and e["name"].endswith(".xml"))
             if "design.xml" not in entries:
@@ -544,10 +546,10 @@ class Office:
         if "passed" not in valid.lower():
             problems.insert(0, f"schema: {valid}")
         what = f" ({len({n for n, _ in ids})} slides)" if kind == "pptx" else ""
-        if kind == "docx":  # page count (LibreOffice layout; Word's may differ by a little)
-            _, pages = await self._sh(ctx, f"cd /tmp && soffice --headless --convert-to pdf {shlex.quote(out)} >/dev/null 2>&1; "
-                                           f"pdfinfo /tmp/{shlex.quote(os.path.basename(out)[:-5])}.pdf 2>/dev/null | "
-                                           f"awk '/^Pages:/{{print $2}}'; rm -f /tmp/{shlex.quote(os.path.basename(out)[:-5])}.pdf", 120)
+        if kind == "docx":  # page count: officecli's HTML printed by chromium (Word's may differ by a page)
+            _, pages = await self._sh(ctx, f"officecli view {shlex.quote(out)} html -o {tmp}.html >/dev/null 2>&1 && "
+                                           f"{PRINT_PDF} --print-to-pdf={tmp}.pdf file://{tmp}.html >/dev/null 2>&1; "
+                                           f"pdfinfo {tmp}.pdf 2>/dev/null | awk '/^Pages:/{{print $2}}'; rm -f {tmp}.html {tmp}.pdf", 120)
             _, words = await self._sh(ctx, f"pandoc -t plain {shlex.quote(src)} 2>/dev/null | wc -w", 60)
             if pages.strip().isdigit() and words.strip().isdigit():
                 p, w = int(pages.strip()), int(words.strip())
