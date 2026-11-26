@@ -312,7 +312,7 @@ template does not count toward user quota.
 **Skills.** The template holds no skills. `apps/server/skill_library/` is the server's catalog (Crafts › Skills ›
 Library). Adding one copies its folder into the user's own skills on the server's disk (`<data_dir>/skills/<id>/`,
 in `simp-server backup`; not in Files, not in the quota). New users start with docx, pdf,
-pptx, xlsx. Users can also import a skill (.zip) and download any skill. Before a command runs, the server writes the
+pptx, xlsx. Users can also import a skill (.zip). Before a command runs, the server writes the
 user's skills into the sandbox at `/opt/simp/skills` (root-owned, read-only for the agent) when they changed
 (`simp_server/user_skills.py`). A skill change needs only a server release; users get a library update with the
 skill's Update button (its `version:` went up). Exception: `office_build` uses `docx/reference.docx` and

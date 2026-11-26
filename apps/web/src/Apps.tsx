@@ -1,4 +1,4 @@
-import { IconChevron, IconDownload, IconPlus, IconRefresh, IconSearch, IconTrash, IconUpload } from "./icons";
+import { IconChevron, IconPlus, IconRefresh, IconSearch, IconTrash, IconUpload } from "./icons";
 import { useCallback, useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -80,14 +80,6 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
   const [lib, setLib] = useState<LibrarySkill[] | null>(null);
   const loadSkills = useCallback(() => Promise.all([api.skills(), api.skillLibrary()]).then(([a, b]) => { setSkills(a); setLib(b); }, fail), [fail]);
   const skillDo = async (f: () => Promise<unknown>) => { try { await f(); } catch (e) { fail(e); } loadSkills(); };
-  const saveZip = async (name: string) => {
-    try {
-      const url = URL.createObjectURL(await api.skillZip(name));
-      const a = document.createElement("a");
-      a.href = url; a.download = `${name}.zip`; a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (e) { fail(e); }
-  };
   const importZip = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = "";
@@ -104,7 +96,6 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
       <div className="app-text"><strong>{s.label}</strong><div className="muted small app-desc">{s.description}</div></div>
       {s.update && <button className="ghost small" title="The library has a newer version" onClick={() => skillDo(() => api.addSkill(s.name))}>
         <IconRefresh size={14} /> Update</button>}
-      <button className="ghost icon" aria-label={`Download ${s.label}`} title="Download (.zip)" onClick={() => saveZip(s.name)}><IconDownload size={16} /></button>
       <button className="ghost icon" aria-label={`Remove ${s.label}`} title="Remove from your skills" onClick={() => skillDo(() => api.removeSkill(s.name))}><IconTrash size={16} /></button>
       <label className="sw"><button className={`switch ${s.enabled ? "on" : ""}`} role="switch" aria-checked={s.enabled}
         aria-label={`Use ${s.label}`} onClick={() => toggleSkill(s)}><span /></button></label>

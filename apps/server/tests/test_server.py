@@ -865,8 +865,6 @@ async def test_skills_start_enabled_and_toggle_per_user(env):
         assert (await api.post(f"/api/skills/{other['name']}/add", headers=h)).status_code == 200
         assert other["name"] in {s["name"] for s in (await api.get("/api/skills", headers=h)).json()}
         assert other["name"] not in {s["name"] for s in (await api.get("/api/skills", headers=hb)).json()}
-        z = await api.get(f"/api/skills/{other['name']}/download", headers=h)
-        assert z.status_code == 200 and z.content[:2] == b"PK"
         assert (await api.delete(f"/api/skills/{other['name']}", headers=h)).status_code == 200
         assert other["name"] not in {s["name"] for s in (await api.get("/api/skills", headers=h)).json()}
         assert (await api.post("/api/skills/nope/add", headers=h)).status_code == 404

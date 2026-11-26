@@ -196,17 +196,6 @@ class UserSkills:
         await asyncio.to_thread(shutil.rmtree, self._dir(user_id) / name, True)
         del skills[name]
 
-    async def zip(self, user_id: str, name: str) -> bytes:
-        """A skill as <name>/... in a zip: the user's copy, else the library's."""
-        s = (await self.load(user_id)).get(name) or self.lib.get(name)
-        if s is None:
-            raise LookupError(f"no skill {name!r}")
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-            for p, data in sorted(s["files"].items()):
-                z.writestr(f"{name}/{p}", data)
-        return buf.getvalue()
-
     def version(self, user_id: str) -> str:
         """Hash of the user's cached skills: changes when they add, update or remove one."""
         h = hashlib.sha256()

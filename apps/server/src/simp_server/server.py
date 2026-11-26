@@ -975,15 +975,6 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
             raise HTTPException(400, str(e)) from None
         return {"ok": True, "name": name}
 
-    @app.get("/api/skills/{name}/download")
-    async def download_skill(name: str, u=Depends(user)):
-        try:
-            data = await mgr.uskills.zip(u["id"], name)
-        except LookupError:
-            raise HTTPException(404, "no such skill") from None
-        return Response(data, media_type="application/zip",
-                        headers={"Content-Disposition": f'attachment; filename="{name}.zip"'})
-
     @app.delete("/api/skills/{name}")
     async def remove_skill(name: str, u=Depends(user)):
         try:

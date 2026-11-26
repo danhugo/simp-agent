@@ -64,8 +64,7 @@ async def test_import_zip_and_download(tmp_path):
     name, files = unzip_skill(zipped({"my-skill/SKILL.md": "---\nname: My Skill\n---\nbody", "my-skill/a.txt": "x"}))
     assert name == "my-skill" and set(files) == {"SKILL.md", "a.txt"}
     await m.add_files("u1", name, files)
-    z = zipfile.ZipFile(io.BytesIO(await m.zip("u1", "my-skill")))
-    assert sorted(z.namelist()) == ["my-skill/SKILL.md", "my-skill/a.txt"]
+    assert set((await m.load("u1"))["my-skill"]["files"]) == {"SKILL.md", "a.txt"}
     for bad in (zipped({"x.txt": "no skill"}), b"not a zip"):
         with pytest.raises(ValueError):
             unzip_skill(bad)
