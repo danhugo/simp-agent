@@ -156,3 +156,8 @@ async def test_xlsx_build_stores_formula_values(tmp_path):
     assert out.startswith(f"Built {tmp_path}/m.xlsx") and "#DIV/0!" in out, out
     sheet = zipfile.ZipFile(tmp_path / "m.xlsx").read("xl/worksheets/sheet1.xml").decode()
     assert re.search(r"<(x:)?v>24</(x:)?v>", sheet) and "XFD" not in sheet
+
+
+def test_svg_fallback_size_is_not_a_problem():
+    line = '  [F3] /slide[1]/picture[@id=1011]: Picture "image11" is stretched: source 1x1px (1.00:1) in a 3x1cm box'
+    assert explain(line, {}) == []

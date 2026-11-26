@@ -2,7 +2,7 @@
 name: pptx
 label: PowerPoint
 description: "Create or edit PowerPoint decks (.pptx): slides, presentations, decks of any length, in any language."
-version: 6
+version: 7
 ---
 
 # Slides
@@ -131,12 +131,31 @@ decoration rules before building.
 - Write the whole deck in ONE message of parallel `write` calls (design.xml, every slide, every SVG you draw), after
   ONE `office_run` that saves all the artwork. Then build.
 
-## Free layout
+## Free layout (complete reference: there is nothing else to look up)
 
-A `<slide>` without `layout` holds positioned elements on a 1280×720 canvas (x, y, width, height in px):
-`<background color="bg"/>`, `<text x y width height font="heading|body|caption|display" size color align
-anchor="top|middle|bottom">…</text>`, `<shape type="rect|ellipse|line|arrow|…" fill stroke corner-radius/>`,
-`<image src/>` (.png .jpg .svg), `<chart>`, `<table>`. Use it for designed decks and for a slide no layout fits.
+A `<slide>` without `layout` holds positioned elements on a 1280×720 px canvas, drawn in file order (later on top).
+Colours are `#RRGGBB` or a design.xml name (bg, surface, ink, muted, primary, accent, on). Every element takes
+`x y width height` in px; text, charts and tables must stay inside the canvas, shapes and images may bleed off it.
+
+- `<background color="#4352BE"/>`: the slide's background colour.
+- `<text x y width height font="display|heading|body|caption" size="40" color="#FFFFFF" bold="true"
+  align="left|center|right" anchor="top|middle|bottom" fill="#1E2A8A" padding="16" line-height="1.2"
+  space-after="12" autofit="shrink">…</text>`: content is plain text, or paragraphs `<p>…</p>`, or lists
+  `<ul><li>…</li></ul>` / `<ol>`. Inline: `<strong>`, `<em>`, `<u>`, `<span color="#9EEFBC" size="28" font="heading">`.
+  `font` picks design.xml's family; size is px. Leave height for every line (about size × 1.3 per line).
+- `<shape type="rect|ellipse|triangle|diamond|arrow|chevron|star|hexagon|pentagon|parallelogram" x y width height
+  fill="#9EEFBC|none" stroke="#1E2A8A" stroke-width="2" corner-radius="24" opacity="0.6"/>`; a line:
+  `<shape type="line" x y width height stroke="#9EEFBC" stroke-width="4" arrow-end="arrow"/>` (from x,y to x+width,y+height).
+- `<image src="/work/…/x.svg|.png|.jpg" x y width height/>`: keep the picture's own aspect ratio (the build reports a
+  stretched one). Crop photos to a circle or panel beforehand with Pillow; no opacity on images (bake it into the file).
+- `<chart x y width height type="column|bar|line|area|pie|donut|scatter" categories="A,B,C" color="#9EEFBC"
+  legend="none|bottom|right" font="body" size="18"><series name="…" values="1,2,3"/></chart>`.
+- `<table x y width height columns="2,1,1" font="body" size="18" fill="#2A3180" header-fill="#9EEFBC">
+  <tr><td>…</td></tr></table>`: first row is the header.
+
+Fonts: the file names a family; PowerPoint uses it if the viewer has it (preview and screenshots use what the sandbox
+has). Safe for every viewer: Arial, Calibri, Georgia, Segoe UI, Verdana. Vietnamese text works in all of them. Do not
+list or test the sandbox's fonts.
 
 ## Editing
 
