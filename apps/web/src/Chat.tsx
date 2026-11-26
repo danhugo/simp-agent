@@ -146,7 +146,8 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
   // Tool calls in a row (across the model's steps, until it writes text again) form one group,
   // so 20 page opens are one line ("Searched the web 2 times, opened 18 pages") instead of 20.
   const groupCalls = new Map<number, ToolCall[]>(), absorbed = new Set<number>();
-  const batches = parallelBatches(state.items.flatMap((it) => it.kind === "assistant" ? [it.msg.tool_calls] : []));
+  const batches = parallelBatches(state.items.flatMap((it) => it.kind === "assistant" ? [it.msg.tool_calls] : []),
+    new Set(state.parallelTools));
   let owner: number | null = null;
   for (const it of state.items) {
     if (it.kind !== "assistant") { owner = null; continue; }
@@ -444,16 +445,15 @@ type ToolProps = { state: ChatState; send: Send; sid: string; onOpenFile?: (p: s
 
 /** A few calls show as rows; more fold into one summary line. Calls still running or waiting for you stay visible. */
 // Tools the agent runs at once when they sit next to each other in one message (AgentTool.parallel=True).
-const PARALLEL = new Set(["read", "grep", "find", "ls", "web_search", "web_fetch", "load_skill", "memory_search", "office_read"]);
-
-/** call id -> batch number, for runs of 2+ calls of one message that ran at the same time. */
-export function parallelBatches(messages: ToolCall[][]): Map<string, number> {
+/** call id -> batch number, for runs of 2+ calls of one message that ran at the same time. parallel: the session's
+ * read-only tools (from the server's snapshot); the agent runs calls of them that sit next to each other at once. */
+export function parallelBatches(messages: ToolCall[][], parallel: Set<string>): Map<string, number> {
   const out = new Map<string, number>();
   let n = 0;
   for (const calls of messages) {
     let run: ToolCall[] = [];
     const flush = () => { if (run.length > 1) { n++; for (const c of run) out.set(c.id, n); } run = []; };
-    for (const c of calls) { if (PARALLEL.has(c.name)) run.push(c); else flush(); }
+    for (const c of calls) { if (parallel.has(c.name)) run.push(c); else flush(); }
     flush();
   }
   return out;

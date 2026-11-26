@@ -12,9 +12,16 @@ test("groupSummary counts calls by kind in plain words", () => {
 test("parallelBatches groups 2+ read-only calls in a row of one message", async () => {
   const { parallelBatches } = await import("./Chat");
   const [r1, r2, b, r3, s1, s2] = [c("read"), c("read"), c("bash"), c("read"), c("web_search"), c("web_search")];
-  const m = parallelBatches([[r1, r2, b, r3], [s1, s2]]);
+  const m = parallelBatches([[r1, r2, b, r3], [s1, s2]], new Set(["read", "web_search"]));
   expect(m.get(r1.id)).toBe(m.get(r2.id));
   expect(m.has(b.id) || m.has(r3.id)).toBe(false);
   expect(m.get(s1.id)).toBe(m.get(s2.id));
   expect(m.get(s1.id)).not.toBe(m.get(r1.id));
+});
+
+test("parallelBatches follows the server's list: a tool it does not mark parallel is never grouped", async () => {
+  const { parallelBatches } = await import("./Chat");
+  const [d1, d2] = [c("web_download"), c("web_download")];
+  expect(parallelBatches([[d1, d2]], new Set(["read"])).size).toBe(0);
+  expect(parallelBatches([[d1, d2]], new Set(["web_download"])).get(d1.id)).toBe(1);
 });

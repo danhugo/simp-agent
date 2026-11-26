@@ -23,13 +23,14 @@ export interface ChatState {
   runStarted: number | null;
   /** this browser's clock minus the server's, in ms (from the last snapshot) */
   skew: number;
+  parallelTools: string[];  // this session's read-only tools: calls of them next to each other run at once
 }
 
 const emptyInFlight = (): InFlight => ({ msg_id: null, thinking: "", text: "", tool_outputs: {} });
 
 export const initialState = (): ChatState => ({
   lastSeq: 0, runState: "idle", items: [], inFlight: emptyInFlight(),
-  toolOutputs: {}, results: {}, decisions: {}, pending: null, title: "", runStarted: null, skew: 0,
+  toolOutputs: {}, results: {}, decisions: {}, pending: null, title: "", runStarted: null, skew: 0, parallelTools: [],
 });
 
 /** Append `delta` only when it starts exactly at the end of `cur`; anything else is a dup or a gap. */
@@ -88,6 +89,7 @@ export function reduce(s: ChatState, ev: ServerEvent): ChatState {
           return { skew, runStarted: ev.run_started != null ? ev.run_started * 1000 + skew : null };
         })(),
         inFlight: ev.in_flight, toolOutputs: { ...s.toolOutputs, ...ev.in_flight.tool_outputs },
+        parallelTools: ev.parallel_tools ?? s.parallelTools,
       };
   }
 }

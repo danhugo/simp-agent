@@ -39,7 +39,7 @@ describe("snapshot apply", () => {
     // reconnect: server re-sends nothing (seq 1 seen), then a snapshot with more text than we saw
     const s = run([
       { type: "user_message", seq: 1, text: "hi" },
-      { type: "snapshot", run_started: null, server_now: 0, last_seq: 1, run_state: "running", pending_approval: null, title: "",
+      { type: "snapshot", parallel_tools: [], run_started: null, server_now: 0, last_seq: 1, run_state: "running", pending_approval: null, title: "",
         in_flight: { msg_id: "m1", thinking: "t", text: "Let me look", tool_outputs: { c1: "out" } } },
       td(8, "look"), // stale, already in the snapshot
       td(11, " here"),
@@ -51,7 +51,7 @@ describe("snapshot apply", () => {
   });
 
   it("restores a pending approval after reload", () => {
-    const s = run([{ type: "snapshot", run_started: null, server_now: 0, last_seq: 5, run_state: "waiting_approval", title: "", in_flight:
+    const s = run([{ type: "snapshot", parallel_tools: [], run_started: null, server_now: 0, last_seq: 5, run_state: "waiting_approval", title: "", in_flight:
       { msg_id: null, thinking: "", text: "", tool_outputs: {} },
       pending_approval: { call_id: "call_1", tool: "bash", args: { command: "ls" } } }]);
     expect(s.pending?.call_id).toBe("call_1");
@@ -63,7 +63,7 @@ describe("snapshot apply", () => {
 });
 
 describe("title, continue", () => {
-  const snap = (title: string): ServerEvent => ({ type: "snapshot", run_started: null, server_now: 0, last_seq: 0, run_state: "idle",
+  const snap = (title: string): ServerEvent => ({ type: "snapshot", parallel_tools: [], run_started: null, server_now: 0, last_seq: 0, run_state: "idle",
     pending_approval: null, title, in_flight: { msg_id: null, thinking: "", text: "", tool_outputs: {} } });
 
   it("takes title from the snapshot, then live events", () => {
@@ -86,7 +86,7 @@ describe("title, continue", () => {
 describe("run timer", () => {
   it("keeps the server's run start (on this clock), so a remount keeps counting", () => {
     const now = Date.now();
-    const s = run([{ type: "snapshot", run_started: (now - 90_000 - 5_000) / 1000, server_now: (now - 5_000) / 1000, last_seq: 1,
+    const s = run([{ type: "snapshot", parallel_tools: [], run_started: (now - 90_000 - 5_000) / 1000, server_now: (now - 5_000) / 1000, last_seq: 1,
       run_state: "running", pending_approval: null, title: "", in_flight: { msg_id: null, thinking: "", text: "", tool_outputs: {} } }]);
     expect(Math.round((now - s.runStarted!) / 1000)).toBe(90);  // the server clock is 5 s behind: lined up
     expect(run([{ type: "run_state", seq: 2, state: "idle", started: null }]).runStarted).toBeNull();

@@ -201,6 +201,7 @@ export interface Snapshot {
   title: string;
   run_started: number | null;
   server_now: number;
+  parallel_tools: string[];
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema

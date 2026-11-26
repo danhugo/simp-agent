@@ -203,12 +203,18 @@ class UserSkills:
         ver = self.version(box.user_id)
         if getattr(box, "skills_ver", None) == ver:
             return
-        tmp = "/tmp/.simp-skills.tar"
-        await put(tmp, self.tar(box.user_id))
-        d = shlex.quote(SKILLS_DIR)
-        code, out = await root_sh(f"mkdir -p {d} && find {d} -mindepth 1 -delete && tar -xf {tmp} -C {d} --no-same-owner "
-                                  f"&& chmod -R a+rX,go-w {d} && rm -f {tmp}")
-        if code != 0:
-            raise RuntimeError(f"could not install skills in the sandbox: {out.strip()[:200]}")
-        box.skills_ver = ver
+        # parallel tool calls each come here before they run: one installs, the others wait and then find it done
+        # (two at once deleted and untarred over each other: "tar: docx/LICENSE.txt: Cannot open")
+        lock = box.__dict__.setdefault("skills_lock", asyncio.Lock())
+        async with lock:
+            if getattr(box, "skills_ver", None) == ver:
+                return
+            tmp = "/tmp/.simp-skills.tar"
+            await put(tmp, self.tar(box.user_id))
+            d = shlex.quote(SKILLS_DIR)
+            code, out = await root_sh(f"mkdir -p {d} && find {d} -mindepth 1 -delete && tar -xf {tmp} -C {d} "
+                                      f"--no-same-owner && chmod -R a+rX,go-w {d} && rm -f {tmp}")
+            if code != 0:
+                raise RuntimeError(f"could not install skills in the sandbox: {out.strip()[:200]}")
+            box.skills_ver = ver
 

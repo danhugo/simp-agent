@@ -349,12 +349,19 @@ class Run:
         self.info.run_state = s
         await self.durable(p.RunState, state=s, started=self.run_start if s in ("running", "waiting_approval", "aborting") else None)
 
+    def parallel_tools(self) -> list[str]:
+        """The agent's read-only tools: calls of them next to each other run at once (the chat groups them)."""
+        a = getattr(self.session, "agent", None)
+        tools = (a.get_tools() if getattr(a, "get_tools", None) else getattr(a, "tools", None)) or []
+        return sorted(t.name for t in tools if getattr(t, "parallel", False))
+
     def subscribe(self, after: int) -> tuple[list[dict], asyncio.Queue]:
         """Missed durable events, then a snapshot, then live. No await here, so nothing slips in between."""
         q = asyncio.Queue(QUEUE_MAX)
         self.subs.add(q)
         snap = p.Snapshot(last_seq=self.seq, run_state=self.state, in_flight=self.inflight, pending_approval=self.pending,
-                          title=self.info.title, run_started=self.run_start if self.busy else None, server_now=time.time())
+                          title=self.info.title, run_started=self.run_start if self.busy else None, server_now=time.time(),
+                          parallel_tools=self.parallel_tools())
         return [*(e for e in self.log if e["seq"] > after), snap.model_dump()], q
 
     async def on_event(self, e: dict) -> None:
