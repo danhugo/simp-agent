@@ -409,7 +409,8 @@ def parse_deck(design_text: str, slides: list[tuple[str, str]]) -> Deck:
 
 
 # officecli also reports house-style opinions; they are not defects of a generated file
-NOT_PROBLEMS = re.compile(r"first-line indent|widow|orphan|Empty paragraph", re.I)
+# (an .svg picture is measured by its 1x1 png fallback, so "stretched: source 1x1px" is not a defect either)
+NOT_PROBLEMS = re.compile(r"first-line indent|widow|orphan|Empty paragraph|source 1x1px", re.I)
 ISSUE = re.compile(r"\[\w+\]\s+/slide\[(\d+)\]/\w+\[@id=(\d+)\][^:]*:\s*(.*)")
 
 
