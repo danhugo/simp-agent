@@ -1,4 +1,4 @@
-import { IconChevron, IconDownload, IconPlus, IconRefresh, IconSearch, IconTrash, IconUpload } from "./icons";
+import { IconChevron, IconPlus, IconRefresh, IconSearch, IconTrash } from "./icons";
 import { useCallback, useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -80,19 +80,6 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
   const [lib, setLib] = useState<LibrarySkill[] | null>(null);
   const loadSkills = useCallback(() => Promise.all([api.skills(), api.skillLibrary()]).then(([a, b]) => { setSkills(a); setLib(b); }, fail), [fail]);
   const skillDo = async (f: () => Promise<unknown>) => { try { await f(); } catch (e) { fail(e); } loadSkills(); };
-  const saveZip = async (name: string) => {
-    try {
-      const url = URL.createObjectURL(await api.skillZip(name));
-      const a = document.createElement("a");
-      a.href = url; a.download = `${name}.zip`; a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (e) { fail(e); }
-  };
-  const importZip = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (f) skillDo(() => api.importSkill(f));
-  };
   useEffect(() => { if (tab === "Skills" && skills === null) loadSkills(); }, [tab, skills, loadSkills]);
   const toggleSkill = async (s: SkillItem) => {
     setSkills((xs) => xs && xs.map((x) => x.name === s.name ? { ...x, enabled: !s.enabled } : x));  // flip now, server catches up
@@ -104,7 +91,6 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
       <div className="app-text"><strong>{s.label}</strong><div className="muted small app-desc">{s.description}</div></div>
       {s.update && <button className="ghost small" title="The library has a newer version" onClick={() => skillDo(() => api.addSkill(s.name))}>
         <IconRefresh size={14} /> Update</button>}
-      <button className="ghost icon" aria-label={`Download ${s.label}`} title="Download (.zip)" onClick={() => saveZip(s.name)}><IconDownload size={16} /></button>
       <button className="ghost icon" aria-label={`Remove ${s.label}`} title="Remove from your skills" onClick={() => skillDo(() => api.removeSkill(s.name))}><IconTrash size={16} /></button>
       <label className="sw"><button className={`switch ${s.enabled ? "on" : ""}`} role="switch" aria-checked={s.enabled}
         aria-label={`Use ${s.label}`} onClick={() => toggleSkill(s)}><span /></button></label>
@@ -207,19 +193,16 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
           ))}
         </div>
         {tab === "Skills" ? <>
-          <p className="muted small mem-about">Know-how Simp reads before a task that needs it, such as making a deck or a spreadsheet.
-            Add skills from the library or import your own (.zip with a SKILL.md).
-            <label className="ghost small skill-import"><IconUpload size={14} /> Import .zip
-              <input type="file" accept=".zip,application/zip" hidden onChange={importZip} /></label></p>
+          <p className="muted small mem-about">Know-how Simp reads before a task that needs it, such as making a deck or a spreadsheet.</p>
           {skills === null || lib === null ? <p className="muted">Loading…</p> : (() => {
             const needle = q.trim().toLowerCase();
             const hit = (s: { label: string; description: string }) => !needle || `${s.label} ${s.description}`.toLowerCase().includes(needle);
             const mine = skills.filter(hit), more = lib.filter((s) => !s.added && hit(s));
             return <>
-              <h3 className="skill-head">Your skills</h3>
+              <div className="skill-head"><h3>Your skills</h3></div>
               {mine.length === 0 ? <p className="muted">{needle ? `None of yours match “${q.trim()}”.` : "No skills yet. Add some from the library below."}</p>
                 : <ul className="app-tiles" aria-label="Your skills">{mine.map(skillTile)}</ul>}
-              {(more.length > 0 || !needle) && <h3 className="skill-head">Library</h3>}
+              {(more.length > 0 || !needle) && <div className="skill-head"><h3>Library</h3></div>}
               {more.length === 0 ? !needle && <p className="muted">You have every skill in the library.</p>
                 : <ul className="app-tiles" aria-label="Skill library">{more.map(libTile)}</ul>}
             </>;

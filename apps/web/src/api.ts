@@ -122,8 +122,6 @@ export const api = {
   skillLibrary: async (): Promise<LibrarySkill[]> => (await call("/api/skill-library")).json(),
   addSkill: (name: string) => call(`/api/skills/${name}/add`, { method: "POST" }),
   removeSkill: (name: string) => call(`/api/skills/${name}`, { method: "DELETE" }),
-  importSkill: async (zip: File): Promise<{ name: string }> => (await call("/api/skills/import", { method: "POST", body: zip })).json(),
-  skillZip: async (name: string): Promise<Blob> => (await call(`/api/skills/${name}/download`)).blob(),
   setApp: (app: string, on: boolean) => call(`/api/apps/${app}/${on ? "enable" : "disable"}`, { method: "POST" }),
   appDetail: async (app: string): Promise<AppDetail> => (await call(`/api/apps/${app}`)).json(),
   /** linkId: add this app's scopes to that account; none: Google's account chooser (add an account). */
