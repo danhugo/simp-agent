@@ -12,7 +12,10 @@ export interface AppItem {
   accounts?: Account[];  // linked accounts that can use this app, default (oldest) first
 }
 /** REST-only (GET /api/skills): instruction folders the agent reads when a task needs them. On until turned off. */
-export interface SkillItem { name: string; label: string; description: string; enabled: boolean }
+export interface SkillItem { name: string; label: string; description: string; enabled: boolean; version: string; source: string; license: string;
+  update?: boolean }  // update: the library has a newer version of this skill
+/** REST-only (GET /api/skill-library): the server's skills; added = already in the user's skills. */
+export interface LibrarySkill { name: string; label: string; description: string; version: string; source: string; license: string; added: boolean }
 export interface Account { link_id: string; email: string | null; status: "ok" | "needs_reconnect"; created: number }
 /** REST-only (GET /api/apps/{app}): the portal detail page. */
 export interface AppDetail extends AppItem {
@@ -116,6 +119,11 @@ export const api = {
   apps: async (): Promise<AppItem[]> => (await call("/api/apps")).json(),
   skills: async (): Promise<SkillItem[]> => (await call("/api/skills")).json(),
   setSkill: (name: string, on: boolean) => call(`/api/skills/${name}/${on ? "enable" : "disable"}`, { method: "POST" }),
+  skillLibrary: async (): Promise<LibrarySkill[]> => (await call("/api/skill-library")).json(),
+  addSkill: (name: string) => call(`/api/skills/${name}/add`, { method: "POST" }),
+  removeSkill: (name: string) => call(`/api/skills/${name}`, { method: "DELETE" }),
+  importSkill: async (zip: File): Promise<{ name: string }> => (await call("/api/skills/import", { method: "POST", body: zip })).json(),
+  skillZip: async (name: string): Promise<Blob> => (await call(`/api/skills/${name}/download`)).blob(),
   setApp: (app: string, on: boolean) => call(`/api/apps/${app}/${on ? "enable" : "disable"}`, { method: "POST" }),
   appDetail: async (app: string): Promise<AppDetail> => (await call(`/api/apps/${app}`)).json(),
   /** linkId: add this app's scopes to that account; none: Google's account chooser (add an account). */

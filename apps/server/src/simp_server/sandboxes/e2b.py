@@ -189,6 +189,7 @@ class _Box:
         self.ro = False  # /work mounted read-only (workspace full)
         self.noted = ""  # last quota state told to the agent ("warn" once; "full" on every command)
         self.ws: WorkSync | None = None  # mount = "sync": /work is the sandbox's disk, synced with the bucket
+        self.skills_ver = None  # version of the user's skills now in the sandbox (user_skills.py)
 
     async def exec(self, command, cwd, timeout, cancel, on_output=None, user="user"):  # raw: no start, no busy count
         return await _run(self.sbx, command, cwd, timeout, cancel, on_output, user=user)
@@ -216,6 +217,9 @@ class E2BEnv:
             await self.sandbox.ensure(self.box)
             await self.sandbox.fresh_creds(self.box, need_s)
             await self.sandbox.apply_quota(self.box)
+            if self.sandbox.skills is not None:  # the user's skills at SKILLS_DIR, when they changed
+                await self.sandbox.skills.to_sandbox(self.box, lambda c: self.box.exec(c, "/", 120, asyncio.Event(), user="root"),
+                                                     _Port(self.box).put)
             if self.box.ws is not None:
                 try:
                     await self.box.ws.before_call(_Port(self.box))
@@ -341,7 +345,7 @@ class E2BSandbox:
 
     kind = "e2b"
     prompt_hint = SANDBOX_HINT
-    has_skills = True  # the template holds apps/server/skills at /opt/simp/skills
+    has_skills = True  # the user's skills are written to /opt/simp/skills (user_skills.py)
 
     def __init__(self, settings: dict):
         s = settings.get("sandbox", dict())
@@ -362,6 +366,7 @@ class E2BSandbox:
         self.provider_timeout_s = s.get("provider_timeout_s", self.idle_pause_s + 300)
         self.cpus, self.memory_gib = float(s.get("cpus", 2)), float(s.get("memory_mb", 2048)) / 1024  # for cost
         self.store, self.keys, self.compute = None, dict(), Compute(settings, "e2b")
+        self.skills = None  # user_skills.UserSkills, set by create_app
         self.quota = None  # quota.Quota, set by create_app; None = no workspace quota
         self.sdk = None  # e2b.AsyncSandbox (tests put a fake here)
         self.envs: dict[str, E2BEnv] = dict()
@@ -445,6 +450,8 @@ class E2BSandbox:
             box.started = time.monotonic()
             box.mirror_failed = False
         box.sbx_id, box.state = box.sbx.sandbox_id, "running"
+        if not resumed:
+            box.skills_ver = None  # a fresh sandbox has none of the user's skills yet
         box.last = box.metered = box.timeout_at = time.monotonic()
         try:
             if self.mount == "sync":

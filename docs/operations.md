@@ -303,11 +303,20 @@ without it, DuckDuckGo and plain GET.
 **Toolset.** The template bakes a fixed toolset (`simp_server/sandboxes/toolset.py`: pandas, docx, pptx, openpyxl,
 pdf, matplotlib, pillow, OCR with Vietnamese, ffmpeg, node, git) into root-owned `/opt/simp`. Users and the agent use
 it but cannot install or change packages: `/opt/simp` is read-only, the sandbox cannot reach package indexes (egress
-allowlist), and the policy (`simp_server/policy.py`) answers install attempts with the list. To add a library or a skill, edit
-`toolset.py` or `apps/server/skills/` and release: the template name is a hash of those files, the deploy workflow
+allowlist), and the policy (`simp_server/policy.py`) answers install attempts with the list. To add a library, edit
+`toolset.py` and release: the template name is a hash of the files it bakes in, the deploy workflow
 builds it when missing, and the server computes the same name. Locally, run `e2b_template.py --if-missing` before
 starting the server. About 0.6 GB (1.1 GB with `--office`); the
-template does not count toward user quota. Home is not saved any more: old home snapshots (user-installed
+template does not count toward user quota.
+
+**Skills.** The template holds no skills. `apps/server/skill_library/` is the server's catalog (Crafts › Skills ›
+Library). Adding one copies its folder into the user's own skill store (`users/<id>.skills/` in the bucket, local:
+`<workspaces>/<id>.skills/`), beside the workspace (not in Files, not in the quota). New users start with docx, pdf,
+pptx, xlsx. Users can also import a skill (.zip) and download any skill. Before a command runs, the server writes the
+user's skills into the sandbox at `/opt/simp/skills` (root-owned, read-only for the agent) when they changed
+(`simp_server/user_skills.py`). A skill change needs only a server release; users get a library update with the
+skill's Update button (its `version:` went up). Exception: `office_build` uses `docx/reference.docx` and
+`xlsx/scripts/` from the template (`/opt/simp/office`), so changing those rebuilds the template. Home is not saved any more: old home snapshots (user-installed
 libraries) are deleted at create; repos still come back from their mirror.
 
 **Rollout order (this change).** 1) Build the new template (`e2b_template.py --alias simp-sandbox-next`) and run

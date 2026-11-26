@@ -3,7 +3,7 @@
     E2B_API_KEY=... uv run python apps/server/sandboxes/e2b_template.py [--alias NAME] [--no-office] [--if-missing]
 
 Toolset: simp_server.sandboxes.toolset, installed read-only in /opt/simp. LibreOffice (headless, about 500 MB) is on by default:
-the skills (apps/server/skills, copied to /opt/simp/skills) use it; --no-office leaves it out. User `user` (E2B's default, uid 1000), /work is the mount point of
+office_build and the office skills use it; --no-office leaves it out. User `user` (E2B's default, uid 1000), /work is the mount point of
 the user's bucket prefix, /home/user/repos holds git repos."""
 
 import argparse
@@ -12,7 +12,7 @@ from e2b import Template, default_build_logger
 
 from pathlib import Path
 
-from simp_server.sandboxes.toolset import (template_alias, APT, NODE_DIR, NPM, OFFICE_APT, PIP, RUN_ENV, SKILLS_DIR, VENV,
+from simp_server.sandboxes.toolset import (template_alias, APT, NODE_DIR, NPM, OFFICE_APT, PIP, RUN_ENV, SKILLS_DIR, VENV, OFFICE_DIR, OFFICE_REFERENCE_DOCX,
                                            officecli_install)
 
 APP = Path(__file__).parents[1]  # apps/server: the build context, so skills/ copies in
@@ -30,7 +30,9 @@ def template(office: bool = True):
          .run_cmd([f"python -m venv {VENV}", f"{VENV}/bin/pip install --no-cache-dir " + " ".join(PIP),
                    f"mkdir -p {NODE_DIR} && npm install --prefix {NODE_DIR} --no-fund --no-audit " + " ".join(NPM)])
          .run_cmd([officecli_install()])
-         .copy("skills", SKILLS_DIR)
+         .copy("skill_library/xlsx/scripts", f"{OFFICE_DIR}/xlsx")
+         .copy("skill_library/docx/reference.docx", OFFICE_REFERENCE_DOCX)
+         .run_cmd([f"mkdir -p {SKILLS_DIR}"])  # filled per user at run time
          .run_cmd(["chown -R root:root /opt/simp", "chmod -R go-w /opt/simp"])
          # `user` must not get root: commands run as user, only the mount runs as root (via envd, not sudo).
          # The python base image has no sudo; E2B's own provisioning may add a sudoers entry, so remove sudo and

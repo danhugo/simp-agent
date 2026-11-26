@@ -19,7 +19,8 @@ def test_template_toolset_is_fixed_and_read_only():
     env_path = next(line for line in df.splitlines() if "PATH=" in line)
     assert "PATH=/opt/simp/venv/bin:" in env_path and "/home/user" not in env_path
     assert "libreoffice-nogui" in df and "libreoffice" not in Template.to_dockerfile(tpl.template(office=False))
-    assert "COPY skills /opt/simp/skills" in df and "npm install --prefix /opt/simp/node" in df
+    assert "COPY skill_library/xlsx/scripts /opt/simp/office/xlsx" in df and "npm install --prefix /opt/simp/node" in df
+    assert "COPY skills" not in df  # the user's skills are written at run time
     assert "NODE_PATH=/opt/simp/node/node_modules" in env_path
 
 
@@ -36,5 +37,5 @@ def test_docker_dev_image_is_the_template(monkeypatch):
     seen = dict()
     monkeypatch.setattr(subprocess, "run", lambda args, input: seen.update(args=args, df=input.decode()) or subprocess.CompletedProcess(args, 0))
     assert docker.build_image() == 0
-    assert seen["args"][-1].endswith("apps/server") and "COPY skills /opt/simp/skills" in seen["df"]
+    assert seen["args"][-1].endswith("apps/server") and "/opt/simp/office/reference.docx" in seen["df"]
     assert docker.DockerSandbox.has_skills and "pptxgenjs" in docker.DockerSandbox.prompt_hint
