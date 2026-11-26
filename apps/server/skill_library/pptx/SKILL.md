@@ -2,7 +2,7 @@
 name: pptx
 label: PowerPoint
 description: "Create or edit PowerPoint decks (.pptx): slides, presentations, decks of any length, in any language."
-version: 7
+version: 8
 ---
 
 # Slides
@@ -101,7 +101,8 @@ Chart types: column, bar, line, area, pie, donut. Values are plain numbers (no %
 When the user asks for a designed or illustrated look (a template feel, a playful lesson, a brand style), build the
 slides in **free layout** (below) and dress them; the layouts above are for plain business decks.
 
-**Write the design brief first** (in your head or a short note, never as a question to the user), concrete enough that
+**Write the design brief first** (in your head or a short note, never as a question to the user; when the user wants
+to see or edit the brief before building, use the `slide-design-brief` skill), concrete enough that
 two designers would build the same deck from it. Fill each line from what the user said; where they gave nothing,
 choose from the topic and audience:
 - **Mood**: 3 words (e.g. playful · bold · flat).
@@ -128,6 +129,8 @@ decoration rules before building.
 - **Photos**: only when the user wants them; `web_download` a free-licence photo, then crop/grayscale it with Pillow.
 - Repeat a motif and the palette on every slide; 2–4 accent colours at most; big headings; plenty of space.
 - Keep text clear of decorations: a heading box tall enough for two lines, and cards below the heading's box.
+- Readable from the back of a room: body ≥ 24 px (32 px for a talk), headings ≥ 44 px, text contrast at least 4.5:1;
+  one idea per slide and about a third of it empty (the `slide-design-brief` skill has the full rules and sources).
 - Write the whole deck in ONE message of parallel `write` calls (design.xml, every slide, every SVG you draw), after
   ONE `office_run` that saves all the artwork. Then build.
 

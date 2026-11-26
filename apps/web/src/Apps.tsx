@@ -4,7 +4,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BookOpen, Bug, ChartLine, Clapperboard, Contact, Database, FlaskConical, GitBranch, GitPullRequest, GraduationCap, Image, Languages,
   LayoutTemplate, Lightbulb, ListChecks, ListOrdered, Mail, Megaphone, NotebookPen, Palette, Plug, ScanText, ScrollText, ShieldCheck,
-  Sigma, SwatchBook, TableProperties, Telescope,
+  PaintRoller, Sigma, SwatchBook, TableProperties, Telescope,
 } from "lucide-react";
 import { api, AuthError, type AppDetail, type AppItem, type LibrarySkill, type SkillItem } from "./api";
 import { errorText } from "./Chat";
@@ -49,7 +49,7 @@ const SKILL_ICONS: Record<string, [LucideIcon, string]> = {
   "systematic-debugging": [Bug, "#5f6368"], "code-review": [GitPullRequest, "#5f6368"], "git-workflow": [GitBranch, "#5f6368"],
   "test-driven-development": [FlaskConical, "#5f6368"], "security-best-practices": [ShieldCheck, "#5f6368"], "mcp-builder": [Plug, "#5f6368"],
   "frontend-design": [LayoutTemplate, "#a142f4"], "algorithmic-art": [Palette, "#a142f4"], "brand-guidelines": [SwatchBook, "#a142f4"],
-  "slide-outline": [ListOrdered, "#a142f4"],
+  "slide-outline": [ListOrdered, "#a142f4"], "slide-design-brief": [PaintRoller, "#a142f4"],
   "brainstorming": [Lightbulb, "#c5221f"], "writing-plans": [ListChecks, "#c5221f"], "study-notes": [GraduationCap, "#c5221f"],
 };
 const SkillIcon = ({ name }: { name: string }) => {
