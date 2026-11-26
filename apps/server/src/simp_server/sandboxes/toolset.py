@@ -8,7 +8,7 @@ APT = ["git", "ripgrep", "fd-find", "zstd", "s3fs", "ffmpeg", "imagemagick", "pr
        "ca-certificates", "nodejs", "tesseract-ocr", "tesseract-ocr-vie", "tesseract-ocr-eng", "fonts-noto-core",
        "fonts-dejavu-core", "fonts-crosextra-carlito", "fonts-crosextra-caladea", "npm", "pandoc", "poppler-utils", "qpdf"]
 OFFICE_APT = ["libreoffice-nogui"]
-# node libraries the skills (apps/server/skills) use, installed under NODE_DIR and found through NODE_PATH
+# node libraries the office skills (apps/server/skill_library) use, installed under NODE_DIR and found through NODE_PATH
 NPM = ["pptxgenjs", "docx", "react", "react-dom", "react-icons", "sharp"]
 NODE_DIR = "/opt/simp/node"
 # officecli (github.com/iOfficeAI/OfficeCLI, Rust): builds and checks .pptx/.docx/.xlsx for the office_* tools
@@ -23,7 +23,10 @@ def officecli_install() -> str:
     return ("arch=$(uname -m) && case $arch in x86_64) f=x64 s=" + sums["x86_64"] + ";; aarch64) f=arm64 s=" + sums["aarch64"]
             + ";; *) echo unsupported arch $arch; exit 1;; esac && curl -fsSL -o /usr/local/bin/officecli " + url + "$f"
             + " && echo \"$s  /usr/local/bin/officecli\" | sha256sum -c - && chmod 755 /usr/local/bin/officecli")
-SKILLS_DIR = "/opt/simp/skills"  # apps/server/skills, copied read-only into the template
+SKILLS_DIR = "/opt/simp/skills"  # the user's own skills, written there (read-only for the agent) by user_skills.py
+# office_build's helpers, baked into the template (from the library's docx and xlsx skills)
+OFFICE_DIR = "/opt/simp/office"
+OFFICE_REFERENCE_DOCX, OFFICE_RECALC = f"{OFFICE_DIR}/reference.docx", f"{OFFICE_DIR}/xlsx/recalc.py"
 
 
 def prompt_list(office: bool) -> str:
@@ -39,7 +42,8 @@ RUN_ENV = {"PYTHONNOUSERSITE": "1", "NODE_PATH": f"{NODE_DIR}/node_modules",
 
 
 APP = __import__("pathlib").Path(__file__).parents[3]  # apps/server
-TEMPLATE_INPUTS = ["sandboxes/e2b_template.py", "src/simp_server/sandboxes/toolset.py", "skills"]
+TEMPLATE_INPUTS = ["sandboxes/e2b_template.py", "src/simp_server/sandboxes/toolset.py", "skill_library/docx/reference.docx",
+                   "skill_library/xlsx/scripts"]
 
 
 def template_alias(office: bool = True) -> str:

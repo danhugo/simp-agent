@@ -50,6 +50,8 @@ from simp_agent.session.profile import build_model
 from . import admin, budget, health, ops, persona as persona_mod, skills as skills_mod, workspace
 from .quota import Quota
 from . import protocol as p
+from .user_skills import MAX_SKILL_BYTES, UserSkills, unzip_skill
+from .sandboxes.toolset import OFFICE_RECALC, OFFICE_REFERENCE_DOCX
 from .connections import STATE_TTL, Connections, UserMcp, providers
 from .fake import sse
 from .store import MEM_ITEM_MAX, DbMemoryStore
@@ -260,7 +262,7 @@ class Run:
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
             plugins=[policy.Policy(self.verdict), *build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(mgr.keys.get("TAVILY_API_KEY"), extract=self.extract), Memory(store=DbMemoryStore(
                 mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), self.mcp, SandboxSync(env),
-                     *([skills_mod.plugin(mgr.skill_source, lambda: self.enabled_skills()), Office(f"{skills_mod.SKILLS_DIR}/docx/reference.docx", f"{skills_mod.SKILLS_DIR}/xlsx/scripts/recalc.py")] if self.has_skills else [])],
+                     *([skills_mod.plugin(mgr.uskills.source(self.user_id), lambda: self.enabled_skills()), Office(OFFICE_REFERENCE_DOCX, OFFICE_RECALC)] if self.has_skills else [])],
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.must_ask = lambda call: self.verdict(call)[0] == "ask"  # "always" never covers these
@@ -274,7 +276,7 @@ class Run:
 
     def enabled_skills(self) -> set[str]:  # read every turn: a switch on the Crafts page reaches open chats
         off = self.mgr.store.disabled_skills_sync(self.user_id)
-        return {s["name"] for s in self.mgr.skills if s["name"] not in off} if self.has_skills else set()
+        return {s["name"] for s in self.mgr.uskills.source(self.user_id).list() if s["name"] not in off} if self.has_skills else set()
 
     async def counted_stream(self, model, ctx, **kw):
         """The agent's own LLM calls: at most limits.run_turns per run, then the run stops as if the user aborted."""
@@ -484,6 +486,8 @@ class Run:
             self.title_task = None  # the next assistant message tries again
 
     async def start(self, text, fresh: bool = True, images: list = (), skills: list = (), effort: str | None = None) -> None:  # text: a prompt, or a coroutine factory (continue_, compact)
+        if self.has_skills:
+            await self.mgr.uskills.load(self.user_id)  # the user's skills, for the prompt (cached after the first run)
         if fresh:  # a queued follow-up stays inside the same run budget
             # runtime settings (admin): a new run picks up current limits and prices; a run in progress keeps its own
             self.limits = self.mgr.limits
@@ -556,6 +560,8 @@ class Run:
     async def command(self, c) -> None:
         if isinstance(c, (p.Prompt, p.FollowUp, p.Steer)):
             picked = list(dict.fromkeys(getattr(c, "skills", [])))
+            if picked and self.has_skills:
+                await self.mgr.uskills.load(self.user_id)
             if bad := [n for n in picked if n not in self.enabled_skills()]:
                 raise HTTPException(400, f"skill not available: {', '.join(bad)}")
             if not self.busy:
@@ -588,8 +594,7 @@ class SessionManager:
         self.admin_emails = {e.strip().lower() for e in self.keys.pop("ADMIN_EMAILS", "").split(",") if e.strip()}
         self.conns = Connections(settings, store, self.keys)
         self.tools_seen: dict[str, dict] = dict()  # user -> app -> tool -> needs approval (portal detail page)
-        self.skill_source = skills_mod.source()  # apps/server/skills: what the template has at /opt/simp/skills
-        self.skills = self.skill_source.list()
+        self.uskills: UserSkills | None = None  # set by create_app (needs the workspace store)
         self.limits = budget.limits(settings)
         self.redact = RedactSecrets()  # same mask for memory_save content (RedactSecrets never sees tool args)
         self.redact.setup(None, {"secrets": list(self.keys.values())})
@@ -707,6 +712,9 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         return u
     mgr = SessionManager(settings, store, sandbox, stream_fn)
     files = workspace.make_store(settings, mgr.keys)  # the Files panel's view of /work: never wakes a sandbox
+    mgr.uskills = UserSkills(files)
+    if hasattr(sandbox, "skills"):
+        sandbox.skills = mgr.uskills  # writes the user's skills into the sandbox before commands
     quota = mgr.quota = Quota(settings, files, store)  # mgr.quota: the admin user page shows usage
     if hasattr(sandbox, "compute"):
         sandbox.store, sandbox.compute.db = files, store
@@ -939,14 +947,61 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def list_apps(u=Depends(user)):
         return await mgr.conns.list_apps(u["id"])
 
-    @app.get("/api/skills")
+    def skill_row(s: dict) -> dict:
+        return {k: s[k] for k in ("name", "label", "description", "version", "source", "license")}
+
+    @app.get("/api/skills")  # the user's own skills
     async def list_skills(u=Depends(user)):
         off = await store.disabled_skills(u["id"])
-        return [{**s, "enabled": s["name"] not in off} for s in mgr.skills]
+        mine = await mgr.uskills.load(u["id"])
+        return [{**skill_row(s), "enabled": n not in off,
+                 "update": n in mgr.uskills.lib and mgr.uskills.lib[n]["version"] != s["version"]}
+                for n, s in sorted(mine.items(), key=lambda x: x[1]["label"].lower())]
 
-    @app.post("/api/skills/{name}/{action}")
-    async def toggle_skill(name: str, action: str, u=Depends(user)):
-        if action not in ("enable", "disable") or name not in {s["name"] for s in mgr.skills}:
+    @app.get("/api/skill-library")  # the server's catalog; added = already in the user's skills
+    async def skill_library(u=Depends(user)):
+        mine = await mgr.uskills.load(u["id"])
+        return [{**skill_row(s), "added": n in mine} for n, s in sorted(mgr.uskills.lib.items(), key=lambda x: x[1]["label"].lower())]
+
+    @app.post("/api/skills/import")  # a skill folder as a zip (one top folder, or SKILL.md at the top)
+    async def import_skill(request: Request, u=Depends(user)):
+        data = await request.body()
+        if len(data) > MAX_SKILL_BYTES:
+            raise HTTPException(413, "skill too big (5 MB max)")
+        try:
+            name, files = unzip_skill(data)
+            await mgr.uskills.add_files(u["id"], name, files)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+        return {"ok": True, "name": name}
+
+    @app.get("/api/skills/{name}/download")
+    async def download_skill(name: str, u=Depends(user)):
+        try:
+            data = await mgr.uskills.zip(u["id"], name)
+        except LookupError:
+            raise HTTPException(404, "no such skill") from None
+        return Response(data, media_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.zip"'})
+
+    @app.delete("/api/skills/{name}")
+    async def remove_skill(name: str, u=Depends(user)):
+        try:
+            await mgr.uskills.remove(u["id"], name)
+        except LookupError:
+            raise HTTPException(404, "no such skill") from None
+        await store.set_skill_disabled(u["id"], name, False)  # added again later: on
+        return {"ok": True}
+
+    @app.post("/api/skills/{name}/{action}")  # add (or update) from the library; enable / disable one of yours
+    async def skill_action(name: str, action: str, u=Depends(user)):
+        if action == "add":
+            try:
+                await mgr.uskills.add(u["id"], name)
+            except LookupError:
+                raise HTTPException(404, "no such skill") from None
+            return {"ok": True}
+        if action not in ("enable", "disable") or name not in await mgr.uskills.load(u["id"]):
             raise HTTPException(404, "no such skill")
         await store.set_skill_disabled(u["id"], name, action == "disable")
         return {"ok": True}

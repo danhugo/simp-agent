@@ -163,6 +163,7 @@ class _Box:
         self.mirror_lock, self.mirror_failed, self.mirror_sid, self.mirror_bg = asyncio.Lock(), False, None, None
         self.creds_until = 0.0  # fuse: monotonic time the mount credential expires (0 = none)
         self.ws: WorkSync | None = None  # sync mode: set at start
+        self.skills_ver = None  # version of the user's skills now in the container (user_skills.py)
 
     async def exec(self, command, cwd, timeout, cancel, on_output=None):  # raw: no start, no busy count
         return await _exec_in(self.name, command, "/work", timeout, cancel, on_output)
@@ -188,6 +189,9 @@ class DockerEnv(LocalEnv):
                 self.box.over = False
             await self.sandbox.ensure(self.box)
             await self.sandbox.fresh_creds(self.box, need_s)
+            if self.sandbox.skills is not None:  # the user's skills at SKILLS_DIR (a root-owned tmpfs), when they changed
+                await self.sandbox.skills.to_sandbox(
+                    self.box, lambda c: _docker("exec", "-u", "0", self.container, "sh", "-c", c), _Port(self.container).put)
             if self.box.ws is not None:
                 try:
                     await self.box.ws.before_call(_Port(self.container))
@@ -326,7 +330,7 @@ class DockerSandbox:
     container starts on first use and is shared by all their sessions. All containers run as 1000:1000."""
 
     prompt_hint = SANDBOX_HINT + " " + toolset.prompt_list(True)
-    has_skills = True  # the image is built from the E2B template: /opt/simp/skills is there
+    has_skills = True  # the user's skills are written to /opt/simp/skills (a tmpfs) by user_skills.py
 
     kind = "docker"
 
@@ -337,6 +341,7 @@ class DockerSandbox:
             self.prompt_hint = " ".join([SANDBOX_HINT, FUSE_HINT, toolset.prompt_list(True)])
         self.store = None  # workspace store (fuse mode: mount creds; sync mode: the bucket), set by create_app
         self.quota = None  # quota.Quota (sync mode: no upload past the quota), set by create_app
+        self.skills = None  # user_skills.UserSkills, set by create_app
         self.compute = Compute(settings, "docker")
         self.max_life_s = s.get("max_life_s", 3300)  # fuse: restart before the mount credential expires
         self.workspaces_dir = Path(s.get("workspaces_dir", Path(settings["data_dir"]) / "workspaces")).expanduser()
@@ -387,6 +392,7 @@ class DockerSandbox:
             "run", "-d", "--name", box.name, "--user", "1000:1000", "--network", self.network,
             "--pids-limit", str(self.pids_limit), "--memory", self.memory, "--cpus", self.cpus,
             "--read-only", "--tmpfs", f"/tmp:rw,nosuid,nodev,size={self.tmp_size}",
+            "--tmpfs", f"{toolset.SKILLS_DIR}:rw,nosuid,nodev,mode=755,size=64m",  # the user's skills, written as root
             "--security-opt", "no-new-privileges", "--cap-drop", "ALL", *work,
             "-v", f"simp-home-{box.user_id}:/home/user",
             "-w", "/work", "--label", f"simp.user={box.user_id}", self.image, "sleep", "infinity",
@@ -409,6 +415,7 @@ class DockerSandbox:
                 raise
         box.running, box.last = True, time.monotonic()
         box.started = box.metered = box.last
+        box.skills_ver = None  # a new container: its skills tmpfs is empty
         box.mirror_failed = False
         await restore_repos(box, REPOS, MIRRORS, cwd="/work")
 

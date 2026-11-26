@@ -844,7 +844,7 @@ async def test_workspace_files_without_a_session(env):
 
 
 async def test_skills_start_enabled_and_toggle_per_user(env):
-    """Crafts > Skills: every skill in apps/server/skills is on until the user turns it off."""
+    """Crafts > Skills: a user's skills (the office ones to start) are on until they turn one off."""
     app, mgr, user, token, run = await env(FakeProvider())
     tok_b = await mgr.store.add_user("b")
     h, hb = {"Authorization": f"Bearer {token}"}, {"Authorization": f"Bearer {tok_b}"}
@@ -859,6 +859,17 @@ async def test_skills_start_enabled_and_toggle_per_user(env):
         assert mgr.store.disabled_skills_sync(user["id"]) == set()
         assert (await api.post("/api/skills/nope/enable", headers=h)).status_code == 404
         assert (await api.get("/api/skills")).status_code == 401
+        # library: add, see it as yours, remove, download
+        lib = (await api.get("/api/skill-library", headers=h)).json()
+        other = next(s for s in lib if not s["added"])
+        assert (await api.post(f"/api/skills/{other['name']}/add", headers=h)).status_code == 200
+        assert other["name"] in {s["name"] for s in (await api.get("/api/skills", headers=h)).json()}
+        assert other["name"] not in {s["name"] for s in (await api.get("/api/skills", headers=hb)).json()}
+        z = await api.get(f"/api/skills/{other['name']}/download", headers=h)
+        assert z.status_code == 200 and z.content[:2] == b"PK"
+        assert (await api.delete(f"/api/skills/{other['name']}", headers=h)).status_code == 200
+        assert other["name"] not in {s["name"] for s in (await api.get("/api/skills", headers=h)).json()}
+        assert (await api.post("/api/skills/nope/add", headers=h)).status_code == 404
 
 
 async def test_picked_skill_reaches_the_model_and_disabled_one_is_refused(env):

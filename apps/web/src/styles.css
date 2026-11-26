@@ -548,3 +548,6 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .persona-piece.picked { box-shadow: inset 0 0 0 1.5px var(--text); }
 .persona-piece.picked.failed { box-shadow: inset 0 0 0 1.5px var(--err); }
 
+/* Crafts > Skills: your skills, then the library */
+.skill-head { margin: var(--sp-5) 0 var(--sp-2); font-size: var(--fs-md); font-weight: 600; }
+.skill-import { display: inline-flex; align-items: center; gap: 4px; margin-left: var(--sp-2); cursor: pointer; color: var(--text); }
