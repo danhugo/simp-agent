@@ -47,8 +47,9 @@ Paragraph with **bold**, *italic*, [link](https://…) and a footnote.[^1]
 Page break: a raw block on its own lines — ```` ```{=openxml} ```` / `<w:p><w:r><w:br w:type="page"/></w:r></w:p>` / ```` ``` ````.
 A chart: draw it with matplotlib to `/work/<name>-fig1.png` in the same message as the .md, then reference it.
 **Read** a .docx: `office_read(path, view="text")` or `pandoc -t markdown file.docx`.
-**Edit** a .docx the user brought: small changes with `office_read(view="annotated")` + `office_edit` (keeps its
-styles); tracked changes and comments: see below. Never rebuild someone's document from Markdown: it loses their styling.
+**Edit** a .docx the user brought: one `office_run` script (keeps its styles): `d = office.open(p)`, find paragraphs
+with `d.query('p:contains("…")')` or `d.view("annotated")`, `d.set(path, text=…)` / `d.add("/body", "paragraph",
+after=path, text=…)`, then `d.screenshot(page=1)` to check; tracked changes and comments: see below. Never rebuild someone's document from Markdown: it loses their styling.
 
 ## A document worth handing over
 

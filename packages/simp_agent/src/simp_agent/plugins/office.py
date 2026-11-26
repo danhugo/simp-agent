@@ -5,7 +5,8 @@ Three tools, one job each:
   syntax on a 1280x720 px canvas) or a .docx from a Markdown file; then check it (schema, text overflow, off-slide
   boxes) and report problems by file and element id. The source is the truth: edit it and build again.
 - office_read(path, view): outline / text / issues of any .pptx/.docx/.xlsx (also files the user brought).
-- office_edit(path, ops): in-place edits of a file that has no source (officecli batch commands).
+- office_run(code): code mode. Runs a Python script with `office` (office_rt.py: officecli as an API, edits batched)
+  in one call, then checks every file it changed and looks at the screenshots it took.
 A build remembers the output's hash, so a file changed elsewhere (e.g. in PowerPoint) is not overwritten silently."""
 
 from __future__ import annotations
@@ -19,11 +20,37 @@ import uuid
 import xml.etree.ElementTree as ET
 
 from ..agent import AgentTool
+from ..coding.tools import look
 from .office_layouts import LAYOUTS, THEMES, Layouts, theme_design
 
 W, H, PT = 1280, 720, 0.75  # canvas px; 1 px = 0.75 pt (960 x 540 pt = 16:9)
 CM_PX = 1 / 0.026458333  # px per cm
 OUT_MAX = 12_000
+RUNTIME = open(os.path.join(os.path.dirname(__file__), "office_rt.py"), encoding="utf-8").read()  # copied into the env
+# runs the agent's main.py with `office` imported; its traceback keeps main.py's own line numbers
+BOOT = ("import os, runpy, office\n"
+        "runpy.run_path(os.environ['OFFICE_SCRIPT'], init_globals={'office': office}, run_name='__main__')\n")
+RUN_DOC = """Run a Python script that reads or edits .pptx/.docx/.xlsx files through `office` (officecli as an API), all
+in one call. Use it to change a file in place (one the user brought, or one with no deck/.md source), to inspect a file
+in depth, or to make files that office_build can't. Write the whole job as one script: loops, conditions, reading then
+editing. Edits are queued and sent as one atomic batch (all apply or none) before the next read and at the end; every
+file is closed at the end, then each changed file is checked (schema + issues) and screenshots are looked at for you.
+Errors name the script line. print() what you want to see; output over 12k chars is cut.
+
+d = office.open(path) | office.create(path, force=False)      # .pptx .docx .xlsx
+Read (Python data): d.get(path='/') -> Node; d.query(selector) -> [Node]  (Node: .path .type .text .props .children,
+  .set(**p) .remove()); d.view(mode, start=, end=, max_lines=, range=, cols=) -> str, mode: outline | text | annotated
+  (text with element paths) | stats | issues | forms | html; d.issues(type=); d.validate(); d.raw(part); d.dump(path)
+Edit (queued): d.add(parent, type, before=, after=, index=, **props) -> .path of the new element; d.set(path, **props);
+  d.remove(path); d.move(path, to=, before=, after=, index=); d.swap(p1, p2); d.replay(batch_items); d.flush()
+Low level: d.raw_set(part, xpath, action, xml); d.add_part(parent, type); d.import_csv('/Sheet1', csv, header=True);
+  d.refresh(); office.merge(template, out, data_dict)
+Look: d.screenshot(page=1 | grid=True | range='/slide[1]/shape[@id=3]' or 'Sheet1!A1:D9') ; d.export('x.pdf'|'.html'|'.svg')
+Docs: office.help('pptx') lists elements; office.help('pptx', 'shape') gives its props; office.search('shadow', 'pptx')
+Any other command: office.cli('view', 'a.pptx', 'stats')
+Paths: /slide[2]/shape[@id=5], /slide[1]/table[1]/tr[2]/tc[1], /body/p[3], /Sheet1/B4. Selectors: 'shape',
+'slide[2] > shape', 'shape:contains("Q3")'. Props are officecli props, values as Python (True, 12, '2cm', 'FF0000');
+a dotted prop takes __: font__latin='Arial'. Look up props with office.help before guessing."""
 
 
 class SourceError(Exception):
@@ -371,12 +398,28 @@ def explain(issues: str, ids: dict) -> list[str]:
                 out.append(line.strip())
             continue
         msg = re.sub(r"suggest\.height=([\d.]+)cm", lambda g: f"needs height ≈ {float(g.group(1)) * CM_PX:.0f}px", m.group(3))
-        out.append(f"{ids.get((int(m.group(1)), int(m.group(2))), 'slide ' + m.group(1))}: {msg}")
+        where = ids.get((int(m.group(1)), int(m.group(2)))) or f"/slide[{m.group(1)}]/shape[@id={m.group(2)}]"
+        out.append(f"{where}: {msg}")
     return out
 
 
 def base_pt(style: dict) -> float:
     return float(style["size"].rstrip("pt"))
+
+
+def _tidy(out: str, run: str) -> str:
+    """Traceback lines of the runtime and runpy are noise: keep main.py's frames and the error."""
+    keep, skip = list(), False
+    for line in out.splitlines():
+        if line.startswith('  File "'):
+            skip = f"{run}/main.py" not in line
+            if not skip:
+                line = line.replace(f"{run}/", "")
+        elif not line.startswith("    "):
+            skip = False
+        if not skip:
+            keep.append(line)
+    return "\n".join(keep)
 
 
 def _clip(s: str) -> str:
@@ -406,17 +449,15 @@ class Office:
              "required": ["source"]}, self._build))
         api.register_tool(AgentTool(
             "office_read", "Look inside a .pptx/.docx/.xlsx (any, also one the user brought): outline (structure), text, "
-            "annotated (text with element paths for office_edit), issues (overflow, broken parts).",
+            "annotated (text with element paths for office_run), issues (overflow, broken parts).",
             {"type": "object", "properties": {"path": s, "view": {"type": "string",
                                                                   "enum": ["outline", "text", "annotated", "issues"]}},
              "required": ["path"]}, self._read, parallel=True))
-        api.register_tool(AgentTool(
-            "office_edit", "Edit a .pptx/.docx/.xlsx in place, for files that have no deck/.md source (e.g. the user's). "
-            "ops = officecli batch items, e.g. {\"command\":\"set\",\"path\":\"/slide[2]/shape[@id=3]\",\"props\":{\"text\":\"New\"}}, "
-            "{\"command\":\"add\",\"parent\":\"/slide[2]\",\"type\":\"shape\",\"props\":{...}}, {\"command\":\"remove\",\"path\":...}. "
-            "Paths come from office_read view=annotated. All ops apply or none. Returns the result and a check.",
-            {"type": "object", "properties": {"path": s, "ops": {"type": "array", "items": {"type": "object"}}},
-             "required": ["path", "ops"]}, self._edit))
+        api.register_tool(AgentTool("office_run", RUN_DOC, {"type": "object", "properties": {
+            "code": {**s, "description": "Python script; `office` is already imported"},
+            "look": {**s, "description": "question for the screenshots the script took (default: describe and find faults)"},
+            "timeout": {"type": "integer", "description": "seconds, default 180"}},
+            "required": ["code"]}, self._run))
 
     async def _sh(self, ctx, cmd: str, timeout: float = 180) -> tuple[int | None, str]:
         return await ctx.env.exec(cmd, ctx.cwd, timeout, ctx.cancel)
@@ -445,7 +486,7 @@ class Office:
                 known = ""
             if old != known:
                 return (f"{out} exists and was not built from this source (or was changed after the last build, e.g. in "
-                        "PowerPoint/Word/Excel). Edit it in place with office_edit, or build again with overwrite=true.")
+                        "PowerPoint/Word/Excel). Edit it in place with office_run, or build again with overwrite=true.")
         tmp = f"/tmp/office-{uuid.uuid4().hex[:8]}"
         made, ids = f"{tmp}.{kind}", dict()
         if kind == "docx":
@@ -501,11 +542,32 @@ class Office:
         code, out = await self._sh(ctx, f"officecli view {path} {args.get('view') or 'outline'} 2>&1", 120)
         return _clip(out.strip() or f"(exit {code}, no output)")
 
-    async def _edit(self, args, ctx) -> str:
-        path = os.path.join(ctx.cwd, args["path"])
-        tmp = f"/tmp/office-{uuid.uuid4().hex[:8]}.json"
-        await ctx.env.write_file(tmp, json.dumps(args["ops"], ensure_ascii=False))
-        q = shlex.quote(path)
-        code, log = await self._sh(ctx, f"officecli batch {q} --input {tmp} 2>&1 | tail -15; officecli close {q} >/dev/null 2>&1; rm -f {tmp}")
-        valid, issues = await self._check(ctx, path)
-        return _clip(f"{log.strip()}\n\nCheck: {valid}\n{issues}")
+    async def _run(self, args, ctx) -> str:
+        run = f"/tmp/office-run-{uuid.uuid4().hex[:8]}"
+        await ctx.env.write_file(f"{run}/office.py", RUNTIME)
+        await ctx.env.write_file(f"{run}/main.py", args["code"])
+        await ctx.env.write_file(f"{run}/boot.py", BOOT)
+        q = shlex.quote(run)
+        code, out = await self._sh(ctx, f"OFFICE_RUN_DIR={q} OFFICE_SCRIPT={q}/main.py PYTHONPATH={q} "
+                                        f"python {q}/boot.py 2>&1",
+                                   min(int(args.get("timeout") or 180), 600))
+        try:
+            state = json.loads(await ctx.env.read_file(f"{run}/state.json"))
+        except Exception:
+            state = {}
+        parts = [_clip(_tidy(out.strip(), run)) or "(no output)"]
+        if code not in (0, None):
+            parts.append(f"(exit {code})")
+        if state.get("warnings"):
+            parts.append("officecli warnings:\n" + "\n".join(f"- {w}" for w in state["warnings"]))
+        for path in state.get("changed", []):
+            valid, issues = await self._check(ctx, path)
+            problems = explain(issues, {})
+            if "passed" not in valid.lower():
+                problems.insert(0, f"schema: {valid}")
+            rel = os.path.relpath(path, ctx.cwd) if path.startswith(ctx.cwd) else path
+            parts.append(f"Check {rel}: " + ("no problems." if not problems else "\n" + "\n".join(f"- {p}" for p in problems)))
+        if state.get("images"):
+            parts.append(await look(state["images"], args.get("look"), ctx))
+        await self._sh(ctx, f"rm -rf {q}", 30)
+        return "\n\n".join(parts)

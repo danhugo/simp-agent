@@ -91,7 +91,16 @@ anchor="top|middle|bottom">…</text>`, `<shape type="rect|ellipse|line|arrow|�
 ## Editing
 
 - A deck you built: `edit` the slide file (or reorder by renaming files), `office_build` again.
-- A .pptx the user brought (no deck folder): `office_read(path, view="annotated")` to see element paths, then
-  `office_edit(path, ops=[{"command":"set","path":"/slide[2]/shape[@id=5]","props":{"text":"…"}}])`.
-- If `office_build` says the .pptx changed outside its source (the user edited it), use `office_edit` on it instead
-  of rebuilding, unless the user wants it rebuilt.
+- A .pptx the user brought (no deck folder): one `office_run` script does the whole job. Find what to change
+  with `d.query(...)` or `d.view("annotated")`, change it, and end with `d.screenshot(grid=True)` to see the result:
+  ```python
+  d = office.open("/work/q3.pptx")
+  for s in d.query('shape:contains("2025")'):
+      d.set(s.path, text=s.text.replace("2025", "2026"))
+  t = "/slide[4]/table[1]"
+  for name, v in rows:                      # rows from the user's data
+      d.add(t, "row", c1=name, c2=v)        # unsure of a prop? print(office.help("pptx", "row"))
+  d.screenshot(grid=True)
+  ```
+- If `office_build` says the .pptx changed outside its source (the user edited it), edit it with `office_run`
+  instead of rebuilding, unless the user wants it rebuilt.

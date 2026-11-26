@@ -40,8 +40,9 @@ data_ws=None)` · `note(ws, cell, text)` · `save()`.
 Chart kinds: column, bar, line, area, pie, donut, scatter; `data_ws=` charts a table on another sheet.
 
 **Read** a workbook: `office_read(path, view="text")` (cells with values) or `view="outline"`. **Edit** one the user
-brought: `office_read(view="annotated")`, then `office_edit(path, ops=[{"command":"set","path":"/Sheet1/B5",
-"props":{"value":"=SUM(B2:B4)"}}])`, or for larger edits load it with openpyxl in a `.xlsx.py` that saves to OUT.
+brought: one `office_run` script, e.g. `d = office.open(p)`, then `for r in range(2, 20): d.set(f"/Sheet1/D{r}",
+formula=f"B{r}*C{r}")`, `print(d.view("text", range="Sheet1!A1:D20"))`; or load it with openpyxl in a `.xlsx.py`
+that saves to OUT for a big restructure.
 For bulk data in or out use `pandas`.
 
 ## A workbook worth handing over
