@@ -389,7 +389,7 @@ class DockerSandbox:
                 else ["--mount", f"type=volume,src=simp-work-{box.user_id},dst=/work"] if self.mount == "sync"
                 else ["-v", f"{box.root.resolve()}:/work"])
         code, out = await _docker(
-            "run", "-d", "--name", box.name, "--user", "1000:1000", "--network", self.network,
+            "run", "-d", "--init", "--name", box.name, "--user", "1000:1000", "--network", self.network,  # init reaps zombies
             "--pids-limit", str(self.pids_limit), "--memory", self.memory, "--cpus", self.cpus,
             "--read-only", "--tmpfs", f"/tmp:rw,nosuid,nodev,size={self.tmp_size}",
             "--tmpfs", f"{toolset.SKILLS_DIR}:rw,nosuid,nodev,mode=755,size=64m",  # the user's skills, written as root

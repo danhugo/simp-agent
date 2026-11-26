@@ -348,8 +348,28 @@ def open(path: str) -> Doc:  # noqa: A001 - the API reads best as office.open
     if not os.path.exists(p):
         raise OfficeError(f"{path} does not exist (office.create makes a new file)")
     _call(["open", p])
+    on_disk = _slides_in_zip(p) if p.endswith(".pptx") else 0
+    if on_disk > 0:  # seen once in a sandbox: a fresh resident showed 0 slides of a just-built deck; reopen
+        for attempt in range(2):
+            seen = len((_call(["query", p, "slide"]) or {}).get("results", []))
+            if seen == on_disk:
+                break
+            _call(["close", p])
+            if attempt == 1:
+                raise OfficeError(f"{path}: officecli sees {seen} slides but the file has {on_disk}; try again")
+            _call(["open", p])
     _docs[p] = d = Doc(p)
     return d
+
+
+def _slides_in_zip(path: str) -> int:
+    import re
+    import zipfile
+    try:
+        with zipfile.ZipFile(path) as z:
+            return sum(1 for n in z.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", n))
+    except (zipfile.BadZipFile, OSError):
+        return -1
 
 
 def create(path: str, *, force: bool = False, locale: str | None = None) -> Doc:
