@@ -13,7 +13,8 @@ from simp_agent.ai import AssistantMessage
 @dataclass
 class Limits:
     run_usd: float = 0.5  # per run; there is no daily cap (points, when billing is on, are the per-user limit)
-    run_turns: int = 20  # LLM calls of the agent per run (side calls: title, image look, web extract don't count)
+    run_turns: int = 0  # LLM calls of the agent per run, 0 = no limit (run_usd still caps a run); side calls
+    # (title, image look, web extract) don't count
 
 
 def limits(settings: dict) -> Limits:

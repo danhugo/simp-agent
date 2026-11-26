@@ -2,6 +2,7 @@
 name: pptx
 label: PowerPoint
 description: "Create or edit PowerPoint decks (.pptx): slides, presentations, decks of any length, in any language."
+version: 2
 ---
 
 # Slides
@@ -18,6 +19,7 @@ Never write pptxgenjs/python-pptx code, never render screenshots to review, neve
    of about 10 files each.
 3. `office_build(source="/work/<name>.deck")` → `/work/<name>.pptx`.
 4. If it lists problems, fix them all in ONE message (`edit` the named files), build once more, then answer.
+   "Text shrank … cut its words" means the slide says too much: shorten it (or split it in two), never ignore it.
 5. Answer in 2–3 lines: the file path, slide count, theme. No slide-by-slide recap.
 
 **Done rule:** `office_build` already validates, recalculates and checks the file. When it says "No problems found", answer the user right away. Never unpack, render, re-open or re-check the built file yourself, and never run recalc.py or other checks after a clean build.
@@ -29,7 +31,9 @@ One line: `<design theme="navy"/>`. Themes: `navy` (corporate, finance), `ocean`
 education, ESG), `terracotta` (food, culture, lifestyle), `mono` (minimal, design), `violet` (startup, marketing),
 `night` (dark tech, data), `crimson` (dark dramatic: film, games, anime, history). Pick by topic; the user's wish wins.
 Optional overrides: `<design theme="ocean"><color name="accent" value="#E4572E"/></design>` (names: bg, surface, ink,
-muted, primary, accent, on).
+muted, primary, accent, on) and fonts: `<font name="heading" family="Arial"/>` (names: display = cover/section
+titles, heading = slide titles, body, caption). All style lives here: a font or color change for the whole deck is one
+line in design.xml, then build again.
 
 ## Slide files: pick a layout, write the content
 
@@ -78,7 +82,10 @@ Chart types: column, bar, line, area, pie, donut. Values are plain numbers (no %
   `table`; processes/history → `steps`; 2–4 parallel ideas → `cards`.
 - **Density**: every body slide carries specifics (names, numbers, dates, examples), not generic phrases. Titles are
   short claims ("Sales doubled in 2024"), not labels ("Sales"). ≤ 6 bullets, each ≤ 2 lines.
-- **Truth**: real numbers from research or the user; never invent statistics. Say "approx." when unsure.
+- **Truth**: real numbers from research or the user; never invent statistics. Say "approx." when unsure. Facts only
+  the user can know (their team, prices, results, dates, targets, contacts) that they did not give: write a clearly
+  marked placeholder in their language, e.g. `[Tên CEO]`, `[X tỷ VND]`, `[ngày áp dụng]`, never a made-up value, and
+  list in your answer what they need to fill in.
 - Write in the user's language (Vietnamese text is fine in every theme).
 
 ## Free layout (rare)
@@ -90,7 +97,9 @@ anchor="top|middle|bottom">…</text>`, `<shape type="rect|ellipse|line|arrow|�
 
 ## Editing
 
-- A deck you built: `edit` the slide file (or reorder by renaming files), `office_build` again.
+- A deck you built (it has a `.deck` folder): change the source, never the .pptx. Text: `edit` the slide file.
+  Order: rename files. Fonts/colors for the whole deck: design.xml (above). Then `office_build` once. Never inspect or
+  patch the built .pptx with bash, officecli or office_run.
 - A .pptx the user brought (no deck folder): one `office_run` script does the whole job. Find what to change
   with `d.query(...)` or `d.view("annotated")`, change it, and end with `d.screenshot(grid=True)` to see the result:
   ```python

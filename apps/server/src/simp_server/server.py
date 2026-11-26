@@ -279,9 +279,9 @@ class Run:
         return {s["name"] for s in self.mgr.uskills.source(self.user_id).list() if s["name"] not in off} if self.has_skills else set()
 
     async def counted_stream(self, model, ctx, **kw):
-        """The agent's own LLM calls: at most limits.run_turns per run, then the run stops as if the user aborted."""
+        """The agent's own LLM calls: at most limits.run_turns per run (0: no limit), then the run stops as if the user aborted."""
         self.turns += 1
-        if self.turns > self.limits.run_turns:
+        if self.limits.run_turns and self.turns > self.limits.run_turns:
             if self.state != "aborting":
                 self.stop_note = f"run stopped: {self.limits.run_turns:g} turns reached"
                 await self.set_state("aborting")

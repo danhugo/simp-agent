@@ -177,13 +177,18 @@ class Doc:
         p = subprocess.run([BIN, "batch", self.path, "--json"], input=json.dumps([q[0] for q in queue], ensure_ascii=False),
                            capture_output=True, text=True)
         try:
-            data = json.loads(p.stdout).get("data") or {}
+            env = json.loads(p.stdout)
         except ValueError:
             raise OfficeError((p.stderr or p.stdout).strip() or "batch failed") from None
+        data = env.get("data") if isinstance(env.get("data"), dict) else {}
         results = data.get("results") or []
         bad = [r for r in results if not r.get("success")]
         if bad or p.returncode == 1:
-            lines = [f"{len(bad) or '?'} of {len(queue)} queued edits failed; none were applied:"]
+            lines = [f"{len(bad) or 'the'} of {len(queue)} queued edits failed; none were applied:"]
+            if not bad:  # failed before any item ran: officecli's own message
+                e = env.get("error")
+                lines.append("  " + str((e.get("error") if isinstance(e, dict) else e) or env.get("message")
+                                        or (p.stderr or p.stdout).strip()[:500]))
             for r in bad[:10]:
                 where = queue[r["index"]][1] if r.get("index") is not None and r["index"] < len(queue) else ""
                 lines.append(f"  {where or queue[r.get('index', 0)][0]} -> {r.get('error', 'failed')}")

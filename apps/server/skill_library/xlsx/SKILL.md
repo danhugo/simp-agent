@@ -3,6 +3,7 @@ name: xlsx
 label: Excel
 description: "Create, read and edit spreadsheets (.xlsx, .csv): workbooks with formulas, formatting, charts, dashboards, data cleanup."
 license: Complete terms in LICENSE.txt
+version: 2
 ---
 
 # Spreadsheets

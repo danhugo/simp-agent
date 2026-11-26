@@ -26,6 +26,7 @@ from .office_layouts import LAYOUTS, THEMES, Layouts, theme_design
 W, H, PT = 1280, 720, 0.75  # canvas px; 1 px = 0.75 pt (960 x 540 pt = 16:9)
 CM_PX = 1 / 0.026458333  # px per cm
 OUT_MAX = 12_000
+READABLE = 18  # px on the 1280x720 canvas (13.5 pt): smaller body text is not readable when presented
 RUNTIME = open(os.path.join(os.path.dirname(__file__), "office_rt.py"), encoding="utf-8").read()  # copied into the env
 # runs the agent's main.py with `office` imported; its traceback keeps main.py's own line numbers
 BOOT = ("import os, runpy, office\n"
@@ -50,7 +51,12 @@ Docs: office.help('pptx') lists elements; office.help('pptx', 'shape') gives its
 Any other command: office.cli('view', 'a.pptx', 'stats')
 Paths: /slide[2]/shape[@id=5], /slide[1]/table[1]/tr[2]/tc[1], /body/p[3], /Sheet1/B4. Selectors: 'shape',
 'slide[2] > shape', 'shape:contains("Q3")'. Props are officecli props, values as Python (True, 12, '2cm', 'FF0000');
-a dotted prop takes __: font__latin='Arial'. Look up props with office.help before guessing."""
+a dotted prop takes __: font__latin='Arial'. Look up props with office.help before guessing.
+Common: pptx d.add('/', 'slide', title=...) (a new .pptx has NO slides), then 'shape', 'textbox', 'table' (rows=, cols=),
+'row' (c1=, c2=), 'picture', 'chart'; docx d.add('/body', 'paragraph', text=, style=); xlsx d.set('/Sheet1/A1',
+value=…) or formula='SUM(A1:A9)'.
+Each call is a new process: nothing (d, variables) carries over, so open the file again. Screenshots are looked at
+for you and their answer is in the result; the PNGs are temporary (pass out='/work/x.png' to keep one)."""
 
 
 class SourceError(Exception):
@@ -85,10 +91,12 @@ class Design:
             if root.get("theme") not in THEMES:
                 raise SourceError(f"design.xml: unknown theme {root.get('theme')!r} (have: {', '.join(THEMES)})")
             own, root = list(root), ET.fromstring(theme_design(root.get("theme")))
-            for c in own:
-                for old in [o for o in root if (o.tag, o.get("name")) == (c.tag, c.get("name"))]:
-                    root.remove(old)
-                root.append(c)
+            for c in own:  # an override changes only the attributes it gives (a font keeps its size)
+                old = next((o for o in root if (o.tag, o.get("name")) == (c.tag, c.get("name"))), None)
+                if old is None:
+                    root.append(c)
+                else:
+                    old.attrib.update(c.attrib)
         self.colors = {c.get("name"): c.get("value") for c in root.iter("color")}
         self.fonts = {f.get("name"): (f.get("family"), float(f.get("size") or 18)) for f in root.iter("font")}
 
@@ -123,7 +131,7 @@ class Deck:
     """XML sources -> officecli batch ops. ids maps (slide number, shape id) -> 'file #element' for problem reports."""
 
     def __init__(self, design: Design):
-        self.d, self.ops, self.ids, self.errors, self.total = design, list(), dict(), list(), 0
+        self.d, self.ops, self.ids, self.errors, self.warnings, self.total = design, list(), dict(), list(), list(), 0
 
     def slide(self, n: int, fname: str, text: str) -> None:
         try:
@@ -143,6 +151,7 @@ class Deck:
                 return
             root = ET.Element("slide")
             root.extend(gen)
+            self._readable(fname, gen)
         bg = root.find("background")
         try:
             props = {"background": self.d.color(bg.get("color"), f"{fname} <background>")} if bg is not None else {}
@@ -159,6 +168,17 @@ class Deck:
                 getattr(self, "_" + el.tag, self._unknown)(n, sid, name, el, where)
             except SourceError as e:
                 self.errors.append(str(e))
+
+    def _readable(self, fname: str, gen: list) -> None:
+        """A layout shrinks text to fit its box; below READABLE px it is too small to read from a seat."""
+        for el in gen:
+            if el.tag not in ("text", "table") or el.get("font") == "caption":
+                continue
+            size = float(el.get("size") or READABLE)
+            if size < READABLE:
+                cut = round(100 * (1 - (size / READABLE) ** 2))
+                self.warnings.append(f"{fname} #{el.get('id') or el.tag}: text shrank to {size:g}px to fit (readable: "
+                                     f"{READABLE:g}px+). Cut its words by about {max(cut, 10)}% or split the slide")
 
     def _unknown(self, n, sid, name, el, where):
         raise SourceError(f"{where}: unknown element (use text, shape, image, chart, table)")
@@ -372,7 +392,7 @@ def parse_deck(design_text: str, slides: list[tuple[str, str]]) -> Deck:
         deck = Deck(Design(design_text))
     except SourceError as e:
         deck = Deck.__new__(Deck)
-        deck.ops, deck.ids, deck.errors = list(), dict(), [str(e)]
+        deck.ops, deck.ids, deck.errors, deck.warnings = list(), dict(), [str(e)], list()
         return deck
     deck.ops.append({"command": "set", "path": "/", "props": {"slideWidth": _pt(W), "slideHeight": _pt(H)}})
     deck.total = len(slides)
@@ -488,7 +508,7 @@ class Office:
                 return (f"{out} exists and was not built from this source (or was changed after the last build, e.g. in "
                         "PowerPoint/Word/Excel). Edit it in place with office_run, or build again with overwrite=true.")
         tmp = f"/tmp/office-{uuid.uuid4().hex[:8]}"
-        made, ids = f"{tmp}.{kind}", dict()
+        made, ids, deck_warnings = f"{tmp}.{kind}", dict(), list()
         if kind == "docx":
             ref = f" --reference-doc={shlex.quote(self.docx_reference)}" if self.docx_reference else ""
             cmd = f"cd {shlex.quote(os.path.dirname(src))} && pandoc {shlex.quote(src)} -o {made}{ref} 2>&1"
@@ -508,7 +528,7 @@ class Office:
             deck = parse_deck(await ctx.env.read_file(f"{src}/design.xml"), slides)
             if deck.errors:
                 return "Not built; fix the source:\n" + "\n".join(f"- {e}" for e in deck.errors)
-            ids = deck.ids
+            ids, deck_warnings = deck.ids, deck.warnings
             await ctx.env.write_file(f"{tmp}.json", json.dumps(deck.ops, ensure_ascii=False))
             cmd = (f"officecli create {made} >/dev/null && officecli batch {made} --input {tmp}.json "
                    f"| tail -5 && officecli close {made} >/dev/null")
@@ -520,7 +540,7 @@ class Office:
         await self._sh(ctx, f"officecli close {shlex.quote(out)} >/dev/null 2>&1; mv -f {made} {shlex.quote(out)}; "
                             f"officecli close {made} >/dev/null 2>&1; rm -f {tmp}.json", 30)
         await ctx.env.write_file(stamp, await self._hash(ctx, out))
-        problems = explain(issues, ids)
+        problems = explain(issues, ids) + (deck_warnings if kind == "pptx" else [])
         if "passed" not in valid.lower():
             problems.insert(0, f"schema: {valid}")
         what = f" ({len({n for n, _ in ids})} slides)" if kind == "pptx" else ""

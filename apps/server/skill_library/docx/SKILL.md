@@ -3,6 +3,7 @@ name: docx
 label: Word
 description: "Create, read and edit Word documents (.docx): reports, letters, proposals, tracked changes, comments."
 license: Complete terms in LICENSE.txt
+version: 2
 ---
 
 # Word documents
