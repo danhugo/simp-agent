@@ -9,7 +9,7 @@ from simp_server.workspace import LocalStore
 
 
 def mgr(tmp_path, lib=None):
-    return UserSkills(LocalStore({"data_dir": str(tmp_path)}), lib)
+    return UserSkills(tmp_path / "skills", lib)
 
 
 def test_library_skills_have_label_and_description():
@@ -30,7 +30,7 @@ async def test_new_user_gets_office_skills_with_sandbox_paths(tmp_path):
     text = await skills.plugin(src, None).text("xlsx")
     assert text.startswith("[Skill: xlsx · SKILL.md]")
     assert "python /opt/simp/skills/xlsx/scripts/recalc.py" in text and "python scripts/" not in text
-    assert (tmp_path / "workspaces" / "u1.skills" / "xlsx" / "SKILL.md").exists()  # beside, not in, the workspace
+    assert (tmp_path / "skills" / "u1" / "xlsx" / "SKILL.md").exists()  # on the server's disk
 
 
 async def test_add_remove_stick_across_restarts(tmp_path):
@@ -100,3 +100,17 @@ async def test_to_sandbox_only_when_changed(tmp_path):
     await m.to_sandbox(box, root_sh, put)
     assert len(cmds) == 2
     assert LIBRARY.name == "skill_library"
+
+
+async def test_v0_15_skills_move_from_the_workspace_store_once(tmp_path):
+    store = LocalStore({"data_dir": str(tmp_path)})
+    await store.write("u1.skills", ".seeded", b"1")
+    await store.write("u1.skills", "a/SKILL.md", b"---\nname: a\n---\nhi")
+    await store.write("u1.skills", "a/scripts/x.py", b"print(1)")
+    m = UserSkills(tmp_path / "skills", {"docx": {"files": {"SKILL.md": b"x"}}}, legacy=store)
+    got = await m.load("u1")
+    assert set(got) == {"a"} and set(got["a"]["files"]) == {"SKILL.md", "scripts/x.py"}  # no re-seeding
+    assert await store.list("u1.skills", "") == []  # dropped from the store
+    assert set(await UserSkills(tmp_path / "skills", {}, legacy=store).load("u1")) == {"a"}
+    with pytest.raises(ValueError):
+        await m.load("../x")
