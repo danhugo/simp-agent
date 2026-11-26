@@ -2,7 +2,7 @@
 the user's own skill store. The agent only sees that store.
 
 Storage: the workspace store under the pseudo id "<user_id>.skills" (local: <workspaces>/<id>.skills/, S3:
-users/<id>.skills/): beside the workspace, so not in the Files panel, the quota or the sandbox's /work.
+users/<id>.skills/), one tar per skill (<name>.tar): loading a user is one GET per skill, not one per file: beside the workspace, so not in the Files panel, the quota or the sandbox's /work.
 In the sandbox: the user's skills are written (as root, read-only for the agent) to SKILLS_DIR before a command runs,
 whenever they changed since the sandbox last got them (box.skills_ver).
 New users start with DEFAULT (the office skills). Enable/disable stays as before (store.skill_off)."""
@@ -106,27 +106,32 @@ class UserSkills:
             except FileNotFoundError:
                 top = dict()
             if SEEDED not in top:
-                for n in DEFAULT:
-                    if n in self.lib:
-                        await self._write(user_id, n, self.lib[n]["files"])
-                        top[n] = {"name": n, "is_dir": True}
+                new = [n for n in DEFAULT if n in self.lib]
+                await asyncio.gather(*(self._write(user_id, n, self.lib[n]["files"]) for n in new))
+                top |= {f"{n}.tar": {"name": f"{n}.tar", "is_dir": False} for n in new}
                 await self.store.write(sid, SEEDED, b"1")
-            for n, e in top.items():
-                if e["is_dir"] and NAME.fullmatch(n):
+            async def one(n: str, e: dict) -> None:
+                if e["is_dir"] and NAME.fullmatch(n):  # stored file by file (v0.15.0): read once, keep as one tar
                     files = await self._files(user_id, n)
                     if "SKILL.md" in files:
-                        skills[n] = {**_meta(files["SKILL.md"].decode(errors="replace"), n), "files": files}
+                        await self._write(user_id, n, files)
+                elif n.endswith(".tar") and NAME.fullmatch(n[:-4]):
+                    n, files = n[:-4], _untar(await self.store.read(sid, n))
+                else:
+                    return
+                if "SKILL.md" in files:
+                    skills[n] = {**_meta(files["SKILL.md"].decode(errors="replace"), n), "files": files}
+            await asyncio.gather(*(one(n, e) for n, e in top.items()))
             self.cache[user_id] = skills
             return skills
 
     async def _write(self, user_id: str, name: str, files: dict[str, bytes]) -> None:
         sid = self.sid(user_id)
-        try:
+        await self.store.write(sid, f"{name}.tar", _tar({f"{name}/{p}": d for p, d in files.items()}, name))
+        try:  # an old file-by-file copy
             await self.store.delete(sid, name)
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError):
             pass
-        for p, data in files.items():
-            await self.store.write(sid, f"{name}/{p}", data)
 
     async def add(self, user_id: str, name: str) -> None:
         """Copy a library skill into the user's store (again = update to the library's version). LookupError: unknown."""
@@ -156,7 +161,11 @@ class UserSkills:
         skills = await self.load(user_id)
         if name not in skills:
             raise LookupError(f"no skill {name!r}")
-        await self.store.delete(self.sid(user_id), name)
+        for key in (f"{name}.tar", name):
+            try:
+                await self.store.delete(self.sid(user_id), key)
+            except FileNotFoundError:
+                pass
         del skills[name]
 
     async def zip(self, user_id: str, name: str) -> bytes:
@@ -179,14 +188,7 @@ class UserSkills:
         return h.hexdigest()[:16]
 
     def tar(self, user_id: str) -> bytes:
-        buf = io.BytesIO()
-        with tarfile.open(fileobj=buf, mode="w") as t:
-            for n, s in sorted(self.cache.get(user_id, dict()).items()):
-                for p, data in sorted(s["files"].items()):
-                    info = tarfile.TarInfo(f"{n}/{p}")
-                    info.size, info.mode = len(data), 0o755 if p.endswith((".py", ".sh", ".js")) else 0o644
-                    t.addfile(info, io.BytesIO(data))
-        return buf.getvalue()
+        return _tar({f"{n}/{p}": d for n, s in self.cache.get(user_id, dict()).items() for p, d in s["files"].items()})
 
     async def to_sandbox(self, box, root_sh, put) -> None:
         """Write the user's skills into the sandbox at SKILLS_DIR when they changed since it last got them.
@@ -228,3 +230,20 @@ def unzip_skill(data: bytes) -> tuple[str, dict[str, bytes]]:
     if not NAME.fullmatch(name or ""):
         raise ValueError("the skill needs a name (front matter `name:`)")
     return name, files
+
+
+def _tar(files: dict[str, bytes], strip: str = "") -> bytes:
+    """files {path: bytes} as a tar; strip: drop that leading folder (a skill's own tar holds paths inside it)."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as t:
+        for p, data in sorted(files.items()):
+            info = tarfile.TarInfo(p[len(strip) + 1:] if strip else p)
+            info.size, info.mode = len(data), 0o755 if p.endswith((".py", ".sh", ".js")) else 0o644
+            t.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def _untar(data: bytes) -> dict[str, bytes]:
+    with tarfile.open(fileobj=io.BytesIO(data)) as t:
+        return {m.name: t.extractfile(m).read() for m in t.getmembers() if m.isfile()
+                and not PurePosixPath(m.name).is_absolute() and ".." not in PurePosixPath(m.name).parts}

@@ -30,7 +30,7 @@ async def test_new_user_gets_office_skills_with_sandbox_paths(tmp_path):
     text = await skills.plugin(src, None).text("xlsx")
     assert text.startswith("[Skill: xlsx · SKILL.md]")
     assert "python /opt/simp/skills/xlsx/scripts/recalc.py" in text and "python scripts/" not in text
-    assert (tmp_path / "workspaces" / "u1.skills" / "xlsx" / "SKILL.md").exists()  # beside, not in, the workspace
+    assert (tmp_path / "workspaces" / "u1.skills" / "xlsx.tar").exists()  # one object per skill, beside the workspace
 
 
 async def test_add_remove_stick_across_restarts(tmp_path):
@@ -100,3 +100,14 @@ async def test_to_sandbox_only_when_changed(tmp_path):
     await m.to_sandbox(box, root_sh, put)
     assert len(cmds) == 2
     assert LIBRARY.name == "skill_library"
+
+
+async def test_old_file_by_file_copy_becomes_one_tar(tmp_path):
+    store = LocalStore({"data_dir": str(tmp_path)})
+    await store.write("u1.skills", ".seeded", b"1")
+    await store.write("u1.skills", "a/SKILL.md", b"---\nname: a\n---\nhi")
+    await store.write("u1.skills", "a/scripts/x.py", b"print(1)")
+    m = UserSkills(store, {})
+    assert set((await m.load("u1"))["a"]["files"]) == {"SKILL.md", "scripts/x.py"}
+    assert (tmp_path / "workspaces" / "u1.skills" / "a.tar").exists() and not (tmp_path / "workspaces" / "u1.skills" / "a").exists()
+    assert set((await UserSkills(store, {}).load("u1"))["a"]["files"]) == {"SKILL.md", "scripts/x.py"}
