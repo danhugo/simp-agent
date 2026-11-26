@@ -1,4 +1,4 @@
-import { IconChevron, IconPlus, IconRefresh, IconSearch, IconTrash, IconUpload } from "./icons";
+import { IconChevron, IconPlus, IconRefresh, IconSearch, IconTrash } from "./icons";
 import { useCallback, useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -80,11 +80,6 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
   const [lib, setLib] = useState<LibrarySkill[] | null>(null);
   const loadSkills = useCallback(() => Promise.all([api.skills(), api.skillLibrary()]).then(([a, b]) => { setSkills(a); setLib(b); }, fail), [fail]);
   const skillDo = async (f: () => Promise<unknown>) => { try { await f(); } catch (e) { fail(e); } loadSkills(); };
-  const importZip = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (f) skillDo(() => api.importSkill(f));
-  };
   useEffect(() => { if (tab === "Skills" && skills === null) loadSkills(); }, [tab, skills, loadSkills]);
   const toggleSkill = async (s: SkillItem) => {
     setSkills((xs) => xs && xs.map((x) => x.name === s.name ? { ...x, enabled: !s.enabled } : x));  // flip now, server catches up
@@ -204,9 +199,7 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
             const hit = (s: { label: string; description: string }) => !needle || `${s.label} ${s.description}`.toLowerCase().includes(needle);
             const mine = skills.filter(hit), more = lib.filter((s) => !s.added && hit(s));
             return <>
-              <div className="skill-head"><h3>Your skills</h3>
-                <label className="btn-outline small" title="A .zip with a SKILL.md inside"><IconUpload size={14} /> Import
-                  <input type="file" accept=".zip,application/zip" hidden onChange={importZip} /></label></div>
+              <div className="skill-head"><h3>Your skills</h3></div>
               {mine.length === 0 ? <p className="muted">{needle ? `None of yours match “${q.trim()}”.` : "No skills yet. Add some from the library below."}</p>
                 : <ul className="app-tiles" aria-label="Your skills">{mine.map(skillTile)}</ul>}
               {(more.length > 0 || !needle) && <div className="skill-head"><h3>Library</h3></div>}

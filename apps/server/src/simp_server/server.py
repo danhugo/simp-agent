@@ -50,7 +50,7 @@ from simp_agent.session.profile import build_model
 from . import admin, budget, health, ops, persona as persona_mod, skills as skills_mod, workspace
 from .quota import Quota
 from . import protocol as p
-from .user_skills import MAX_SKILL_BYTES, UserSkills, unzip_skill
+from .user_skills import UserSkills
 from .sandboxes.toolset import OFFICE_RECALC, OFFICE_REFERENCE_DOCX
 from .connections import STATE_TTL, Connections, UserMcp, providers
 from .fake import sse
@@ -962,18 +962,6 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def skill_library(u=Depends(user)):
         mine = await mgr.uskills.load(u["id"])
         return [{**skill_row(s), "added": n in mine} for n, s in sorted(mgr.uskills.lib.items(), key=lambda x: x[1]["label"].lower())]
-
-    @app.post("/api/skills/import")  # a skill folder as a zip (one top folder, or SKILL.md at the top)
-    async def import_skill(request: Request, u=Depends(user)):
-        data = await request.body()
-        if len(data) > MAX_SKILL_BYTES:
-            raise HTTPException(413, "skill too big (5 MB max)")
-        try:
-            name, files = unzip_skill(data)
-            await mgr.uskills.add_files(u["id"], name, files)
-        except ValueError as e:
-            raise HTTPException(400, str(e)) from None
-        return {"ok": True, "name": name}
 
     @app.delete("/api/skills/{name}")
     async def remove_skill(name: str, u=Depends(user)):

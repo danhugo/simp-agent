@@ -18,7 +18,6 @@ import re
 import shlex
 import shutil
 import tarfile
-import zipfile
 from pathlib import Path, PurePosixPath
 
 from simp_agent.plugins.skills import front
@@ -28,7 +27,6 @@ from .sandboxes.toolset import SKILLS_DIR
 LIBRARY = Path(__file__).parents[2] / "skill_library"  # apps/server/skill_library
 DEFAULT = ("docx", "pdf", "pptx", "xlsx")
 SEEDED = ".seeded"  # marker file in the user's store: DEFAULT was copied once (removing them later sticks)
-MAX_SKILL_BYTES = 5 * 1024 * 1024  # an imported skill folder, all files
 NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 
 
@@ -173,22 +171,6 @@ class UserSkills:
         await asyncio.to_thread(self._write, user_id, name, self.lib[name]["files"])
         self.cache[user_id][name] = {k: v for k, v in self.lib[name].items()}
 
-    async def add_files(self, user_id: str, name: str, files: dict[str, bytes]) -> None:
-        """Import a skill folder from elsewhere (a zip). ValueError: not a skill / too big / bad paths."""
-        if not NAME.fullmatch(name):
-            raise ValueError("skill name: lowercase letters, digits and '-'")
-        if "SKILL.md" not in files:
-            raise ValueError("a skill needs SKILL.md at its top")
-        if sum(len(v) for v in files.values()) > MAX_SKILL_BYTES:
-            raise ValueError("skill too big (5 MB max)")
-        for p in files:
-            pp = PurePosixPath(p)
-            if pp.is_absolute() or ".." in pp.parts:
-                raise ValueError(f"bad path in skill: {p}")
-        await self.load(user_id)
-        await asyncio.to_thread(self._write, user_id, name, files)
-        self.cache[user_id][name] = {**_meta(files["SKILL.md"].decode(errors="replace"), name), "files": files}
-
     async def remove(self, user_id: str, name: str) -> None:
         skills = await self.load(user_id)
         if name not in skills:
@@ -230,27 +212,3 @@ class UserSkills:
             raise RuntimeError(f"could not install skills in the sandbox: {out.strip()[:200]}")
         box.skills_ver = ver
 
-
-def unzip_skill(data: bytes) -> tuple[str, dict[str, bytes]]:
-    """(name, files) from a zip holding one skill: <name>/SKILL.md... or SKILL.md at the top (name from its front
-    matter). ValueError when it isn't one."""
-    try:
-        z = zipfile.ZipFile(io.BytesIO(data))
-    except zipfile.BadZipFile:
-        raise ValueError("not a zip file") from None
-    names = [n for n in z.namelist() if not n.endswith("/") and "__MACOSX" not in n]
-    if sum(z.getinfo(n).file_size for n in names) > MAX_SKILL_BYTES:
-        raise ValueError("skill too big (5 MB max)")
-    tops, top = {n.split("/", 1)[0] for n in names if "/" in n}, ""
-    if "SKILL.md" not in names and len(tops) == 1 and f"{next(iter(tops))}/SKILL.md" in names:
-        top = next(iter(tops))
-        files = {n[len(top) + 1:]: z.read(n) for n in names if n.startswith(top + "/")}
-    else:
-        files = {n: z.read(n) for n in names}
-    if "SKILL.md" not in files:
-        raise ValueError("no SKILL.md in the zip")
-    name = str(front(files["SKILL.md"].decode(errors="replace")).get("name") or top).strip().lower()
-    name = re.sub(r"[^a-z0-9-]+", "-", name).strip("-")[:64]
-    if not NAME.fullmatch(name or ""):
-        raise ValueError("the skill needs a name (front matter `name:`)")
-    return name, files
