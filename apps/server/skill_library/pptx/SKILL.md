@@ -2,13 +2,13 @@
 name: pptx
 label: PowerPoint
 description: "Create or edit PowerPoint decks (.pptx): slides, presentations, decks of any length, in any language."
-version: 3
+version: 6
 ---
 
 # Slides
 
 You write a **deck folder** (content + layout names); `office_build` turns it into a designed .pptx and checks it.
-Never write pptxgenjs/python-pptx code, never render screenshots to review, never loop on the look.
+Never write pptxgenjs/python-pptx code. Look at the result once (Fast path step 5), never loop on the look.
 
 ## Fast path (aim: 4–6 turns, no more)
 
@@ -20,9 +20,17 @@ Never write pptxgenjs/python-pptx code, never render screenshots to review, neve
 3. `office_build(source="/work/<name>.deck")` → `/work/<name>.pptx`.
 4. If it lists problems, fix them all in ONE message (`edit` the named files), build once more, then answer.
    "Text shrank … cut its words" means the slide says too much: shorten it (or split it in two), never ignore it.
-5. Answer in 2–3 lines: the file path, slide count, theme. No slide-by-slide recap.
+5. **Look once**: one `office_run` with `office.open(path).screenshot(grid=True)`. Fix what the look names (overlaps,
+   text over a busy picture, empty areas) in ONE message, build once more. No second look. If the screenshot fails or
+   comes back blank, skip the look: the build check already passed. Never debug the tools (no test builds in /tmp).
+6. Answer in 2–3 lines: the file path, slide count, theme. No slide-by-slide recap.
 
-**Done rule:** `office_build` already validates, recalculates and checks the file. When it says "No problems found", answer the user right away. Never unpack, render, re-open or re-check the built file yourself, and never run other checks after a clean build.
+**First version first.** The user wants to see a result before asking for changes. Deliver the first complete deck as
+soon as it builds clean (plus the one look). Do not polish further on your own: in the answer, offer 2–3 concrete
+improvements they can ask for. A designed deck (below) should take about 15–25 tool calls, a plain one 4–8.
+
+**Done rule:** `office_build` already validates and checks the file. After a clean build and the one look (step 5),
+answer. Never unpack the file or run other checks.
 
 
 ## design.xml
@@ -88,12 +96,47 @@ Chart types: column, bar, line, area, pie, donut. Values are plain numbers (no %
   list in your answer what they need to fill in.
 - Write in the user's language (Vietnamese text is fine in every theme).
 
-## Free layout (rare)
+## Designed decks: illustrations, shapes, photos
+
+When the user asks for a designed or illustrated look (a template feel, a playful lesson, a brand style), build the
+slides in **free layout** (below) and dress them; the layouts above are for plain business decks.
+
+**Write the design brief first** (in your head or a short note, never as a question to the user), concrete enough that
+two designers would build the same deck from it. Fill each line from what the user said; where they gave nothing,
+choose from the topic and audience:
+- **Mood**: 3 words (e.g. playful · bold · flat).
+- **Palette**: background, dark, 1–2 accents, text colour, as hex. One family, high contrast for text.
+- **Type**: heading style (uppercase? weight, size about 44–60px) and body size (≥ 20px); one font family is enough.
+- **Motif**: 5–8 subjects from the topic, drawn the same way every time (two-tone flat art in the palette via
+  `office.art(..., tint=(light, dark))`, or line icons), plus one shape language: waves, blobs, circles or angles.
+- **Decoration rules**: where motifs sit (a band along the top or bottom, blobs bleeding off two corners), how many per
+  slide (2–4), and that text never sits on them.
+- **Images**: none, or one treatment kept everywhere (black-and-white photos cropped to circles or half-slide panels).
+- **Slide plan**: for each slide, one line: what it says and its composition (cover scene, 3 cards, big numbers, chart
+  with a side note, timeline, closing scene).
+When the user brings a reference (a picture, a .pptx, a brand), take the brief from it: look at it once
+(`read` an image, or `office_run` with `screenshot(grid=True)` for a deck) and write down its palette, type, motifs and
+decoration rules before building.
+
+- **Illustrations and icons**: `office.art_search("fish")` lists artwork names; `office.art("fish", out="/work/<name>.deck/assets/fish.svg",
+  tint=("#9EEFBC", "#1E2A8A"))` saves one as SVG in the deck's colours (light parts, dark parts); no tint keeps its own
+  colours. `kind="icon"` gives one-colour line icons (`color="#9EEFBC"`). Thousands exist: objects, animals, plants,
+  buildings, vehicles, weather, food, people, symbols. Save them all in ONE `office_run`, then `<image src=...svg>`.
+- **Waves, blobs, bands, custom drawings**: write an SVG file yourself (a `<path>` with curves) and place it with
+  `<image>`. Images and shapes may run off the slide edge (negative x/y, or past 1280×720) as long as part of them is
+  on the slide: that is how corner blobs and edge bands bleed. Text boxes must stay inside.
+- **Photos**: only when the user wants them; `web_download` a free-licence photo, then crop/grayscale it with Pillow.
+- Repeat a motif and the palette on every slide; 2–4 accent colours at most; big headings; plenty of space.
+- Keep text clear of decorations: a heading box tall enough for two lines, and cards below the heading's box.
+- Write the whole deck in ONE message of parallel `write` calls (design.xml, every slide, every SVG you draw), after
+  ONE `office_run` that saves all the artwork. Then build.
+
+## Free layout
 
 A `<slide>` without `layout` holds positioned elements on a 1280×720 canvas (x, y, width, height in px):
 `<background color="bg"/>`, `<text x y width height font="heading|body|caption|display" size color align
 anchor="top|middle|bottom">…</text>`, `<shape type="rect|ellipse|line|arrow|…" fill stroke corner-radius/>`,
-`<image src/>`, `<chart>`, `<table>`. Use it only for a slide no layout fits.
+`<image src/>` (.png .jpg .svg), `<chart>`, `<table>`. Use it for designed decks and for a slide no layout fits.
 
 ## Editing
 

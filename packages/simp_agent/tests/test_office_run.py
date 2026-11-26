@@ -168,3 +168,31 @@ async def test_office_run_tool(tmp_path):
     assert seen == [1]
     bad = await api.tools["office_run"].execute({"code": "x = 1\nraise ValueError('boom')\n"}, Ctx())
     assert 'main.py", line 2' in bad and "ValueError: boom" in bad and "runpy" not in bad, bad
+
+
+def test_art_search_tint_and_icon_colour(tmp_path):
+    """office.art: Iconify JSON found through NODE_PATH; whole-word search first; tint repaints by brightness."""
+    for name, icons in (("fluent-emoji-flat", {"car": {"body": '<path fill="#FFCC00"/><path fill="#111111"/>'},
+                                               "scarf": {"body": '<path fill="#0F0"/>'}}),
+                        ("tabler", {"recycle": {"body": '<path stroke="currentColor"/>'}})):
+        d = tmp_path / "node" / "@iconify-json" / name
+        d.mkdir(parents=True)
+        (d / "icons.json").write_text(json.dumps({"prefix": name, "width": 32, "height": 32, "icons": icons}))
+    env_code = textwrap.dedent("""
+        import os, builtins
+        print(office.art_search("car"))
+        print(builtins.open(office.art("car", tint=("#9EEFBC", "#1E2A8A"))).read())
+        print(builtins.open(office.art("recycle", kind="icon", color="#ABCDEF")).read())
+    """)
+    run = tmp_path / "run"
+    run.mkdir()
+    shutil.copy(RT, run / "office.py")
+    (run / "main.py").write_text(env_code)
+    env = {**os.environ, "OFFICE_RUN_DIR": str(run), "OFFICE_SCRIPT": str(run / "main.py"), "PYTHONPATH": str(run),
+           "NODE_PATH": str(tmp_path / "node")}
+    boot = "import os, runpy, office\nrunpy.run_path(os.environ['OFFICE_SCRIPT'], init_globals={'office': office})\n"
+    p = subprocess.run([sys.executable, "-c", boot], env=env, capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert "['car', 'scarf']" in p.stdout
+    assert 'fill="#9EEFBC"' in p.stdout and 'fill="#1E2A8A"' in p.stdout and "#FFCC00" not in p.stdout
+    assert 'stroke="#ABCDEF"' in p.stdout

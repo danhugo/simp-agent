@@ -29,7 +29,10 @@ def template(office: bool = True):
          # the fixed toolset: root-owned and read-only for `user` (see simp_server.sandboxes.toolset)
          .run_cmd([f"python -m venv {VENV}", f"{VENV}/bin/pip install --no-cache-dir " + " ".join(PIP),
                    f"mkdir -p {NODE_DIR} && npm install --prefix {NODE_DIR} --no-fund --no-audit " + " ".join(NPM)])
-         .run_cmd([officecli_install()])
+         .run_cmd([officecli_install()]))
+    if office:  # how officecli starts chromium in the sandbox
+        t = t.copy("sandboxes/chromium.sh", "/usr/local/bin/chromium").run_cmd(["chmod 755 /usr/local/bin/chromium"])
+    t = (t
          .copy("skill_library/docx/reference.docx", OFFICE_REFERENCE_DOCX)
          .run_cmd([f"mkdir -p {SKILLS_DIR}"])  # filled per user at run time
          .run_cmd(["chown -R root:root /opt/simp", "chmod -R go-w /opt/simp"])

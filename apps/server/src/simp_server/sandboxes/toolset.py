@@ -10,7 +10,8 @@ APT = ["git", "ripgrep", "fd-find", "zstd", "s3fs", "ffmpeg", "imagemagick", "pr
 # headless browser: officecli renders slides/pages/sheets to HTML and screenshots them with it
 OFFICE_APT = ["chromium"]
 # node libraries the office skills (apps/server/skill_library) use, installed under NODE_DIR and found through NODE_PATH
-NPM = ["pptxgenjs", "docx", "react", "react-dom", "react-icons", "sharp"]
+# + artwork for slides and documents (MIT): flat illustrations and line icons as Iconify JSON, used by office.art()
+NPM = ["pptxgenjs", "docx", "react", "react-dom", "react-icons", "sharp", "@iconify-json/fluent-emoji-flat", "@iconify-json/tabler"]
 NODE_DIR = "/opt/simp/node"
 # officecli (github.com/iOfficeAI/OfficeCLI, Rust): builds and checks .pptx/.docx/.xlsx for the office_* tools
 OFFICECLI = ("v1.0.162", {"x86_64": "df40e8f21b5c84826565f7c9c96f7e1a70ffbfe141b507bdad70533eaeacc190",
@@ -43,7 +44,8 @@ RUN_ENV = {"PYTHONNOUSERSITE": "1", "NODE_PATH": f"{NODE_DIR}/node_modules",
 
 
 APP = __import__("pathlib").Path(__file__).parents[3]  # apps/server
-TEMPLATE_INPUTS = ["sandboxes/e2b_template.py", "src/simp_server/sandboxes/toolset.py", "skill_library/docx/reference.docx"]
+TEMPLATE_INPUTS = ["sandboxes/e2b_template.py", "sandboxes/chromium.sh", "src/simp_server/sandboxes/toolset.py",
+                   "skill_library/docx/reference.docx"]
 
 
 def template_alias(office: bool = True) -> str:

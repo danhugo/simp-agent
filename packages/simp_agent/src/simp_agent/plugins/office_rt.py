@@ -24,7 +24,7 @@ import sys
 import tempfile
 import traceback
 
-__all__ = ["open", "create", "cli", "help", "search", "merge", "OfficeError", "Node"]
+__all__ = ["open", "create", "cli", "help", "search", "merge", "art", "art_search", "OfficeError", "Node"]
 
 BIN = os.environ.get("OFFICECLI", "officecli")
 RUN_DIR = os.environ.get("OFFICE_RUN_DIR") or tempfile.mkdtemp(prefix="office-")
@@ -310,7 +310,7 @@ class Doc:
             raise OfficeError("pdf export works for .docx only here; for slides use screenshot(page=...) or export('x.html')")
         html = os.path.join(RUN_DIR, "export.html")
         _call(["view", self.path, "html", "-o", html], cwd=RUN_DIR)
-        p = subprocess.run(["chromium", "--headless", "--no-sandbox", "--disable-gpu", "--no-pdf-header-footer",
+        p = subprocess.run(["chromium", "--headless", "--no-pdf-header-footer",
                             f"--print-to-pdf={out}", "file://" + html], capture_output=True, text=True, timeout=180)
         if not os.path.exists(out):
             raise OfficeError(f"pdf export failed: {(p.stderr or p.stdout).strip()[-300:]}")
@@ -374,6 +374,66 @@ def merge(template: str, out: str, data: dict, *, force: bool = False) -> str:
     _call(["merge", os.path.abspath(template), os.path.abspath(out), "--data", json.dumps(data, ensure_ascii=False),
            *(["--force"] if force else [])])
     _made.add(os.path.abspath(out))
+    return out
+
+
+ART_SETS = {"flat": "fluent-emoji-flat", "icon": "tabler"}  # flat colour illustrations; one-colour line icons
+_art: dict = {}
+
+
+def _art_set(kind: str) -> dict:
+    if kind not in _art:
+        name = ART_SETS[kind]
+        for root in [p for p in os.environ.get("NODE_PATH", "").split(os.pathsep) if p] + ["/opt/simp/node/node_modules"]:
+            f = os.path.join(root, "@iconify-json", name, "icons.json")
+            if os.path.exists(f):
+                _art[kind] = json.load(builtins.open(f, encoding="utf-8"))
+                break
+        else:
+            raise OfficeError(f"artwork set {name} is not installed here")
+    return _art[kind]
+
+
+def art_search(words: str, kind: str = "flat", limit: int = 30) -> list[str]:
+    """Names of artwork matching all the words: art_search('fish'), art_search('factory'), art_search('recycle', 'icon').
+    kind: 'flat' (colour illustrations: objects, animals, plants, buildings, people, weather...) or 'icon' (line icons)."""
+    data, want = _art_set(kind), words.lower().split()
+    names = list(data["icons"]) + list(data.get("aliases", {}))
+    whole = [n for n in names if all(w in n.split("-") for w in want)]  # 'car' finds car, not scarf
+    part = [n for n in names if n not in whole and all(w in n for w in want)]
+    return (sorted(whole, key=len) + sorted(part, key=len))[:limit]
+
+
+def art(name: str, out: str | None = None, kind: str = "flat", color: str | None = None, tint: str | None = None) -> str:
+    """Save one artwork as an .svg file and return its path, ready for d.add(slide, 'picture', src=path, x=, y=,
+    width=, height=) or a deck's <image src=...>. color: the colour of an 'icon' (one-colour line icons).
+    tint: repaint a 'flat' illustration in the deck's palette: one colour (a silhouette), e.g. tint='#9EEFBC', or
+    (light, dark): its light parts in the first, dark parts in the second, e.g. tint=('#9EEFBC', '#1E2A8A')."""
+    data = _art_set(kind)
+    n = data.get("aliases", {}).get(name, {}).get("parent", name)
+    icon = data["icons"].get(n)
+    if icon is None:
+        near = art_search(name.split("-")[0], kind, 8)
+        raise OfficeError(f"no artwork {name!r} in {kind}; similar: {', '.join(near) or 'none'}")
+    w, h = icon.get("width", data.get("width", 16)), icon.get("height", data.get("height", 16))
+    body = icon["body"].replace("currentColor", color or "#000000")
+    if tint:  # repaint: one colour, or (light, dark) by each original colour's brightness; 'none' and urls stay
+        import re
+        light, dark = (tint, tint) if isinstance(tint, str) else tint
+
+        def pick(c: str) -> str:
+            c = c.strip()
+            if c.startswith("#") and len(c) in (4, 7):
+                h = c[1:] if len(c) == 7 else "".join(ch * 2 for ch in c[1:])
+                r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+                return dark if (0.299 * r + 0.587 * g + 0.114 * b) < 110 else light
+            return light
+        body = re.sub(r'(fill|stroke|stop-color)="(?!none|url)([^"]*)"', lambda m: f'{m.group(1)}="{pick(m.group(2))}"', body)
+        body = re.sub(r'(fill|stroke|stop-color):(?!none|url)([^;"]*)', lambda m: f'{m.group(1)}:{pick(m.group(2))}', body)
+    out = os.path.abspath(out or os.path.join(RUN_DIR, f"{kind}-{name}.svg"))
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with builtins.open(out, "w", encoding="utf-8") as f:
+        f.write(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w * 32}" height="{h * 32}">{body}</svg>')
     return out
 
 

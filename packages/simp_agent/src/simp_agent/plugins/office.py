@@ -26,7 +26,7 @@ from .office_layouts import LAYOUTS, THEMES, Layouts, theme_design
 W, H, PT = 1280, 720, 0.75  # canvas px; 1 px = 0.75 pt (960 x 540 pt = 16:9)
 CM_PX = 1 / 0.026458333  # px per cm
 OUT_MAX = 12_000
-PRINT_PDF = "chromium --headless --no-sandbox --disable-gpu --no-pdf-header-footer"
+PRINT_PDF = "chromium --headless --no-pdf-header-footer"  # the sandbox's chromium wrapper adds its flags
 READABLE = 18  # px on the 1280x720 canvas (13.5 pt): smaller body text is not readable when presented
 RUNTIME = open(os.path.join(os.path.dirname(__file__), "office_rt.py"), encoding="utf-8").read()  # copied into the env
 # runs the agent's main.py with `office` imported; its traceback keeps main.py's own line numbers
@@ -48,6 +48,8 @@ Edit (queued): d.add(parent, type, before=, after=, index=, **props) -> .path of
 Low level: d.raw_set(part, xpath, action, xml); d.add_part(parent, type); d.import_csv('/Sheet1', csv, header=True);
   d.refresh(); office.merge(template, out, data_dict)
 Look: d.screenshot(page=2 | grid=True | range='/slide[1]/shape[@id=3]' or 'Sheet1!A1:D9'); d.export('x.html'|'x.svg', or 'x.pdf' for a .docx)
+Artwork: office.art_search('fish') -> names; office.art('fish', out='/work/a/fish.svg', tint=('#9EEFBC', '#1E2A8A'))
+  -> an .svg in the deck's colours (kind='icon' + color= for line icons); place with d.add(slide, 'picture', src=...)
 Docs: office.help('pptx') lists elements; office.help('pptx', 'shape') gives its props; office.search('shadow', 'pptx')
 Any other command: office.cli('view', 'a.pptx', 'stats')
 Paths: /slide[2]/shape[@id=5], /slide[1]/table[1]/tr[2]/tc[1], /body/p[3], /Sheet1/B4. Selectors: 'shape',
@@ -184,10 +186,14 @@ class Deck:
     def _unknown(self, n, sid, name, el, where):
         raise SourceError(f"{where}: unknown element (use text, shape, image, chart, table)")
 
-    def _box(self, el, where, line=False) -> dict:
+    def _box(self, el, where, line=False, bleed=False) -> dict:
+        """bleed: a decoration (image, shape) may run off the slide edge, as long as part of it is on the slide."""
         x, y = _num(el, "x", 0, where), _num(el, "y", 0, where)
         w, h = _num(el, "width", where=where), _num(el, "height", where=where)
-        if not line and (x < 0 or y < 0 or x + w > W + 0.5 or y + h > H + 0.5):
+        if bleed:
+            if x >= W or y >= H or x + w <= 0 or y + h <= 0:
+                raise SourceError(f"{where}: box {x:g},{y:g} {w:g}x{h:g} is entirely off the {W}x{H} canvas")
+        elif not line and (x < 0 or y < 0 or x + w > W + 0.5 or y + h > H + 0.5):
             raise SourceError(f"{where}: box {x:g},{y:g} {w:g}x{h:g} leaves the {W}x{H} canvas")
         p = {"x": _pt(x), "y": _pt(y), "width": _pt(w), "height": _pt(h)}
         if el.get("rotation"):
@@ -291,7 +297,7 @@ class Deck:
         fill = self.d.color(el.get("fill"), where)
         if fill is None:
             raise SourceError(f"{where}: fill is required (a color, or none)")
-        props = {"id": str(sid), "name": name, **self._box(el, where), "geometry": GEOMETRY[kind], "fill": fill,
+        props = {"id": str(sid), "name": name, **self._box(el, where, bleed=True), "geometry": GEOMETRY[kind], "fill": fill,
                  "line": f"{stroke}:{round(sw * PT, 2):g}" if stroke else "none"}
         if kind == "rect" and el.get("corner-radius"):
             r = _num(el, "corner-radius", where=where)
@@ -306,7 +312,7 @@ class Deck:
         if not src.startswith(("/", "http://", "https://")):
             raise SourceError(f"{where}: src must be an absolute path or an http(s) URL")
         self.ops.append({"command": "add", "parent": f"/slide[{n}]", "type": "picture",
-                         "props": {"id": str(sid), "name": name, **self._box(el, where), "src": src}})
+                         "props": {"id": str(sid), "name": name, **self._box(el, where, bleed=True), "src": src}})
 
     def _chart(self, n, sid, name, el, where):
         kind = el.get("type") or ""
