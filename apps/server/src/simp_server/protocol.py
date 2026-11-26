@@ -167,6 +167,7 @@ class Snapshot(_M):
     title: str = ""
     run_started: float | None = None  # server time (epoch s) the current run began, if one is going
     server_now: float = 0  # server time when sent, so a client can line its clock up with run_started
+    parallel_tools: list[str] = Field(default_factory=list)  # calls of these, next to each other, run at once
 
 
 DURABLE = (UserMessage, AssistantMessage, ToolResult, ApprovalRequest, ApprovalResolved, RunState, Compaction, Notice, SessionTitle)

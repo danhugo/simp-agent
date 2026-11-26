@@ -91,3 +91,26 @@ async def test_v0_15_skills_move_from_the_workspace_store_once(tmp_path):
     assert set(await UserSkills(tmp_path / "skills", {}, legacy=store).load("u1")) == {"a"}
     with pytest.raises(ValueError):
         await m.load("../x")
+
+
+async def test_parallel_tool_calls_install_skills_once(tmp_path):
+    """Read-only tool calls run at once and each asks for the skills first: one install, the others wait."""
+    import asyncio
+    m = mgr(tmp_path)
+    await m.load("u1")
+    cmds = list()
+
+    class Box:
+        user_id, skills_ver = "u1", None
+
+    async def root_sh(c):
+        cmds.append(c)
+        await asyncio.sleep(0.05)  # untarring takes a while: the other calls arrive meanwhile
+        return 0, ""
+
+    async def put(p, data):
+        await asyncio.sleep(0.01)
+
+    box = Box()
+    await asyncio.gather(*(m.to_sandbox(box, root_sh, put) for _ in range(3)))
+    assert len(cmds) == 1

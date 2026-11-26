@@ -90,6 +90,8 @@ async def test_reconnect_with_last_event_id_no_gaps_or_dups(env):
     seqs = [e["seq"] for e in seen + again if "seq" in e]
     assert seqs == [e["seq"] for e in run.log]  # every durable event exactly once, in order
     assert again[-1]["type"] == "snapshot" and again[-1]["last_seq"] == run.seq
+    par = again[-1]["parallel_tools"]  # the agent's read-only tools, for the chat's "N at once" boxes
+    assert {"read", "grep", "ls"} <= set(par) and "bash" not in par and "write" not in par
 
 
 async def test_mid_delta_reconnect_snapshot(env):
