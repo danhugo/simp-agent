@@ -1,5 +1,11 @@
 import { IconChevron, IconDownload, IconPlus, IconRefresh, IconSearch, IconTrash, IconUpload } from "./icons";
 import { useCallback, useEffect, useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import {
+  BookOpen, Bug, ChartLine, Clapperboard, Contact, Database, FlaskConical, GitBranch, GitPullRequest, GraduationCap, Image, Languages,
+  LayoutTemplate, Lightbulb, ListChecks, ListOrdered, Mail, Megaphone, NotebookPen, Palette, Plug, ScanText, ScrollText, ShieldCheck,
+  Sigma, SwatchBook, TableProperties, Telescope,
+} from "lucide-react";
 import { api, AuthError, type AppDetail, type AppItem, type LibrarySkill, type SkillItem } from "./api";
 import { errorText } from "./Chat";
 
@@ -32,6 +38,26 @@ ICONS.pptx = doc("#c43e1c", "P");
 ICONS.docx = doc("#185abd", "W");
 ICONS.xlsx = doc("#107c41", "X");
 ICONS.pdf = doc("#d93025", "PDF");
+// library skills: a Lucide glyph on a tinted tile; the hue groups them (data, writing, media, code, design, learning)
+const SKILL_ICONS: Record<string, [LucideIcon, string]> = {
+  "data-analysis": [ChartLine, "#0f9d58"], "csv-cleanup": [TableProperties, "#0f9d58"], "spreadsheet-formulas": [Sigma, "#0f9d58"],
+  "sql-helper": [Database, "#0f9d58"],
+  "business-writing": [Mail, "#1a73e8"], "internal-comms": [Megaphone, "#1a73e8"], "meeting-notes": [NotebookPen, "#1a73e8"],
+  "summarize-documents": [ScrollText, "#1a73e8"], "translation": [Languages, "#1a73e8"], "research-citations": [Telescope, "#1a73e8"],
+  "resume-cover-letter": [Contact, "#1a73e8"], "readme-docs": [BookOpen, "#1a73e8"],
+  "image-editing": [Image, "#e8710a"], "audio-video": [Clapperboard, "#e8710a"], "ocr-scans": [ScanText, "#e8710a"],
+  "systematic-debugging": [Bug, "#5f6368"], "code-review": [GitPullRequest, "#5f6368"], "git-workflow": [GitBranch, "#5f6368"],
+  "test-driven-development": [FlaskConical, "#5f6368"], "security-best-practices": [ShieldCheck, "#5f6368"], "mcp-builder": [Plug, "#5f6368"],
+  "frontend-design": [LayoutTemplate, "#a142f4"], "algorithmic-art": [Palette, "#a142f4"], "brand-guidelines": [SwatchBook, "#a142f4"],
+  "slide-outline": [ListOrdered, "#a142f4"],
+  "brainstorming": [Lightbulb, "#c5221f"], "writing-plans": [ListChecks, "#c5221f"], "study-notes": [GraduationCap, "#c5221f"],
+};
+const SkillIcon = ({ name }: { name: string }) => {
+  const hit = !ICONS[name] && SKILL_ICONS[name];
+  if (!hit) return <AppIcon name={name} />;
+  const [I, color] = hit;
+  return <span className="app-icon skill-icon" style={{ "--tint": color } as React.CSSProperties} aria-hidden="true"><I size={26} strokeWidth={1.75} /></span>;
+};
 const AppIcon = ({ name }: { name: string }) => (
   <svg className="app-icon" viewBox="0 0 24 24" width="52" height="52" aria-hidden="true">{ICONS[name] ?? <><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="var(--muted)" strokeWidth="1.5" /><circle cx="12" cy="12" r="2.5" fill="var(--muted)" /></>}</svg>
 );
@@ -74,7 +100,7 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
   };
   const skillTile = (s: SkillItem) => (
     <li key={s.name} className={`app-tile ${s.enabled ? "on" : ""}`} aria-label={s.label}>
-      <AppIcon name={s.name} />
+      <SkillIcon name={s.name} />
       <div className="app-text"><strong>{s.label}</strong><div className="muted small app-desc">{s.description}</div></div>
       {s.update && <button className="ghost small" title="The library has a newer version" onClick={() => skillDo(() => api.addSkill(s.name))}>
         <IconRefresh size={14} /> Update</button>}
@@ -86,7 +112,7 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
   );
   const libTile = (s: LibrarySkill) => (
     <li key={s.name} className="app-tile" aria-label={s.label}>
-      <AppIcon name={s.name} />
+      <SkillIcon name={s.name} />
       <div className="app-text"><strong>{s.label}</strong><div className="muted small app-desc">{s.description}</div></div>
       <button className="ghost small" aria-label={`Add ${s.label}`} onClick={() => skillDo(() => api.addSkill(s.name))}><IconPlus size={14} /> Add</button>
     </li>

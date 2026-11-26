@@ -551,3 +551,6 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 /* Crafts > Skills: your skills, then the library */
 .skill-head { margin: var(--sp-5) 0 var(--sp-2); font-size: var(--fs-md); font-weight: 600; }
 .skill-import { display: inline-flex; align-items: center; gap: 4px; margin-left: var(--sp-2); cursor: pointer; color: var(--text); }
+/* a library skill's icon: its glyph on a soft tile of its group's hue, sized like the 52px app icons */
+.skill-icon { flex: none; display: grid; place-items: center; width: 44px; height: 44px; margin: 4px; border-radius: 12px;
+  color: var(--tint); background: color-mix(in srgb, var(--tint) 13%, var(--bg)); }
