@@ -283,7 +283,7 @@ tag = "simp"               # metadata app=<tag>: which E2B sandboxes this server
 cpus = 2                   # used for cost only; set at template build
 memory_mb = 2048
 idle_pause_s = 600         # pause after 10 min unused
-# office = true            # false only with a --no-office template (the skills need LibreOffice)
+# office = true            # false only with a --no-office template (no chromium: officecli screenshots fail)
 # egress = "allowlist"     # outbound only to the workspace endpoint + egress_allow; "open" = no filter (dev only)
 # egress_allow = []        # extra hosts the sandbox may reach; web access goes through web_search / web_fetch / web_download (files, max 20 MB, into /work)
 max_life_s = 3300          # kill and recreate after 55 min (E2B Hobby: 1 h continuous cap)
@@ -306,7 +306,7 @@ it but cannot install or change packages: `/opt/simp` is read-only, the sandbox 
 allowlist), and the policy (`simp_server/policy.py`) answers install attempts with the list. To add a library, edit
 `toolset.py` and release: the template name is a hash of the files it bakes in, the deploy workflow
 builds it when missing, and the server computes the same name. Locally, run `e2b_template.py --if-missing` before
-starting the server. About 0.6 GB (1.1 GB with `--office`); the
+starting the server. About 0.6 GB (1.0 GB with `--office`, which adds headless chromium for officecli screenshots); the
 template does not count toward user quota.
 
 **Skills.** The template holds no skills. `apps/server/skill_library/` is the server's catalog (Crafts › Skills ›
@@ -315,8 +315,8 @@ in `simp-server backup`; not in Files, not in the quota). New users start with d
 pptx, xlsx. Before a command runs, the server writes the
 user's skills into the sandbox at `/opt/simp/skills` (root-owned, read-only for the agent) when they changed
 (`simp_server/user_skills.py`). A skill change needs only a server release; users get a library update with the
-skill's Update button (its `version:` went up). Exception: `office_build` uses `docx/reference.docx` and
-`xlsx/scripts/` from the template (`/opt/simp/office`), so changing those rebuilds the template. Home is not saved any more: old home snapshots (user-installed
+skill's Update button (its `version:` went up). Exception: `office_build` uses `docx/reference.docx` from the template
+(`/opt/simp/office`), so changing it rebuilds the template. Home is not saved any more: old home snapshots (user-installed
 libraries) are deleted at create; repos still come back from their mirror.
 
 **Rollout order (this change).** 1) Build the new template (`e2b_template.py --alias simp-sandbox-next`) and run
@@ -330,7 +330,7 @@ asked, even after "always"; installs, and network commands when egress is blocke
 keyword counts only as the command word (`grep curl notes.md` runs). The regexes are a hint layer, not a boundary. Deletes inside `/work` run without
 asking and are permanent on R2.
 
-Build the E2B template by hand (the deploy workflow does this on release; LibreOffice is in unless `--no-office`):
+Build the E2B template by hand (the deploy workflow does this on release; chromium is in unless `--no-office`):
 
 ```sh
 E2B_API_KEY=... uv run python apps/server/sandboxes/e2b_template.py [--if-missing] [--alias NAME] [--no-office] [--cpus 2] [--memory-mb 2048]

@@ -5,7 +5,8 @@ Three tools, one job each:
   syntax on a 1280x720 px canvas) or a .docx from a Markdown file; then check it (schema, text overflow, off-slide
   boxes) and report problems by file and element id. The source is the truth: edit it and build again.
 - office_read(path, view): outline / text / issues of any .pptx/.docx/.xlsx (also files the user brought).
-- office_edit(path, ops): in-place edits of a file that has no source (officecli batch commands).
+- office_run(code): code mode. Runs a Python script with `office` (office_rt.py: officecli as an API, edits batched)
+  in one call, then checks every file it changed and looks at the screenshots it took.
 A build remembers the output's hash, so a file changed elsewhere (e.g. in PowerPoint) is not overwritten silently."""
 
 from __future__ import annotations
@@ -19,11 +20,46 @@ import uuid
 import xml.etree.ElementTree as ET
 
 from ..agent import AgentTool
+from ..coding.tools import look
 from .office_layouts import LAYOUTS, THEMES, Layouts, theme_design
 
 W, H, PT = 1280, 720, 0.75  # canvas px; 1 px = 0.75 pt (960 x 540 pt = 16:9)
 CM_PX = 1 / 0.026458333  # px per cm
 OUT_MAX = 12_000
+PRINT_PDF = "chromium --headless --no-pdf-header-footer"  # the sandbox's chromium wrapper adds its flags
+READABLE = 18  # px on the 1280x720 canvas (13.5 pt): smaller body text is not readable when presented
+RUNTIME = open(os.path.join(os.path.dirname(__file__), "office_rt.py"), encoding="utf-8").read()  # copied into the env
+# runs the agent's main.py with `office` imported; its traceback keeps main.py's own line numbers
+BOOT = ("import os, runpy, office\n"
+        "runpy.run_path(os.environ['OFFICE_SCRIPT'], init_globals={'office': office}, run_name='__main__')\n")
+RUN_DOC = """Run a Python script that reads or edits .pptx/.docx/.xlsx files through `office` (officecli as an API), all
+in one call. Use it to change a file in place (one the user brought, or one with no deck/.md source), to inspect a file
+in depth, or to make files that office_build can't. Write the whole job as one script: loops, conditions, reading then
+editing. Edits are queued and sent as one atomic batch (all apply or none) before the next read and at the end; every
+file is closed at the end, then each changed file is checked (schema + issues) and screenshots are looked at for you.
+Errors name the script line. print() what you want to see; output over 12k chars is cut.
+
+d = office.open(path) | office.create(path, force=False)      # .pptx .docx .xlsx
+Read (Python data): d.get(path='/') -> Node; d.query(selector) -> [Node]  (Node: .path .type .text .props .children,
+  .set(**p) .remove()); d.view(mode, start=, end=, max_lines=, range=, cols=) -> str, mode: outline | text | annotated
+  (text with element paths) | stats | issues | forms | html; d.issues(type=); d.validate(); d.raw(part); d.dump(path)
+Edit (queued): d.add(parent, type, before=, after=, index=, **props) -> .path of the new element; d.set(path, **props);
+  d.remove(path); d.move(path, to=, before=, after=, index=); d.swap(p1, p2); d.replay(batch_items); d.flush()
+Low level: d.raw_set(part, xpath, action, xml); d.add_part(parent, type); d.import_csv('/Sheet1', csv, header=True);
+  d.refresh(); office.merge(template, out, data_dict)
+Look: d.screenshot(page=2 | grid=True | range='/slide[1]/shape[@id=3]' or 'Sheet1!A1:D9'); d.export('x.html'|'x.svg', or 'x.pdf' for a .docx)
+Artwork: office.art_search('fish') -> names; office.art('fish', out='/work/a/fish.svg', tint=('#9EEFBC', '#1E2A8A'))
+  -> an .svg in the deck's colours (kind='icon' + color= for line icons); place with d.add(slide, 'picture', src=...)
+Docs: office.help('pptx') lists elements; office.help('pptx', 'shape') gives its props; office.search('shadow', 'pptx')
+Any other command: office.cli('view', 'a.pptx', 'stats')
+Paths: /slide[2]/shape[@id=5], /slide[1]/table[1]/tr[2]/tc[1], /body/p[3], /Sheet1/B4. Selectors: 'shape',
+'slide[2] > shape', 'shape:contains("Q3")'. Props are officecli props, values as Python (True, 12, '2cm', 'FF0000');
+a dotted prop takes __: font__latin='Arial'. Look up props with office.help before guessing.
+Common: pptx d.add('/', 'slide', title=...) (a new .pptx has NO slides), then 'shape', 'textbox', 'table' (rows=, cols=),
+'row' (c1=, c2=), 'picture', 'chart'; docx d.add('/body', 'paragraph', text=, style=); xlsx d.set('/Sheet1/A1',
+value=…) or formula='SUM(A1:A9)'.
+Each call is a new process: nothing (d, variables) carries over, so open the file again. Screenshots are looked at
+for you and their answer is in the result; the PNGs are temporary (pass out='/work/x.png' to keep one)."""
 
 
 class SourceError(Exception):
@@ -58,10 +94,12 @@ class Design:
             if root.get("theme") not in THEMES:
                 raise SourceError(f"design.xml: unknown theme {root.get('theme')!r} (have: {', '.join(THEMES)})")
             own, root = list(root), ET.fromstring(theme_design(root.get("theme")))
-            for c in own:
-                for old in [o for o in root if (o.tag, o.get("name")) == (c.tag, c.get("name"))]:
-                    root.remove(old)
-                root.append(c)
+            for c in own:  # an override changes only the attributes it gives (a font keeps its size)
+                old = next((o for o in root if (o.tag, o.get("name")) == (c.tag, c.get("name"))), None)
+                if old is None:
+                    root.append(c)
+                else:
+                    old.attrib.update(c.attrib)
         self.colors = {c.get("name"): c.get("value") for c in root.iter("color")}
         self.fonts = {f.get("name"): (f.get("family"), float(f.get("size") or 18)) for f in root.iter("font")}
 
@@ -96,7 +134,7 @@ class Deck:
     """XML sources -> officecli batch ops. ids maps (slide number, shape id) -> 'file #element' for problem reports."""
 
     def __init__(self, design: Design):
-        self.d, self.ops, self.ids, self.errors, self.total = design, list(), dict(), list(), 0
+        self.d, self.ops, self.ids, self.errors, self.warnings, self.total = design, list(), dict(), list(), list(), 0
 
     def slide(self, n: int, fname: str, text: str) -> None:
         try:
@@ -116,6 +154,7 @@ class Deck:
                 return
             root = ET.Element("slide")
             root.extend(gen)
+            self._readable(fname, gen)
         bg = root.find("background")
         try:
             props = {"background": self.d.color(bg.get("color"), f"{fname} <background>")} if bg is not None else {}
@@ -133,13 +172,28 @@ class Deck:
             except SourceError as e:
                 self.errors.append(str(e))
 
+    def _readable(self, fname: str, gen: list) -> None:
+        """A layout shrinks text to fit its box; below READABLE px it is too small to read from a seat."""
+        for el in gen:
+            if el.tag not in ("text", "table") or el.get("font") == "caption":
+                continue
+            size = float(el.get("size") or READABLE)
+            if size < READABLE:
+                cut = round(100 * (1 - (size / READABLE) ** 2))
+                self.warnings.append(f"{fname} #{el.get('id') or el.tag}: text shrank to {size:g}px to fit (readable: "
+                                     f"{READABLE:g}px+). Cut its words by about {max(cut, 10)}% or split the slide")
+
     def _unknown(self, n, sid, name, el, where):
         raise SourceError(f"{where}: unknown element (use text, shape, image, chart, table)")
 
-    def _box(self, el, where, line=False) -> dict:
+    def _box(self, el, where, line=False, bleed=False) -> dict:
+        """bleed: a decoration (image, shape) may run off the slide edge, as long as part of it is on the slide."""
         x, y = _num(el, "x", 0, where), _num(el, "y", 0, where)
         w, h = _num(el, "width", where=where), _num(el, "height", where=where)
-        if not line and (x < 0 or y < 0 or x + w > W + 0.5 or y + h > H + 0.5):
+        if bleed:
+            if x >= W or y >= H or x + w <= 0 or y + h <= 0:
+                raise SourceError(f"{where}: box {x:g},{y:g} {w:g}x{h:g} is entirely off the {W}x{H} canvas")
+        elif not line and (x < 0 or y < 0 or x + w > W + 0.5 or y + h > H + 0.5):
             raise SourceError(f"{where}: box {x:g},{y:g} {w:g}x{h:g} leaves the {W}x{H} canvas")
         p = {"x": _pt(x), "y": _pt(y), "width": _pt(w), "height": _pt(h)}
         if el.get("rotation"):
@@ -243,7 +297,7 @@ class Deck:
         fill = self.d.color(el.get("fill"), where)
         if fill is None:
             raise SourceError(f"{where}: fill is required (a color, or none)")
-        props = {"id": str(sid), "name": name, **self._box(el, where), "geometry": GEOMETRY[kind], "fill": fill,
+        props = {"id": str(sid), "name": name, **self._box(el, where, bleed=True), "geometry": GEOMETRY[kind], "fill": fill,
                  "line": f"{stroke}:{round(sw * PT, 2):g}" if stroke else "none"}
         if kind == "rect" and el.get("corner-radius"):
             r = _num(el, "corner-radius", where=where)
@@ -258,7 +312,7 @@ class Deck:
         if not src.startswith(("/", "http://", "https://")):
             raise SourceError(f"{where}: src must be an absolute path or an http(s) URL")
         self.ops.append({"command": "add", "parent": f"/slide[{n}]", "type": "picture",
-                         "props": {"id": str(sid), "name": name, **self._box(el, where), "src": src}})
+                         "props": {"id": str(sid), "name": name, **self._box(el, where, bleed=True), "src": src}})
 
     def _chart(self, n, sid, name, el, where):
         kind = el.get("type") or ""
@@ -345,7 +399,7 @@ def parse_deck(design_text: str, slides: list[tuple[str, str]]) -> Deck:
         deck = Deck(Design(design_text))
     except SourceError as e:
         deck = Deck.__new__(Deck)
-        deck.ops, deck.ids, deck.errors = list(), dict(), [str(e)]
+        deck.ops, deck.ids, deck.errors, deck.warnings = list(), dict(), [str(e)], list()
         return deck
     deck.ops.append({"command": "set", "path": "/", "props": {"slideWidth": _pt(W), "slideHeight": _pt(H)}})
     deck.total = len(slides)
@@ -371,12 +425,28 @@ def explain(issues: str, ids: dict) -> list[str]:
                 out.append(line.strip())
             continue
         msg = re.sub(r"suggest\.height=([\d.]+)cm", lambda g: f"needs height ≈ {float(g.group(1)) * CM_PX:.0f}px", m.group(3))
-        out.append(f"{ids.get((int(m.group(1)), int(m.group(2))), 'slide ' + m.group(1))}: {msg}")
+        where = ids.get((int(m.group(1)), int(m.group(2)))) or f"/slide[{m.group(1)}]/shape[@id={m.group(2)}]"
+        out.append(f"{where}: {msg}")
     return out
 
 
 def base_pt(style: dict) -> float:
     return float(style["size"].rstrip("pt"))
+
+
+def _tidy(out: str, run: str) -> str:
+    """Traceback lines of the runtime and runpy are noise: keep main.py's frames and the error."""
+    keep, skip = list(), False
+    for line in out.splitlines():
+        if line.startswith('  File "'):
+            skip = f"{run}/main.py" not in line
+            if not skip:
+                line = line.replace(f"{run}/", "")
+        elif not line.startswith("    "):
+            skip = False
+        if not skip:
+            keep.append(line)
+    return "\n".join(keep)
 
 
 def _clip(s: str) -> str:
@@ -388,10 +458,9 @@ class Office:
 
     name = "office"
 
-    def __init__(self, docx_reference: str | None = None, xlsx_recalc: str | None = None):
-        """docx_reference: pandoc --reference-doc (the house style). xlsx_recalc: a recalc.py that stores computed
-        values (LibreOffice) so viewers that don't calculate still show numbers."""
-        self.docx_reference, self.xlsx_recalc = docx_reference, xlsx_recalc
+    def __init__(self, docx_reference: str | None = None):
+        """docx_reference: pandoc --reference-doc (the house style)."""
+        self.docx_reference = docx_reference
 
     def setup(self, api, config: dict) -> None:
         s = {"type": "string"}
@@ -406,17 +475,15 @@ class Office:
              "required": ["source"]}, self._build))
         api.register_tool(AgentTool(
             "office_read", "Look inside a .pptx/.docx/.xlsx (any, also one the user brought): outline (structure), text, "
-            "annotated (text with element paths for office_edit), issues (overflow, broken parts).",
+            "annotated (text with element paths for office_run), issues (overflow, broken parts).",
             {"type": "object", "properties": {"path": s, "view": {"type": "string",
                                                                   "enum": ["outline", "text", "annotated", "issues"]}},
              "required": ["path"]}, self._read, parallel=True))
-        api.register_tool(AgentTool(
-            "office_edit", "Edit a .pptx/.docx/.xlsx in place, for files that have no deck/.md source (e.g. the user's). "
-            "ops = officecli batch items, e.g. {\"command\":\"set\",\"path\":\"/slide[2]/shape[@id=3]\",\"props\":{\"text\":\"New\"}}, "
-            "{\"command\":\"add\",\"parent\":\"/slide[2]\",\"type\":\"shape\",\"props\":{...}}, {\"command\":\"remove\",\"path\":...}. "
-            "Paths come from office_read view=annotated. All ops apply or none. Returns the result and a check.",
-            {"type": "object", "properties": {"path": s, "ops": {"type": "array", "items": {"type": "object"}}},
-             "required": ["path", "ops"]}, self._edit))
+        api.register_tool(AgentTool("office_run", RUN_DOC, {"type": "object", "properties": {
+            "code": {**s, "description": "Python script; `office` is already imported"},
+            "look": {**s, "description": "question for the screenshots the script took (default: describe and find faults)"},
+            "timeout": {"type": "integer", "description": "seconds, default 180"}},
+            "required": ["code"]}, self._run))
 
     async def _sh(self, ctx, cmd: str, timeout: float = 180) -> tuple[int | None, str]:
         return await ctx.env.exec(cmd, ctx.cwd, timeout, ctx.cancel)
@@ -445,18 +512,20 @@ class Office:
                 known = ""
             if old != known:
                 return (f"{out} exists and was not built from this source (or was changed after the last build, e.g. in "
-                        "PowerPoint/Word/Excel). Edit it in place with office_edit, or build again with overwrite=true.")
+                        "PowerPoint/Word/Excel). Edit it in place with office_run, or build again with overwrite=true.")
         tmp = f"/tmp/office-{uuid.uuid4().hex[:8]}"
-        made, ids = f"{tmp}.{kind}", dict()
+        made, ids, deck_warnings = f"{tmp}.{kind}", dict(), list()
         if kind == "docx":
             ref = f" --reference-doc={shlex.quote(self.docx_reference)}" if self.docx_reference else ""
             cmd = f"cd {shlex.quote(os.path.dirname(src))} && pandoc {shlex.quote(src)} -o {made}{ref} 2>&1"
         elif kind == "xlsx":
             cmd = f"cd {shlex.quote(os.path.dirname(src))} && OUT={made} python {shlex.quote(src)} 2>&1 | tail -30"
             cmd += f" && test -f {made} || {{ echo 'the script did not save to OUT'; exit 1; }}"
-            if self.xlsx_recalc:
-                d, f = os.path.split(self.xlsx_recalc)
-                cmd += f"; cd {shlex.quote(d)} && python {shlex.quote(f)} {made} 60 >/dev/null 2>&1; true"
+            # officecli evaluates formulas and stores their values when it writes the file; a throwaway cell makes it
+            # write (viewers that don't calculate then show numbers). Errors come back from `view issues` below.
+            cmd += (f" && echo '[{{\"command\":\"set\",\"path\":\"/sheet[1]/XFD1\",\"props\":{{\"value\":\"x\"}}}},"
+                    f"{{\"command\":\"remove\",\"path\":\"/sheet[1]/XFD1\"}}]' | officecli batch {made} >/dev/null"
+                    f" && officecli close {made} >/dev/null")
         else:
             entries = sorted(e["name"] for e in await ctx.env.list(src) if not e["is_dir"] and e["name"].endswith(".xml"))
             if "design.xml" not in entries:
@@ -467,7 +536,7 @@ class Office:
             deck = parse_deck(await ctx.env.read_file(f"{src}/design.xml"), slides)
             if deck.errors:
                 return "Not built; fix the source:\n" + "\n".join(f"- {e}" for e in deck.errors)
-            ids = deck.ids
+            ids, deck_warnings = deck.ids, deck.warnings
             await ctx.env.write_file(f"{tmp}.json", json.dumps(deck.ops, ensure_ascii=False))
             cmd = (f"officecli create {made} >/dev/null && officecli batch {made} --input {tmp}.json "
                    f"| tail -5 && officecli close {made} >/dev/null")
@@ -479,14 +548,14 @@ class Office:
         await self._sh(ctx, f"officecli close {shlex.quote(out)} >/dev/null 2>&1; mv -f {made} {shlex.quote(out)}; "
                             f"officecli close {made} >/dev/null 2>&1; rm -f {tmp}.json", 30)
         await ctx.env.write_file(stamp, await self._hash(ctx, out))
-        problems = explain(issues, ids)
+        problems = explain(issues, ids) + (deck_warnings if kind == "pptx" else [])
         if "passed" not in valid.lower():
             problems.insert(0, f"schema: {valid}")
         what = f" ({len({n for n, _ in ids})} slides)" if kind == "pptx" else ""
-        if kind == "docx":  # page count (LibreOffice layout; Word's may differ by a little)
-            _, pages = await self._sh(ctx, f"cd /tmp && soffice --headless --convert-to pdf {shlex.quote(out)} >/dev/null 2>&1; "
-                                           f"pdfinfo /tmp/{shlex.quote(os.path.basename(out)[:-5])}.pdf 2>/dev/null | "
-                                           f"awk '/^Pages:/{{print $2}}'; rm -f /tmp/{shlex.quote(os.path.basename(out)[:-5])}.pdf", 120)
+        if kind == "docx":  # page count: officecli's HTML printed by chromium (Word's may differ by a page)
+            _, pages = await self._sh(ctx, f"officecli view {shlex.quote(out)} html -o {tmp}.html >/dev/null 2>&1 && "
+                                           f"{PRINT_PDF} --print-to-pdf={tmp}.pdf file://{tmp}.html >/dev/null 2>&1; "
+                                           f"pdfinfo {tmp}.pdf 2>/dev/null | awk '/^Pages:/{{print $2}}'; rm -f {tmp}.html {tmp}.pdf", 120)
             _, words = await self._sh(ctx, f"pandoc -t plain {shlex.quote(src)} 2>/dev/null | wc -w", 60)
             if pages.strip().isdigit() and words.strip().isdigit():
                 p, w = int(pages.strip()), int(words.strip())
@@ -501,11 +570,32 @@ class Office:
         code, out = await self._sh(ctx, f"officecli view {path} {args.get('view') or 'outline'} 2>&1", 120)
         return _clip(out.strip() or f"(exit {code}, no output)")
 
-    async def _edit(self, args, ctx) -> str:
-        path = os.path.join(ctx.cwd, args["path"])
-        tmp = f"/tmp/office-{uuid.uuid4().hex[:8]}.json"
-        await ctx.env.write_file(tmp, json.dumps(args["ops"], ensure_ascii=False))
-        q = shlex.quote(path)
-        code, log = await self._sh(ctx, f"officecli batch {q} --input {tmp} 2>&1 | tail -15; officecli close {q} >/dev/null 2>&1; rm -f {tmp}")
-        valid, issues = await self._check(ctx, path)
-        return _clip(f"{log.strip()}\n\nCheck: {valid}\n{issues}")
+    async def _run(self, args, ctx) -> str:
+        run = f"/tmp/office-run-{uuid.uuid4().hex[:8]}"
+        await ctx.env.write_file(f"{run}/office.py", RUNTIME)
+        await ctx.env.write_file(f"{run}/main.py", args["code"])
+        await ctx.env.write_file(f"{run}/boot.py", BOOT)
+        q = shlex.quote(run)
+        code, out = await self._sh(ctx, f"OFFICE_RUN_DIR={q} OFFICE_SCRIPT={q}/main.py PYTHONPATH={q} "
+                                        f"python {q}/boot.py 2>&1",
+                                   min(int(args.get("timeout") or 180), 600))
+        try:
+            state = json.loads(await ctx.env.read_file(f"{run}/state.json"))
+        except Exception:
+            state = {}
+        parts = [_clip(_tidy(out.strip(), run)) or "(no output)"]
+        if code not in (0, None):
+            parts.append(f"(exit {code})")
+        if state.get("warnings"):
+            parts.append("officecli warnings:\n" + "\n".join(f"- {w}" for w in state["warnings"]))
+        for path in state.get("changed", []):
+            valid, issues = await self._check(ctx, path)
+            problems = explain(issues, {})
+            if "passed" not in valid.lower():
+                problems.insert(0, f"schema: {valid}")
+            rel = os.path.relpath(path, ctx.cwd) if path.startswith(ctx.cwd) else path
+            parts.append(f"Check {rel}: " + ("no problems." if not problems else "\n" + "\n".join(f"- {p}" for p in problems)))
+        if state.get("images"):
+            parts.append(await look(state["images"], args.get("look"), ctx))
+        await self._sh(ctx, f"rm -rf {q}", 30)
+        return "\n\n".join(parts)

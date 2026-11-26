@@ -56,7 +56,7 @@ exec s3fs "$1" /work -o url="$2" -o endpoint="$3" -o use_path_request_style -o a
 
 def build_image(tag: str = IMAGE) -> int:
     """The dev image is the E2B template itself (e2b_template.py as a Dockerfile, build context apps/server), so a
-    local chat has the same libraries, LibreOffice and skills as production."""
+    local chat has the same libraries, chromium and skills as production."""
     import importlib.util
     spec = importlib.util.spec_from_file_location("e2b_template", DOCKERFILE_DIR / "e2b_template.py")
     mod = importlib.util.module_from_spec(spec)
@@ -389,7 +389,7 @@ class DockerSandbox:
                 else ["--mount", f"type=volume,src=simp-work-{box.user_id},dst=/work"] if self.mount == "sync"
                 else ["-v", f"{box.root.resolve()}:/work"])
         code, out = await _docker(
-            "run", "-d", "--name", box.name, "--user", "1000:1000", "--network", self.network,
+            "run", "-d", "--init", "--name", box.name, "--user", "1000:1000", "--network", self.network,  # init reaps zombies
             "--pids-limit", str(self.pids_limit), "--memory", self.memory, "--cpus", self.cpus,
             "--read-only", "--tmpfs", f"/tmp:rw,nosuid,nodev,size={self.tmp_size}",
             "--tmpfs", f"{toolset.SKILLS_DIR}:rw,nosuid,nodev,mode=755,size=64m",  # the user's skills, written as root

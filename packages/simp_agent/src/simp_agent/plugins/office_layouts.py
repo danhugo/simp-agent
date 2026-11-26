@@ -34,21 +34,26 @@ def theme_design(name: str) -> str:
             f"<font name=\"caption\" family=\"{t[8]}\" size=\"16\"/></design>")
 
 
+# average body character width in em (measured: ~0.50 for Latin and Vietnamese in the theme fonts; a little
+# spare so wrapping words still fit). officecli's overflow check after the build catches the rest.
+BODY_EM = 0.52
+
+
 def plain(el) -> list[str]:
     """Paragraph texts of an element (li/p children, or its own text)."""
     items = [c for c in el.iter() if c.tag in ("li", "p")]
     return ["".join(c.itertext()).strip() for c in items] if items else ["".join(el.itertext()).strip()]
 
 
-def est(texts: list[str], w: float, s: float, lh: float = 1.25, gap: float = 0.4, em: float = 0.55) -> float:
+def est(texts: list[str], w: float, s: float, lh: float = 1.25, gap: float = 0.4, em: float = BODY_EM) -> float:
     per = max(1, int(w / (em * s)))
     lines = sum(max(1, math.ceil(len(t) / per)) for t in texts if t) or 1
     return lines * s * lh + max(0, len(texts) - 1) * s * gap
 
 
 def fit(texts: list[str], w: float, h: float, size: float, low: float, lh: float = 1.25, gap: float = 0.4,
-        em: float = 0.55) -> float:
-    """Largest size from `size` down to `low` whose estimated wrapped height fits w x h (0.52 em per character)."""
+        em: float = BODY_EM) -> float:
+    """Largest size from `size` down to `low` whose estimated wrapped height fits w x h."""
     s = size
     while s > low:
         per = max(1, int(w / (em * s)))
@@ -67,11 +72,11 @@ def text(x, y, w, h, body, font, size, color, **a):
     """A <text> whose content is the given string or a copy of an element's inline/list content. Last guard: the size
     shrinks (to 60% at most) until the estimate fits the box, so a layout never emits an overflowing box."""
     texts = [body] if isinstance(body, str) else plain(body)
-    em = 0.62 if (a.get("bold") == "true" or font in ("display", "heading")) else 0.56
+    em = 0.62 if (a.get("bold") == "true" or font in ("display", "heading")) else BODY_EM
     lh = float(a.get("line_height") or 1.2)
-    pad = 2 * float(a.get("space_after") or 0) / max(size, 1)
+    gap = float(a["space_after"]) / max(size, 1) if a.get("space_after") else 0.4  # the gap the box really gets
     floor = max(10.0, size * 0.6)
-    while size > floor and est(texts, w, size, lh, 0.4 + pad, em) > h:
+    while size > floor and est(texts, w, size, lh, gap, em) > h:
         size -= 1
     if "space_after" in a:
         a["space_after"] = round(size * 0.5)
