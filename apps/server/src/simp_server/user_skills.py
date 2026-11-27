@@ -49,8 +49,8 @@ def files_hash(files: dict[str, bytes]) -> str:
     return h.hexdigest()[:16]
 
 
-def pack(files: dict[str, bytes], prefix: str = "") -> bytes:
-    """A reproducible tar (fixed mtimes, no owners); gzipped when prefix is empty (the R2 object)."""
+def pack(files: dict[str, bytes], prefix: str = "", gz: bool | None = None) -> bytes:
+    """A reproducible tar (fixed mtimes, no owners); gzipped by default (the R2 object); gz=False: plain tar."""
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as t:
         for p, data in sorted(files.items()):
@@ -58,7 +58,7 @@ def pack(files: dict[str, bytes], prefix: str = "") -> bytes:
             info.size, info.mode = len(data), 0o755 if p.endswith((".py", ".sh", ".js")) else 0o644
             t.addfile(info, io.BytesIO(data))
     raw = buf.getvalue()
-    return gzip.compress(raw, mtime=0) if not prefix else raw
+    return gzip.compress(raw, mtime=0) if (gz if gz is not None else not prefix) else raw
 
 
 def unpack(blob: bytes) -> dict[str, bytes]:
@@ -272,36 +272,42 @@ class UserSkills:
         cat = self.catalogs.get(user_id, dict())
         return hashlib.sha256(json.dumps(sorted((n, s["hash"]) for n, s in cat.items())).encode()).hexdigest()[:16]
 
-    async def tar(self, user_id: str) -> bytes:
-        """Every skill of the user in one tar, <name>/<path> (what the sandbox untars)."""
-        parts = [pack(await self.files(user_id, n), f"{n}/") for n in sorted(await self.load(user_id))]
-        out = io.BytesIO()
-        with tarfile.open(fileobj=out, mode="w") as t:
-            for part in parts:
-                with tarfile.open(fileobj=io.BytesIO(part), mode="r") as src:
-                    for m in src.getmembers():
-                        t.addfile(m, src.extractfile(m))
-        return out.getvalue()
-
     async def to_sandbox(self, box, root_sh, put) -> None:
-        """Write the user's skills into the sandbox at SKILLS_DIR when they changed since it last got them.
-        root_sh(cmd) runs as root; put(path, data) writes a file as the agent's user. Read-only for the agent."""
-        await self.load(box.user_id)
+        """Bring the sandbox's SKILLS_DIR in line with the user's catalogue, skill by skill: a new or changed skill (its
+        hash differs from the one installed) is untarred beside and swapped in, a removed one deleted, the rest left
+        alone. The installed hashes live in SKILLS_DIR/.installed.json. root_sh(cmd) runs as root; put(path, data)
+        writes a file as the agent's user. Read-only for the agent."""
+        cat = await self.load(box.user_id)
         ver = self.version(box.user_id)
         if getattr(box, "skills_ver", None) == ver:
             return
-        # parallel tool calls (and a push from the web app) each come here: one installs, the others wait and then
-        # find it done (two at once deleted and untarred over each other: "tar: docx/LICENSE.txt: Cannot open")
+        # parallel tool calls (and a push from the web app) each come here: one updates, the others wait and then find
+        # it done (two at once wrote over each other: "tar: docx/LICENSE.txt: Cannot open")
         lock = box.__dict__.setdefault("skills_lock", asyncio.Lock())
         async with lock:
-            ver = self.version(box.user_id)
+            cat, ver = await self.load(box.user_id), self.version(box.user_id)
             if getattr(box, "skills_ver", None) == ver:
                 return
-            tmp = "/tmp/.simp-skills.tar"
-            await put(tmp, await self.tar(box.user_id))
             d = shlex.quote(SKILLS_DIR)
-            code, out = await root_sh(f"mkdir -p {d} && find {d} -mindepth 1 -delete && tar -xf {tmp} -C {d} "
-                                      f"--no-same-owner && chmod -R a+rX,go-w {d} && rm -f {tmp}")
+            code, out = await root_sh(f"mkdir -p {d} && cat {d}/.installed.json 2>/dev/null || true")
+            try:
+                have = json.loads(out.strip() or "{}")
+            except ValueError:
+                have = {}
+            if code != 0 or not isinstance(have, dict):
+                have = {}
+            want = {n: s["hash"] for n, s in cat.items()}
+            changed = [n for n in sorted(want) if have.get(n) != want[n]]
+            gone = [n for n in sorted(have) if n not in want and NAME.fullmatch(n)]
+            cmds = [f"rm -rf {d}/{n}" for n in gone]
+            for n in changed:
+                tmp = f"/tmp/.simp-skill-{n}.tar"
+                await put(tmp, pack(await self.files(box.user_id, n), gz=False))
+                cmds.append(f"rm -rf {d}/.{n}.new && mkdir {d}/.{n}.new && tar -xf {tmp} -C {d}/.{n}.new --no-same-owner"
+                            f" && rm -rf {d}/{n} && mv {d}/.{n}.new {d}/{n} && rm -f {tmp}")
+            state = shlex.quote(json.dumps(want, sort_keys=True))
+            cmds.append(f"printf %s {state} > {d}/.installed.json && chmod -R a+rX,go-w {d}")
+            code, out = await root_sh(" && ".join(cmds))
             if code != 0:
                 raise RuntimeError(f"could not install skills in the sandbox: {out.strip()[:200]}")
             box.skills_ver = ver

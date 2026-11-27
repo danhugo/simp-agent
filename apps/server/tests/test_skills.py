@@ -64,31 +64,50 @@ async def test_add_remove_stick_across_restarts(tmp_path):
 
 
 
-async def test_to_sandbox_only_when_changed(tmp_path):
-    m = mgr(tmp_path)
-    await m.load("u1")
-    cmds, puts = list(), list()
+def fake_box(tmp_path, monkeypatch):
+    """A sandbox stand-in: SKILLS_DIR is a temp folder and the commands really run (sh), so installs are real."""
+    import asyncio
+    from simp_server import user_skills
+    root = tmp_path / "opt-skills"
+    monkeypatch.setattr(user_skills, "SKILLS_DIR", str(root))
+    runs = list()
 
     class Box:
         user_id, skills_ver = "u1", None
 
     async def root_sh(c):
-        cmds.append(c)
-        return 0, ""
+        runs.append(c)
+        p = await asyncio.create_subprocess_shell(c, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        out, _ = await p.communicate()
+        return p.returncode, out.decode()
 
-    async def put(p, data):
-        puts.append((p, data))
+    async def put(path, data):
+        with open(path, "wb") as f:
+            f.write(data)
+    return Box(), root_sh, put, root, runs
 
-    box = Box()
+
+async def test_to_sandbox_installs_only_what_changed(tmp_path, monkeypatch):
+    lib = {**one("a", b"A1"), **one("b", b"B1"), **one("c", b"C1")}
+    m = mgr(tmp_path, lib)
+    await m.add("u1", "a")
+    await m.add("u1", "b")
+    box, root_sh, put, root, runs = fake_box(tmp_path, monkeypatch)
     await m.to_sandbox(box, root_sh, put)
-    await m.to_sandbox(box, root_sh, put)  # unchanged: nothing sent
-    assert len(cmds) == 1 and "/opt/simp/skills" in cmds[0] and "go-w" in cmds[0]
-    import tarfile
-    t = tarfile.open(fileobj=io.BytesIO(puts[0][1]))
-    assert "xlsx/scripts/xlsx_kit.py" in t.getnames()
-    await m.remove("u1", "pdf")
+    assert sorted(p.name for p in root.iterdir() if not p.name.startswith(".")) == ["a", "b"]
+    a_inode = (root / "a" / "SKILL.md").stat().st_ino
+    await m.to_sandbox(box, root_sh, put)  # nothing changed: not even a look inside
+    n = len(runs)
+    m.lib = {**m.lib, **one("b", b"B2")}  # the library's b changed; the user presses Update, and adds c
+    await m.add("u1", "b")
+    await m.add("u1", "c")
     await m.to_sandbox(box, root_sh, put)
-    assert len(cmds) == 2
+    assert (root / "b" / "SKILL.md").read_bytes().endswith(b"B2") and (root / "c" / "SKILL.md").exists()
+    assert (root / "a" / "SKILL.md").stat().st_ino == a_inode  # a was left alone
+    assert "a.tar" not in " ".join(runs[n:]) and "skill-a" not in " ".join(runs[n:])
+    await m.remove("u1", "b")
+    await m.to_sandbox(box, root_sh, put)
+    assert sorted(p.name for p in root.iterdir() if not p.name.startswith(".")) == ["a", "c"]
     assert LIBRARY.name == "skill_library"
 
 
@@ -140,24 +159,11 @@ async def test_add_and_remove_push_to_a_running_sandbox(tmp_path):
     assert pushed == ["u1", "u1"]
 
 
-async def test_parallel_tool_calls_install_skills_once(tmp_path):
-    """Read-only tool calls run at once and each asks for the skills first: one install, the others wait."""
+async def test_parallel_tool_calls_install_skills_once(tmp_path, monkeypatch):
+    """Read-only tool calls run at once and each asks for the skills first: one installs, the others wait."""
     import asyncio
-    m = mgr(tmp_path)
-    await m.load("u1")
-    cmds = list()
-
-    class Box:
-        user_id, skills_ver = "u1", None
-
-    async def root_sh(c):
-        cmds.append(c)
-        await asyncio.sleep(0.05)  # untarring takes a while: the other calls arrive meanwhile
-        return 0, ""
-
-    async def put(p, data):
-        await asyncio.sleep(0.01)
-
-    box = Box()
+    m = mgr(tmp_path, one("a"))
+    await m.add("u1", "a")
+    box, root_sh, put, root, runs = fake_box(tmp_path, monkeypatch)
     await asyncio.gather(*(m.to_sandbox(box, root_sh, put) for _ in range(3)))
-    assert len(cmds) == 1
+    assert len(runs) == 2 and (root / "a" / "SKILL.md").exists()  # one look at what is there, one install
