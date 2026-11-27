@@ -29,7 +29,7 @@ from typing import Protocol
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from simp_agent import ai
@@ -971,6 +971,38 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def skill_library(u=Depends(user)):
         mine = await mgr.uskills.load(u["id"])
         return [{**skill_row(s), "added": n in mine} for n, s in sorted(mgr.uskills.lib.items(), key=lambda x: x[1]["label"].lower())]
+
+    TEXT_MAX = 512_000  # bigger files are listed but not shown
+
+    def _text(data: bytes) -> str | None:
+        if len(data) > TEXT_MAX or b"\0" in data[:8192]:
+            return None
+        try:
+            return data.decode()
+        except UnicodeDecodeError:
+            return None
+
+    @app.get("/api/skills/{name}/files")  # what is inside a skill: ?library=1 for one not added yet
+    async def skill_files(name: str, library: bool = False, u=Depends(user)):
+        try:
+            meta, files = await mgr.uskills.browse(u["id"], name, library)
+        except LookupError:
+            raise HTTPException(404, "no such skill") from None
+        return {**skill_row(meta), "files": [{"path": p, "size": len(d), "text": _text(d) is not None}
+                                             for p, d in sorted(files.items())]}
+
+    @app.get("/api/skills/{name}/file")  # one file's text (?path=, ?library=1); binary or huge: 415
+    async def skill_file(name: str, path: str, library: bool = False, u=Depends(user)):
+        try:
+            _, files = await mgr.uskills.browse(u["id"], name, library)
+        except LookupError:
+            raise HTTPException(404, "no such skill") from None
+        if path not in files:
+            raise HTTPException(404, "no such file")
+        text = _text(files[path])
+        if text is None:
+            raise HTTPException(415, "not a text file, or too big to show")
+        return PlainTextResponse(text)
 
     @app.delete("/api/skills/{name}")
     async def remove_skill(name: str, u=Depends(user)):
