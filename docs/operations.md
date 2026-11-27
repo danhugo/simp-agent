@@ -310,11 +310,13 @@ starting the server. About 0.6 GB (1.0 GB with `--office`, which adds headless c
 template does not count toward user quota.
 
 **Skills.** The template holds no skills. `apps/server/skill_library/` is the server's catalog (Crafts › Skills ›
-Library). Adding one copies its folder into the user's own skills on the server's disk (`<data_dir>/skills/<id>/`,
-in `simp-server backup`; not in Files, not in the quota). New users start with docx, pdf,
-pptx, xlsx. Before a command runs, the server writes the
-user's skills into the sandbox at `/opt/simp/skills` (root-owned, read-only for the agent) when they changed
-(`simp_server/user_skills.py`). A skill change needs only a server release; users get a library update with the
+Library). Adding one stores it in the user's R2 beside their workspace: `<user_id>.skills/<name>.tar.gz` (one object
+per skill) and `<user_id>.skills/skills.json` (the catalogue: name, description, version, hash); not in Files, not in
+the quota. The server keeps only the catalogues in RAM; a skill's files come from the library when they match it, else
+from its tar (a small cache, 64 MB). New users start with docx, pdf, pptx, xlsx. The server writes the user's skills
+into the sandbox at `/opt/simp/skills` (root-owned, read-only for the agent) when it starts work and when they changed;
+adding, updating or removing one pushes it into a running sandbox at once (`simp_server/user_skills.py`). Skills kept
+on the server's disk by v0.15.x (`<data_dir>/skills/<id>/`) move to R2 on the user's first load. A skill change needs only a server release; users get a library update with the
 skill's Update button (its `version:` went up). Exception: `office_build` uses `docx/reference.docx` from the template
 (`/opt/simp/office`), so changing it rebuilds the template. Home is not saved any more: old home snapshots (user-installed
 libraries) are deleted at create; repos still come back from their mirror.

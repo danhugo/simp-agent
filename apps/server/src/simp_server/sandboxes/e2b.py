@@ -414,6 +414,13 @@ class E2BSandbox:
             with contextlib.suppress(Exception):
                 await box.sbx.set_timeout(self.provider_timeout_s)
 
+    async def push_skills(self, user_id: str) -> None:
+        """The user's skills changed (added, updated, removed): install them now if their sandbox is running."""
+        box = self.boxes.get(user_id)
+        if box is None or box.state != "running" or self.skills is None:
+            return
+        await self.skills.to_sandbox(box, lambda c: box.exec(c, "/", 120, asyncio.Event(), user="root"), _Port(box).put)
+
     async def ensure(self, box: _Box) -> None:
         if box.state == "running":  # "stopping" falls through to the lock: wait for the pause/kill, then resume
             await self._refresh_timeout(box, time.monotonic())

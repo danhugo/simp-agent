@@ -364,6 +364,13 @@ class DockerSandbox:
         env = self.envs[session_id] = DockerEnv(str(root), self, box, session_id)
         return env
 
+    async def push_skills(self, user_id: str) -> None:
+        """The user's skills changed (added, updated, removed): install them now if their container is running."""
+        box = self.boxes.get(user_id)
+        if box is None or not box.running or self.skills is None:
+            return
+        await self.skills.to_sandbox(box, lambda c: _docker("exec", "-u", "0", box.name, "sh", "-c", c), _Port(box.name).put)
+
     async def ensure(self, box: _Box) -> None:
         """Start the user's container if it is not running; restore missing repos from their mirrors."""
         if box.running:

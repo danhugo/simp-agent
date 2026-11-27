@@ -719,9 +719,11 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         return u
     mgr = SessionManager(settings, store, sandbox, stream_fn)
     files = workspace.make_store(settings, mgr.keys)  # the Files panel's view of /work: never wakes a sandbox
-    mgr.uskills = UserSkills(Path(settings["data_dir"]) / "skills", legacy=files)
+    mgr.uskills = UserSkills(files, disk=Path(settings["data_dir"]) / "skills")  # in R2; v0.15.x disk copies move over
     if hasattr(sandbox, "skills"):
         sandbox.skills = mgr.uskills  # writes the user's skills into the sandbox before commands
+    if hasattr(sandbox, "push_skills"):
+        mgr.uskills.push = sandbox.push_skills  # and at once into a running one when the user adds or updates one
     quota = mgr.quota = Quota(settings, files, store)  # mgr.quota: the admin user page shows usage
     if hasattr(sandbox, "compute"):
         sandbox.store, sandbox.compute.db = files, store
