@@ -11,7 +11,8 @@ APT = ["git", "ripgrep", "fd-find", "zstd", "s3fs", "ffmpeg", "imagemagick", "pr
 OFFICE_APT = ["chromium"]
 # node libraries the office skills (apps/server/skill_library) use, installed under NODE_DIR and found through NODE_PATH
 # + artwork for slides and documents (MIT): flat illustrations and line icons as Iconify JSON, used by office.art()
-NPM = ["pptxgenjs", "docx", "react", "react-dom", "react-icons", "sharp", "@iconify-json/fluent-emoji-flat", "@iconify-json/tabler"]
+NPM = ["pptxgenjs", "docx", "react", "react-dom", "react-icons", "sharp", "@iconify-json/fluent-emoji-flat", "@iconify-json/tabler",
+       "esbuild", "puppeteer-core"]  # the last two: office_build's .jsx decks (sandboxes/deck: JSX -> chromium -> officecli)
 NODE_DIR = "/opt/simp/node"
 # officecli (github.com/iOfficeAI/OfficeCLI, Rust): builds and checks .pptx/.docx/.xlsx for the office_* tools
 OFFICECLI = ("v1.0.162", {"x86_64": "df40e8f21b5c84826565f7c9c96f7e1a70ffbfe141b507bdad70533eaeacc190",
@@ -28,6 +29,7 @@ def officecli_install() -> str:
 SKILLS_DIR = "/opt/simp/skills"  # the user's own skills, written there (read-only for the agent) by user_skills.py
 # office_build's house style for .docx, baked into the template (from the library's docx skill)
 OFFICE_DIR = "/opt/simp/office"
+DECK_DIR = "/opt/simp/deck"  # build.mjs + runtime.jsx (apps/server/sandboxes/deck)
 OFFICE_REFERENCE_DOCX = f"{OFFICE_DIR}/reference.docx"
 
 
@@ -44,7 +46,7 @@ RUN_ENV = {"PYTHONNOUSERSITE": "1", "NODE_PATH": f"{NODE_DIR}/node_modules",
 
 
 APP = __import__("pathlib").Path(__file__).parents[3]  # apps/server
-TEMPLATE_INPUTS = ["sandboxes/e2b_template.py", "sandboxes/chromium.sh", "src/simp_server/sandboxes/toolset.py",
+TEMPLATE_INPUTS = ["sandboxes/e2b_template.py", "sandboxes/chromium.sh", "sandboxes/deck", "src/simp_server/sandboxes/toolset.py",
                    "sandboxes/reference.docx"]
 
 

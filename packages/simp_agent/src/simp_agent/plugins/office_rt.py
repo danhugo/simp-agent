@@ -448,9 +448,15 @@ def art(name: str, out: str | None = None, kind: str = "flat", color: str | None
     data = _art_set(kind)
     n = data.get("aliases", {}).get(name, {}).get("parent", name)
     icon = data["icons"].get(n)
-    if icon is None:
-        near = art_search(name.split("-")[0], kind, 8)
-        raise OfficeError(f"no artwork {name!r} in {kind}; similar: {', '.join(near) or 'none'}")
+    if icon is None:  # take the closest name rather than fail: 'lock' -> 'locked', 'chart' -> 'chart-bar'
+        near = art_search(name.replace("-", " "), kind, 8) or art_search(name.split("-")[0], kind, 8)
+        if not near:
+            other = "icon" if kind == "flat" else "flat"
+            raise OfficeError(f"no artwork like {name!r} in {kind} (try kind={other!r}, or art_search with another word)")
+        print(f"art: {name!r} -> {near[0]!r} ({kind})", file=sys.stderr)
+        name = near[0]
+        n = data.get("aliases", {}).get(name, {}).get("parent", name)
+        icon = data["icons"][n]
     w, h = icon.get("width", data.get("width", 16)), icon.get("height", data.get("height", 16))
     body = icon["body"].replace("currentColor", color or "#000000")
     if tint:  # repaint: one colour, or (light, dark) by each original colour's brightness; 'none' and urls stay

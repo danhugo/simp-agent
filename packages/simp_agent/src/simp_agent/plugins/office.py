@@ -459,19 +459,20 @@ class Office:
 
     name = "office"
 
-    def __init__(self, docx_reference: str | None = None):
-        """docx_reference: pandoc --reference-doc (the house style)."""
-        self.docx_reference = docx_reference
+    def __init__(self, docx_reference: str | None = None, deck_dir: str = "/opt/simp/deck"):
+        """docx_reference: pandoc --reference-doc (the house style). deck_dir: build.mjs + runtime.jsx for .jsx decks."""
+        self.docx_reference, self.deck_dir = docx_reference, deck_dir
 
     def setup(self, api, config: dict) -> None:
         s = {"type": "string"}
         api.register_tool(AgentTool(
-            "office_build", "Build an office file from its source, then check it: a deck folder (design.xml + one .xml per "
-            "slide, in file-name order) → .pptx; a .md file → .docx. Returns the output path and every problem (file "
+            "office_build", "Build an office file from its source, then check it: a React deck (.jsx: components + CSS, "
+            "laid out by a browser) → .pptx and a .html preview; a deck folder (design.xml + one .xml per slide) → .pptx; "
+            "a .md file → .docx. Returns the output path and every problem (file "
             "#element: what is wrong). Fix the source and build again; never edit the built file by hand. Spreadsheets "
             "are made with office_run.",
             {"type": "object", "properties": {
-                "source": {**s, "description": "deck folder (/work/q3.deck → /work/q3.pptx) or .md (→ .docx)"},
+                "source": {**s, "description": ".jsx (/work/q3.jsx → /work/q3.pptx), deck folder (/work/q3.deck → /work/q3.pptx) or .md (→ .docx)"},
                 "overwrite": {"type": "boolean", "description": "replace an output that was changed outside the source"}},
              "required": ["source"]}, self._build))
         api.register_tool(AgentTool(
@@ -503,7 +504,9 @@ class Office:
         src = os.path.join(ctx.cwd, args["source"]).rstrip("/")
         low = src.lower()
         kind = "docx" if low.endswith(".md") else "xlsx" if low.endswith(".xlsx.py") else "pptx"
-        out = {"docx": src[:-3] + ".docx", "xlsx": src[:-3], "pptx": re.sub(r"\.deck$", "", src) + ".pptx"}[kind]
+        jsx = low.endswith(".jsx")
+        out = {"docx": src[:-3] + ".docx", "xlsx": src[:-3],
+               "pptx": src[:-4] + ".pptx" if jsx else re.sub(r"\.deck$", "", src) + ".pptx"}[kind]
         stamp = os.path.join(os.path.dirname(src), f".{os.path.basename(src)}.built")
         old = await self._hash(ctx, out)
         if old and not args.get("overwrite"):
@@ -519,6 +522,21 @@ class Office:
         if kind == "docx":
             ref = f" --reference-doc={shlex.quote(self.docx_reference)}" if self.docx_reference else ""
             cmd = f"cd {shlex.quote(os.path.dirname(src))} && pandoc {shlex.quote(src)} -o {made}{ref} 2>&1"
+        elif jsx:  # React deck: chromium lays it out, build.mjs turns the boxes into officecli ops; .html beside it
+            html = src[:-4] + ".html"
+            q = shlex.quote
+            code, log = await self._sh(ctx, f"cd {q(os.path.dirname(src))} && node {q(self.deck_dir)}/build.mjs {q(src)} "
+                                            f"{tmp}.json {q(html)} 2>&1 | tail -40", 300)
+            last = log.strip().splitlines()[-1] if log.strip() else ""
+            try:
+                summary = json.loads(last)
+            except ValueError:
+                return f"Not built; fix the source:\n{_clip(log.strip())}"
+            if summary.get("errors"):
+                return "Not built; fix the source:\n" + "\n".join(f"- {e}" for e in summary["errors"])
+            deck_warnings = list(summary.get("warnings", []))
+            cmd = (f"officecli create {made} >/dev/null && officecli batch {made} --input {tmp}.json --json "
+                   f"> {tmp}.result.json; officecli close {made} >/dev/null")
         elif kind == "xlsx":
             cmd = f"cd {shlex.quote(os.path.dirname(src))} && OUT={made} python {shlex.quote(src)} 2>&1 | tail -30"
             cmd += f" && test -f {made} || {{ echo 'the script did not save to OUT'; exit 1; }}"
@@ -539,20 +557,39 @@ class Office:
                 return "Not built; fix the source:\n" + "\n".join(f"- {e}" for e in deck.errors)
             ids, deck_warnings = deck.ids, deck.warnings
             await ctx.env.write_file(f"{tmp}.json", json.dumps(deck.ops, ensure_ascii=False))
-            cmd = (f"officecli create {made} >/dev/null && officecli batch {made} --input {tmp}.json "
-                   f"| tail -5 && officecli close {made} >/dev/null")
+            cmd = (f"officecli create {made} >/dev/null && officecli batch {made} --input {tmp}.json --json "
+                   f"> {tmp}.result.json; officecli close {made} >/dev/null")
         code, log = await self._sh(ctx, cmd)
         if code != 0:
             return f"Build failed (exit {code}):\n{_clip(log.strip())}"
+        if kind == "pptx":  # one failed edit rolls the whole batch back: an empty file, so say which and why
+            try:
+                result = json.loads(await ctx.env.read_file(f"{tmp}.result.json"))
+                bad = [r for r in (result.get("data") or {}).get("results", []) if not r.get("success")]
+            except Exception as e:
+                bad = [{"error": f"could not read the build result ({e})"}]
+            if bad:
+                def where(r):
+                    p = (r.get("item") or {}).get("props", {})
+                    sid = p.get("id")
+                    if sid and sid.isdigit():
+                        return ids.get((int(sid) // 1000, int(sid))) or f"slide {int(sid) // 1000} #{p.get('name', sid)}"
+                    return (r.get("item") or {}).get("parent", "")
+                lines = list(dict.fromkeys(f"- {where(r)}: {r.get('error', 'failed')}" for r in bad))
+                return f"Not built: {len(bad)} edits failed, so none were applied; fix the source:\n" + "\n".join(lines[:15])
         valid, issues = await self._check(ctx, made)
         # a resident officecli may still hold the old file in memory: close it so later reads see the new one
         await self._sh(ctx, f"officecli close {shlex.quote(out)} >/dev/null 2>&1; mv -f {made} {shlex.quote(out)}; "
-                            f"officecli close {made} >/dev/null 2>&1; rm -f {tmp}.json", 30)
+                            f"officecli close {made} >/dev/null 2>&1; rm -f {tmp}.json {tmp}.result.json", 30)
         await ctx.env.write_file(stamp, await self._hash(ctx, out))
         problems = explain(issues, ids) + (deck_warnings if kind == "pptx" else [])
+        if jsx:  # chromium measured every text box; officecli's own font estimate disagrees with it
+            problems = [x for x in problems if "text overflow" not in x]
         if "passed" not in valid.lower():
             problems.insert(0, f"schema: {valid}")
-        what = f" ({len({n for n, _ in ids})} slides)" if kind == "pptx" else ""
+        what = f" ({summary['slides'] if jsx else len({n for n, _ in ids})} slides)" if kind == "pptx" else ""
+        if jsx:
+            what += f"; preview {src[:-4]}.html"
         if kind == "docx":  # page count: officecli's HTML printed by chromium (Word's may differ by a page)
             _, pages = await self._sh(ctx, f"officecli view {shlex.quote(out)} html -o {tmp}.html >/dev/null 2>&1 && "
                                            f"{PRINT_PDF} --print-to-pdf={tmp}.pdf file://{tmp}.html >/dev/null 2>&1; "
