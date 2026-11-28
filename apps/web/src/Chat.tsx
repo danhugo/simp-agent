@@ -191,7 +191,9 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
               : (
                 <div key={it.seq} className="msg assistant">
                   {turnOf.has(it.seq) && turnThinking(turnOf.get(it.seq)!, turnOf.get(it.seq) === turn)}
-                  {it.msg.text && <Md text={it.msg.text} onFile={onPreviewFile} images={it.msg.images ?? {}} />}
+                  {it.msg.text && (smoothShown.has(it.msg.msg_id)  // was being written just now: let the rest out evenly
+                    ? <SmoothMd id={it.msg.msg_id} text={it.msg.text} done images={it.msg.images ?? {}} onFile={onPreviewFile} />
+                    : <Md text={it.msg.text} onFile={onPreviewFile} images={it.msg.images ?? {}} />)}
                   {it.msg.error && it.msg.error !== "aborted" && <div className="notice error">{it.msg.error}</div>}
                   {(groupCalls.get(it.seq)?.length ?? 0) > 0 &&
                     <ToolGroup calls={groupCalls.get(it.seq)!} batches={batches} state={state} send={send} sid={sid} onOpenFile={onOpenFile} onPreviewFile={onPreviewFile} onError={onError} />}
@@ -214,7 +216,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
             {(f.text || (f.thinking && !liveTurnHasItems)) && (
               <div className="msg assistant streaming" aria-live="off" aria-busy="true">
                 {!liveTurnHasItems && turnThinking(turn, true)}
-                {f.text && <Md text={f.text} />}
+                {f.text && <SmoothMd id={f.msg_id ?? "live"} text={f.text} />}
               </div>
             )}
             {busy || (!!firstPrompt && !state.items.some((i) => i.kind === "user")) ? <RunStatus sid={sid} started={state.runStarted} asking={state.runState === "waiting_approval"} />
@@ -334,6 +336,47 @@ const mdComponents: Components = {
       : <CodeBlock>{children}</CodeBlock>;
   },
 };
+
+/** How far each answer has been shown while being written (msg_id -> chars), so when the finished answer replaces
+ * the live one it goes on from there instead of showing the rest at once. */
+const smoothShown = new Map<string, number>();
+
+/** An answer at an even pace: text arrives in uneven chunks (bursts, then pauses), so it is let out a little each
+ * frame at about the speed it arrives, keeping ~0.6 s of it in reserve: behind more, it speeds up (to 3x); short of
+ * the reserve, it slows down (to 0.4x) so a pause in the stream is bridged instead of stopping. done: the answer is
+ * complete, so the rest goes out a bit faster (~1 s) and then this is just the text. */
+function SmoothMd({ id, text, done = false, images, onFile }: { id: string; text: string; done?: boolean; images?: Record<string, Pic[]>; onFile?: (path: string) => void }) {
+  const [shown, setShown] = useState(() => smoothShown.get(id) ?? 0);
+  const live = useRef({ text, done, rate: 120, at: performance.now(), len: text.length });
+  const r = live.current;
+  if (text.length > r.len) {  // a chunk arrived: update the arrival speed (chars/s, smoothed)
+    const now = performance.now(), dt = Math.max(0.05, (now - r.at) / 1000);
+    r.rate = Math.min(2000, Math.max(30, 0.7 * r.rate + 0.3 * ((text.length - r.len) / dt)));
+    r.at = now; r.len = text.length;
+  }
+  r.text = text; r.done = done;
+  useEffect(() => {
+    let raf = 0, prev = performance.now(), pos = smoothShown.get(id) ?? 0;
+    const tick = (now: number) => {
+      const dt = Math.min(0.1, (now - prev) / 1000), c = live.current, goal = c.text.length, left = goal - pos;
+      prev = now;
+      if (left > 0) {
+        const speed = c.done ? Math.max(c.rate, left / 1.0)
+          : c.rate * Math.min(3, Math.max(0.4, left / (c.rate * 0.6)));
+        pos = Math.min(goal, pos + Math.max(0.5, speed * dt));
+        smoothShown.set(id, pos);
+        setShown(Math.floor(pos));
+      } else if (c.done) {
+        smoothShown.delete(id);
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [id]);
+  return <Md text={done && shown >= text.length ? text : text.slice(0, shown)} images={images} onFile={done ? onFile : undefined} />;
+}
 
 /** An answer's ```images block: one "search query | caption" a line. The server finds the pictures (so the model
  * never picks an image URL); a line still being typed waits until it has stayed the same for a moment. */
