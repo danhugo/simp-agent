@@ -161,3 +161,14 @@ async def test_xlsx_build_stores_formula_values(tmp_path):
 def test_svg_fallback_size_is_not_a_problem():
     line = '  [F3] /slide[1]/picture[@id=1011]: Picture "image11" is stretched: source 1x1px (1.00:1) in a 3x1cm box'
     assert explain(line, {}) == []
+
+
+def test_cjk_font_from_the_text():
+    from simp_agent.plugins.office import cjk_font, theme_ops
+    assert cjk_font("보고서 요약") == "Malgun Gothic"
+    assert cjk_font("ひらがな と 漢字") == "Yu Gothic"
+    assert cjk_font("中文报告") == "Microsoft YaHei"
+    assert cjk_font("Báo cáo tiếng Việt") is None
+    ops, bad = theme_ops({"cjk-font": "Batang"})
+    assert not bad and {"command": "set", "path": "/styles/Normal", "props": {"font.ea": "Batang"}} in ops
+    assert any(o["path"] == "/styles/Heading1" and o["props"] == {"font.ea": "Batang"} for o in ops)
