@@ -12,7 +12,7 @@ from e2b import Template, default_build_logger
 
 from pathlib import Path
 
-from simp_server.sandboxes.toolset import (template_alias, APT, NODE_DIR, NPM, OFFICE_APT, PIP, RUN_ENV, SKILLS_DIR, VENV, OFFICE_REFERENCE_DOCX,
+from simp_server.sandboxes.toolset import (template_alias, APT, NODE_DIR, NPM, OFFICE_APT, PIP, RUN_ENV, SKILLS_DIR, VENV, OFFICE_REFERENCE_DOCX, DECK_DIR,
                                            officecli_install)
 
 APP = Path(__file__).parents[1]  # apps/server: the build context, so skills/ copies in
@@ -34,6 +34,7 @@ def template(office: bool = True):
         t = t.copy("sandboxes/chromium.sh", "/usr/local/bin/chromium").run_cmd(["chmod 755 /usr/local/bin/chromium"])
     t = (t
          .copy("sandboxes/reference.docx", OFFICE_REFERENCE_DOCX)
+         .copy("sandboxes/deck", DECK_DIR)
          .run_cmd([f"mkdir -p {SKILLS_DIR}"])  # filled per user at run time
          .run_cmd(["chown -R root:root /opt/simp", "chmod -R go-w /opt/simp"])
          # `user` must not get root: commands run as user, only the mount runs as root (via envd, not sudo).

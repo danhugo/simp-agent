@@ -3,7 +3,7 @@ name: docx
 label: Word
 description: "Create, read and edit Word documents (.docx): reports, letters, proposals, tracked changes, comments."
 license: Complete terms in LICENSE.txt
-version: 8
+version: 9
 ---
 
 # Word documents
@@ -25,6 +25,15 @@ author: "…"
 date: "11/2025"
 toc: true                 # only for 4+ sections
 toc-title: "Mục lục"      # in the document's language
+theme:                    # optional: this document's look (default: the house style)
+  heading-font: Georgia   # fonts every reader has: Arial, Calibri, Cambria, Georgia, Segoe UI, Times New Roman, Verdana
+  body-font: Calibri
+  primary: "#1F3A68"      # title and headings
+  accent: "#E8A33D"       # subtitle, heading 3, links
+  ink: "#222222"          # body text
+  body-size: 11           # pt; headings scale from it
+  line-spacing: 1.15
+  margins: 2.5            # cm, all four sides
 ---
 
 # Heading 1
@@ -46,7 +55,12 @@ Paragraph with **bold**, *italic*, [link](https://…) and a footnote.[^1]
 ```
 
 Page break: a raw block on its own lines — ```` ```{=openxml} ```` / `<w:p><w:r><w:br w:type="page"/></w:r></w:p>` / ```` ``` ````.
-A chart: draw it with matplotlib to `/work/<name>-fig1.png` in the same message as the .md, then reference it.
+A chart: draw it with matplotlib to `/work/<name>-fig1.png` in the same message as the .md, then reference it; use the
+theme's colours (primary for the main series, accent for the one to notice) so figures match the headings.
+Choose the theme from the document's purpose and the user's brand (formal report: navy + serif headings; startup
+proposal: one bright accent + sans-serif), the same way as a deck's design brief.
+After a clean build, look once: `office_run` with `office.open("/work/<name>.docx").screenshot(page=1)` (the cover and
+first section). The build also writes `/work/<name>.pdf`, the page-by-page preview the user sees.
 **Read** a .docx: `office_read(path, view="text")` or `pandoc -t markdown file.docx`.
 **Edit** a .docx the user brought: one `office_run` script (below). Never rebuild someone's document from Markdown:
 it loses their styling.

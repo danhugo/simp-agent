@@ -326,6 +326,13 @@ class Doc:
             raise OfficeError("pdf export works for .docx only here; for slides use screenshot(page=...) or export('x.html')")
         html = os.path.join(RUN_DIR, "export.html")
         _call(["view", self.path, "html", "-o", html], cwd=RUN_DIR)
+        page = ("<style>@page{size:A4;margin:0}html,body{margin:0;background:#fff}.page-wrapper{padding:0!important;"
+                "margin:0!important;background:none!important}.page{box-sizing:border-box;min-height:0!important;"
+                "margin:0 auto!important;box-shadow:none!important}</style>")  # see office.PRINT_CSS
+        with builtins.open(html, encoding="utf-8") as f:
+            text = f.read()
+        with builtins.open(html, "w", encoding="utf-8") as f:
+            f.write(text.replace("</head>", page + "</head>", 1))
         p = subprocess.run(["chromium", "--headless", "--no-pdf-header-footer",
                             f"--print-to-pdf={out}", "file://" + html], capture_output=True, text=True, timeout=180)
         if not os.path.exists(out):
@@ -448,9 +455,15 @@ def art(name: str, out: str | None = None, kind: str = "flat", color: str | None
     data = _art_set(kind)
     n = data.get("aliases", {}).get(name, {}).get("parent", name)
     icon = data["icons"].get(n)
-    if icon is None:
-        near = art_search(name.split("-")[0], kind, 8)
-        raise OfficeError(f"no artwork {name!r} in {kind}; similar: {', '.join(near) or 'none'}")
+    if icon is None:  # take the closest name rather than fail: 'lock' -> 'locked', 'chart' -> 'chart-bar'
+        near = art_search(name.replace("-", " "), kind, 8) or art_search(name.split("-")[0], kind, 8)
+        if not near:
+            other = "icon" if kind == "flat" else "flat"
+            raise OfficeError(f"no artwork like {name!r} in {kind} (try kind={other!r}, or art_search with another word)")
+        print(f"art: {name!r} -> {near[0]!r} ({kind})", file=sys.stderr)
+        name = near[0]
+        n = data.get("aliases", {}).get(name, {}).get("parent", name)
+        icon = data["icons"][n]
     w, h = icon.get("width", data.get("width", 16)), icon.get("height", data.get("height", 16))
     body = icon["body"].replace("currentColor", color or "#000000")
     if tint:  # repaint: one colour, or (light, dark) by each original colour's brightness; 'none' and urls stay

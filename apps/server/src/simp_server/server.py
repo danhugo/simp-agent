@@ -51,7 +51,7 @@ from . import admin, budget, health, ops, persona as persona_mod, skills as skil
 from .quota import Quota
 from . import protocol as p
 from .user_skills import UserSkills
-from .sandboxes.toolset import OFFICE_REFERENCE_DOCX
+from .sandboxes.toolset import DECK_DIR, OFFICE_REFERENCE_DOCX
 from .connections import STATE_TTL, Connections, UserMcp, providers
 from .fake import sse
 from .store import MEM_ITEM_MAX, DbMemoryStore
@@ -262,7 +262,7 @@ class Run:
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
             plugins=[policy.Policy(self.verdict), *build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(mgr.keys.get("TAVILY_API_KEY"), extract=self.extract), Memory(store=DbMemoryStore(
                 mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), self.mcp, SandboxSync(env),
-                     *([skills_mod.plugin(mgr.uskills.source(self.user_id), lambda: self.enabled_skills()), Office(OFFICE_REFERENCE_DOCX)] if self.has_skills else [])],
+                     *([skills_mod.plugin(mgr.uskills.source(self.user_id), lambda: self.enabled_skills()), Office(OFFICE_REFERENCE_DOCX, DECK_DIR)] if self.has_skills else [])],
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
         self.session.must_ask = lambda call: self.verdict(call)[0] == "ask"  # "always" never covers these

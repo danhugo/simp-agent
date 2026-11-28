@@ -2,7 +2,7 @@
 name: pptx
 label: PowerPoint
 description: "Create or edit PowerPoint decks (.pptx): slides, presentations, decks of any length, in any language."
-version: 10
+version: 11
 ---
 
 # Slides
@@ -98,8 +98,9 @@ Chart types: column, bar, line, area, pie, donut. Values are plain numbers (no %
 
 ## Designed decks: illustrations, shapes, photos
 
-When the user asks for a designed or illustrated look (a template feel, a playful lesson, a brand style), build the
-slides in **free layout** (below) and dress them; the layouts above are for plain business decks.
+When the user asks for a designed or illustrated look (a template feel, a playful lesson, a brand style, a pitch),
+write a **React deck** (`/work/<name>.jsx`, below) and build it with `office_build`; the XML layouts above are for
+plain business decks.
 
 **Write the design brief first** (in your head or a short note, never as a question to the user; when the user wants
 to see or edit the brief before building, use the `slide-design-brief` skill), concrete enough that
@@ -122,39 +123,72 @@ decoration rules before building.
 - **Illustrations and icons**: `office.art_search("fish")` lists artwork names; `office.art("fish", out="/work/<name>.deck/assets/fish.svg",
   tint=("#9EEFBC", "#1E2A8A"))` saves one as SVG in the deck's colours (light parts, dark parts); no tint keeps its own
   colours. `kind="icon"` gives one-colour line icons (`color="#9EEFBC"`). Thousands exist: objects, animals, plants,
-  buildings, vehicles, weather, food, people, symbols. Save them all in ONE `office_run`, then `<image src=...svg>`.
-- **Waves, blobs, bands, custom drawings**: write an SVG file yourself (a `<path>` with curves) and place it with
-  `<image>`. Images and shapes may run off the slide edge (negative x/y, or past 1280×720) as long as part of them is
-  on the slide: that is how corner blobs and edge bands bleed. Text boxes must stay inside.
+  buildings, vehicles, weather, food, people, symbols. Save them all in ONE `office_run`, then `<Art src=...svg/>`.
+- **Waves, blobs, bands, custom drawings**: inline `<svg>` in the JSX (a component, e.g. `<Wave/>`), placed with CSS;
+  decorations may run off the slide edge (it clips them), text stays inside.
 - **Photos**: only when the user wants them; `web_download` a free-licence photo, then crop/grayscale it with Pillow.
 - Repeat a motif and the palette on every slide; 2–4 accent colours at most; big headings; plenty of space.
 - Keep text clear of decorations: a heading box tall enough for two lines, and cards below the heading's box.
 - Readable from the back of a room: body ≥ 24 px (32 px for a talk), headings ≥ 44 px, text contrast at least 4.5:1;
   one idea per slide and about a third of it empty (the `slide-design-brief` skill has the full rules and sources).
-- Write the whole deck in ONE message of parallel `write` calls (design.xml, every slide, every SVG you draw), after
-  ONE `office_run` that saves all the artwork. Then build.
+- ONE `office_run` that saves all the artwork, then ONE `write` of the whole .jsx, then `office_build`.
 
-## Free layout (complete reference: there is nothing else to look up)
+## React deck (.jsx): complete reference, there is nothing else to look up
 
-A `<slide>` without `layout` holds positioned elements on a 1280×720 px canvas, drawn in file order (later on top).
-Colours are `#RRGGBB` or a design.xml name (bg, surface, ink, muted, primary, accent, on). Every element takes
-`x y width height` in px; text, charts and tables must stay inside the canvas, shapes and images may bleed off it.
+A React module: CSS lays the slides out (flex, grid, gap, padding), a browser measures every text box, and the build
+turns each box into a real PowerPoint shape, text box, picture or chart (all editable). Write components once and
+reuse them; never compute coordinates.
 
-- `<background color="#4352BE"/>`: the slide's background colour.
-- `<text x y width height font="display|heading|body|caption" size="40" color="#FFFFFF" bold="true"
-  align="left|center|right" anchor="top|middle|bottom" fill="#1E2A8A" padding="16" line-height="1.2"
-  space-after="12" autofit="shrink">…</text>`: content is plain text, or paragraphs `<p>…</p>`, or lists
-  `<ul><li>…</li></ul>` / `<ol>`. Inline: `<strong>`, `<em>`, `<u>`, `<span color="#9EEFBC" size="28" font="heading">`.
-  `font` picks design.xml's family; size is px. Leave height for every line (about size × 1.3 per line).
-- `<shape type="rect|ellipse|triangle|diamond|arrow|chevron|star|hexagon|pentagon|parallelogram" x y width height
-  fill="#9EEFBC|none" stroke="#1E2A8A" stroke-width="2" corner-radius="24" opacity="0.6"/>`; a line:
-  `<shape type="line" x y width height stroke="#9EEFBC" stroke-width="4" arrow-end="arrow"/>` (from x,y to x+width,y+height).
-- `<image src="/work/…/x.svg|.png|.jpg" x y width height/>`: keep the picture's own aspect ratio (the build reports a
-  stretched one). Crop photos to a circle or panel beforehand with Pillow; no opacity on images (bake it into the file).
-- `<chart x y width height type="column|bar|line|area|pie|donut|scatter" categories="A,B,C" color="#9EEFBC"
-  legend="none|bottom|right" font="body" size="18"><series name="…" values="1,2,3"/></chart>`.
-- `<table x y width height columns="2,1,1" font="body" size="18" fill="#2A3180" header-fill="#9EEFBC">
-  <tr><td>…</td></tr></table>`: first row is the header.
+```jsx
+import { Slide, Art, Chart } from "deck";
+
+export const css = `
+.slide { background:#F2F4F6; color:#191F28; font-family:Arial; padding:64px; display:flex; flex-direction:column; gap:32px }
+h1 { font-size:60px; font-weight:800; color:#3182F6 }
+h2 { font-size:44px; font-weight:700 }
+.lead { font-size:28px; color:#4E5968 }
+.row { display:flex; gap:32px; flex:1 }
+.card { flex:1; background:#fff; border-radius:24px; padding:32px; display:flex; flex-direction:column; gap:12px }
+.card h3 { font-size:30px; font-weight:700 }
+.card p { font-size:24px; line-height:1.4; color:#4E5968 }
+.big { font-size:72px; font-weight:800; color:#3182F6 }
+.wave { position:absolute; left:0; bottom:0; width:1280px; height:120px }
+`;
+
+const Wave = () => <svg className="wave" viewBox="0 0 1280 120"><path d="M0 60 C320 0 640 120 1280 40 V120 H0Z" fill="#3182F6" opacity=".15"/></svg>;
+const Card = ({ icon, title, children }) => (
+  <div className="card"><Art src={icon} style={{ width: 56, height: 56 }}/><h3>{title}</h3><p>{children}</p></div>
+);
+
+export default function Deck() {
+  return <>
+    <Slide notes="Speaker notes for this slide."><h1>Helpy Code</h1><p className="lead">One line that says why.</p><Wave/></Slide>
+    <Slide>
+      <h2>Three problems</h2>
+      <div className="row">{problems.map((p) => <Card key={p.t} icon={p.icon} title={p.t}>{p.body}</Card>)}</div>
+      <Wave/>
+    </Slide>
+    <Slide>
+      <h2>Pilot results</h2>
+      <div className="row">
+        <div className="card"><div className="big">38%</div><h3>Faster tickets</h3></div>
+        <Chart type="column" categories={["W1","W2","W3","W4"]} series={[{ name: "PRs", values: [42,51,60,68] }]}
+               colors={["#3182F6"]} legend="none" fontSize={18} style={{ flex: 2, background: "#fff", borderRadius: 24 }}/>
+      </div>
+    </Slide>
+  </>;
+}
+const problems = [{ t: "Security", icon: "/work/helpy/assets/lock.svg", body: "…" } /* … */];
+```
+
+- Every slide is a `<Slide>` (1280×720 px; `bg`, `notes`). Sizes are px. Text: `h1`–`h3`, `p`, `div`, `li`; inline
+  `<b>`, `<i>`, `<span style={{color}}>` keep their style in PowerPoint. `<Art src>` places an .svg/.png/.jpg; inline
+  `<svg>` becomes a picture; `<Chart>` becomes a real chart (`type`: column, bar, line, area, pie, doughnut, scatter).
+- Carried into PowerPoint: background colours, borders, border-radius, opacity, font family/size/weight/style/colour,
+  text-align, line-height, letter-spacing, uppercase, pictures, charts, speaker notes. **Not carried** (the build says so):
+  gradients and background images (use an `<Art>` picture), box-shadow, transforms, CSS animation.
+- `office_build(source="/work/<name>.jsx")` → `/work/<name>.pptx` and `/work/<name>.html` (the preview). It reports
+  JSX errors with their line, and text under 18 px. Fix the .jsx and build again.
 
 Fonts: the file names a family; PowerPoint uses it if the viewer has it (preview and screenshots use what the sandbox
 has). Safe for every viewer: Arial, Calibri, Georgia, Segoe UI, Verdana. Vietnamese text works in all of them. Do not
