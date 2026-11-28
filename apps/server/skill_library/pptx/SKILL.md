@@ -2,7 +2,7 @@
 name: pptx
 label: PowerPoint
 description: "Create or edit PowerPoint decks (.pptx): slides, presentations, decks of any length, in any language."
-version: 13
+version: 14
 ---
 
 # Slides
@@ -240,7 +240,8 @@ const problems = [{ t: "Security", icon: "/work/helpy/assets/lock.svg", body: "�
 
 - Every slide is a `<Slide>` (1280×720 px; `bg`, `notes`). Sizes are px. Text: `h1`–`h3`, `p`, `div`, `li`; inline
   `<b>`, `<i>`, `<span style={{color}}>` keep their style in PowerPoint. `<Art src>` places an .svg/.png/.jpg; inline
-  `<svg>` becomes a picture; `<Chart>` becomes a real chart (`type`: column, bar, line, area, pie, doughnut, scatter).
+  `<svg>` becomes a picture; `<Chart>` becomes a real chart (`type`: column, bar, line, area, pie, doughnut, scatter;
+  `labels="percent"`, `"category,percent"` or `"value"` writes data labels on it; a pie stays round in any box).
 - Carried into PowerPoint: background colours, borders, border-radius, opacity, font family/size/weight/style/colour,
   text-align, line-height, letter-spacing, uppercase, pictures, charts, speaker notes. **Not carried** (the build says so):
   gradients and background images (use an `<Art>` picture), box-shadow, transforms, CSS animation.

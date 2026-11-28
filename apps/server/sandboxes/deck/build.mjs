@@ -154,7 +154,15 @@ slides.forEach((s, i) => {
                       data: (c.series || []).map((x, j) => `${String(x.name || `Series ${j + 1}`).replace(/[:;]/g, " ")}:${x.values.join(",")}`).join(";"),
                       legend: c.legend || (["pie", "doughnut", "donut"].includes(c.type) ? "right" : "none") };
       if (c.categories) props.categories = c.categories.join(",");
-      if (c.colors) props.colors = c.colors.map((x) => x.replace("#", "")).join(",");
+      const round = ["pie", "doughnut", "donut"].includes(c.type);
+      if (c.labels && c.labels !== "none") {  // on a slice: white; beside a bar or point: the axis text colour
+        props.dataLabels = c.labels;
+        props.labelfont = `${Math.round(c.fontSize * PT * 10) / 10}:${round ? "FFFFFF" : (c.textColor || "#595959").replace("#", "")}`;
+      }
+      if (c.unknown?.length) warnings.push(`slide ${n}: <Chart> ignores ${c.unknown.join(", ")} (it takes type, categories, series, colors, legend, labels, fontSize, textColor, className, style)`);
+      // no colours given: the same palette the HTML preview draws with
+      props.colors = (c.colors?.length ? c.colors : ["#3182F6", "#F59E0B", "#10B981", "#EF4444", "#8B5CF6", "#64748B"])
+        .map((x) => x.replace("#", "")).join(",");
       const spec = `${Math.round(c.fontSize * PT * 10) / 10}:${(c.textColor || "#595959").replace("#", "")}`;
       Object.assign(props, { axisfont: spec, legendFont: spec });
       ops.push({ command: "add", parent: at, type: "chart", props });
