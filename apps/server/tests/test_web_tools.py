@@ -134,12 +134,29 @@ def test_tavily_images_name_their_page():
                     "page": "https://commons.wikimedia.org/wiki/File:Pier.jpg"}]  # original -> thumbnail; http:// dropped
 
 
-def test_find_images_falls_back_to_commons(monkeypatch):
-    monkeypatch.setattr(web, "tavily_images", lambda q, k: (_ for _ in ()).throw(WebError("HTTP 401")))
-    monkeypatch.setattr(web, "commons_images", lambda q: [{"url": "https://c/x.jpg", "page": "https://c/File:x"}])
-    assert web.find_images("pier", "bad-key") == [{"url": "https://c/x.jpg", "page": "https://c/File:x"}]
-    monkeypatch.setattr(web, "tavily_images", lambda q, k: [{"url": "https://t/y.jpg", "page": "https://t/"}])
-    assert web.find_images("pier", "key")[0]["url"] == "https://t/y.jpg"
+def test_find_images_falls_back_to_commons_and_drops_broken(monkeypatch):
+    def bad_tavily(q, k, count):
+        raise WebError("HTTP 401")
+    monkeypatch.setattr(web, "tavily_images", bad_tavily)
+    monkeypatch.setattr(web, "commons_images", lambda q, count: [{"url": "https://c/x.jpg", "page": "https://c/File:x"},
+                                                                 {"url": "https://c/dead.jpg", "page": "p"}])
+    ok = lambda u: "dead" not in u  # noqa: E731
+    assert web.find_images("pier", "bad-key", check=ok) == [{"url": "https://c/x.jpg", "page": "https://c/File:x"}]
+    monkeypatch.setattr(web, "tavily_images", lambda q, k, count: [{"url": f"https://t/{i}.jpg", "page": "p"} for i in range(6)])
+    assert [x["url"] for x in web.find_images("pier", "key", check=lambda u: True)] == [
+        "https://t/0.jpg", "https://t/1.jpg", "https://t/2.jpg"]
+
+
+def test_picture_ok():
+    get = lambda body, ctype: (lambda u, max_bytes: (u, ctype, body))  # noqa: E731
+    assert web.picture_ok("u", get(b"JPEG", "image/jpeg; q=1"))
+    assert not web.picture_ok("u", get(b"<svg/>", "image/svg+xml"))
+    assert not web.picture_ok("u", get(b"<html>", "text/html"))
+    assert not web.picture_ok("u", get(b"x" * (web.IMAGE_MAX + 1), "image/jpeg"))
+
+    def down(u, max_bytes):
+        raise WebError("HTTP 404")
+    assert not web.picture_ok("u", down)
 
 
 def fake_post(calls, reply):
@@ -291,6 +308,8 @@ def test_image_queries_from_answer_blocks():
             "```python\nnot | pictures\n```\n```images\nZhanqiao Pier | again\n\n```")
     assert web.image_queries(text) == ["Zhanqiao Pier", "Badaguan"]
     assert web.image_queries("no blocks") == []
+    live = "```images\nDone line | a\nhalf writ"  # still being written: only finished lines
+    assert web.image_queries(live, finished_lines=True) == ["Done line"]
 
 
 async def test_resolve_images_signs_every_picture(monkeypatch):

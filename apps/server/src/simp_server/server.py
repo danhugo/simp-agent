@@ -11,6 +11,7 @@ import contextlib
 import dataclasses
 import functools
 import hashlib
+import io
 import hmac
 import html
 import sys
@@ -370,10 +371,15 @@ class Run:
         t, f = e["type"], self.inflight
         if t == "message_update" and e["event"]["type"] == "start":  # a new assistant message begins
             self.inflight = p.InFlight(msg_id=uuid.uuid4().hex[:8], tool_outputs=f.tool_outputs)
+            self.image_tasks = dict()  # ```images line -> its picture search, started as soon as the line is written
         elif t == "message_update" and e["event"]["type"] in ("text_delta", "thinking_delta"):
             kind, delta = e["event"]["type"][:-6], e["event"]["delta"]
             off = len(getattr(f, kind))
             setattr(f, kind, getattr(f, kind) + delta)
+            if kind == "text" and "\n" in delta and "```images" in f.text:
+                for q in web_tools.image_queries(f.text, finished_lines=True):
+                    if q not in self.image_tasks:
+                        self.image_tasks[q] = web_tools.search_images(q, self.mgr.keys.get("TAVILY_API_KEY"))
             cls = p.TextDelta if kind == "text" else p.ThinkingDelta
             self._send(cls(msg_id=f.msg_id, offset=off, delta=delta).model_dump())
         elif t == "tool_execution_update":
@@ -389,7 +395,8 @@ class Run:
                 self.inflight = p.InFlight(tool_outputs=f.tool_outputs)
                 u = {"input": m.usage.get("input", 0), "output": m.usage.get("output", 0)}
                 images = await web_tools.resolve_images(m.text(), self.mgr.keys.get("TAVILY_API_KEY"),
-                                                        lambda x: image_link(self.mgr.image_key, x)) if "```images" in m.text() else {}
+                                                        lambda x: image_link(self.mgr.image_key, x),
+                                                        getattr(self, "image_tasks", None)) if "```images" in m.text() else {}
                 await self.durable(
                     p.AssistantMessage, msg_id=f.msg_id or uuid.uuid4().hex[:8], text=m.text(), usage=p.Usage(**u),
                     thinking="".join(c.thinking for c in m.content if isinstance(c, ThinkingContent) and not c.redacted),
@@ -595,6 +602,21 @@ class Run:
             if self.busy:
                 raise HTTPException(409, f"cannot {c.type} while the session is {self.state}")
             await self.start(self.session.compact if isinstance(c, p.Compact) else self.session.continue_)
+
+
+def shrink_picture(body: bytes, ctype: str, width: int) -> tuple[bytes, str]:
+    """A copy at most `width` px wide, as JPEG (quality 82); the original when it is already small or unreadable."""
+    try:
+        from PIL import Image
+        im = Image.open(io.BytesIO(body))
+        if im.width <= width:
+            return body, ctype
+        im.thumbnail((width, width * 4))
+        out = io.BytesIO()
+        im.convert("RGB").save(out, "JPEG", quality=82, optimize=True)
+        return out.getvalue(), "image/jpeg"
+    except Exception:
+        return body, ctype
 
 
 def image_sig(key: bytes, url: str) -> str:
@@ -836,10 +858,10 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def me(u=Depends(user)):
         return {"name": u["name"]}
 
-    IMAGE_MAX = 8_000_000
+    IMAGE_MAX = web_tools.IMAGE_MAX
 
     @app.get("/api/image")  # no auth (an <img> sends no token): only picture URLs this server signed (see image_link)
-    async def image(u: str, s: str = ""):
+    async def image(u: str, s: str = "", w: int = 0):
         """A picture of an answer, fetched by the server: many sites refuse hotlinked pictures, and the viewer's
         browser never contacts them. Nothing is kept; the browser caches it."""
         if not hmac.compare_digest(s, image_sig(mgr.image_key, u)):
@@ -853,6 +875,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         ctype = ctype.split(";")[0].strip().lower()
         if not ctype.startswith("image/") or ctype == "image/svg+xml":
             return Response(status_code=415)
+        if 0 < w < 4000:  # a card: a small copy (a 1.5 MB original becomes tens of KB); the large view asks without w
+            body, ctype = await asyncio.to_thread(shrink_picture, body, ctype, w)
         return Response(body, media_type=ctype, headers={"Cache-Control": "private, max-age=604800",
                                                          "X-Content-Type-Options": "nosniff"})
 
