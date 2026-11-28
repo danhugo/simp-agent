@@ -17,4 +17,15 @@ async def test_image_proxy_only_signed_links(tmp_path, monkeypatch):
         assert (await c.get("/api/image", params={"u": "https://evil/?d=secret"})).status_code == 404
         assert (await c.get(image_link(mgr.image_key, "https://p/x.svg"))).status_code == 415
         assert (await c.get(image_link(mgr.image_key, "https://p/big.jpg"))).status_code == 413  # never half a picture
-    await mgr.store.close()  # an open aiosqlite thread keeps the test process from exiting
+    await mgr.store.close()
+
+
+def test_shrink_picture():
+    import io
+    from PIL import Image
+    from simp_server.server import shrink_picture
+    buf = io.BytesIO()
+    Image.new("RGB", (2000, 1000), "red").save(buf, "PNG")
+    small, ctype = shrink_picture(buf.getvalue(), "image/png", 400)
+    assert ctype == "image/jpeg" and Image.open(io.BytesIO(small)).size == (400, 200)
+    assert shrink_picture(b"JPEG", "image/jpeg", 400) == (b"JPEG", "image/jpeg")  # unreadable: as is  # an open aiosqlite thread keeps the test process from exiting

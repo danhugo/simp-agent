@@ -343,7 +343,7 @@ function ImageStrip({ text }: { text: string }) {
   // the layout follows the lines: 1 = a wide hero picture, 2 = two large cards, 3+ each with a note = a list
   // (thumbnail beside a title and its text), 3+ without = a grid
   const layout = items.length === 1 ? "hero" : items.length === 2 ? "pair" : items.every((it) => it.sub) ? "list" : "grid";
-  return <div className={`image-strip ${layout}`}>{items.map((it, i) => <ImageCard key={i} {...it} keep={layout === "list"} />)}</div>;
+  return <div className={`image-strip ${layout}`}>{items.map((it, i) => <ImageCard key={i} {...it} keep={layout === "list"} w={WIDTH[layout]} />)}</div>;
 }
 
 type Pic = { [k: string]: string };  // { src, page } (protocol.gen types it loosely)
@@ -351,7 +351,10 @@ type Pic = { [k: string]: string };  // { src, page } (protocol.gen types it loo
  * being written (the server looks them up once it is done), so the cards wait as placeholders. */
 const PicsCtx = createContext<Record<string, Pic[]> | undefined>(undefined);
 
-function ImageCard({ q, cap, sub, href, keep }: { q: string; cap: string; sub?: string; href?: string; keep: boolean }) {
+// px wide the server shrinks a card's picture to (about twice its shown size, for sharp screens)
+const WIDTH: Record<string, number> = { hero: 1400, pair: 800, grid: 480, list: 400 };
+
+function ImageCard({ q, cap, sub, href, keep, w }: { q: string; cap: string; sub?: string; href?: string; keep: boolean; w: number }) {
   const all = useContext(PicsCtx);
   const found = all ? all[q.split(/\s+/).filter(Boolean).join(" ").slice(0, 200)] ?? [] : null;
   const [n, setN] = useState(0);  // which of the found pictures (the next one when one fails to load)
@@ -360,7 +363,7 @@ function ImageCard({ q, cap, sub, href, keep }: { q: string; cap: string; sub?: 
   const pic = found && n < found.length ? found[n] : undefined;
   return (
     <figure className="image-card">
-      {pic ? <img src={pic.src} alt={cap} loading="lazy" onError={() => setN(n + 1)} onClick={() => setBig(true)} />
+      {pic ? <img src={`${pic.src}&w=${w}`} alt={cap} loading="lazy" onError={() => setN(n + 1)} onClick={() => setBig(true)} />
         : <div className={found ? "image-card-ph empty" : "image-card-ph"} />}
       <figcaption>
         {href ? <a href={href} target="_blank" rel="noopener noreferrer">{cap}</a> : cap}

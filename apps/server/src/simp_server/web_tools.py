@@ -280,25 +280,48 @@ def commons_images(query: str, get=None, count: int = 3) -> list[dict]:
     return out[:count]
 
 
-def find_images(query: str, key: str | None) -> list[dict]:
-    """Tavily when there is a key and it answers; else Wikimedia Commons."""
+IMAGE_MAX = 8_000_000  # bytes of one picture the server fetches
+
+
+def picture_ok(url: str, get=None) -> bool:
+    """The picture loads: an image (not SVG) of at most IMAGE_MAX bytes. Broken ones are dropped when found, so the
+    page never waits on one that fails."""
+    try:
+        _, ctype, body = (get or http_get)(url, max_bytes=IMAGE_MAX + 1)
+    except WebError:
+        return False
+    ctype = ctype.split(";")[0].strip().lower()
+    return ctype.startswith("image/") and ctype != "image/svg+xml" and 0 < len(body) <= IMAGE_MAX
+
+
+def find_images(query: str, key: str | None, count: int = 3, check=picture_ok) -> list[dict]:
+    """Up to count pictures that load: Tavily when there is a key and it answers; else Wikimedia Commons."""
+    from concurrent.futures import ThreadPoolExecutor
+    cands = []
     if key:
         try:
-            if found := tavily_images(query, key):
-                return found
+            cands = tavily_images(query, key, count=6)
         except WebError:
             pass
-    return commons_images(query)
+    if not cands:
+        cands = commons_images(query, count=6)
+    with ThreadPoolExecutor(len(cands) or 1) as ex:
+        ok = list(ex.map(lambda c: check(c["url"]), cands))
+    return [c for c, good in zip(cands, ok) if good][:count]
 
 
-IMAGE_BLOCK = re.compile(r"```images[^\n]*\n(.*?)```", re.S)
+IMAGE_BLOCK = re.compile(r"```images[^\n]*\n(.*?)(?:```|\Z)", re.S)  # an unclosed block too (still being written)
 MAX_IMAGE_QUERIES = 24  # per answer
 
 
-def image_queries(text: str) -> list[str]:
-    """The search queries of an answer's ```images blocks (the first field of each line), in order, no repeats."""
+def image_queries(text: str, finished_lines: bool = False) -> list[str]:
+    """The search queries of an answer's ```images blocks (the first field of each line), in order, no repeats.
+    finished_lines: the answer is still being written, so only lines that already end (a newline follows)."""
+    text = text or ""
+    if finished_lines:
+        text = text[:text.rfind("\n") + 1]
     out = []
-    for block in IMAGE_BLOCK.findall(text or ""):
+    for block in IMAGE_BLOCK.findall(text):
         for line in block.splitlines():
             q = " ".join(line.split("|")[0].split())[:200]
             if q and q not in out:
@@ -306,16 +329,25 @@ def image_queries(text: str) -> list[str]:
     return out[:MAX_IMAGE_QUERIES]
 
 
-async def resolve_images(text: str, key: str | None, sign) -> dict[str, list[dict]]:
-    """query -> [{src, page}] for every ```images line of an answer, searched at once; src = sign(picture URL)."""
-    queries = image_queries(text)
-
-    async def one(q):
+def search_images(q: str, key: str | None) -> "asyncio.Task":
+    """Starts finding the pictures of one ```images line (see find_images); the task never raises."""
+    async def run():
         try:
-            return q, await asyncio.to_thread(find_images, q, key)
-        except WebError:
-            return q, []
-    found = await asyncio.gather(*(one(q) for q in queries))
+            return await asyncio.to_thread(find_images, q, key)
+        except Exception:  # search down, no pictures: the card is left out
+            return []
+    return asyncio.create_task(run())
+
+
+async def resolve_images(text: str, key: str | None, sign, started: dict | None = None) -> dict[str, list[dict]]:
+    """query -> [{src, page}] for every ```images line of a finished answer; src = sign(picture URL). started: query ->
+    task begun while the answer was being written (search_images), so most are done by now."""
+    started = started if started is not None else dict()
+    queries = image_queries(text)
+    for q in queries:
+        if q not in started:
+            started[q] = search_images(q, key)
+    found = list(zip(queries, await asyncio.gather(*(started[q] for q in queries))))
     return {q: [{"src": sign(x["url"]), "page": x["page"]} for x in pics] for q, pics in found}
 
 
