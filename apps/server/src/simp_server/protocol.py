@@ -266,3 +266,10 @@ def _untitle(x):
 
 def json_schema() -> str:
     return json.dumps(_untitle(Protocol.model_json_schema(mode="serialization")), indent=2) + "\n"
+
+
+class CellEdit(_M):
+    """A spreadsheet cell edited in the preview. text: a value, a formula starting with =, or empty to clear it."""
+    path: str  # workspace path of the .xlsx
+    cell: str  # /Sheet1/B3
+    text: str = ""

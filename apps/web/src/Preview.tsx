@@ -57,7 +57,26 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
     return () => { window.removeEventListener("message", ask); document.removeEventListener("fullscreenchange", tell); };
   }, [present]);
   const fail = useCallback((e: unknown) => { onError(e); if (!(e instanceof AuthError)) setError(errorText(e)); }, [onError]);
-  useEffect(() => setRaw(false), [path]);
+  // a spreadsheet cell edited in the preview: saved into the .xlsx, then the preview reloads (formulas recalculated);
+  // a refused edit (the agent is working, a bad formula) is shown and the reload puts the old value back
+  const [cellNote, setCellNote] = useState<string>();
+  const [cellSel, setCellSel] = useState<string>();  // the cell to select again once the preview reloads
+  // after a save the sheet reloads: give it the keyboard back once it shows, so typing goes on in the next cell
+  useEffect(() => { if (cellSel && shown) frame.current?.focus(); }, [shown, cellSel]);
+  useEffect(() => {
+    if (!sid || !/\.xlsx$/i.test(path)) return;
+    const onCell = (e: MessageEvent) => {
+      const c = e.data?.simpCell;
+      if (e.source !== frame.current?.contentWindow || !c || typeof c.cell !== "string" || typeof c.text !== "string") return;
+      if (typeof c.next === "string") setCellSel(c.next);
+      api.editCell(sid, path, c.cell, c.text)
+        .then(() => setCellNote(undefined), (err) => { onError(err); setCellNote(errorText(err)); })
+        .finally(() => setN((x) => x + 1));
+    };
+    window.addEventListener("message", onCell);
+    return () => window.removeEventListener("message", onCell);
+  }, [sid, path, onError]);
+  useEffect(() => { setRaw(false); setCellSel(undefined); }, [path]);
 
   useEffect(() => {
     let live = true, img: string | undefined;
@@ -105,8 +124,9 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
     : got.text !== undefined ? <div className="pad"><Md text={got.text} /></div>
     : got.img ? <div className="image-view"><img src={got.img} alt={name} /></div>
     : got.src ? <>
+      {cellNote && <div className="notice error cell-note" role="alert">{cellNote}</div>}
       {shown !== got.src && <Skeleton name={path} />}
-      <iframe ref={frame} className="frame fade-in" title={name} src={got.src} onLoad={() => setShown(got.src)} hidden={shown !== got.src}
+      <iframe ref={frame} className="frame fade-in" title={name} src={cellSel && /\.xlsx$/i.test(path) ? `${got.src}#${encodeURIComponent(cellSel)}` : got.src} onLoad={() => setShown(got.src)} hidden={shown !== got.src}
         sandbox={got.deck ? (got.deck.view.endsWith(".html") ? "allow-scripts" : undefined)  // a pdf can't show sandboxed
           : kind === "html" || kind === "office" ? "allow-scripts" : undefined}
         allow={got.deck ? "fullscreen" : undefined} />

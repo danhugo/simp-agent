@@ -29,3 +29,32 @@ def test_shrink_picture():
     small, ctype = shrink_picture(buf.getvalue(), "image/png", 400)
     assert ctype == "image/jpeg" and Image.open(io.BytesIO(small)).size == (400, 200)
     assert shrink_picture(b"JPEG", "image/jpeg", 400) == (b"JPEG", "image/jpeg")  # unreadable: as is  # an open aiosqlite thread keeps the test process from exiting
+
+
+def test_cell_prop():
+    from simp_server.server import cell_prop
+    assert cell_prop("") == {"value": ""}
+    assert cell_prop("=SUM(B2:B9)") == {"formula": "SUM(B2:B9)"}
+    assert cell_prop("120,000,000") == {"value": "120000000"}
+    assert cell_prop("-1,234.5") == {"value": "-1234.5"}
+    assert cell_prop("Tháng 1, 2") == {"value": "Tháng 1, 2"}
+    assert cell_prop("42") == {"value": "42"}
+
+
+async def test_user_edits_reach_the_agent_once():
+    from simp_server.server import UserEdits
+    u = UserEdits()
+    assert await u.before_agent_start({}) == {}
+    u.notes.append("a.xlsx Sheet1!B3 set to '5'")
+    msg = (await u.before_agent_start({}))["messages"][0]
+    assert "Sheet1!B3" in msg.content and msg.meta
+    assert await u.before_agent_start({}) == {}  # told once
+
+
+def test_edit_script_carries_the_page_nonce():
+    from simp_server.server import with_edit_script
+    page = (b'<html><head><meta http-equiv="Content-Security-Policy" content="script-src \'nonce-abc123\' '
+            b'\'strict-dynamic\'"></head><body><table></table></body></html>')
+    out = with_edit_script(page)
+    assert b'<script nonce="abc123">' in out and out.index(b"simpCell") < out.index(b"</body>")
+    assert b"<script>" in with_edit_script(b"<body></body>")  # no CSP: a plain script
