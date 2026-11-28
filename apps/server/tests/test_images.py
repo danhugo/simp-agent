@@ -17,3 +17,4 @@ async def test_image_proxy_only_signed_links(tmp_path, monkeypatch):
         assert (await c.get("/api/image", params={"u": "https://evil/?d=secret"})).status_code == 404
         assert (await c.get(image_link(mgr.image_key, "https://p/x.svg"))).status_code == 415
         assert (await c.get(image_link(mgr.image_key, "https://p/big.jpg"))).status_code == 413  # never half a picture
+    await mgr.store.close()  # an open aiosqlite thread keeps the test process from exiting
