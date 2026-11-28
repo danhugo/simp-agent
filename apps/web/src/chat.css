@@ -348,8 +348,10 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .files.preview.wide { position: fixed; inset: 0; width: 100vw; z-index: 22; border-left: 0; }
 @media (min-width: 768px) { .chat { min-width: 360px; } }
 .preview .preview-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview header > :not(.preview-name):not(.spacer) { flex: none; }  /* buttons keep their size; the name gives way */
+.preview .preview-get { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .preview .seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
-.preview .seg button { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 2px var(--sp-2); font-size: var(--fs-xs); }
+.preview .seg button { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 2px var(--sp-2); font-size: var(--fs-xs); white-space: nowrap; }
 .preview .seg button[aria-pressed="true"] { background: var(--hover); font-weight: 700; }
 .preview-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .preview-body > .pad { padding: var(--sp-3) var(--sp-4); }

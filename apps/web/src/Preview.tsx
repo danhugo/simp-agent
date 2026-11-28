@@ -122,10 +122,6 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
         <strong className="preview-name" title={path}>{name}</strong>
         {got?.entry && <span className="preview-size">{fmt(got.entry.size)}</span>}
         <span className="spacer" />
-        {got?.deck?.file && (
-          <button className="ghost small" onClick={() => downloadFile(sid, got.deck!.file!).catch(fail)} title={`Download the ${got.deck.label} file`}>
-            <IconDownload size={14} /> {got.deck.label}</button>
-        )}
         {(hasRaw(kind) || got?.deck || /\.(jsx|md)$/i.test(path)) && (
           <div className="seg" role="group" aria-label="View">
             <button aria-pressed={!raw} onClick={() => setRaw(false)}>Rendered</button>
@@ -136,7 +132,13 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
           title={wide ? "Back to the side panel (Esc)" : "Expand to the whole window"} aria-label={wide ? "Shrink preview" : "Expand preview"}>
           {wide ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
         <button className="icon-btn" onClick={() => setN(n + 1)} title="Refresh" aria-label="Refresh"><IconRefresh size={16} /></button>
-        <button className="icon-btn" onClick={() => downloadFile(sid, path).catch(fail)} title="Download" aria-label="Download"><IconDownload size={16} /></button>
+        {got?.deck?.file ? (  // a deck or document: download the office file it was built into
+          <button className="ghost small preview-get" onClick={() => downloadFile(sid, got.deck!.file!).catch(fail)}
+            title={`Download ${got.deck.file.split("/").pop()}`} aria-label={`Download ${got.deck.label}`}>
+            <IconDownload size={15} /><span>{got.deck.label}</span></button>
+        ) : (
+          <button className="icon-btn" onClick={() => downloadFile(sid, path).catch(fail)} title="Download" aria-label="Download"><IconDownload size={16} /></button>
+        )}
         <button className="icon-btn" onClick={onClose} title="Close preview" aria-label="Close preview"><IconClose size={16} /></button>
       </header>
       {children && (
