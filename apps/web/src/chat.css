@@ -345,6 +345,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 
 /* ---- file preview panel ---- */
 .files.preview { width: auto; flex: 0 1 640px; min-width: 280px; position: relative; }
+.files.preview.wide { position: fixed; inset: 0; width: 100vw; z-index: 22; border-left: 0; }
 @media (min-width: 768px) { .chat { min-width: 360px; } }
 .preview .preview-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .preview .seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }

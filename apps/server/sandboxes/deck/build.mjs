@@ -1,7 +1,8 @@
 // deck.jsx -> (React, then Chromium lays it out) -> officecli batch ops (JSON) + the rendered HTML.
 // Usage: node deck-build.mjs <deck.jsx> <ops.json> <deck.html>
 // The deck module: `export default function Deck() { return <>…<Slide>…</Slide>…</> }`, optional `export const css`.
-import { writeFileSync, mkdtempSync, existsSync } from "node:fs";
+import { writeFileSync, mkdtempSync, existsSync, readFileSync } from "node:fs";
+import { extname } from "node:path";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -36,14 +37,15 @@ try {
   process.exit(2);
 }
 const { html } = createRequire(import.meta.url)(bundle);
-writeFileSync(htmlOut, html);
+const measured = join(tmp, "measure.html");  // chromium lays out this one; htmlOut is the self-contained preview
+writeFileSync(measured, html);
 
 // 2. Chromium lays it out; read every box, text run, picture and chart with its real position
 const browser = await puppeteer.launch({ executablePath: process.env.CHROME || "/usr/local/bin/chromium",
                                          args: ["--no-sandbox", "--disable-dev-shm-usage", "--allow-file-access-from-files"] });
 const page = await browser.newPage();
 await page.setViewport({ width: W, height: H });
-await page.goto(pathToFileURL(resolve(htmlOut)).href, { waitUntil: "load" });
+await page.goto(pathToFileURL(measured).href, { waitUntil: "load" });
 await page.evaluate(() => document.fonts.ready);
 const slides = await page.evaluate(() => {
   const color = (c) => {
@@ -194,5 +196,60 @@ slides.forEach((s, i) => {
     + `(ends at ${Math.round(bottom)}px of ${H}): cut text, shrink sizes or gaps, or split the slide`);
 });
 writeFileSync(opsOut, JSON.stringify(ops));
+writeFileSync(htmlOut, preview(html, slides.length));
 console.log(JSON.stringify({ slides: slides.length, ops: ops.length, warnings, errors }));
 if (errors.length) process.exit(3);
+
+// ---- the preview: one file that shows anywhere (pictures inlined), with a small slide viewer ---------------------------
+function preview(html, count) {
+  const types = { ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                  ".webp": "image/webp", ".gif": "image/gif" };
+  const inlined = html.replace(/src="file:\/\/([^"]+)"/g, (m, path) => {
+    const type = types[extname(path).toLowerCase()];
+    try { return type ? `src="data:${type};base64,${readFileSync(decodeURIComponent(path)).toString("base64")}"` : m; }
+    catch { return m; }
+  });
+  const viewerCss = `<style>
+html,body{height:100%}body.deck-ui{background:#2a2b2e;display:flex;overflow:hidden;font-family:system-ui,sans-serif}
+.deck-thumbs{width:200px;flex:none;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:#1f2023}
+.deck-thumb{position:relative;width:176px;height:99px;overflow:hidden;border-radius:6px;outline:2px solid transparent;cursor:pointer;flex:none}
+.deck-thumb.on{outline-color:#6aa2ff}.deck-thumb>.slide{transform:scale(.1375);transform-origin:0 0;pointer-events:none}
+.deck-thumb span{position:absolute;left:6px;bottom:4px;font-size:11px;color:#fff;text-shadow:0 0 3px #000}
+.deck-main{flex:1;display:flex;flex-direction:column;min-width:0}
+.deck-bar{display:flex;gap:8px;align-items:center;padding:8px 12px;color:#ccc;font-size:13px}
+.deck-bar button{background:#3a3b40;color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px}
+.deck-stage{flex:1;position:relative;overflow:hidden}.deck-stage>.slide{position:absolute;transform-origin:0 0;box-shadow:0 8px 30px #0008}
+.deck-stage>.slide:not(.on){display:none}
+.deck-ui:fullscreen .deck-thumbs,.deck-ui:fullscreen .deck-bar,.deck-ui.presenting .deck-thumbs,.deck-ui.presenting .deck-bar{display:none}
+.deck-ui:fullscreen,.deck-ui.presenting{background:#000}.deck-ui.presenting .deck-stage{cursor:pointer}
+@media (max-width:900px){.deck-thumbs{width:104px;padding:8px;gap:8px}.deck-thumb{width:88px;height:49.5px}
+.deck-thumb>.slide{transform:scale(.06875)}}
+@media (max-width:520px){.deck-thumbs{display:none}}
+</style>`;
+  const viewerJs = `<script>(function(){
+var b=document.body,s=[].slice.call(document.querySelectorAll("[data-slide]"));if(!s.length)return;
+b.classList.add("deck-ui");var th=document.createElement("nav");th.className="deck-thumbs";
+var main=document.createElement("div");main.className="deck-main";
+main.innerHTML='<div class="deck-bar"><button data-a="prev">&lsaquo;</button><span class="deck-n"></span><button data-a="next">&rsaquo;</button><span style="flex:1"></span><button data-a="present">Present</button></div><div class="deck-stage"></div>';
+var st=main.querySelector(".deck-stage"),n=main.querySelector(".deck-n"),i=0;
+s.forEach(function(x,k){var t=document.createElement("div");t.className="deck-thumb";t.appendChild(x.cloneNode(true));
+var l=document.createElement("span");l.textContent=k+1;t.appendChild(l);t.onclick=function(){go(k)};th.appendChild(t);st.appendChild(x)});
+b.appendChild(th);b.appendChild(main);
+function full(){return !!document.fullscreenElement||b.classList.contains("presenting")}
+function present(){  // our own fullscreen when allowed; inside an app's frame, ask the page around it
+if(b.requestFullscreen){b.requestFullscreen().catch(function(){parent.postMessage({simpDeck:"present"},"*")})}
+else parent.postMessage({simpDeck:"present"},"*")}
+window.addEventListener("message",function(e){var d=e.data||{};if(d.simpDeck==="presenting"){b.classList.toggle("presenting",!!d.on);fit()}});
+function fit(){var r=st.getBoundingClientRect(),k=Math.min(r.width/1280,r.height/720)*(full()?1:.94);
+s.forEach(function(x){x.style.transform="scale("+k+")";x.style.left=(r.width-1280*k)/2+"px";x.style.top=(r.height-720*k)/2+"px"})}
+function go(k){i=Math.max(0,Math.min(s.length-1,k));s.forEach(function(x,j){x.classList.toggle("on",j===i)});
+[].forEach.call(th.children,function(t,j){t.classList.toggle("on",j===i);if(j===i)t.scrollIntoView({block:"nearest"})});n.textContent=(i+1)+" / "+s.length}
+main.onclick=function(e){var a=e.target.getAttribute&&e.target.getAttribute("data-a");if(a==="prev")go(i-1);if(a==="next")go(i+1);
+if(a==="present")present()};
+st.onclick=function(e){if(full())go(i+1)};
+document.addEventListener("keydown",function(e){if(["ArrowRight","ArrowDown","PageDown"," "].indexOf(e.key)>=0){go(i+1);e.preventDefault()}
+if(["ArrowLeft","ArrowUp","PageUp"].indexOf(e.key)>=0){go(i-1);e.preventDefault()}});
+window.addEventListener("resize",fit);document.addEventListener("fullscreenchange",fit);go(0);fit()})();</script>`;
+  return inlined.replace("<head>", `<head><meta name="simp-deck" content="${count}">`).replace("</style>", "</style>" + viewerCss)
+    .replace("</body>", viewerJs + "</body>");
+}
