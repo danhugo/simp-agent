@@ -2,95 +2,150 @@
 name: pptx
 label: PowerPoint
 description: "Create or edit PowerPoint decks (.pptx): slides, presentations, decks of any length, in any language."
-version: 12
+version: 13
 ---
 
 # Slides
 
-You write a **deck folder** (content + layout names); `office_build` turns it into a designed .pptx and checks it.
-Never write pptxgenjs/python-pptx code. Look at the result once (Fast path step 5), never loop on the look.
+Every deck is a **React deck**: one `/work/<name>.jsx` file (components + CSS, reference below). `office_build` lays it
+out in a browser and turns it into an editable .pptx plus a preview. Never write pptxgenjs/python-pptx code.
 
-## Fast path (aim: 4–6 turns, no more)
+## Fast path (plain deck: 4–8 tool calls; designed deck: 15–25)
 
 1. **Content.** If the user gave the material, use it. Otherwise research only what the content needs (the web
    tools say how). No photos unless the user asks for them or the design brief calls for them.
-2. **Write the whole deck in ONE message**: `write` design.xml and every slide file as parallel calls
-   (`/work/<name>.deck/design.xml`, `/work/<name>.deck/01-cover.xml`, `02-....xml` …). Over 12 slides: two messages
-   of about 10 files each.
-3. `office_build(source="/work/<name>.deck")` → `/work/<name>.pptx`.
-4. If it lists problems, fix them all in ONE message (`edit` the named files), build once more, then answer.
-   "Text shrank … cut its words" means the slide says too much: shorten it (or split it in two), never ignore it.
+2. **Pick a look**: a theme below for a plain deck, or a design brief (Designed decks) when the user wants a
+   designed, illustrated or branded look. Icons or artwork: save them all in ONE `office_run` first.
+3. **Write the whole deck in ONE `write`**: `/work/<name>.jsx`, every slide.
+4. `office_build(source="/work/<name>.jsx")` → `/work/<name>.pptx` + `/work/<name>.html`. If it lists problems, fix
+   them all in ONE `edit`, build once more. "Content taller than the slide" means the slide says too much: shorten it
+   or split it in two.
 5. **Look once, for the design only**: one `office_run` with `office.open(path).screenshot(grid=True)`. Judge the
    look (balance, colour, empty areas, text over a busy picture), not text fit: the build measured every text box,
    and the small grid makes the helper see overflow and clipping that are not there. Fix real design faults in ONE
-   message, build once more. No second look. If the screenshot fails or
-   comes back blank, skip the look: the build check already passed. Never debug the tools (no test builds in /tmp).
-6. Answer in 2–3 lines: the file path, slide count, theme. No slide-by-slide recap.
+   edit, build once more. No second look. If the screenshot fails or comes back blank, skip the look.
+6. Answer in 2–3 lines: the file path, slide count, look. No slide-by-slide recap.
 
 **First version first.** The user wants to see a result before asking for changes. Deliver the first complete deck as
 soon as it builds clean (plus the one look). Do not polish further on your own: in the answer, offer 2–3 concrete
-improvements they can ask for. A designed deck (below) should take about 15–25 tool calls, a plain one 4–8.
+improvements they can ask for.
 
-**Done rule:** `office_build` already validates and checks the file. After a clean build and the one look (step 5),
-answer. Never unpack the file or run other checks (no `office_read` to check it: it only reads). Pictures from .svg
-files are fine; never redraw them as PNG.
+**Done rule:** `office_build` already validates and checks the file. After a clean build and the one look, answer.
+Never unpack the file or run other checks (no `office_read` to check it: it only reads). Never debug the tools (no
+test builds in /tmp). Pictures from .svg files are fine; never redraw them as PNG.
 
+## Themes (plain decks)
 
-## design.xml
+Pick by topic; the user's wish wins. Put the colours in the CSS (bg = slide background, ink = text, primary =
+headings and charts, accent = highlights, surface = cards).
 
-One line: `<design theme="navy"/>`. Themes: `navy` (corporate, finance), `ocean` (tech, health), `forest` (nature,
-education, ESG), `terracotta` (food, culture, lifestyle), `mono` (minimal, design), `violet` (startup, marketing),
-`night` (dark tech, data), `crimson` (dark dramatic: film, games, anime, history). Pick by topic; the user's wish wins.
-Optional overrides: `<design theme="ocean"><color name="accent" value="#E4572E"/></design>` (names: bg, surface, ink,
-muted, primary, accent, on) and fonts: `<font name="heading" family="Arial"/>` (names: display = cover/section
-titles, heading = slide titles, body, caption). All style lives here: a font or color change for the whole deck is one
-line in design.xml, then build again.
+| theme | for | bg | surface | ink | primary | accent |
+|---|---|---|---|---|---|---|
+| navy | corporate, finance | #FFFFFF | #F1F4F9 | #1B2433 | #1F3A68 | #E0A526 |
+| ocean | tech, health | #F7FAFC | #FFFFFF | #102A43 | #0B7FAB | #F25F5C |
+| forest | nature, education, ESG | #F6F8F4 | #FFFFFF | #1E2B22 | #2F6B3F | #D98E04 |
+| terracotta | food, culture, lifestyle | #FBF6F0 | #FFFFFF | #3A2A20 | #B5532F | #2E7D6B |
+| mono | minimal, design | #FFFFFF | #F4F4F4 | #111111 | #111111 | #E4572E |
+| violet | startup, marketing | #FAF8FF | #FFFFFF | #221B3A | #5B3FD1 | #FF8A3D |
+| night | dark tech, data | #0F1724 | #1A2436 | #E8EDF5 | #5AB0FF | #FFB547 |
+| crimson | dark dramatic: film, games, history | #16110F | #241A17 | #F2E8E4 | #D7263D | #F2B134 |
 
-## Slide files: pick a layout, write the content
+Fonts: Arial (safe everywhere) or Calibri / Georgia / Segoe UI / Verdana. Vietnamese text works in all of them.
 
-Files are built in file-name order: name them `01-…`, `02-…`. Attribute values need `&amp;` for `&` and `&quot;` for `"`.
-Inside text you may use `<strong>`, `<em>`, `<span color="accent">`.
+## Plain deck: layouts as components
 
-```xml
-<slide layout="cover" title="Deck title" subtitle="One line that says what the deck gives" meta="Author · Date"/>
-<slide layout="section" number="02" title="Section title" lead="One sentence."/>
-<slide layout="bullets" title="Title">
-  <li><strong>Key term</strong> concrete fact, number or example</li>      <!-- 3–6 items, each ≤ 2 lines -->
-  <note><li>side fact</li><li>source</li></note>                          <!-- optional right card -->
-</slide>
-<slide layout="two-col" title="Compare A and B">
-  <col title="A"><li>…</li><li>…</li></col><col title="B"><li>…</li><li>…</li></col>
-</slide>
-<slide layout="cards" title="Title">                                       <!-- 2–4 cards; value optional -->
-  <card title="Name" value="42%">One or two sentences.</card> …
-</slide>
-<slide layout="kpis" title="Title">                                        <!-- 2–4 big numbers -->
-  <kpi value="$1.2B" label="What it measures" note="Context or source"/> …
-</slide>
-<slide layout="chart" title="Revenue by year (USD M)" type="column" categories="2022,2023,2024">
-  <series name="Revenue" values="120,180,260"/>                            <!-- more series = grouped -->
-  <li>Insight the chart proves</li><li>Second insight</li>                 <!-- optional side card -->
-</slide>
-<slide layout="table" title="Title" columns="2,1,3">                       <!-- first row = header; ≤ 8 rows -->
-  <tr><td>Name</td><td>Value</td><td>Note</td></tr><tr><td>…</td><td>…</td><td>…</td></tr>
-  <note>Source: …</note>
-</slide>
-<slide layout="steps" title="How it works">                                <!-- 3–6 steps: process, timeline -->
-  <step title="Step name">One short sentence.</step> …
-</slide>
-<slide layout="quote" quote="A memorable line." by="Who said it"/>
-<slide layout="image" title="Title" src="/work/photo.jpg"><li>…</li></slide>   <!-- only with a real image file -->
-<slide layout="closing" title="Thank you" subtitle="Questions? / next step" meta="Contact"/>
+Write these once at the top of the .jsx and build every slide from them. Change the theme by changing the CSS only.
+
+```jsx
+import { Slide, Art, Chart } from "deck";
+
+const T = { bg: "#FFFFFF", surface: "#F1F4F9", ink: "#1B2433", primary: "#1F3A68", accent: "#E0A526", muted: "#5B6676" };
+export const css = `
+.slide { background:${T.bg}; color:${T.ink}; font-family:Arial; padding:64px 72px; display:flex; flex-direction:column; gap:28px }
+h1 { font-size:60px; font-weight:800; line-height:1.1; color:${T.primary} }
+h2 { font-size:40px; font-weight:700; line-height:1.15; color:${T.primary} }
+.lead { font-size:26px; line-height:1.4; color:${T.muted} }
+ul { display:flex; flex-direction:column; gap:16px; font-size:24px; line-height:1.35 }
+.row { display:flex; gap:28px; flex:1 }
+.card { flex:1; background:${T.surface}; border-radius:16px; padding:28px; display:flex; flex-direction:column; gap:10px }
+.card h3 { font-size:26px; font-weight:700 }
+.card p { font-size:21px; line-height:1.4; color:${T.muted} }
+.num { font-size:60px; font-weight:800; color:${T.accent} }
+.bar { width:72px; height:6px; background:${T.accent} }
+.cover { background:${T.primary}; color:#fff; justify-content:center }
+.cover h1 { color:#fff; font-size:64px } .cover .lead { color:#DDE5F0 }
+table { border-collapse:collapse; font-size:21px } th { background:${T.primary}; color:#fff; text-align:left }
+th, td { padding:10px 16px; border-bottom:1px solid #D5DBE3 }
+`;
+
+const Cover = ({ title, sub, meta }) => (
+  <Slide className="cover">
+    <div className="bar"/>
+    <h1>{title}</h1>
+    <p className="lead">{sub}</p>
+    <p className="lead">{meta}</p>
+  </Slide>
+);
+const Bullets = ({ title, items, notes }) => (
+  <Slide notes={notes}>
+    <h2>{title}</h2>
+    <ul>{items.map((t) => <li key={t}>{t}</li>)}</ul>
+  </Slide>
+);
+const Cards = ({ title, cards }) => (
+  <Slide>
+    <h2>{title}</h2>
+    <div className="row">
+      {cards.map((c) => (
+        <div className="card" key={c.t}>
+          {c.v && <div className="num">{c.v}</div>}
+          <h3>{c.t}</h3>
+          <p>{c.body}</p>
+        </div>
+      ))}
+    </div>
+  </Slide>
+);
+const ChartSlide = ({ title, chart, points }) => (
+  <Slide>
+    <h2>{title}</h2>
+    <div className="row">
+      <Chart {...chart} colors={[T.primary, T.accent]} fontSize={18} style={{ flex: 2 }}/>
+      <div className="card"><ul>{points.map((p) => <li key={p}>{p}</li>)}</ul></div>
+    </div>
+  </Slide>
+);
+const Table = ({ title, rows }) => (
+  <Slide>
+    <h2>{title}</h2>
+    <table>
+      <thead><tr>{rows[0].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+      <tbody>{rows.slice(1).map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j}>{c}</td>)}</tr>)}</tbody>
+    </table>
+  </Slide>
+);
+
+export default function Deck() {
+  return <>
+    <Cover title="Q3 review" sub="Revenue up, churn down: what worked" meta="Finance team · Oct 2026"/>
+    <Bullets title="Sales doubled in 2024" items={["Concrete fact, number or example", "…"]}/>
+    <Cards title="Three wins" cards={[{ v: "38%", t: "Faster tickets", body: "…" } /* 2–4 */]}/>
+    <ChartSlide title="Revenue by year (USD M)" chart={{ type: "column", categories: ["2023", "2024"],
+      series: [{ name: "Revenue", values: [120, 260] }], legend: "none" }} points={["Insight the chart proves"]}/>
+    <Table title="Plans compared" rows={[["Plan", "Price", "Seats"], ["Team", "$20", "10"]]}/>
+  </>;
+}
 ```
 
-Chart types: column, bar, line, area, pie, donut. Values are plain numbers (no %, $, commas); put units in the title.
+Other layouts are a few lines each in the same way: two columns (`.row` with two `.card`), steps (`.row` of numbered
+cards), quote (one big `<p>`), section (`Slide` with `cover` class and a number), closing (like the cover).
 
 ## What makes a deck good (every deck)
 
 - **Count**: exactly the number of slides the user asked for, cover and closing included (default 10).
-- **Arc**: cover → 1 agenda or context slide → body → takeaway/recommendation → closing. 15+ slides: add `section` slides.
-- **Variety**: never more than 2 `bullets` slides in a row. Numbers → `kpis` or `chart`; comparisons → `two-col` or
-  `table`; processes/history → `steps`; 2–4 parallel ideas → `cards`.
+- **Arc**: cover → 1 agenda or context slide → body → takeaway/recommendation → closing. 15+ slides: add section slides.
+- **Variety**: never more than 2 bullet slides in a row. Numbers → big numbers or a chart; comparisons → two columns or
+  a table; processes/history → steps; 2–4 parallel ideas → cards.
 - **Density**: every body slide carries specifics (names, numbers, dates, examples), not generic phrases. Titles are
   short claims ("Sales doubled in 2024"), not labels ("Sales"). ≤ 6 bullets, each ≤ 2 lines.
 - **Truth**: real numbers from research or the user; never invent statistics. Say "approx." when unsure. Facts only
@@ -102,8 +157,7 @@ Chart types: column, bar, line, area, pie, donut. Values are plain numbers (no %
 ## Designed decks: illustrations, shapes, photos
 
 When the user asks for a designed or illustrated look (a template feel, a playful lesson, a brand style, a pitch),
-write a **React deck** (`/work/<name>.jsx`, below) and build it with `office_build`; the XML layouts above are for
-plain business decks.
+write your own components and CSS from a design brief instead of the plain layouts.
 
 **Write the design brief first** (in your head or a short note, never as a question to the user; when the user wants
 to see or edit the brief before building, use the `slide-design-brief` skill), concrete enough that
@@ -123,7 +177,7 @@ When the user brings a reference (a picture, a .pptx, a brand), take the brief f
 (`read` an image, or `office_run` with `screenshot(grid=True)` for a deck) and write down its palette, type, motifs and
 decoration rules before building.
 
-- **Illustrations and icons**: `office.art_search("fish")` lists artwork names; `office.art("fish", out="/work/<name>.deck/assets/fish.svg",
+- **Illustrations and icons**: `office.art_search("fish")` lists artwork names; `office.art("fish", out="/work/<name>/assets/fish.svg",
   tint=("#9EEFBC", "#1E2A8A"))` saves one as SVG in the deck's colours (light parts, dark parts); no tint keeps its own
   colours. `kind="icon"` gives one-colour line icons (`color="#9EEFBC"`). Thousands exist: objects, animals, plants,
   buildings, vehicles, weather, food, people, symbols. Save them all in ONE `office_run`, then `<Art src=...svg/>`.
@@ -136,7 +190,7 @@ decoration rules before building.
   one idea per slide and about a third of it empty (the `slide-design-brief` skill has the full rules and sources).
 - ONE `office_run` that saves all the artwork, then ONE `write` of the whole .jsx, then `office_build`.
 
-## React deck (.jsx): complete reference, there is nothing else to look up
+## React deck (.jsx): complete reference, there is nothing else to look up (designed example)
 
 A React module: CSS lays the slides out (flex, grid, gap, padding), a browser measures every text box, and the build
 turns each box into a real PowerPoint shape, text box, picture or chart (all editable). Write components once and
@@ -199,10 +253,10 @@ list or test the sandbox's fonts.
 
 ## Editing
 
-- A deck you built (it has a `.deck` folder): change the source, never the .pptx. Text: `edit` the slide file.
-  Order: rename files. Fonts/colors for the whole deck: design.xml (above). Then `office_build` once. Never inspect or
-  patch the built .pptx with bash, officecli or office_run.
-- A .pptx the user brought (no deck folder): one `office_run` script does the whole job. Find what to change
+- A deck you built (it has a `.jsx` source, or an older `.deck` folder): change the source, never the .pptx: `edit`
+  the .jsx (or the slide/design.xml files of a .deck folder), then `office_build` once. Never inspect or patch the
+  built .pptx with bash, officecli or office_run.
+- A .pptx the user brought (no source): one `office_run` script does the whole job. Find what to change
   with `d.query(...)` or `d.view("annotated")`, change it, and end with `d.screenshot(grid=True)` to see the result:
   ```python
   d = office.open("/work/q3.pptx")
