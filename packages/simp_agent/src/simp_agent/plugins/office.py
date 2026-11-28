@@ -27,6 +27,17 @@ W, H, PT = 1280, 720, 0.75  # canvas px; 1 px = 0.75 pt (960 x 540 pt = 16:9)
 CM_PX = 1 / 0.026458333  # px per cm
 OUT_MAX = 12_000
 PRINT_PDF = "chromium --headless --no-pdf-header-footer"  # the sandbox's chromium wrapper adds its flags
+# officecli's docx HTML draws each page as a box of A4 height plus its margins (and chromium adds its own): printed as
+# is, every page spills onto a blank next one. Print it on A4 with no extra margins and no forced box height.
+PRINT_CSS = ("<style>@page{size:A4;margin:0}html,body{margin:0;background:#fff}.page-wrapper{padding:0!important;"
+             "margin:0!important;background:none!important}.page{box-sizing:border-box;min-height:0!important;"
+             "margin:0 auto!important;box-shadow:none!important}</style>")
+
+
+def print_css_cmd(html: str) -> str:
+    """Shell that puts PRINT_CSS into an officecli HTML file before chromium prints it."""
+    return ("python3 -c " + shlex.quote("import sys; p = sys.argv[1]; s = open(p).read(); "
+                                        f"open(p, 'w').write(s.replace('</head>', {PRINT_CSS!r} + '</head>', 1))") + f" {html}")
 READABLE = 18  # px on the 1280x720 canvas (13.5 pt): smaller body text is not readable when presented
 RUNTIME = open(os.path.join(os.path.dirname(__file__), "office_rt.py"), encoding="utf-8").read()  # copied into the env
 # runs the agent's main.py with `office` imported; its traceback keeps main.py's own line numbers
@@ -431,6 +442,66 @@ def explain(issues: str, ids: dict) -> list[str]:
     return out
 
 
+THEME_KEYS = ("heading-font", "body-font", "primary", "accent", "ink", "body-size", "line-spacing", "margins")
+
+
+def doc_theme(md: str) -> dict:
+    """The `theme:` block of a Markdown file's YAML front matter (flat keys, one per line, or `theme: {k: v, ...}`)."""
+    m = re.match(r"---\n(.*?)\n---", md, re.S)
+    if not m:
+        return {}
+    lines, out, inside = m.group(1).splitlines(), {}, False
+    for line in lines:
+        flow = re.match(r"theme:\s*\{(.*)\}\s*$", line)
+        if flow:
+            for kv in re.split(r",\s*(?=[\w-]+\s*:)", flow.group(1)):
+                k, _, v = kv.partition(":")
+                out[k.strip()] = v.strip().strip("\"'")
+            return out
+        if re.match(r"theme:\s*$", line):
+            inside = True
+            continue
+        if inside:
+            kv = re.match(r"\s+([\w-]+)\s*:\s*(.*?)\s*$", line)
+            if not kv:
+                break
+            out[kv.group(1)] = kv.group(2).strip("\"'")
+    return out
+
+
+def theme_ops(t: dict) -> tuple[list, list[str]]:
+    """officecli ops restyling reference.docx; second item: what is wrong with the theme."""
+    bad = [f"unknown theme key {k!r} (have: {', '.join(THEME_KEYS)})" for k in t if k not in THEME_KEYS]
+    hexc = lambda k: t.get(k) if re.fullmatch(r"#[0-9A-Fa-f]{6}", t.get(k, "#000000")) else bad.append(f"{k}: use #RRGGBB")  # noqa: E731
+    for k in ("primary", "accent", "ink"):
+        if k in t:
+            hexc(k)
+    try:
+        size = float(t["body-size"]) if "body-size" in t else None
+        lsp = float(t["line-spacing"]) if "line-spacing" in t else None
+        margin = float(str(t["margins"]).removesuffix("cm")) if "margins" in t else None
+    except ValueError:
+        bad.append("body-size, line-spacing and margins are numbers (margins in cm)")
+        size = lsp = margin = None
+    ops = []
+
+    def style(sid, **props):
+        props = {k: v for k, v in props.items() if v is not None}
+        if props:
+            ops.append({"command": "set", "path": f"/styles/{sid}", "props": props})
+    body = dict(font=t.get("body-font"), color=t.get("ink"), size=f"{size:g}pt" if size else None)
+    for sid in ("Normal", "BodyText", "FirstParagraph", "Compact"):
+        style(sid, **body, lineSpacing=f"{lsp:g}x" if lsp and sid != "Compact" else None)
+    scale = {"Title": 2.4, "Subtitle": 1.4, "Heading1": 1.9, "Heading2": 1.5, "Heading3": 1.25}
+    for sid, k in scale.items():
+        color = t.get("accent") if sid in ("Heading3", "Subtitle") and t.get("accent") else t.get("primary")
+        style(sid, font=t.get("heading-font"), color=color, size=f"{size * k:.0f}pt" if size else None)
+    style("Hyperlink", color=t.get("accent") or t.get("primary"))
+    if margin:
+        ops.append({"command": "set", "path": "/section[1]", "props": {f"margin{s}": f"{margin:g}cm" for s in ("Top", "Bottom", "Left", "Right")}})
+    return ops, bad
+
+
 def base_pt(style: dict) -> float:
     return float(style["size"].rstrip("pt"))
 
@@ -520,7 +591,13 @@ class Office:
         tmp = f"/tmp/office-{uuid.uuid4().hex[:8]}"
         made, ids, deck_warnings = f"{tmp}.{kind}", dict(), list()
         if kind == "docx":
-            ref = f" --reference-doc={shlex.quote(self.docx_reference)}" if self.docx_reference else ""
+            refdoc = self.docx_reference
+            theme = doc_theme(await ctx.env.read_file(src))
+            if theme and refdoc:  # the house style, restyled by the .md's own `theme:` (fonts, colours, sizes, margins)
+                refdoc, bad = await self._theme_reference(ctx, theme, f"{tmp}-ref.docx")
+                if bad:
+                    return "Not built; fix the theme in the front matter:\n" + "\n".join(f"- {b}" for b in bad)
+            ref = f" --reference-doc={shlex.quote(refdoc)}" if refdoc else ""
             cmd = f"cd {shlex.quote(os.path.dirname(src))} && pandoc {shlex.quote(src)} -o {made}{ref} 2>&1"
         elif jsx:  # React deck: chromium lays it out, build.mjs turns the boxes into officecli ops; .html beside it
             html = src[:-4] + ".html"
@@ -590,18 +667,34 @@ class Office:
         what = f" ({summary['slides'] if jsx else len({n for n, _ in ids})} slides)" if kind == "pptx" else ""
         if jsx:
             what += f"; preview {src[:-4]}.html"
-        if kind == "docx":  # page count: officecli's HTML printed by chromium (Word's may differ by a page)
+        if kind == "docx":  # pages: officecli's HTML printed by chromium (Word's may differ by a page), kept as the
+            pdf = src[:-3] + ".pdf"  # page-by-page preview beside the .md and .docx
             _, pages = await self._sh(ctx, f"officecli view {shlex.quote(out)} html -o {tmp}.html >/dev/null 2>&1 && "
+                                           f"{print_css_cmd(tmp + '.html')} && "
                                            f"{PRINT_PDF} --print-to-pdf={tmp}.pdf file://{tmp}.html >/dev/null 2>&1; "
-                                           f"pdfinfo {tmp}.pdf 2>/dev/null | awk '/^Pages:/{{print $2}}'; rm -f {tmp}.html {tmp}.pdf", 120)
+                                           f"pdfinfo {tmp}.pdf 2>/dev/null | awk '/^Pages:/{{print $2}}'; "
+                                           f"mv -f {tmp}.pdf {shlex.quote(pdf)} 2>/dev/null; rm -f {tmp}.html {tmp}-ref.docx", 120)
             _, words = await self._sh(ctx, f"pandoc -t plain {shlex.quote(src)} 2>/dev/null | wc -w", 60)
             if pages.strip().isdigit() and words.strip().isdigit():
                 p, w = int(pages.strip()), int(words.strip())
                 what = (f" (about {p} pages, {w} words, so about {w // max(p, 1)} words a page here; to change the length, "
-                        "cut or add words once by that ratio)")
+                        f"cut or add words once by that ratio; preview {pdf})")
         if not problems:
             return f"Built {out}{what}. No problems found."
         return f"Built {out}{what}, with problems to fix in the source:\n" + "\n".join(f"- {p}" for p in problems)
+
+    async def _theme_reference(self, ctx, theme: dict, path: str) -> tuple[str, list[str]]:
+        """A copy of the house reference.docx with the theme's fonts, colours, sizes and margins (officecli styles)."""
+        ops, bad = theme_ops(theme)
+        if bad:
+            return "", bad
+        await ctx.env.write_file(f"{path}.json", json.dumps(ops))
+        q = shlex.quote
+        code, log = await self._sh(ctx, f"cp {q(self.docx_reference)} {q(path)} && officecli batch {q(path)} --input "
+                                        f"{q(path)}.json 2>&1 | tail -3; officecli close {q(path)} >/dev/null 2>&1; rm -f {q(path)}.json", 60)
+        if "failed" in log and "0 failed" not in log:
+            return "", [f"the theme could not be applied: {log.strip()[-300:]}"]
+        return path, []
 
     async def _read(self, args, ctx) -> str:
         path = shlex.quote(os.path.join(ctx.cwd, args["path"]))

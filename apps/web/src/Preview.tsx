@@ -10,17 +10,23 @@ import { ext, hasRaw, kindOf, LANGS, tooBig } from "./fileKind";
 const Code = lazy(() => import("./viewers/Code"));
 const Sheet = lazy(() => import("./viewers/Sheet"));
 
-type Loaded = { entry?: FileEntry; text?: string; data?: ArrayBuffer; img?: string; src?: string;
-  deck?: { html: string; pptx?: string } };  // a React deck: its .html preview (a slide viewer) and the built .pptx
+type Built = { view: string; file?: string; label: string; source: string };  // preview, office file, source
+type Loaded = { entry?: FileEntry; text?: string; data?: ArrayBuffer; img?: string; src?: string; deck?: Built };
 
-/** name.pptx / name.jsx / name.html side by side = a deck built by office_build: show the .html, offer the .pptx. */
-function deckOf(path: string, siblings: FileEntry[]): Loaded["deck"] {
-  const m = /^(.*)\.(pptx|jsx|html)$/i.exec(path);
+/** A source and what office_build made from it, side by side: show the preview, offer the office file.
+ * name.jsx + name.html (+ name.pptx): a React deck, its .html is a slide viewer.
+ * name.md + name.pdf (+ name.docx): a document, its .pdf shows the pages. */
+function deckOf(path: string, siblings: FileEntry[]): Built | undefined {
+  const m = /^(.*)\.(pptx|jsx|html|docx|md|pdf)$/i.exec(path);
   if (!m) return undefined;
   const base = m[1].split("/").pop()!, has = (x: string) => siblings.some((e) => e.name === `${base}.${x}` && !e.is_dir);
-  if (!has("jsx") || !has("html")) return undefined;
-  const dir = path.slice(0, path.length - path.split("/").pop()!.length);
-  return { html: `${dir}${base}.html`, pptx: has("pptx") ? `${dir}${base}.pptx` : undefined };
+  const dir = path.slice(0, path.length - path.split("/").pop()!.length), at = (x: string) => `${dir}${base}.${x}`;
+  const e = m[2].toLowerCase();
+  if (["pptx", "jsx", "html"].includes(e) && has("jsx") && has("html"))
+    return { view: at("html"), file: has("pptx") ? at("pptx") : undefined, label: "PPTX", source: at("jsx") };
+  if (["docx", "md", "pdf"].includes(e) && has("md") && has("pdf") && has("docx"))
+    return { view: at("pdf"), file: at("docx"), label: "DOCX", source: at("md") };
+  return undefined;
 }
 
 /** One file, read-only. `writes` goes up each time the chat shows the agent wrote this file: then it reloads. */
@@ -61,9 +67,11 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
       const siblings = await api.files(sid, i < 0 ? "." : path.slice(0, i));
       const entry = siblings.find((e) => e.name === name && !e.is_dir);
       if (!entry) throw new Error("File not found");
-      const r: Loaded = { entry, deck: raw ? undefined : deckOf(path, siblings) };
-      if (r.deck) {  // the deck's own viewer page (slides, thumbnails, Present), from the preview origin
-        r.src = (await api.preview(sid)).base + r.deck.html.split("/").map(encodeURIComponent).join("/") + `?v=${n + writes}`;
+      const built = deckOf(path, siblings);
+      const r: Loaded = { entry, deck: built };
+      if (raw && built) r.text = await (await api.download(sid, built.source)).text();  // Raw: the source it came from
+      else if (built) {  // a deck's own viewer page, or a document's pages (pdf), from the preview origin
+        r.src = (await api.preview(sid)).base + built.view.split("/").map(encodeURIComponent).join("/") + `?v=${n + writes}`;
       } else if (!tooBig(kind, entry.size)) {
         if (kind === "code" || raw) r.text = await (await api.download(sid, path)).text();
         else if (kind === "html" || kind === "pdf" || kind === "office" || ext(path) === "svg") {
@@ -99,7 +107,8 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
     : got.src ? <>
       {shown !== got.src && <Skeleton name={path} />}
       <iframe ref={frame} className="frame fade-in" title={name} src={got.src} onLoad={() => setShown(got.src)} hidden={shown !== got.src}
-        sandbox={got.deck || kind === "html" || kind === "office" ? "allow-scripts" : undefined}
+        sandbox={got.deck ? (got.deck.view.endsWith(".html") ? "allow-scripts" : undefined)  // a pdf can't show sandboxed
+          : kind === "html" || kind === "office" ? "allow-scripts" : undefined}
         allow={got.deck ? "fullscreen" : undefined} />
     </>
     : got.data && kind === "sheet" ? <Sheet data={got.data} tsv={ext(path) === "tsv"} /> : null;
@@ -113,11 +122,11 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
         <strong className="preview-name" title={path}>{name}</strong>
         {got?.entry && <span className="preview-size">{fmt(got.entry.size)}</span>}
         <span className="spacer" />
-        {got?.deck?.pptx && (
-          <button className="ghost small" onClick={() => downloadFile(sid, got.deck!.pptx!).catch(fail)} title="Download the PowerPoint file">
-            <IconDownload size={14} /> PPTX</button>
+        {got?.deck?.file && (
+          <button className="ghost small" onClick={() => downloadFile(sid, got.deck!.file!).catch(fail)} title={`Download the ${got.deck.label} file`}>
+            <IconDownload size={14} /> {got.deck.label}</button>
         )}
-        {(hasRaw(kind) || got?.deck || /\.jsx$/i.test(path)) && (
+        {(hasRaw(kind) || got?.deck || /\.(jsx|md)$/i.test(path)) && (
           <div className="seg" role="group" aria-label="View">
             <button aria-pressed={!raw} onClick={() => setRaw(false)}>Rendered</button>
             <button aria-pressed={raw} onClick={() => setRaw(true)}>Raw</button>

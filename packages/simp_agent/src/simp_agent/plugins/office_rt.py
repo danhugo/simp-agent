@@ -326,6 +326,13 @@ class Doc:
             raise OfficeError("pdf export works for .docx only here; for slides use screenshot(page=...) or export('x.html')")
         html = os.path.join(RUN_DIR, "export.html")
         _call(["view", self.path, "html", "-o", html], cwd=RUN_DIR)
+        page = ("<style>@page{size:A4;margin:0}html,body{margin:0;background:#fff}.page-wrapper{padding:0!important;"
+                "margin:0!important;background:none!important}.page{box-sizing:border-box;min-height:0!important;"
+                "margin:0 auto!important;box-shadow:none!important}</style>")  # see office.PRINT_CSS
+        with builtins.open(html, encoding="utf-8") as f:
+            text = f.read()
+        with builtins.open(html, "w", encoding="utf-8") as f:
+            f.write(text.replace("</head>", page + "</head>", 1))
         p = subprocess.run(["chromium", "--headless", "--no-pdf-header-footer",
                             f"--print-to-pdf={out}", "file://" + html], capture_output=True, text=True, timeout=180)
         if not os.path.exists(out):
