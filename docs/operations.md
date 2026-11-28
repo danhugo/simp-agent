@@ -317,7 +317,7 @@ from its tar (a small cache, 64 MB). New users start with docx, pdf, pptx, xlsx.
 into the sandbox at `/opt/simp/skills` (root-owned, read-only for the agent) when it starts work and when they changed;
 adding, updating or removing one pushes it into a running sandbox at once (`simp_server/user_skills.py`). Skills kept
 on the server's disk by v0.15.x (`<data_dir>/skills/<id>/`) move to R2 on the user's first load. A skill change needs only a server release; users get a library update with the
-skill's Update button (its `version:` went up). Exception: `office_build` uses `docx/reference.docx` from the template
+skill's Update button (its `version:` went up). Exception: `office_build` uses `apps/server/sandboxes/reference.docx` from the template
 (`/opt/simp/office`), so changing it rebuilds the template. Home is not saved any more: old home snapshots (user-installed
 libraries) are deleted at create; repos still come back from their mirror.
 

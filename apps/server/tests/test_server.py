@@ -875,7 +875,7 @@ async def test_skills_start_enabled_and_toggle_per_user(env):
         paths = {f["path"]: f for f in inside["files"]}
         assert inside["label"] == "Excel" and "SKILL.md" in paths and paths["SKILL.md"]["text"]
         md = await api.get("/api/skills/xlsx/file", params={"path": "SKILL.md"}, headers=h)
-        assert md.status_code == 200 and "office_build" in md.text
+        assert md.status_code == 200 and "office_run" in md.text
         assert (await api.get(f"/api/skills/{other['name']}/files", headers=h)).status_code == 404  # not yours (removed)
         assert (await api.get(f"/api/skills/{other['name']}/files", params={"library": 1}, headers=h)).status_code == 200
         assert (await api.get("/api/skills/xlsx/file", params={"path": "nope.md"}, headers=h)).status_code == 404

@@ -45,7 +45,7 @@ RUN_ENV = {"PYTHONNOUSERSITE": "1", "NODE_PATH": f"{NODE_DIR}/node_modules",
 
 APP = __import__("pathlib").Path(__file__).parents[3]  # apps/server
 TEMPLATE_INPUTS = ["sandboxes/e2b_template.py", "sandboxes/chromium.sh", "src/simp_server/sandboxes/toolset.py",
-                   "skill_library/docx/reference.docx"]
+                   "sandboxes/reference.docx"]
 
 
 def template_alias(office: bool = True) -> str:

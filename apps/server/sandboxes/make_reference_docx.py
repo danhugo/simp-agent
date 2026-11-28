@@ -1,4 +1,4 @@
-"""House style for pandoc .md -> .docx (reference.docx): readable body, clear heading scale, tidy tables."""
+"""Dev tool, not shipped to users: rebuilds apps/server/sandboxes/reference.docx, the house style for pandoc .md -> .docx (reference.docx): readable body, clear heading scale, tidy tables."""
 import subprocess
 from docx import Document
 from docx.shared import Pt, RGBColor, Cm

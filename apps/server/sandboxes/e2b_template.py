@@ -33,7 +33,7 @@ def template(office: bool = True):
     if office:  # how officecli starts chromium in the sandbox
         t = t.copy("sandboxes/chromium.sh", "/usr/local/bin/chromium").run_cmd(["chmod 755 /usr/local/bin/chromium"])
     t = (t
-         .copy("skill_library/docx/reference.docx", OFFICE_REFERENCE_DOCX)
+         .copy("sandboxes/reference.docx", OFFICE_REFERENCE_DOCX)
          .run_cmd([f"mkdir -p {SKILLS_DIR}"])  # filled per user at run time
          .run_cmd(["chown -R root:root /opt/simp", "chmod -R go-w /opt/simp"])
          # `user` must not get root: commands run as user, only the mount runs as root (via envd, not sudo).

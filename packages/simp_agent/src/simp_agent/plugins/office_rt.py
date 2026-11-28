@@ -280,10 +280,24 @@ class Doc:
             self._q(dict(it))
 
     # ---- look ----
-    def screenshot(self, page=None, *, grid=None, range: str | None = None, width: int = 1600, height: int = 1200,
-                   out: str | None = None, show: bool = True) -> str:
+    def _sheet_range(self, sheet: str) -> str:
+        """A range covering a sheet's data plus room to its right and below (where charts usually sit)."""
+        import re
+        m = re.search(r'"' + re.escape(sheet) + r'" \((\d+) rows × (\d+) cols', self.view("outline"))
+        if not m:
+            raise OfficeError(f"no sheet {sheet!r} (see d.view('outline'))")
+        rows, cols = int(m.group(1)) + 20, int(m.group(2)) + 10
+        name = ""
+        while cols:
+            cols, r = divmod(cols - 1, 26)
+            name = chr(65 + r) + name
+        return f"/{sheet}/A1:{name}{rows}"
+
+    def screenshot(self, page=None, *, grid=None, range: str | None = None, sheet: str | None = None, width: int = 1600,
+                   height: int = 1200, out: str | None = None, show: bool = True) -> str:
         """PNG of a page/slide (page=1, '2-4'), a contact sheet of all (grid=True or a column count), or one element
-        (range='/slide[1]/shape[@id=3]', 'Sheet1!A1:D9'). show=True: the model sees it after the run."""
+        (range='/slide[1]/shape[@id=3]', 'Sheet1!A1:D9'). An .xlsx shows its active sheet: sheet='Summary' shows that one
+        (its data and charts). show=True: the model sees it after the run."""
         self.flush()
         out = os.path.abspath(out or os.path.join(RUN_DIR, f"shot-{len(_images) + 1}.png"))
         args = ["view", self.path, "screenshot", "-o", out, "--screenshot-width", width, "--screenshot-height", height]
@@ -291,6 +305,8 @@ class Doc:
             args += ["--grid", "auto" if grid is True else grid]
         elif page is not None and not self.path.endswith(".xlsx"):
             args += ["--page", _str(page)]
+        if sheet and not range:
+            range = self._sheet_range(sheet)
         if range:
             args += ["--range", range]
         _call(args, cwd=RUN_DIR)  # officecli leaves a preview file in its working directory

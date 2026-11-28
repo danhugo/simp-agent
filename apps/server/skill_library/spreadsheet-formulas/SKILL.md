@@ -4,7 +4,7 @@ label: Spreadsheet formulas
 description: "Write and explain Excel / Google Sheets formulas: lookups (XLOOKUP, INDEX/MATCH), conditional sums, dates, text, dynamic arrays, pivot-style summaries, conditional formatting rules, fixing #N/A/#VALUE errors."
 license: MIT
 source: simp
-version: 1
+version: 2
 ---
 
 # Spreadsheet Formulas
@@ -18,7 +18,9 @@ Ask (or infer) the app: **Excel 365**, older Excel (no dynamic arrays / XLOOKUP 
 3. A short breakdown of how it works.
 4. Edge cases (blanks, errors) handled or noted.
 
-If the user gave a file, test it: write the formula with openpyxl into a copy and let the `xlsx` skill's `office_build` recalculate, or reproduce the logic with pandas to check the expected result.
+If the user gave a file, test it on a copy with one `office_run`: `d = office.open(copy)`, `d.set("/Sheet1/F2",
+formula="…")` (no leading `=`), then `print(d.view("text", range="Sheet1!A1:F10"))`: officecli calculates it and
+reports errors. Or reproduce the logic with pandas to check the expected result.
 
 ## Core patterns
 
