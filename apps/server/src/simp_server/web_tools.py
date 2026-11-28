@@ -231,6 +231,81 @@ def tavily_search(query: str, count: int, key: str, post=http_post) -> list[dict
     return out
 
 
+def _site(host: str) -> str:
+    """www.trip.com, ak-d.tripcdn.com -> trip.com, tripcdn.com: the last two labels, to match a picture to a page."""
+    return ".".join(host.lower().split(".")[-2:])
+
+
+def tavily_images(query: str, key: str, post=http_post, count: int = 3) -> list[dict]:
+    """Pictures for a query (Tavily's image results, 1 credit) as {url, page}: page = a result page on the picture's
+    site, else the picture itself (a Wikimedia upload: its file page). The app shows them; the model never picks URLs."""
+    r = post(f"{TAVILY}/search", {"query": query, "max_results": 5, "search_depth": "basic", "include_images": True}, key)
+    pages = [x.get("url", "") for x in r.get("results", []) if str(x.get("url", "")).startswith("http")]
+    out = []
+    for u in r.get("images", []):
+        if not (isinstance(u, str) and u.startswith("https://")):
+            continue
+        host = urllib.parse.urlsplit(u).hostname or ""
+        page = next((pg for pg in pages if _site(urllib.parse.urlsplit(pg).hostname or "") == _site(host)), u)
+        if host == "upload.wikimedia.org":  # .../commons/3/3d/Name.jpg -> its file page
+            page = "https://commons.wikimedia.org/wiki/File:" + urllib.parse.urlsplit(u).path.rsplit("/", 1)[-1]
+        out.append({"url": u, "page": page})
+    return out[:count]
+
+
+def commons_images(query: str, get=None, count: int = 3) -> list[dict]:
+    """Picture URLs from Wikimedia Commons search (free, no key): 640px thumbnails of photos (jpg/png/webp)."""
+    url = ("https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6"
+           f"&gsrlimit=8&prop=imageinfo&iiprop=url|mime&iiurlwidth=640&gsrsearch={urllib.parse.quote(query)}")
+    if get:
+        _, _, body = get(url)
+    else:  # Wikimedia's API policy: a bot names itself (a browser-like User-Agent is refused)
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "SimpAgentImagePreview/1.0 (python-urllib)"})
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+                body = resp.read(MAX_BYTES)
+        except (urllib.error.URLError, OSError) as e:
+            raise WebError(f"picture search failed: {e}")
+    pages = sorted(json.loads(body).get("query", {}).get("pages", {}).values(), key=lambda x: x.get("index", 0))
+    out = []
+    for pg in pages:
+        info = (pg.get("imageinfo") or [{}])[0]
+        if info.get("mime") in ("image/jpeg", "image/png", "image/webp") and str(info.get("thumburl", "")).startswith("https://"):
+            out.append({"url": info["thumburl"], "page": info.get("descriptionurl") or "https://commons.wikimedia.org/"})
+    return out[:count]
+
+
+def find_images(query: str, key: str | None) -> list[dict]:
+    """Tavily when there is a key and it answers; else Wikimedia Commons."""
+    if key:
+        try:
+            if found := tavily_images(query, key):
+                return found
+        except WebError:
+            pass
+    return commons_images(query)
+
+
+IMAGES_HINT = ("Pictures in your answer: when it names things with a look (places, dishes, products, animals, "
+               "buildings, people), show them with ```images blocks, one picture a line: short English search query | "
+               "caption in the user's language | optional one-line note | optional link (a page from your search results "
+               "about that thing, so the user can click through; never made up). The number of lines sets the look, so mix them:\n"
+               "- 1 line: one wide picture. Use it once, right under the opening sentence, for the overall subject.\n"
+               "- 2 lines: two large cards with notes. For dishes, or two things side by side.\n"
+               "- 3 lines without notes: a row of three pictures.\n"
+               "- 3–6 lines, each with a note of one or two sentences: a list with a picture beside each item. Use it "
+               "INSTEAD of a bullet list when the items have a look (sights, dishes, products); do not repeat them as "
+               "bullets.\n"
+               "Each block goes directly under the section it shows, never collected at the end; 2–4 blocks an answer, "
+               "never more than 6 lines a block. Example shape:\n"
+               "Opening sentence.\n```images\nQingdao coastline red roofs | Thanh Đảo nhìn từ trên cao\n```\n"
+               "## Sights\n```images\nZhanqiao Pier | Cầu tàu Zhanqiao | Biểu tượng thành phố, cầu tàu vươn ra biển. | https://...a page you found...\n"
+               "Badaguan villas | Badaguan | Khu biệt thự châu Âu, đẹp nhất mùa thu.\n"
+               "St. Michael's Cathedral Qingdao | Nhà thờ St. Michael | Nhà thờ Gothic kiểu Đức giữa phố cổ.\n```\n## Food\n...list...\n```images\n"
+               "Qingdao grilled seafood | Hải sản nướng | Tôm, sò, mực, hàu\nTsingtao draft beer | Bia Thanh Đảo | "
+               "Đặc sản nổi tiếng nhất\n```\nThe app finds and shows the pictures; never write image URLs.")
+
+
 def tavily_extract(url: str, key: str, post=http_post) -> str:
     r = post(f"{TAVILY}/extract", {"urls": [url]}, key)
     for x in r.get("results", []):
@@ -292,66 +367,6 @@ def do_download(url: str, get=http_get) -> bytes:
     return body
 
 
-class _Meta(HTMLParser):
-    """Collects <meta property|name=... content=...> from a page."""
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.meta = {}
-
-    def handle_starttag(self, tag, attrs):
-        a = dict(attrs)
-        key = (a.get("property") or a.get("name") or "").lower()
-        if tag == "meta" and key and a.get("content") and key not in self.meta:
-            self.meta[key] = a["content"].strip()
-
-
-def og_image(html: str, base: str) -> str:
-    """og:image (or twitter:image) of a page, absolute; "" if none."""
-    p = _Meta()
-    p.feed(html)
-    img = p.meta.get("og:image") or p.meta.get("og:image:url") or p.meta.get("twitter:image") or ""
-    img = urllib.parse.urljoin(base, img) if img else ""
-    return img if img.startswith(("http://", "https://")) else ""
-
-
-MAX_CARDS = 6
-CARDS_HINT = ("When seeing it would help the user (the subject has a look), call show_cards with the best pages "
-              "you found, then answer in text.")
-
-
-def _http(u) -> str:
-    return u if isinstance(u, str) and u.startswith(("http://", "https://")) else ""
-
-
-def do_cards(items: list, get=http_get) -> str:
-    """Validates cards; fills a missing image from the page's og:image. Returns JSON {"cards": [...]}. Stores URLs only."""
-    from concurrent.futures import ThreadPoolExecutor
-
-    cards = []
-    for it in (items or [])[:MAX_CARDS]:
-        if not isinstance(it, dict) or not _http(it.get("url")):
-            continue
-        cards.append({"url": it["url"], "title": str(it.get("title") or "")[:200],
-                      "snippet": str(it.get("snippet") or "")[:300], "image": _http(it.get("image"))})
-    if not cards:
-        raise WebError("no valid cards (each needs an http(s) url)")
-
-    def fill(c):
-        if not c["image"]:
-            try:
-                final, ctype, body = get(c["url"])
-                if "html" in ctype.lower():
-                    c["image"] = og_image(_decode(body, ctype), final)
-            except WebError:
-                pass  # card still shows as text
-        return c
-
-    with ThreadPoolExecutor(len(cards)) as ex:
-        cards = list(ex.map(fill, cards))
-    return json.dumps({"cards": cards}, ensure_ascii=False)
-
-
 def _p(t, d):
     return {"type": t, "description": d}
 
@@ -403,20 +418,7 @@ def make_tools(provider: str = "duckduckgo", key: str | None = None, extract=Non
         lines += [f"note: {h} blocks automated downloads; use another source" for h, n in refused.items() if n >= 2]
         return "\n".join(lines) or "web_download error: no files"
 
-    async def cards(args, ctx):
-        try:
-            return await asyncio.to_thread(do_cards, args.get("items"))
-        except WebError as e:
-            return f"show_cards error: {e}"
-
-    card = _obj({"url": _p("string", "Link the card opens"), "title": _p("string", "Card title"),
-                 "image": _p("string", "Image URL; omit to use the page's og:image"),
-                 "snippet": _p("string", "One short line")}, ["url", "title"])
     return [
-        AgentTool("show_cards", "Show link cards with a preview image under your answer, for subjects that are better "
-                                "seen than read about. Image is filled from the page if omitted. "
-                                f"Max {MAX_CARDS} items.",
-                  _obj({"items": {"type": "array", "items": card, "description": "Cards to show"}}, ["items"]), cards),
         AgentTool("web_search", "Search the web. Returns title, url, the relevant passages and the start of each page (often enough without web_fetch). Scale the "
                                 "work to the question: one fact takes 1-3 searches; a comparison or a topic to research takes "
                                 "more, done in rounds. Each round, send several short, different queries at once (other "
@@ -465,4 +467,4 @@ class Web:
             raise ValueError(f"unknown web search provider {provider!r}; have {sorted(PROVIDERS)}")
         for t in make_tools(provider, self.tavily_key, self.extract):
             api.register_tool(t)
-        api.add_prompt_section(self.name, CARDS_HINT, 20)
+        api.add_prompt_section(self.name, IMAGES_HINT, 20)
