@@ -120,7 +120,6 @@ export function Preview({ sid, path, writes, onClose, onError, filesOpen, onTogg
           <button className="icon-btn" onClick={onToggleFiles} aria-expanded={!!filesOpen} aria-controls="preview-files" title="Files" aria-label="Files"><IconFolder size={16} /></button>
         )}
         <strong className="preview-name" title={path}>{name}</strong>
-        {got?.entry && <span className="preview-size">{fmt(got.entry.size)}</span>}
         <span className="spacer" />
         {(hasRaw(kind) || got?.deck || /\.(jsx|md)$/i.test(path)) && (
           <div className="seg" role="group" aria-label="View">
