@@ -55,6 +55,7 @@ from .sandboxes.toolset import DECK_DIR, OFFICE_REFERENCE_DOCX
 from .connections import STATE_TTL, Connections, UserMcp, providers
 from .fake import sse
 from .store import MEM_ITEM_MAX, DbMemoryStore
+from . import web_tools
 from .web_tools import Web
 
 log = logging.getLogger("simp_server")
@@ -820,6 +821,47 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     @app.get("/api/me")
     async def me(u=Depends(user)):
         return {"name": u["name"]}
+
+    image_cache: dict[str, list[dict]] = dict()  # query -> pictures {url, page}, for ```images blocks in answers
+    image_ok: set[str] = set()  # URLs the picture search returned: the only ones /api/image fetches
+    image_bytes: dict[str, tuple[str, bytes]] = dict()  # url -> (content type, bytes), the last few hundred
+
+    @app.get("/api/images")
+    async def images(q: str, u=Depends(user)):
+        """Pictures for a query, as /api/image links: the server fetches them, since many sites refuse a picture
+        shown on another site (hotlinking), and the viewer's browser never contacts those sites."""
+        q = " ".join(q.split())[:200]
+        if not q:
+            return {"images": []}
+        if q not in image_cache:
+            try:
+                image_cache[q] = await asyncio.to_thread(web_tools.find_images, q, mgr.keys.get("TAVILY_API_KEY"))
+            except web_tools.WebError:
+                return {"images": []}
+            if len(image_cache) > 2000:
+                image_cache.pop(next(iter(image_cache)))
+        image_ok.update(x["url"] for x in image_cache[q])
+        return {"images": [{"src": f"/api/image?u={urllib.parse.quote(x['url'], safe='')}", "page": x["page"]}
+                           for x in image_cache[q]]}
+
+    @app.get("/api/image")  # no auth (an <img> sends no token), but only URLs the picture search returned
+    async def image(u: str):
+        if u not in image_ok:
+            return Response(status_code=404)
+        if u not in image_bytes:
+            try:
+                _, ctype, body = await asyncio.to_thread(web_tools.http_get, u)
+            except web_tools.WebError:
+                return Response(status_code=502)
+            ctype = ctype.split(";")[0].strip().lower()
+            if not ctype.startswith("image/") or ctype == "image/svg+xml":
+                return Response(status_code=415)
+            image_bytes[u] = (ctype, body)
+            if len(image_bytes) > 300:
+                image_bytes.pop(next(iter(image_bytes)))
+        ctype, body = image_bytes[u]
+        return Response(body, media_type=ctype, headers={"Cache-Control": "private, max-age=86400",
+                                                         "X-Content-Type-Options": "nosniff"})
 
     @app.post("/api/hello")
     def hello(h: p.Hello):

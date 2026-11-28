@@ -1,8 +1,9 @@
 import "./chat.css";
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { isValidElement, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ext, kindOf } from "./fileKind";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { createPortal } from "react-dom";
 import { api, AuthError, type ConnStatus, type SkillItem } from "./api";
 import { Badge, chatName, ModelPicker } from "./App";
 import {
@@ -327,8 +328,71 @@ function CodeBlock({ children }: { children?: ReactNode }) {
 const mdComponents: Components = {
   img: ({ src, alt }) => <a href={typeof src === "string" ? src : undefined} target="_blank" rel="noopener noreferrer">[image: {alt}] {src}</a>,
   a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
-  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+  pre: ({ children }) => {
+    const code = isValidElement<{ className?: string; children?: ReactNode }>(children) ? children.props : undefined;
+    return code?.className === "language-images" ? <ImageStrip text={String(code.children ?? "")} />
+      : <CodeBlock>{children}</CodeBlock>;
+  },
 };
+
+/** An answer's ```images block: one "search query | caption" a line. The server finds the pictures (so the model
+ * never picks an image URL); a line still being typed waits until it has stayed the same for a moment. */
+function ImageStrip({ text }: { text: string }) {
+  const items = text.split("\n").map((l) => l.split("|").map((x) => x.trim())).filter(([q]) => q)
+    .map(([q, cap, sub, href]) => ({ q, cap: cap || q, sub, href: /^https?:\/\//i.test(href || "") ? href : undefined }));
+  // the layout follows the lines: 1 = a wide hero picture, 2 = two large cards, 3+ each with a note = a list
+  // (thumbnail beside a title and its text), 3+ without = a grid
+  const layout = items.length === 1 ? "hero" : items.length === 2 ? "pair" : items.every((it) => it.sub) ? "list" : "grid";
+  return <div className={`image-strip ${layout}`}>{items.map((it, i) => <ImageCard key={i} {...it} keep={layout === "list"} />)}</div>;
+}
+
+function ImageCard({ q, cap, sub, href, keep }: { q: string; cap: string; sub?: string; href?: string; keep: boolean }) {
+  const [found, setFound] = useState<{ src: string; page: string }[] | null>(null);
+  const [n, setN] = useState(0);  // which of the found pictures (the next one when one fails to load)
+  const [big, setBig] = useState(false);
+  useEffect(() => {
+    setFound(null); setN(0);
+    let live = true;
+    const t = window.setTimeout(() => { api.images(q).then((u) => live && setFound(u), () => live && setFound([])); }, 600);
+    return () => { live = false; clearTimeout(t); };
+  }, [q]);
+  if (found && n >= found.length && !keep) return null;  // nothing found or none loads: leave it out (a list keeps its text)
+  const pic = found && n < found.length ? found[n] : undefined;
+  return (
+    <figure className="image-card">
+      {pic ? <img src={pic.src} alt={cap} loading="lazy" onError={() => setN(n + 1)} onClick={() => setBig(true)} />
+        : <div className={found ? "image-card-ph empty" : "image-card-ph"} />}
+      <figcaption>
+        {href ? <a href={href} target="_blank" rel="noopener noreferrer">{cap}</a> : cap}
+        {sub && <span className="image-card-sub">{sub}</span>}
+      </figcaption>
+      {big && pic && <ImageView src={pic.src} page={pic.page} cap={cap} onClose={() => setBig(false)} />}
+    </figure>
+  );
+}
+
+/** A picture large, with where it comes from (it is borrowed from that site). Esc or a click outside closes it. */
+function ImageView({ src, page, cap, onClose }: { src: string; page: string; cap: string; onClose: () => void }) {
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+  let host = page;
+  try { host = new URL(page).hostname.replace(/^www\./, ""); } catch { /* shown as is */ }
+  return createPortal(
+    <div className="image-view" role="dialog" aria-label={cap} onClick={onClose}>
+      <div className="image-view-box" onClick={(e) => e.stopPropagation()}>
+        <img src={src} alt={cap} />
+        <div className="image-view-foot">
+          <span className="image-view-cap">{cap}</span>
+          <a href={page} target="_blank" rel="noopener noreferrer">Source: {host} ↗</a>
+        </div>
+      </div>
+    </div>,
+    document.body,  // outside the answer, so the card's picture styles do not apply
+  );
+}
 const OTHER_FILES = new Set(["pptx", "ppt", "doc", "xls", "zip", "odt", "ods", "mp3", "mp4", "wav"]);
 /** `report.docx` or `/work/a/b.py` in an answer: a workspace file name (one line, has an extension) */
 export const fileRef = (t: string) => {
