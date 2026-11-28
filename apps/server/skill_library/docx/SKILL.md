@@ -3,7 +3,7 @@ name: docx
 label: Word
 description: "Create, read and edit Word documents (.docx): reports, letters, proposals, tracked changes, comments."
 license: Complete terms in LICENSE.txt
-version: 7
+version: 8
 ---
 
 # Word documents
@@ -13,7 +13,7 @@ version: 7
 Fix the .md and build again. Aim: 3–5 turns. Never write docx-js/python-docx code for a new document.
 
 
-**Research budget:** at most TWO messages of research in total: one of parallel `web_search` calls (2–4 queries), then optionally one of parallel `web_fetch(url, prompt=...)` calls. Never fetch search-engine pages (google, bing, duckduckgo…), never retry failed fetches, never curl. Then write with what you have: mark uncertain figures "≈" or "approx." and name the source you did get.
+**Research:** only what the content needs (the web tools say how); the user's own material comes first.
 
 **Done rule:** `office_build` already validates, recalculates and checks the file. When it says "No problems found", answer the user right away. Never unpack, render, re-open or re-check the built file yourself, and never run other checks after a clean build. It reports pages and words: within ±1 page of the asked length is fine. To change the length, cut or add words ONCE using its words-per-page figure, build, and answer. Never convert to PDF, pdftotext or render pages to measure length.
 

@@ -406,7 +406,13 @@ def make_tools(provider: str = "duckduckgo", key: str | None = None, extract=Non
                                 "seen than read about. Image is filled from the page if omitted. "
                                 f"Max {MAX_CARDS} items.",
                   _obj({"items": {"type": "array", "items": card, "description": "Cards to show"}}, ["items"]), cards),
-        AgentTool("web_search", "Search the web. Returns title, url, snippet per result. Follow up with web_fetch for details.",
+        AgentTool("web_search", "Search the web. Returns title, url and the relevant passages of each result. Scale the "
+                                "work to the question: one fact takes 1-3 searches; a comparison or a topic to research takes "
+                                "more, done in rounds. Each round, send several short, different queries at once (other "
+                                "words, the source's language, the official name), read what came back, then search again "
+                                "only for what is still missing. Use web_fetch only when the passages are not enough, on the "
+                                "1-3 best pages (official sites, the original source), all in one turn. Stop as soon as you "
+                                "can answer well; say what you could not confirm.",
                   _obj({"query": _p("string", "Search query"),
                         "count": _p("integer", "Max results (default 5)")}, ["query"]), search, parallel=True),
         AgentTool("web_fetch", "GET a public http(s) URL; HTML is converted to text, JSON/text returned as is. "

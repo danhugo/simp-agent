@@ -3,7 +3,7 @@ name: xlsx
 label: Excel
 description: "Create, read and edit spreadsheets (.xlsx, .csv): workbooks with formulas, formatting, charts, dashboards, data cleanup."
 license: Complete terms in LICENSE.txt
-version: 7
+version: 8
 ---
 
 # Spreadsheets
@@ -12,7 +12,7 @@ version: 7
 and charts, calculates every formula and stores its value, then checks the file: formula errors (`#DIV/0!`,
 `#REF!`…) and formulas it cannot evaluate come back in the result. Fix the script, run again. Aim: 2–4 turns.
 
-**Research budget:** at most TWO messages of research in total: one of parallel `web_search` calls (2–4 queries), then optionally one of parallel `web_fetch(url, prompt=...)` calls. Never fetch search-engine pages (google, bing, duckduckgo…), never retry failed fetches, never curl. Then write with what you have: mark uncertain figures "≈" or "approx." and name the source you did get.
+**Research:** only what the content needs (the web tools say how); the user's own material comes first.
 
 **Done rule:** after a clean run, look once (`print(d.view("text", range="Sales!A1:F12"))` or the screenshot the
 script took) and answer. Never unpack the file or re-check it another way.
