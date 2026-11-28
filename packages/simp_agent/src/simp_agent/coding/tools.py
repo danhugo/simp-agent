@@ -108,23 +108,38 @@ async def look(paths: list, question: str | None, ctx) -> str:
     return "\n".join(notes)
 
 
+MAX_TEXT_FILES = 10  # text files per read call
+
+
 async def read(args: dict, ctx) -> str:
+    """One file, or several: text files come back one after another under their name, pictures go to look()."""
     paths = args.get("paths") or ([args["path"]] if args.get("path") else [])
     if not paths:
-        raise ValueError("give path (or paths for several images)")
-    if any(is_image(x) for x in paths):
-        if not all(is_image(x) for x in paths):
-            raise ValueError("paths takes images only; read text files one at a time")
-        return await look(paths, args.get("prompt"), ctx)
-    if len(paths) > 1:
-        raise ValueError("paths takes images only; read text files one at a time")
-    p = _path(ctx, paths[0])
+        raise ValueError("give path (or paths for several files)")
+    images, texts = [x for x in paths if is_image(x)], [x for x in paths if not is_image(x)]
+    if len(paths) == 1 and texts:
+        return await _read_text(texts[0], args, ctx)
+    parts = list()
+    for name in texts[:MAX_TEXT_FILES]:
+        try:
+            body = await _read_text(name, args, ctx)
+        except Exception as e:  # missing, blocked: the others are still read
+            body = f"Error: {e}"
+        parts.append(f"==> {name} <==\n{body}")
+    parts += [f"Skipped {n}: at most {MAX_TEXT_FILES} text files per read" for n in texts[MAX_TEXT_FILES:]]
+    if images:
+        parts.append(await look(images, args.get("prompt"), ctx))
+    return "\n\n".join(parts)
+
+
+async def _read_text(name: str, args: dict, ctx) -> str:
+    p = _path(ctx, name)
     text = await ctx.env.read_file(p)
     _seen(ctx, p, text)
     lines = text.splitlines()
     start = max(args.get("offset", 1), 1) - 1
     end = start + args.get("limit", MAX_LINES)
-    if stub := _same_read(ctx, p, start, end, text, paths[0]):
+    if stub := _same_read(ctx, p, start, end, text, name):
         return stub
     out, info = truncate_head("\n".join(f"{i + 1}\t{line}" for i, line in enumerate(lines[start:end], start)))
     end = min(end, len(lines), start + info["kept_lines"])
@@ -331,11 +346,12 @@ def make_tools(bash_max_timeout_s: float | None = BASH_MAX_TIMEOUT_S) -> list:
     return [
         AgentTool("read", "Read a text file (output has line numbers; use offset/limit for big files), or look at "
                           "images (png, jpg, webp, gif): a helper looks at them and answers per file. To check several "
-                          "pictures, pass them together in paths. Read again after a change to see the new version. "
+                          "pictures or files, pass them together in paths. Read again after a change to see the new version. "
                           "Use this instead of cat/head/tail in bash.",
                   _obj({"path": _p("string", "File path, relative to cwd or absolute"),
                         "paths": {"type": "array", "items": {"type": "string"},
-                                  "description": f"Several images at once (up to {MAX_LOOK}), instead of path"},
+                                  "description": f"Several files at once, instead of path: up to {MAX_TEXT_FILES} text files "
+                                                 f"and {MAX_LOOK} images (offset/limit apply to each text file)"},
                         "prompt": _p("string", "Images only: what to check, e.g. 'does any title wrap or overlap?'. "
                                                "Omit for a full description."),
                         "offset": _p("integer", "First line to read, 1-based (default 1)"),

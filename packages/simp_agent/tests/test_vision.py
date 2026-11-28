@@ -78,9 +78,12 @@ async def test_read_image_errors_are_one_line(tmp_path):
     assert "no model here can view images" in await read_with(tmp_path, {"path": "cat.png"}, None)
 
 
-async def test_paths_take_images_only(tmp_path):
-    (tmp_path / "a.txt").write_text("x")
-    assert "images only" in await read_with(tmp_path, {"paths": ["cat.png", "a.txt"]}, Helper())
+async def test_paths_mix_text_files_and_images(tmp_path):
+    (tmp_path / "a.txt").write_text("alpha")
+    (tmp_path / "b.txt").write_text("beta")
+    out = await read_with(tmp_path, {"paths": ["a.txt", "gone.txt", "b.txt", "cat.png"]}, Helper())
+    assert "==> a.txt <==\n1\talpha" in out and "==> b.txt <==\n1\tbeta" in out
+    assert "==> gone.txt <==\nError:" in out and "cat.png" in out
 
 
 def test_openai_request_puts_the_picture_after_tool_results():
