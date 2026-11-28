@@ -19,6 +19,7 @@ import atexit
 import builtins
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -300,6 +301,8 @@ class Doc:
         (its data and charts). show=True: the model sees it after the run."""
         self.flush()
         out = os.path.abspath(out or os.path.join(RUN_DIR, f"shot-{len(_images) + 1}.png"))
+        if self.path.endswith(".docx") and page is not None and not (grid or range):
+            return self._pdf_pages(page, out, show)
         args = ["view", self.path, "screenshot", "-o", out, "--screenshot-width", width, "--screenshot-height", height]
         if grid and not self.path.endswith(".xlsx"):  # an .xlsx shows its active sheet; range= for a part
             args += ["--grid", "auto" if grid is True else grid]
@@ -313,6 +316,28 @@ class Doc:
         if show:
             _images.append(out)
         return out
+
+    def _pdf_pages(self, page, out: str, show: bool) -> str:
+        """A .docx page as it prints (the PDF preview's pages), not officecli's HTML pages, which overlap: the end of
+        one page showed again at the top of the next. page: 2 or '2-4' (one PNG each: out, out-3.png, ...)."""
+        first, _, last = _str(page).partition("-")
+        first, last = int(first), int(last or first)
+        pdf = self.export(os.path.join(RUN_DIR, "shot.pdf"))
+        prefix = os.path.join(RUN_DIR, "pdfpage")
+        p = subprocess.run(["pdftoppm", "-png", "-r", "110", "-f", str(first), "-l", str(last), pdf, prefix],
+                           capture_output=True, text=True, timeout=120)
+        made = sorted(f for f in os.listdir(RUN_DIR) if f.startswith("pdfpage") and f.endswith(".png"))
+        if not made:
+            raise OfficeError(f"no page {page} (the document has fewer pages?) {p.stderr.strip()[-200:]}")
+        stem, ext = os.path.splitext(out)
+        paths = list()
+        for i, f in enumerate(made):
+            dst = out if i == 0 else f"{stem}-{first + i}{ext}"
+            shutil.move(os.path.join(RUN_DIR, f), dst)
+            paths.append(dst)
+        if show:
+            _images.extend(paths)
+        return paths[0]
 
     def export(self, out: str) -> str:
         """Write .html, .svg or (for a .docx) .pdf: the HTML printed by headless chromium, pages within about one of Word's."""

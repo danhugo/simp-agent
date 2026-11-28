@@ -2,7 +2,7 @@
 name: pptx
 label: PowerPoint
 description: "Create or edit PowerPoint decks (.pptx): slides, presentations, decks of any length, in any language."
-version: 11
+version: 12
 ---
 
 # Slides
@@ -20,8 +20,10 @@ Never write pptxgenjs/python-pptx code. Look at the result once (Fast path step 
 3. `office_build(source="/work/<name>.deck")` → `/work/<name>.pptx`.
 4. If it lists problems, fix them all in ONE message (`edit` the named files), build once more, then answer.
    "Text shrank … cut its words" means the slide says too much: shorten it (or split it in two), never ignore it.
-5. **Look once**: one `office_run` with `office.open(path).screenshot(grid=True)`. Fix what the look names (overlaps,
-   text over a busy picture, empty areas) in ONE message, build once more. No second look. If the screenshot fails or
+5. **Look once, for the design only**: one `office_run` with `office.open(path).screenshot(grid=True)`. Judge the
+   look (balance, colour, empty areas, text over a busy picture), not text fit: the build measured every text box,
+   and the small grid makes the helper see overflow and clipping that are not there. Fix real design faults in ONE
+   message, build once more. No second look. If the screenshot fails or
    comes back blank, skip the look: the build check already passed. Never debug the tools (no test builds in /tmp).
 6. Answer in 2–3 lines: the file path, slide count, theme. No slide-by-slide recap.
 
@@ -30,7 +32,8 @@ soon as it builds clean (plus the one look). Do not polish further on your own: 
 improvements they can ask for. A designed deck (below) should take about 15–25 tool calls, a plain one 4–8.
 
 **Done rule:** `office_build` already validates and checks the file. After a clean build and the one look (step 5),
-answer. Never unpack the file or run other checks.
+answer. Never unpack the file or run other checks (no `office_read` to check it: it only reads). Pictures from .svg
+files are fine; never redraw them as PNG.
 
 
 ## design.xml

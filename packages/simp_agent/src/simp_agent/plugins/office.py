@@ -4,7 +4,7 @@ Three tools, one job each:
 - office_build(source): build a .pptx from a deck folder (design.xml + one XML file per slide, a small declarative
   syntax on a 1280x720 px canvas) or a .docx from a Markdown file; then check it (schema, text overflow, off-slide
   boxes) and report problems by file and element id. The source is the truth: edit it and build again.
-- office_read(path, view): outline / text / issues of any .pptx/.docx/.xlsx (also files the user brought).
+- office_read(path, view): outline / text of any .pptx/.docx/.xlsx (also files the user brought).
 - office_run(code): code mode. Runs a Python script with `office` (office_rt.py: officecli as an API, edits batched)
   in one call, then checks every file it changed and looks at the screenshots it took.
 A build remembers the output's hash, so a file changed elsewhere (e.g. in PowerPoint) is not overwritten silently."""
@@ -53,7 +53,7 @@ Errors name the script line. print() what you want to see; output over 12k chars
 d = office.open(path) | office.create(path, force=False)      # .pptx .docx .xlsx
 Read (Python data): d.get(path='/') -> Node; d.query(selector) -> [Node]  (Node: .path .type .text .props .children,
   .set(**p) .remove()); d.view(mode, start=, end=, max_lines=, range=, cols=) -> str, mode: outline | text | annotated
-  (text with element paths) | stats | issues | forms | html; d.issues(type=); d.validate(); d.raw(part); d.dump(path)
+  (text with element paths) | stats | forms | html; d.raw(part); d.dump(path)  (checks run for you after the script)
 Edit (queued): d.add(parent, type, before=, after=, index=, **props) -> .path of the new element; d.set(path, **props);
   d.remove(path); d.move(path, to=, before=, after=, index=); d.swap(p1, p2); d.replay(batch_items); d.flush()
 Low level: d.raw_set(part, xpath, action, xml); d.add_part(parent, type); d.import_csv('/Sheet1', csv, header=True);
@@ -548,9 +548,10 @@ class Office:
              "required": ["source"]}, self._build))
         api.register_tool(AgentTool(
             "office_read", "Look inside a .pptx/.docx/.xlsx (any, also one the user brought): outline (structure), text, "
-            "annotated (text with element paths for office_run), issues (overflow, broken parts).",
+            "annotated (text with element paths for office_run). Checking is not needed: office_build and office_run "
+            "already check what they make and report the real problems.",
             {"type": "object", "properties": {"path": s, "view": {"type": "string",
-                                                                  "enum": ["outline", "text", "annotated", "issues"]}},
+                                                                  "enum": ["outline", "text", "annotated"]}},
              "required": ["path"]}, self._read, parallel=True))
         api.register_tool(AgentTool("office_run", RUN_DOC, {"type": "object", "properties": {
             "code": {**s, "description": "Python script; `office` is already imported"},
@@ -697,8 +698,12 @@ class Office:
         return path, []
 
     async def _read(self, args, ctx) -> str:
+        view = args.get("view") or "outline"
+        if view not in ("outline", "text", "annotated"):  # issues: estimates (text overflow) that sent agents chasing ghosts
+            return ("Use outline, text or annotated. There is no separate check: office_build and office_run already "
+                    "check what they make and report the real problems; none reported means none to fix.")
         path = shlex.quote(os.path.join(ctx.cwd, args["path"]))
-        code, out = await self._sh(ctx, f"officecli view {path} {args.get('view') or 'outline'} 2>&1", 120)
+        code, out = await self._sh(ctx, f"officecli view {path} {view} 2>&1", 120)
         return _clip(out.strip() or f"(exit {code}, no output)")
 
     async def _run(self, args, ctx) -> str:
