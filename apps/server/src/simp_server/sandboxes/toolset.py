@@ -6,7 +6,10 @@ PIP = ["pandas", "numpy", "matplotlib", "openpyxl", "python-docx", "python-pptx"
        "lxml", "pillow", "requests", "beautifulsoup4", "defusedxml", "markitdown", "pdf2image", "pytesseract"]
 APT = ["git", "ripgrep", "fd-find", "zstd", "s3fs", "ffmpeg", "imagemagick", "procps", "util-linux", "curl",
        "ca-certificates", "nodejs", "tesseract-ocr", "tesseract-ocr-vie", "tesseract-ocr-eng", "fonts-noto-core",
-       "fonts-dejavu-core", "fonts-crosextra-carlito", "fonts-crosextra-caladea", "npm", "pandoc", "poppler-utils", "qpdf"]
+       "fonts-dejavu-core", "fonts-crosextra-carlito", "fonts-crosextra-caladea",
+       # Korean/Japanese/Chinese, and lookalikes of Office fonts for previews (sandboxes/fonts.conf maps the names)
+       "fonts-noto-cjk", "fonts-nanum", "fonts-liberation2", "fonts-urw-base35", "fonts-texgyre", "fonts-ebgaramond",
+       "fonts-open-sans", "fonts-lato", "fonts-inter", "fonts-roboto", "fonts-montserrat", "npm", "pandoc", "poppler-utils", "qpdf"]
 # headless browser: officecli renders slides/pages/sheets to HTML and screenshots them with it
 OFFICE_APT = ["chromium"]
 # node libraries the office skills (apps/server/skill_library) use, installed under NODE_DIR and found through NODE_PATH
@@ -46,7 +49,7 @@ RUN_ENV = {"PYTHONNOUSERSITE": "1", "NODE_PATH": f"{NODE_DIR}/node_modules",
 
 
 APP = __import__("pathlib").Path(__file__).parents[3]  # apps/server
-TEMPLATE_INPUTS = ["sandboxes/e2b_template.py", "sandboxes/chromium.sh", "sandboxes/deck", "src/simp_server/sandboxes/toolset.py",
+TEMPLATE_INPUTS = ["sandboxes/e2b_template.py", "sandboxes/chromium.sh", "sandboxes/fonts.conf", "sandboxes/deck", "src/simp_server/sandboxes/toolset.py",
                    "sandboxes/reference.docx"]
 
 

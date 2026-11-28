@@ -3,7 +3,7 @@ name: docx
 label: Word
 description: "Create, read and edit Word documents (.docx): reports, letters, proposals, tracked changes, comments."
 license: Complete terms in LICENSE.txt
-version: 9
+version: 10
 ---
 
 # Word documents
@@ -26,8 +26,9 @@ date: "11/2025"
 toc: true                 # only for 4+ sections
 toc-title: "Mục lục"      # in the document's language
 theme:                    # optional: this document's look (default: the house style)
-  heading-font: Georgia   # fonts every reader has: Arial, Calibri, Cambria, Georgia, Segoe UI, Times New Roman, Verdana
+  heading-font: Georgia   # a pair from "Fonts" below
   body-font: Calibri
+  cjk-font: Malgun Gothic # Korean/Japanese/Chinese text: set for you from the text; override only to change it
   primary: "#1F3A68"      # title and headings
   accent: "#E8A33D"       # subtitle, heading 3, links
   ink: "#222222"          # body text
@@ -53,6 +54,29 @@ Paragraph with **bold**, *italic*, [link](https://…) and a footnote.[^1]
 
 [^1]: Source text.
 ```
+
+**Fonts.** Word shows a font only if the reader's computer has it, so pick from the fonts Office installs (Windows and
+Mac). Pairs that look good (heading / body):
+
+| Look | heading-font | body-font |
+|---|---|---|
+| Classic report | Georgia | Calibri |
+| Formal, legal, finance | Cambria | Cambria |
+| Editorial, elegant | Palatino Linotype | Calibri |
+| Modern, clean | Calibri Light | Calibri |
+| Strong headlines | Segoe UI | Calibri |
+| Soft, approachable | Candara | Corbel |
+| English only: book-like | Garamond | Garamond |
+| English only: geometric | Century Gothic | Calibri |
+| English only: humanist | Gill Sans MT | Gill Sans MT |
+
+**Vietnamese:** only the pairs above the "English only" rows (those fonts have every Vietnamese mark; the English-only
+ones may lack ơ, ư, ạ… in Word and mix in another font). The preview cannot show this: it uses lookalikes that have
+the marks.
+
+Korean, Japanese and Chinese get a matching font by themselves (Malgun Gothic, Yu Gothic, Microsoft YaHei); for a
+serif look set `cjk-font: Batang` (Korean), `Yu Mincho` (Japanese) or `SimSun` (Chinese). Never a web font (Inter,
+Roboto, Montserrat…): readers without it see a substitute.
 
 Page break: a raw block on its own lines — ```` ```{=openxml} ```` / `<w:p><w:r><w:br w:type="page"/></w:r></w:p>` / ```` ``` ````.
 A chart: draw it with matplotlib to `/work/<name>-fig1.png` in the same message as the .md, then reference it; use the

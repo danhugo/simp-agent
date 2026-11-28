@@ -33,6 +33,8 @@ def template(office: bool = True):
     if office:  # how officecli starts chromium in the sandbox
         t = t.copy("sandboxes/chromium.sh", "/usr/local/bin/chromium").run_cmd(["chmod 755 /usr/local/bin/chromium"])
     t = (t
+         .copy("sandboxes/fonts.conf", "/etc/fonts/local.conf")  # Office font names -> installed lookalikes
+         .run_cmd(["fc-cache -f >/dev/null"])
          .copy("sandboxes/reference.docx", OFFICE_REFERENCE_DOCX)
          .copy("sandboxes/deck", DECK_DIR)
          .run_cmd([f"mkdir -p {SKILLS_DIR}"])  # filled per user at run time

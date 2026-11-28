@@ -442,7 +442,20 @@ def explain(issues: str, ids: dict) -> list[str]:
     return out
 
 
-THEME_KEYS = ("heading-font", "body-font", "primary", "accent", "ink", "body-size", "line-spacing", "margins")
+THEME_KEYS = ("heading-font", "body-font", "cjk-font", "primary", "accent", "ink", "body-size", "line-spacing", "margins")
+
+
+def cjk_font(text: str) -> str | None:
+    """The font Word should use for Korean / Japanese / Chinese text in this document, from the script it contains
+    (Office's own: on every Windows and Mac with Office); None when there is none. Without it Word picks the
+    reference document's East-Asian slot, which may lack the script."""
+    if re.search(r"[\uac00-\ud7a3\u1100-\u11ff\u3130-\u318f]", text):
+        return "Malgun Gothic"
+    if re.search(r"[\u3040-\u30ff]", text):
+        return "Yu Gothic"
+    if re.search(r"[\u4e00-\u9fff]", text):
+        return "Microsoft YaHei"
+    return None
 
 
 def doc_theme(md: str) -> dict:
@@ -490,12 +503,14 @@ def theme_ops(t: dict) -> tuple[list, list[str]]:
         if props:
             ops.append({"command": "set", "path": f"/styles/{sid}", "props": props})
     body = dict(font=t.get("body-font"), color=t.get("ink"), size=f"{size:g}pt" if size else None)
+    body["font.ea"] = t.get("cjk-font")
     for sid in ("Normal", "BodyText", "FirstParagraph", "Compact"):
         style(sid, **body, lineSpacing=f"{lsp:g}x" if lsp and sid != "Compact" else None)
     scale = {"Title": 2.4, "Subtitle": 1.4, "Heading1": 1.9, "Heading2": 1.5, "Heading3": 1.25}
     for sid, k in scale.items():
         color = t.get("accent") if sid in ("Heading3", "Subtitle") and t.get("accent") else t.get("primary")
-        style(sid, font=t.get("heading-font"), color=color, size=f"{size * k:.0f}pt" if size else None)
+        style(sid, font=t.get("heading-font"), color=color, size=f"{size * k:.0f}pt" if size else None,
+              **{"font.ea": t.get("cjk-font")})
     style("Hyperlink", color=t.get("accent") or t.get("primary"))
     if margin:
         ops.append({"command": "set", "path": "/section[1]", "props": {f"margin{s}": f"{margin:g}cm" for s in ("Top", "Bottom", "Left", "Right")}})
@@ -593,7 +608,10 @@ class Office:
         made, ids, deck_warnings = f"{tmp}.{kind}", dict(), list()
         if kind == "docx":
             refdoc = self.docx_reference
-            theme = doc_theme(await ctx.env.read_file(src))
+            md = await ctx.env.read_file(src)
+            theme = doc_theme(md)
+            if "cjk-font" not in theme and (cjk := cjk_font(md)):  # Korean etc.: a font Word has for that script
+                theme["cjk-font"] = cjk
             if theme and refdoc:  # the house style, restyled by the .md's own `theme:` (fonts, colours, sizes, margins)
                 refdoc, bad = await self._theme_reference(ctx, theme, f"{tmp}-ref.docx")
                 if bad:

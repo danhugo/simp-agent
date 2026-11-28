@@ -2,7 +2,7 @@
 name: pptx
 label: PowerPoint
 description: "Create or edit PowerPoint decks (.pptx): slides, presentations, decks of any length, in any language."
-version: 14
+version: 15
 ---
 
 # Slides
@@ -50,7 +50,11 @@ headings and charts, accent = highlights, surface = cards).
 | night | dark tech, data | #0F1724 | #1A2436 | #E8EDF5 | #5AB0FF | #FFB547 |
 | crimson | dark dramatic: film, games, history | #16110F | #241A17 | #F2E8E4 | #D7263D | #F2B134 |
 
-Fonts: Arial (safe everywhere) or Calibri / Georgia / Segoe UI / Verdana. Vietnamese text works in all of them.
+Fonts: from the ones Office installs, so every viewer sees them. Any language, Vietnamese included: Calibri, Calibri
+Light, Cambria, Georgia, Palatino Linotype, Segoe UI, Candara, Corbel, Arial. English only (may lack Vietnamese marks):
+Garamond, Century Gothic, Gill Sans MT, Franklin Gothic. Good pairs: Georgia + Calibri (classic), Segoe UI + Calibri
+(modern), Palatino Linotype + Calibri (elegant). Korean: Malgun Gothic; Japanese: Yu Gothic; Chinese: Microsoft
+YaHei.
 
 ## Plain deck: layouts as components
 
@@ -249,8 +253,8 @@ const problems = [{ t: "Security", icon: "/work/helpy/assets/lock.svg", body: "â
   JSX errors with their line, and text under 18 px. Fix the .jsx and build again.
 
 Fonts: the file names a family; PowerPoint uses it if the viewer has it (preview and screenshots use what the sandbox
-has). Safe for every viewer: Arial, Calibri, Georgia, Segoe UI, Verdana. Vietnamese text works in all of them. Do not
-list or test the sandbox's fonts.
+has, with lookalikes for the Office fonts above). Use the fonts listed under Themes; never a web font. Do not list or
+test the sandbox's fonts.
 
 ## Editing
 
