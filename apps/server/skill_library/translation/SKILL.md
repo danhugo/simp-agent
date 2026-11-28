@@ -4,7 +4,7 @@ label: Translation
 description: "Translate text and whole documents (docx, pptx, xlsx, pdf, srt, md) between languages, e.g. Vietnamese and English, keeping formatting, terminology and tone; also localize and review translations."
 license: MIT
 source: simp
-version: 1
+version: 2
 ---
 
 # Translation
@@ -25,9 +25,12 @@ Reply with the translation only (plus notes if needed). Offer alternatives for s
 
 Work on a copy, never the original. Translate in chunks of related text so context is kept.
 
-- **.docx:** python-docx; iterate paragraphs and table cells, replace text run by run (when a paragraph has many runs with the same style, put the whole translation in the first run and clear the others). Headers/footers too.
-- **.pptx:** python-pptx; every `shape.text_frame` paragraph and table cell, plus notes. Check text overflow: translated Vietnamese/German is often longer; shrink font slightly if needed.
-- **.xlsx:** openpyxl; translate string cells only, skip formulas (`cell.data_type == "f"`), sheet names if asked.
+- **.docx / .pptx / .xlsx:** one `office_run` script on the copy. `d = office.open(copy)`; collect the text with
+  `d.query("paragraph")` (docx: also table cells, headers, footers; pptx: `d.query("shape")` and table cells, plus notes;
+  xlsx: `d.view("text")`, string cells only, never formulas), translate, then write each back with
+  `d.set(path, text=...)` (a cell: `value=`). officecli keeps the styles. pptx: translated Vietnamese/German is often
+  longer, so the run's check reports text overflow; shorten or set a slightly smaller `size` on that shape, then
+  `d.screenshot(grid=True)`.
 - **.srt / .vtt:** keep indexes and timestamps; ≤ 42 characters per line, ≤ 2 lines per cue.
 - **.md / .html:** keep markup; translate text nodes only (BeautifulSoup for HTML).
 - **.pdf:** extract text (`pdftotext -layout`), translate, and rebuild as .docx (via the `docx` skill) since PDFs can't be edited in place; tell the user layout is approximate.

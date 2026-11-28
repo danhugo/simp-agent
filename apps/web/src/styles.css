@@ -333,6 +333,21 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .detail-hero > div { flex: 1; min-width: 0; }
 .detail-hero h1 { margin: 0; font-size: var(--fs-xl); font-weight: 500; }
 .detail-hero p { margin: 2px 0 0; }
+/* Crafts > Skills > a skill: files beside the open file */
+.skill-files { display: grid; grid-template-columns: minmax(180px, 240px) 1fr; gap: var(--sp-6); align-items: start; }
+.skill-files nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px;
+  position: sticky; top: var(--sp-4); max-height: calc(100vh - 160px); overflow: auto; }
+.skill-files nav button { width: 100%; display: flex; justify-content: space-between; gap: var(--sp-2); text-align: left; }
+.skill-files nav button.on { background: var(--hover); color: var(--text); }
+.skill-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-file-size { flex: none; white-space: nowrap; }
+.skill-folder { padding: var(--sp-2) 0 2px; font-weight: 500; }
+.skill-file-body { min-width: 0; }
+.skill-file-path { margin-bottom: var(--sp-3); font-family: var(--mono, ui-monospace, monospace); }
+.skill-code { margin: 0; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); overflow: auto; font-size: var(--fs-sm); line-height: 1.5; max-height: calc(100vh - 220px); }
+.app-tile { cursor: pointer; }
+@media (max-width: 720px) { .skill-files { grid-template-columns: 1fr; } .skill-files nav ul { position: static; max-height: 200px; } }
 /* sections are plain: heading + content; only Accounts (the thing you act on) gets a box */
 .detail-card { padding: 0; }
 .detail-card[aria-label="Accounts"] { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-3) var(--sp-4); background: var(--panel); }

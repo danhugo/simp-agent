@@ -2,7 +2,7 @@
 name: pptx
 label: PowerPoint
 description: "Create or edit PowerPoint decks (.pptx): slides, presentations, decks of any length, in any language."
-version: 8
+version: 10
 ---
 
 # Slides
@@ -12,8 +12,8 @@ Never write pptxgenjs/python-pptx code. Look at the result once (Fast path step 
 
 ## Fast path (aim: 4–6 turns, no more)
 
-1. **Content.** If the user gave the material, use it. Otherwise: **Research budget:** at most TWO messages of research in total: one of parallel `web_search` calls (2–4 queries), then optionally one of parallel `web_fetch(url, prompt=...)` calls. Never fetch search-engine pages (google, bing, duckduckgo…), never retry failed fetches, never curl. Then write with what you have: mark uncertain figures "≈" or "approx." and name the source you did get. Never search for or download pictures
-   unless the user asks for pictures.
+1. **Content.** If the user gave the material, use it. Otherwise research only what the content needs (the web
+   tools say how). No photos unless the user asks for them or the design brief calls for them.
 2. **Write the whole deck in ONE message**: `write` design.xml and every slide file as parallel calls
    (`/work/<name>.deck/design.xml`, `/work/<name>.deck/01-cover.xml`, `02-....xml` …). Over 12 slides: two messages
    of about 10 files each.

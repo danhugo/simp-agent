@@ -6,8 +6,8 @@ import {
   LayoutTemplate, Lightbulb, ListChecks, ListOrdered, Mail, Megaphone, NotebookPen, Palette, Plug, ScanText, ScrollText, ShieldCheck,
   PaintRoller, Sigma, SwatchBook, TableProperties, Telescope,
 } from "lucide-react";
-import { api, AuthError, type AppDetail, type AppItem, type LibrarySkill, type SkillItem } from "./api";
-import { errorText } from "./Chat";
+import { api, AuthError, type AppDetail, type AppItem, type LibrarySkill, type SkillInside, type SkillItem } from "./api";
+import { errorText, Md } from "./Chat";
 
 /** "#crafts?error=..." (or older "#apps" / "#connections") from the OAuth callback -> an error message; success shows in the card. */
 function oauthResult(): { ok: boolean; text: string } | null {
@@ -85,8 +85,12 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
     setSkills((xs) => xs && xs.map((x) => x.name === s.name ? { ...x, enabled: !s.enabled } : x));  // flip now, server catches up
     try { await api.setSkill(s.name, !s.enabled); } catch (e) { fail(e); loadSkills(); }
   };
+  const [skillView, setSkillView] = useState<{ name: string; library: boolean } | null>(null);  // the skill being looked into
+  const look = (name: string, library: boolean) => (e: React.MouseEvent) => {
+    if (!(e.target as HTMLElement).closest("button, label")) setSkillView({ name, library });
+  };
   const skillTile = (s: SkillItem) => (
-    <li key={s.name} className={`app-tile ${s.enabled ? "on" : ""}`} aria-label={s.label}>
+    <li key={s.name} className={`app-tile ${s.enabled ? "on" : ""}`} aria-label={s.label} onClick={look(s.name, false)}>
       <SkillIcon name={s.name} />
       <div className="app-text"><strong>{s.label}</strong><div className="muted small app-desc">{s.description}</div></div>
       {s.update && <button className="ghost small" title="The library has a newer version" onClick={() => skillDo(() => api.addSkill(s.name))}>
@@ -97,7 +101,7 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
     </li>
   );
   const libTile = (s: LibrarySkill) => (
-    <li key={s.name} className="app-tile" aria-label={s.label}>
+    <li key={s.name} className="app-tile" aria-label={s.label} onClick={look(s.name, true)}>
       <SkillIcon name={s.name} />
       <div className="app-text"><strong>{s.label}</strong><div className="muted small app-desc">{s.description}</div></div>
       <button className="ghost small" aria-label={`Add ${s.label}`} onClick={() => skillDo(() => api.addSkill(s.name))}><IconPlus size={14} /> Add</button>
@@ -169,6 +173,7 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
     );
   };
   if (detail) return <Detail app={detail} onBack={() => { setDetail(""); load(); }} fail={fail} menuButton={menuButton} />;
+  if (skillView) return <SkillView {...skillView} onBack={() => setSkillView(null)} fail={fail} menuButton={menuButton} />;
 
   return (
     <main className="memory">
@@ -225,6 +230,71 @@ export function Apps({ onError, menuButton }: { onError: (e: unknown) => void; m
 }
 
 const day = (t: number) => new Date(t * 1000).toLocaleDateString();
+
+const kb = (n: number) => n < 1024 ? `${n} B` : `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`;
+const body = (md: string) => md.startsWith("---\n") && md.indexOf("\n---", 4) > 0 ? md.slice(md.indexOf("\n---", 4) + 4).replace(/^-*\n/, "") : md;
+
+type Row = { path: string; size: number; depth: number } | { folder: string; depth: number };
+/** The file list as a tree: SKILL.md first, then the top folder's files, then each folder under a heading row. */
+function tree(files: SkillInside["files"]): Row[] {
+  // in each folder its files come before its subfolders, so a file never shows under a sibling folder's heading
+  const key = (p: string) => p === "SKILL.md" ? "" : p.toLowerCase().split("/").map((x, i, all) => (i < all.length - 1 ? "1" : "0") + x).join("/");
+  const out: Row[] = [], seen = new Set<string>();
+  for (const f of [...files].sort((a, b) => key(a.path) < key(b.path) ? -1 : 1)) {
+    const parts = f.path.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const dir = parts.slice(0, i).join("/");
+      if (!seen.has(dir)) { seen.add(dir); out.push({ folder: dir, depth: i - 1 }); }
+    }
+    out.push({ path: f.path, size: f.size, depth: parts.length - 1 });
+  }
+  return out;
+}
+
+/** What is inside a skill: its files on the left, the open one on the right (SKILL.md as formatted text). */
+function SkillView({ name, library, onBack, fail, menuButton }: { name: string; library: boolean; onBack: () => void;
+  fail: (e: unknown) => void; menuButton: React.ReactNode }) {
+  const [d, setD] = useState<SkillInside | null>(null);
+  const [path, setPath] = useState("SKILL.md");
+  const [text, setText] = useState<string | null>(null);
+  useEffect(() => { api.skillFiles(name, library).then(setD, fail); }, [name, library, fail]);
+  const file = d?.files.find((f) => f.path === path);
+  useEffect(() => {
+    setText(null);
+    if (file?.text) api.skillFile(name, path, library).then(setText, fail);
+  }, [name, path, library, file?.text, fail]);
+  return (
+    <main className="memory">
+      <header className="home-head">{menuButton}<button className="ghost" onClick={onBack}>← Skills</button></header>
+      <div className="memory-body app-detail skill-view">
+        {d === null ? <p className="muted">Loading…</p> : <>
+          <div className="detail-hero">
+            <SkillIcon name={d.name} />
+            <div><h1>{d.label}</h1><p className="muted">{d.description}</p></div>
+            <span className="pill">{library ? "Library" : "Yours"} · v{d.version}</span>
+          </div>
+          <div className="skill-files">
+            <nav aria-label="Files"><ul>{tree(d.files).map((row) => "folder" in row
+              ? <li key={`d:${row.folder}`} className="skill-folder muted small" style={{ paddingLeft: `${row.depth * 12 + 8}px` }}>
+                  {row.folder.split("/").pop()}/</li>
+              : <li key={row.path}><button className={`ghost small ${row.path === path ? "on" : ""}`} aria-current={row.path === path}
+                  onClick={() => setPath(row.path)} title={row.path}>
+                  <span className="skill-file-name" style={{ paddingLeft: `${row.depth * 12}px` }}>{row.path.split("/").pop()}</span>
+                  <span className="muted small skill-file-size">{kb(row.size)}</span></button></li>)}</ul></nav>
+            <section aria-label={path} className="skill-file-body">
+              <div className="muted small skill-file-path">{path}</div>
+              {!file ? <p className="muted">No such file.</p>
+                : !file.text ? <p className="muted">Not a text file ({kb(file.size)}), so it is not shown.</p>
+                : text === null ? <p className="muted">Loading…</p>
+                : path.endsWith(".md") ? <Md text={path === "SKILL.md" ? body(text) : text} />
+                : <pre className="skill-code"><code>{text}</code></pre>}
+            </section>
+          </div>
+        </>}
+      </div>
+    </main>
+  );
+}
 
 /** Portal detail page: its accounts, scopes, tools, MCP URL and recent calls. */
 function Detail({ app, onBack, fail, menuButton }: { app: string; onBack: () => void; fail: (e: unknown) => void; menuButton: React.ReactNode }) {

@@ -155,6 +155,18 @@ class UserSkills:
         self._remember(meta["hash"], files)
         return files
 
+    async def browse(self, user_id: str, name: str, library: bool = False) -> tuple[dict, dict[str, bytes]]:
+        """(meta, files) of one of the user's skills, or of a library skill (library=True). LookupError: unknown."""
+        if library:
+            if name not in self.lib:
+                raise LookupError(name)
+            s = self.lib[name]
+            return {k: v for k, v in s.items() if k != "files"}, s["files"]
+        cat = await self.load(user_id)
+        if name not in cat:
+            raise LookupError(name)
+        return cat[name], await self.files(user_id, name)
+
     # ---- moving older stores in ----------------------------------------------------------------------------------------
 
     def _from_disk(self, user_id: str) -> dict[str, dict[str, bytes]] | None:

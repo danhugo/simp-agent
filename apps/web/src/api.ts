@@ -14,6 +14,9 @@ export interface AppItem {
 /** REST-only (GET /api/skills): instruction folders the agent reads when a task needs them. On until turned off. */
 export interface SkillItem { name: string; label: string; description: string; enabled: boolean; version: string; source: string; license: string;
   update?: boolean }  // update: the library has a newer version of this skill
+/** REST-only (GET /api/skills/{name}/files): a skill's files; text = it can be shown. */
+export interface SkillInside { name: string; label: string; description: string; version: string; source: string;
+  license: string; files: { path: string; size: number; text: boolean }[] }
 /** REST-only (GET /api/skill-library): the server's skills; added = already in the user's skills. */
 export interface LibrarySkill { name: string; label: string; description: string; version: string; source: string; license: string; added: boolean }
 export interface Account { link_id: string; email: string | null; status: "ok" | "needs_reconnect"; created: number }
@@ -122,6 +125,11 @@ export const api = {
   skillLibrary: async (): Promise<LibrarySkill[]> => (await call("/api/skill-library")).json(),
   addSkill: (name: string) => call(`/api/skills/${name}/add`, { method: "POST" }),
   removeSkill: (name: string) => call(`/api/skills/${name}`, { method: "DELETE" }),
+  /** What is inside a skill (yours, or a library one with library=true): its files, and one file's text. */
+  skillFiles: async (name: string, library = false): Promise<SkillInside> =>
+    (await call(`/api/skills/${name}/files${library ? "?library=1" : ""}`)).json(),
+  skillFile: async (name: string, path: string, library = false): Promise<string> =>
+    (await call(`/api/skills/${name}/file?path=${encodeURIComponent(path)}${library ? "&library=1" : ""}`)).text(),
   setApp: (app: string, on: boolean) => call(`/api/apps/${app}/${on ? "enable" : "disable"}`, { method: "POST" }),
   appDetail: async (app: string): Promise<AppDetail> => (await call(`/api/apps/${app}`)).json(),
   /** linkId: add this app's scopes to that account; none: Google's account chooser (add an account). */

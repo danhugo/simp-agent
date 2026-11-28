@@ -47,7 +47,7 @@ Edit (queued): d.add(parent, type, before=, after=, index=, **props) -> .path of
   d.remove(path); d.move(path, to=, before=, after=, index=); d.swap(p1, p2); d.replay(batch_items); d.flush()
 Low level: d.raw_set(part, xpath, action, xml); d.add_part(parent, type); d.import_csv('/Sheet1', csv, header=True);
   d.refresh(); office.merge(template, out, data_dict)
-Look: d.screenshot(page=2 | grid=True | range='/slide[1]/shape[@id=3]' or 'Sheet1!A1:D9'); d.export('x.html'|'x.svg', or 'x.pdf' for a .docx)
+Look: d.screenshot(page=2 | grid=True | sheet='Summary' (xlsx) | range='/slide[1]/shape[@id=3]' or 'Sheet1!A1:D9'); d.export('x.html'|'x.svg', or 'x.pdf' for a .docx)
 Artwork: office.art_search('fish') -> names; office.art('fish', out='/work/a/fish.svg', tint=('#9EEFBC', '#1E2A8A'))
   -> an .svg in the deck's colours (kind='icon' + color= for line icons); place with d.add(slide, 'picture', src=...)
 Docs: office.help('pptx') lists elements; office.help('pptx', 'shape') gives its props; office.search('shadow', 'pptx')
@@ -467,11 +467,11 @@ class Office:
         s = {"type": "string"}
         api.register_tool(AgentTool(
             "office_build", "Build an office file from its source, then check it: a deck folder (design.xml + one .xml per "
-            "slide, in file-name order) → .pptx; a .md file → .docx; a .xlsx.py openpyxl script (saves to "
-            "os.environ['OUT']) → .xlsx with values calculated. Returns the output path and every problem (file #element "
-            "or Sheet!cell: what is wrong). Fix the source and build again; never edit the built file by hand.",
+            "slide, in file-name order) → .pptx; a .md file → .docx. Returns the output path and every problem (file "
+            "#element: what is wrong). Fix the source and build again; never edit the built file by hand. Spreadsheets "
+            "are made with office_run.",
             {"type": "object", "properties": {
-                "source": {**s, "description": "deck folder (/work/q3.deck → /work/q3.pptx), .md (→ .docx) or .xlsx.py (→ .xlsx)"},
+                "source": {**s, "description": "deck folder (/work/q3.deck → /work/q3.pptx) or .md (→ .docx)"},
                 "overwrite": {"type": "boolean", "description": "replace an output that was changed outside the source"}},
              "required": ["source"]}, self._build))
         api.register_tool(AgentTool(

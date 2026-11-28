@@ -164,6 +164,14 @@ def test_tavily_search_maps_results():
     assert "1. T\nhttps://t.com\nsnip pet" in out and out.startswith(web.UNTRUSTED)
     assert calls[0][0] == "https://api.tavily.com/search" and calls[0][1]["max_results"] == 3
     assert "tv-secret" not in out
+    assert calls[0][1]["include_raw_content"] == "markdown" and calls[0][1]["search_depth"] == "basic"
+
+
+def test_tavily_search_shows_the_page_start():
+    page = "# Title\n" + "word " * 2000
+    post = fake_post([], {"results": [{"title": "T", "url": "https://t.com", "content": "c", "raw_content": page}]})
+    out = do_search("q", 1, get=None, key="k", post=post)
+    assert "--- page ---\n# Title" in out and "[truncated:" in out and len(out) < 4500
 
 
 def test_search_falls_back_to_ddg():

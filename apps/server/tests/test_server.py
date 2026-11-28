@@ -870,6 +870,19 @@ async def test_skills_start_enabled_and_toggle_per_user(env):
         assert (await api.delete(f"/api/skills/{other['name']}", headers=h)).status_code == 200
         assert other["name"] not in {s["name"] for s in (await api.get("/api/skills", headers=h)).json()}
         assert (await api.post("/api/skills/nope/add", headers=h)).status_code == 404
+        # look inside: files of one of yours, one file's text, a library skill not added, a binary or missing one
+        inside = (await api.get("/api/skills/xlsx/files", headers=h)).json()
+        paths = {f["path"]: f for f in inside["files"]}
+        assert inside["label"] == "Excel" and "SKILL.md" in paths and paths["SKILL.md"]["text"]
+        md = await api.get("/api/skills/xlsx/file", params={"path": "SKILL.md"}, headers=h)
+        assert md.status_code == 200 and "office_run" in md.text
+        assert (await api.get(f"/api/skills/{other['name']}/files", headers=h)).status_code == 404  # not yours (removed)
+        assert (await api.get(f"/api/skills/{other['name']}/files", params={"library": 1}, headers=h)).status_code == 200
+        assert (await api.get("/api/skills/xlsx/file", params={"path": "nope.md"}, headers=h)).status_code == 404
+        binary = next((p for p, f in paths.items() if not f["text"]), None)
+        if binary:
+            assert (await api.get("/api/skills/xlsx/file", params={"path": binary}, headers=h)).status_code == 415
+        assert (await api.get("/api/skills/xlsx/files")).status_code == 401
 
 
 async def test_picked_skill_reaches_the_model_and_disabled_one_is_refused(env):
