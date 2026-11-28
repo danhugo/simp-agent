@@ -104,7 +104,7 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
   /* keep the same padding as when open, so each icon stays exactly where it was while the rail slides */
   .app.collapsed .sidebar .new { width: 32px; }
   .app.collapsed .sidebar .new .label { display: none; }
-  .app.collapsed .sidebar .account-btn { width: 40px; gap: 0; border-radius: 50%; }  /* same padding as open: avatar stays put */
+  .app.collapsed .sidebar .account-btn { width: 32px; padding-right: 1px; gap: 0; }  /* 1px border + 1 + 28px avatar + 1 + 1px border = 32: a circle centred on the avatar */
   .app.collapsed .sidebar .account-name { display: none; }
   .app.collapsed .sidebar .foot { border-top-color: transparent; }
   /* the rail clips overflow, so the account menu escapes it as a fixed popover */
@@ -118,6 +118,11 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .sidebar .new { font-weight: 500; padding-left: 7px; padding-right: 7px; }  /* 1px border + 7 + 16px icon = centred on the 32px Simp mark above */
 .sidebar .new.active { background: var(--active); }
 .sidebar nav { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; margin-top: var(--sp-3); }
+/* 4px scrollbars on the session list and the chat (Chrome/Safari); Firefox only has "thin" */
+:is(.sidebar nav, .messages, .home)::-webkit-scrollbar { width: 4px; }
+:is(.sidebar nav, .messages, .home)::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+:is(.sidebar nav, .messages, .home)::-webkit-scrollbar-track { background: transparent; }
+@supports (-moz-appearance: none) { :is(.sidebar nav, .messages, .home) { scrollbar-width: thin; scrollbar-color: var(--border) transparent; } }
 .section-label { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); margin: 0; padding: var(--sp-1) 10px var(--sp-2); }
 .pad { padding: 0 10px; margin: 0; }
 .session-row { display: flex; align-items: center; border-radius: var(--radius-sm); position: relative; }
@@ -135,7 +140,7 @@ button.brand-mark:hover, button.brand-mark:focus-visible { background: var(--hov
 .session-row .del:hover:not(:disabled) { background: var(--border); }
 .foot { display: flex; flex-direction: column; gap: 1px; border-top: 1px solid var(--border); padding-top: var(--sp-2); }
 .account { position: relative; }
-.account-btn { padding: 6px var(--sp-2); }
+.sidebar .account-btn { height: 32px; padding: 1px var(--sp-2) 1px 1px; border-radius: 99px; }  /* avatar hugs the left edge, same spot open or collapsed */
 .account-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: 500; }
 /* accent on --accent-text: 7.9:1 light, 6.6:1 dark */
 .avatar {
