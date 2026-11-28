@@ -247,8 +247,13 @@ def tavily_images(query: str, key: str, post=http_post, count: int = 3) -> list[
             continue
         host = urllib.parse.urlsplit(u).hostname or ""
         page = next((pg for pg in pages if _site(urllib.parse.urlsplit(pg).hostname or "") == _site(host)), u)
-        if host == "upload.wikimedia.org":  # .../commons/3/3d/Name.jpg -> its file page
-            page = "https://commons.wikimedia.org/wiki/File:" + urllib.parse.urlsplit(u).path.rsplit("/", 1)[-1]
+        if host == "upload.wikimedia.org" and "/thumb/" not in u:  # .../commons/3/3d/Name.jpg: the original, often
+            path = urllib.parse.urlsplit(u).path                      # many MB -> its 1280px thumbnail and file page
+            name = path.rsplit("/", 1)[-1]
+            page = "https://commons.wikimedia.org/wiki/File:" + name
+            if name.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+                head, _, tail = path.partition("/commons/")
+                u = f"https://upload.wikimedia.org{head}/commons/thumb/{tail}/1280px-{name}"
         out.append({"url": u, "page": page})
     return out[:count]
 
@@ -284,6 +289,34 @@ def find_images(query: str, key: str | None) -> list[dict]:
         except WebError:
             pass
     return commons_images(query)
+
+
+IMAGE_BLOCK = re.compile(r"```images[^\n]*\n(.*?)```", re.S)
+MAX_IMAGE_QUERIES = 24  # per answer
+
+
+def image_queries(text: str) -> list[str]:
+    """The search queries of an answer's ```images blocks (the first field of each line), in order, no repeats."""
+    out = []
+    for block in IMAGE_BLOCK.findall(text or ""):
+        for line in block.splitlines():
+            q = " ".join(line.split("|")[0].split())[:200]
+            if q and q not in out:
+                out.append(q)
+    return out[:MAX_IMAGE_QUERIES]
+
+
+async def resolve_images(text: str, key: str | None, sign) -> dict[str, list[dict]]:
+    """query -> [{src, page}] for every ```images line of an answer, searched at once; src = sign(picture URL)."""
+    queries = image_queries(text)
+
+    async def one(q):
+        try:
+            return q, await asyncio.to_thread(find_images, q, key)
+        except WebError:
+            return q, []
+    found = await asyncio.gather(*(one(q) for q in queries))
+    return {q: [{"src": sign(x["url"]), "page": x["page"]} for x in pics] for q, pics in found}
 
 
 IMAGES_HINT = ("Pictures in your answer: when it names things with a look (places, dishes, products, animals, "

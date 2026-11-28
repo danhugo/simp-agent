@@ -130,8 +130,8 @@ def test_tavily_images_name_their_page():
     got = web.tavily_images("pier", "k", post=post, count=5)
     assert got == [{"url": "https://ak-d.trip.com/a.jpg", "page": "https://www.trip.com/qingdao/guide"},  # same site
                    {"url": "https://cdn.other.net/b.jpg", "page": "https://cdn.other.net/b.jpg"},  # no page: itself
-                   {"url": "https://upload.wikimedia.org/wikipedia/commons/3/3d/Pier.jpg",
-                    "page": "https://commons.wikimedia.org/wiki/File:Pier.jpg"}]  # http:// dropped
+                   {"url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Pier.jpg/1280px-Pier.jpg",
+                    "page": "https://commons.wikimedia.org/wiki/File:Pier.jpg"}]  # original -> thumbnail; http:// dropped
 
 
 def test_find_images_falls_back_to_commons(monkeypatch):
@@ -284,3 +284,20 @@ async def test_fetch_prompt_falls_back_to_page_when_helper_fails(monkeypatch):
 def test_no_extract_no_prompt_param():
     fetch = next(t for t in web.make_tools() if t.name == "web_fetch")
     assert "prompt" not in fetch.parameters["properties"]
+
+
+def test_image_queries_from_answer_blocks():
+    text = ("Intro\n```images\nZhanqiao  Pier | Cầu tàu | note | https://x\nBadaguan | B\n```\n"
+            "```python\nnot | pictures\n```\n```images\nZhanqiao Pier | again\n\n```")
+    assert web.image_queries(text) == ["Zhanqiao Pier", "Badaguan"]
+    assert web.image_queries("no blocks") == []
+
+
+async def test_resolve_images_signs_every_picture(monkeypatch):
+    def find(q, key):
+        if q == "bad":
+            raise WebError("down")
+        return [{"url": f"https://p/{q}.jpg", "page": "https://site/"}]
+    monkeypatch.setattr(web, "find_images", find)
+    got = await web.resolve_images("```images\nA | a\nbad | b\n```", "k", lambda u: "signed:" + u)
+    assert got == {"A": [{"src": "signed:https://p/A.jpg", "page": "https://site/"}], "bad": []}

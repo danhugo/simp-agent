@@ -94,8 +94,6 @@ const filesBase = (sid: string) => (sid ? `/api/sessions/${sid}` : "/api");
 
 export const api = {
   me: async (): Promise<{ name: string }> => (await call("/api/me")).json(),
-  /** Picture URLs for a query in an answer's ```images block (found by the server, never written by the model). */
-  images: async (q: string): Promise<{ src: string; page: string }[]> => (await (await call(`/api/images?q=${encodeURIComponent(q)}`)).json()).images,
   logout: () => call("/api/logout", { method: "POST" }),
   hello: () => call("/api/hello", json({ type: "hello", protocol_version: 1 })),
   sessions: async (): Promise<SessionInfo[]> => (await call("/api/sessions")).json(),

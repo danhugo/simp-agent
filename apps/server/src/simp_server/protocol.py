@@ -69,6 +69,9 @@ class AssistantMessage(_M):
     usage: Usage = Field(default_factory=Usage)
     stop_reason: str = "stop"
     error: str | None = None
+    # ```images blocks in text: search query -> pictures found by the server once the answer is done, kept with it so
+    # a reopened chat shows the same ones. src is a signed /api/image link, page where the picture comes from.
+    images: dict[str, list[dict[str, str]]] = Field(default_factory=dict)
 
 
 class ToolResult(_M):

@@ -1,5 +1,5 @@
 import "./chat.css";
-import { isValidElement, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, isValidElement, type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ext, kindOf } from "./fileKind";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -191,7 +191,7 @@ export function Chat({ sid, created, state, conn, onError, onToggleFiles, filesO
               : (
                 <div key={it.seq} className="msg assistant">
                   {turnOf.has(it.seq) && turnThinking(turnOf.get(it.seq)!, turnOf.get(it.seq) === turn)}
-                  {it.msg.text && <Md text={it.msg.text} onFile={onPreviewFile} />}
+                  {it.msg.text && <Md text={it.msg.text} onFile={onPreviewFile} images={it.msg.images ?? {}} />}
                   {it.msg.error && it.msg.error !== "aborted" && <div className="notice error">{it.msg.error}</div>}
                   {(groupCalls.get(it.seq)?.length ?? 0) > 0 &&
                     <ToolGroup calls={groupCalls.get(it.seq)!} batches={batches} state={state} send={send} sid={sid} onOpenFile={onOpenFile} onPreviewFile={onPreviewFile} onError={onError} />}
@@ -346,16 +346,16 @@ function ImageStrip({ text }: { text: string }) {
   return <div className={`image-strip ${layout}`}>{items.map((it, i) => <ImageCard key={i} {...it} keep={layout === "list"} />)}</div>;
 }
 
+type Pic = { [k: string]: string };  // { src, page } (protocol.gen types it loosely)
+/** The pictures of the answer being shown: query -> found pictures, saved with the answer. undefined while it is still
+ * being written (the server looks them up once it is done), so the cards wait as placeholders. */
+const PicsCtx = createContext<Record<string, Pic[]> | undefined>(undefined);
+
 function ImageCard({ q, cap, sub, href, keep }: { q: string; cap: string; sub?: string; href?: string; keep: boolean }) {
-  const [found, setFound] = useState<{ src: string; page: string }[] | null>(null);
+  const all = useContext(PicsCtx);
+  const found = all ? all[q.split(/\s+/).filter(Boolean).join(" ").slice(0, 200)] ?? [] : null;
   const [n, setN] = useState(0);  // which of the found pictures (the next one when one fails to load)
   const [big, setBig] = useState(false);
-  useEffect(() => {
-    setFound(null); setN(0);
-    let live = true;
-    const t = window.setTimeout(() => { api.images(q).then((u) => live && setFound(u), () => live && setFound([])); }, 600);
-    return () => { live = false; clearTimeout(t); };
-  }, [q]);
   if (found && n >= found.length && !keep) return null;  // nothing found or none loads: leave it out (a list keeps its text)
   const pic = found && n < found.length ? found[n] : undefined;
   return (
@@ -400,7 +400,7 @@ export const fileRef = (t: string) => {
   const known = kindOf(p) !== "info" || OTHER_FILES.has(ext(p));  // `os.path`, `np.array` are code, not files
   return known && /^[^\s/][^\n<>|*?"]*\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(p) && !/^[a-z]+:\/\//i.test(p) && !p.split("/").includes("..") ? p : undefined;
 };
-export const Md = ({ text, onFile }: { text: string; onFile?: (path: string) => void }) => {
+export const Md = ({ text, onFile, images }: { text: string; onFile?: (path: string) => void; images?: Record<string, Pic[]> }) => {
   // with onFile, inline code that names a file becomes a button that opens the preview (a missing file says so there)
   const components = useMemo<Components>(() => !onFile ? mdComponents : {
     ...mdComponents,
@@ -410,7 +410,7 @@ export const Md = ({ text, onFile }: { text: string; onFile?: (path: string) => 
         : <code className={className}>{children}</code>;
     },
   }, [onFile]);
-  return <div className="md"><Markdown remarkPlugins={[remarkGfm]} components={components}>{text}</Markdown></div>;
+  return <PicsCtx.Provider value={images}><div className="md"><Markdown remarkPlugins={[remarkGfm]} components={components}>{text}</Markdown></div></PicsCtx.Provider>;
 };
 
 /** "Thinking…" while the model thinks, then "Thought for 4s" (or "Thoughts" when the time isn't known, e.g. after a reload). */

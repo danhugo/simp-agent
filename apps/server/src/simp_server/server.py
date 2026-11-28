@@ -11,6 +11,7 @@ import contextlib
 import dataclasses
 import functools
 import hashlib
+import hmac
 import html
 import sys
 import logging
@@ -387,11 +388,13 @@ class Run:
             elif m.role == "assistant":
                 self.inflight = p.InFlight(tool_outputs=f.tool_outputs)
                 u = {"input": m.usage.get("input", 0), "output": m.usage.get("output", 0)}
+                images = await web_tools.resolve_images(m.text(), self.mgr.keys.get("TAVILY_API_KEY"),
+                                                        lambda x: image_link(self.mgr.image_key, x)) if "```images" in m.text() else {}
                 await self.durable(
                     p.AssistantMessage, msg_id=f.msg_id or uuid.uuid4().hex[:8], text=m.text(), usage=p.Usage(**u),
                     thinking="".join(c.thinking for c in m.content if isinstance(c, ThinkingContent) and not c.redacted),
                     tool_calls=[p.ToolCall(id=c.id, name=c.name, arguments=c.arguments) for c in m.tool_calls()],
-                    stop_reason=m.stop_reason, error=m.error)
+                    stop_reason=m.stop_reason, error=m.error, images=images)
                 await self.mgr.store.add_usage(self.user_id, self.sid, self.model.id, **u, cost=budget.cost(self.profile, u))
                 if not self.info.title and self.title_task is None:
                     self.title_task = asyncio.create_task(self._title())
@@ -594,6 +597,15 @@ class Run:
             await self.start(self.session.compact if isinstance(c, p.Compact) else self.session.continue_)
 
 
+def image_sig(key: bytes, url: str) -> str:
+    return hmac.new(key, b"image:" + url.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def image_link(key: bytes, url: str) -> str:
+    """/api/image link for a picture the server found: signed, so only those are fetched (no list kept in memory)."""
+    return f"/api/image?u={urllib.parse.quote(url, safe='')}&s={image_sig(key, url)}"
+
+
 class SessionManager:
     def __init__(self, settings: dict, store, sandbox, stream_fn):
         self.settings, self.store, self.sandbox, self.stream_fn = settings, store, sandbox, stream_fn
@@ -601,6 +613,8 @@ class SessionManager:
         # not a secret to mask in chats, and never editable at runtime: only from <data_dir>/.env or the env
         self.admin_emails = {e.strip().lower() for e in self.keys.pop("ADMIN_EMAILS", "").split(",") if e.strip()}
         self.conns = Connections(settings, store, self.keys)
+        # signs the picture links of answers (/api/image); from SIMP_SECRET_KEY, which Connections made sure exists
+        self.image_key = hashlib.sha256(b"simp-image:" + self.keys["SIMP_SECRET_KEY"].encode()).digest()
         self.tools_seen: dict[str, dict] = dict()  # user -> app -> tool -> needs approval (portal detail page)
         self.uskills: UserSkills | None = None  # set by create_app (needs the workspace store)
         self.limits = budget.limits(settings)
@@ -822,45 +836,24 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
     async def me(u=Depends(user)):
         return {"name": u["name"]}
 
-    image_cache: dict[str, list[dict]] = dict()  # query -> pictures {url, page}, for ```images blocks in answers
-    image_ok: set[str] = set()  # URLs the picture search returned: the only ones /api/image fetches
-    image_bytes: dict[str, tuple[str, bytes]] = dict()  # url -> (content type, bytes), the last few hundred
+    IMAGE_MAX = 8_000_000
 
-    @app.get("/api/images")
-    async def images(q: str, u=Depends(user)):
-        """Pictures for a query, as /api/image links: the server fetches them, since many sites refuse a picture
-        shown on another site (hotlinking), and the viewer's browser never contacts those sites."""
-        q = " ".join(q.split())[:200]
-        if not q:
-            return {"images": []}
-        if q not in image_cache:
-            try:
-                image_cache[q] = await asyncio.to_thread(web_tools.find_images, q, mgr.keys.get("TAVILY_API_KEY"))
-            except web_tools.WebError:
-                return {"images": []}
-            if len(image_cache) > 2000:
-                image_cache.pop(next(iter(image_cache)))
-        image_ok.update(x["url"] for x in image_cache[q])
-        return {"images": [{"src": f"/api/image?u={urllib.parse.quote(x['url'], safe='')}", "page": x["page"]}
-                           for x in image_cache[q]]}
-
-    @app.get("/api/image")  # no auth (an <img> sends no token), but only URLs the picture search returned
-    async def image(u: str):
-        if u not in image_ok:
+    @app.get("/api/image")  # no auth (an <img> sends no token): only picture URLs this server signed (see image_link)
+    async def image(u: str, s: str = ""):
+        """A picture of an answer, fetched by the server: many sites refuse hotlinked pictures, and the viewer's
+        browser never contacts them. Nothing is kept; the browser caches it."""
+        if not hmac.compare_digest(s, image_sig(mgr.image_key, u)):
             return Response(status_code=404)
-        if u not in image_bytes:
-            try:
-                _, ctype, body = await asyncio.to_thread(web_tools.http_get, u)
-            except web_tools.WebError:
-                return Response(status_code=502)
-            ctype = ctype.split(";")[0].strip().lower()
-            if not ctype.startswith("image/") or ctype == "image/svg+xml":
-                return Response(status_code=415)
-            image_bytes[u] = (ctype, body)
-            if len(image_bytes) > 300:
-                image_bytes.pop(next(iter(image_bytes)))
-        ctype, body = image_bytes[u]
-        return Response(body, media_type=ctype, headers={"Cache-Control": "private, max-age=86400",
+        try:
+            _, ctype, body = await asyncio.to_thread(web_tools.http_get, u, max_bytes=IMAGE_MAX + 1)
+        except web_tools.WebError:
+            return Response(status_code=502)
+        if len(body) > IMAGE_MAX:  # cut off, it would show half a picture: the page tries its next one
+            return Response(status_code=413)
+        ctype = ctype.split(";")[0].strip().lower()
+        if not ctype.startswith("image/") or ctype == "image/svg+xml":
+            return Response(status_code=415)
+        return Response(body, media_type=ctype, headers={"Cache-Control": "private, max-age=604800",
                                                          "X-Content-Type-Options": "nosniff"})
 
     @app.post("/api/hello")

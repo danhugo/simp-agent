@@ -63,6 +63,11 @@ export interface AssistantMessage {
   usage: Usage;
   stop_reason: string;
   error: string | null;
+  images: {
+    [k: string]: {
+      [k: string]: string;
+    }[];
+  };
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
