@@ -12,11 +12,13 @@ import dataclasses
 import functools
 import hashlib
 import io
+import json
 import hmac
 import html
 import sys
 import logging
 import mimetypes
+import re
 import os
 import secrets
 import tempfile
@@ -257,6 +259,7 @@ class Run:
         self.turns, self.stop_note = 0, "run aborted"
         no_tools = self.profile.get("tools") == []  # profile `tools = []`: no core coding tools (load tests, pure chat)
         self.has_skills = getattr(mgr.sandbox, "has_skills", False) and not no_tools  # scripts need the sandbox
+        self.user_edits = UserEdits()
         self.session = AgentSession(
             self.model, tools=[] if no_tools else None, store=self, env=env, cwd=getattr(env, "root", None) or "/",
             stream_fn=self.counted_stream,
@@ -264,7 +267,7 @@ class Run:
             get_api_key=mgr.api_key_for(self.model), approve=self.approve,
             messages=[from_dict(e["data"]) for e in entries if e["type"] == "msg"],
             plugins=[policy.Policy(self.verdict), *build_plugins(["redact_secrets", *core_plugins(self.profile)]), Web(mgr.keys.get("TAVILY_API_KEY"), extract=self.extract), Memory(store=DbMemoryStore(
-                mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), self.mcp, SandboxSync(env),
+                mgr.store.mem, row["user_id"], row["agent_id"], row["id"], mgr.redact.mask)), self.mcp, SandboxSync(env), self.user_edits,
                      *([skills_mod.plugin(mgr.uskills.source(self.user_id), lambda: self.enabled_skills()), Office(OFFICE_REFERENCE_DOCX, DECK_DIR)] if self.has_skills else [])],
             plugin_config={"redact_secrets": {"secrets": list(mgr.keys.values())}},
             locale=row.get("locale"), timezone=row.get("timezone"), location=row.get("location"))
@@ -617,6 +620,81 @@ def shrink_picture(body: bytes, ctype: str, width: int) -> tuple[bytes, str]:
         return out.getvalue(), "image/jpeg"
     except Exception:
         return body, ctype
+
+
+# Added to a spreadsheet's preview, Excel-like: click selects a cell, arrows move; typing replaces it, Enter/F2 or a
+# double-click edits it, Delete/Backspace clears it. A change sends {simpCell: {cell, text}} (a value, =formula, or
+# empty) to the app, which saves it into the .xlsx and reloads the preview; Esc cancels; Enter moves down, Tab right.
+XLSX_EDIT = b"""<style>td[data-path]{cursor:cell}td.simp-sel{outline:2px solid #3182F6;outline-offset:-2px}
+.simp-cell-input{position:absolute;z-index:99;box-sizing:border-box;border:2px solid #3182F6;padding:1px 4px;
+font:inherit;font-size:11pt;background:#fff;color:#111;outline:none}</style>
+<script>(function(){
+var sel=null,box=null;
+function cells(){return Array.prototype.slice.call(document.querySelectorAll("td[data-path]"));}
+function pick(td){if(sel)sel.classList.remove("simp-sel");sel=td;if(td){td.classList.add("simp-sel");td.scrollIntoView({block:"nearest",inline:"nearest"});}}
+function near(td,dr,dc){var p=td.dataset.path.split("/"),m=/^([A-Z]+)([0-9]+)$/.exec(p[2]);if(!m)return null;
+ var col=0;for(var i=0;i<m[1].length;i++)col=col*26+m[1].charCodeAt(i)-64;col+=dc;var row=+m[2]+dr;if(col<1||row<1)return null;
+ var s="";while(col>0){var r=(col-1)%26;s=String.fromCharCode(65+r)+s;col=(col-1-r)/26;}
+ return document.querySelector('td[data-path="/'+p[1]+"/"+s+row+'"]');}
+function send(td,t,next){td.textContent=t.charAt(0)==="="?"\\u2026":t;parent.postMessage({simpCell:{cell:td.dataset.path,text:t,next:(next||td).dataset.path}},"*");}
+function close(){if(box){var b=box;box=null;b.remove();}}
+function edit(td,start){close();pick(td);var r=td.getBoundingClientRect();box=document.createElement("input");box.className="simp-cell-input";
+ box.value=start!=null?start:(td.dataset.formula||td.textContent.trim());
+ box.style.left=(r.left+scrollX)+"px";box.style.top=(r.top+scrollY)+"px";box.style.width=Math.max(r.width,140)+"px";box.style.height=Math.max(r.height,24)+"px";
+ document.body.appendChild(box);box.focus();if(start==null)box.select();else box.setSelectionRange(box.value.length,box.value.length);
+ box.addEventListener("keydown",function(k){if(k.key==="Escape"){close();k.preventDefault();}
+  else if(k.key==="Enter"||k.key==="Tab"){var t=box.value,nx=near(td,k.key==="Enter"?1:0,k.key==="Tab"?1:0)||td;close();send(td,t,nx);pick(nx);k.preventDefault();}
+  k.stopPropagation();});
+ box.addEventListener("blur",function(){setTimeout(close,0);});}
+var h=decodeURIComponent(location.hash.slice(1));if(h){var t0=document.querySelector('td[data-path="'+h.replace(/"/g,"")+'"]');if(t0){pick(t0);window.focus();}}
+document.addEventListener("click",function(e){var td=e.target.closest&&e.target.closest("td[data-path]");if(td&&!box)pick(td);});
+document.addEventListener("dblclick",function(e){var td=e.target.closest&&e.target.closest("td[data-path]");if(td)edit(td);});
+document.addEventListener("keydown",function(k){if(box||!sel||k.metaKey||k.ctrlKey||k.altKey)return;
+ var mv={ArrowUp:[-1,0],ArrowDown:[1,0],ArrowLeft:[0,-1],ArrowRight:[0,1]}[k.key];
+ if(mv){var n=near(sel,mv[0],mv[1]);if(n)pick(n);k.preventDefault();}
+ else if(k.key==="Delete"||k.key==="Backspace"){send(sel,"");k.preventDefault();}
+ else if(k.key==="Enter"||k.key==="F2"){edit(sel);k.preventDefault();}
+ else if(k.key.length===1){edit(sel,k.key);k.preventDefault();}});
+})();</script>"""
+
+
+def cell_prop(text: str) -> dict:
+    """What a typed cell becomes: "" clears it, "=..." a formula, else a value. A number as the preview shows it
+    (120,000,000) is stored as the number, not as text."""
+    if not text:
+        return {"value": ""}
+    if text.startswith("="):
+        return {"formula": text[1:]}
+    if re.fullmatch(r"-?\d{1,3}(,\d{3})+(\.\d+)?", text):
+        return {"value": text.replace(",", "")}
+    return {"value": text}
+
+
+def with_edit_script(page: bytes) -> bytes:
+    """The spreadsheet preview with XLSX_EDIT added. OfficeCLI's page allows only scripts carrying its CSP nonce, so
+    ours carries the same one (it is the server's own script, added to a page the server rendered)."""
+    m = re.search(rb"'nonce-([A-Za-z0-9+/=_-]+)'", page)
+    add = XLSX_EDIT.replace(b"<script>", b'<script nonce="' + m.group(1) + b'">', 1) if m else XLSX_EDIT
+    return page.replace(b"</body>", add + b"</body>", 1) if b"</body>" in page else page + add
+
+
+class UserEdits:
+    """Edits the user made in the app (a spreadsheet cell, ...) since the agent's last turn: told to the agent with
+    their next message, as a note it sees but the chat does not show, so it does not work from the old contents."""
+    name = "user_edits"
+
+    def __init__(self):
+        self.notes: list[str] = []
+
+    def setup(self, api, config: dict) -> None:
+        pass
+
+    async def before_agent_start(self, payload: dict) -> dict:
+        if not self.notes:
+            return {}
+        notes, self.notes = self.notes[-50:], []
+        text = "[The user changed files in the app since your last turn:\n" + "\n".join(f"- {n}" for n in notes) + "]"
+        return {"messages": [UserMessage(text, meta=True)]}
 
 
 def image_sig(key: bytes, url: str) -> str:
@@ -1305,6 +1383,8 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         if render == "html" and Path(path).suffix.lower() in (".docx", ".xlsx", ".pptx"):
             try:
                 out = await render_office(uid, path, data)
+                if path.lower().endswith(".xlsx"):  # cells edit in place (see XLSX_EDIT)
+                    out = with_edit_script(out)
             except HTTPException as e:  # shown inside the preview frame; the panel header has Download
                 return Response(RENDER_FAILED.replace("{why}", html.escape(str(e.detail))), 503, media_type="text/html",
                                 headers=preview_headers)
@@ -1331,6 +1411,59 @@ def create_app(settings: dict, stream_fn=ai.stream) -> FastAPI:
         await quota.added(u["id"], len(data))
         if hasattr(sandbox, "web_changed"):
             sandbox.web_changed(u["id"])  # sync mode: the running sandbox takes the file in before its next call
+        return {"ok": True}
+
+    @app.post("/api/sessions/{sid}/office/cell")
+    async def edit_cell(sid: str, e: p.CellEdit, u=Depends(user)):
+        """A spreadsheet cell edited in the preview: officecli writes the value or formula (or clears the cell) into
+        the .xlsx in the workspace, which recalculates every formula; the preview is then rendered again from it."""
+        run = await mgr.get(u, sid)
+        if not e.path.lower().endswith(".xlsx"):
+            raise HTTPException(400, "only .xlsx cells can be edited here")
+        if not re.fullmatch(r"/[^/]{1,100}/[A-Z]{1,3}[0-9]{1,7}", e.cell):
+            raise HTTPException(400, "cell must look like /Sheet1/B3")
+        if run.busy:  # the agent may be writing this file: one writer at a time
+            raise HTTPException(409, "the agent is working: edit when it is done")
+        data = await fs(files.read(u["id"], e.path))
+        text = e.text.strip()
+        prop = cell_prop(text)
+        cli = settings.get("web", dict()).get("officecli", "officecli")
+        async with office_sem:
+            with tempfile.TemporaryDirectory() as tmp:
+                f = Path(tmp) / "book.xlsx"
+                f.write_bytes(data)
+                async def batch(ops: list) -> list:
+                    """One officecli batch, then close (it writes the file). Returns the errors."""
+                    proc = await asyncio.create_subprocess_exec(
+                        cli, "batch", str(f), "--json", stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT)
+                    out, _ = await asyncio.wait_for(proc.communicate(json.dumps(ops).encode()), 30)
+                    close = await asyncio.create_subprocess_exec(cli, "close", str(f), stdout=asyncio.subprocess.DEVNULL,
+                                                                 stderr=asyncio.subprocess.DEVNULL)
+                    await close.wait()
+                    try:
+                        res = json.loads(out)
+                        bad = [r.get("error") for r in res.get("data", {}).get("results", []) if not r.get("success")]
+                    except ValueError:
+                        bad = [out.decode(errors="replace")[-300:]]
+                    return bad or (["officecli failed"] if proc.returncode else [])
+
+                if failed := await batch([{"command": "set", "path": e.cell, "props": prop}]):
+                    raise HTTPException(400, f"could not set {e.cell}: {'; '.join(map(str, failed))}")
+                # the edit leaves the formulas that depend on that cell without a stored value (viewers that don't
+                # calculate show them empty); a second write, of a throwaway cell, recalculates and stores them all
+                tmp_cell = "/" + e.cell.strip("/").split("/")[0] + "/XFD1"
+                await batch([{"command": "set", "path": tmp_cell, "props": {"value": "x"}},
+                             {"command": "remove", "path": tmp_cell}])
+                new = f.read_bytes()
+        if not await quota.fits(u["id"], max(0, len(new) - len(data))):
+            raise HTTPException(507, "workspace full: delete some files first")
+        await fs(files.write(u["id"], e.path, new))
+        await quota.added(u["id"], len(new) - len(data))
+        if hasattr(sandbox, "web_changed"):
+            sandbox.web_changed(u["id"])
+        sheet, ref = e.cell.strip("/").split("/")
+        run.user_edits.notes.append(f"{e.path} {sheet}!{ref} " + (f"set to {text!r}" if text else "cleared"))
         return {"ok": True}
 
     @app.delete("/api/sessions/{sid}/files")

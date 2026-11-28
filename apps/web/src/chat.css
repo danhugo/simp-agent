@@ -510,3 +510,4 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .image-view-cap { font-weight: 600; }
 .image-view-foot a { color: #fff; opacity: .85; white-space: nowrap; }
 .image-view-foot a:hover { opacity: 1; }
+.cell-note { margin: 6px 8px; font-size: var(--fs-sm); }

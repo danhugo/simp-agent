@@ -94,6 +94,9 @@ const filesBase = (sid: string) => (sid ? `/api/sessions/${sid}` : "/api");
 
 export const api = {
   me: async (): Promise<{ name: string }> => (await call("/api/me")).json(),
+  /** A spreadsheet cell edited in the preview: text = a value, =formula, or "" to clear. */
+  editCell: (sid: string, path: string, cell: string, text: string) =>
+    call(`/api/sessions/${sid}/office/cell`, json({ path, cell, text })),
   logout: () => call("/api/logout", { method: "POST" }),
   hello: () => call("/api/hello", json({ type: "hello", protocol_version: 1 })),
   sessions: async (): Promise<SessionInfo[]> => (await call("/api/sessions")).json(),
