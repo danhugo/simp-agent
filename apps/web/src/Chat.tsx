@@ -340,11 +340,13 @@ const mdComponents: Components = {
 /** How far each answer has been shown while being written (msg_id -> chars), so when the finished answer replaces
  * the live one it goes on from there instead of showing the rest at once. */
 const smoothShown = new Map<string, number>();
+const MAX_PACE = 180;  // chars/s an answer is let out at most (about 3 a frame): faster reads as a flood
 
 /** An answer at an even pace: text arrives in uneven chunks (bursts, then pauses), so it is let out a little each
  * frame at about the speed it arrives, keeping ~0.6 s of it in reserve: behind more, it speeds up (to 3x); short of
  * the reserve, it slows down (to 0.4x) so a pause in the stream is bridged instead of stopping. done: the answer is
- * complete, so the rest goes out a bit faster (~1 s) and then this is just the text. */
+ * complete, so the rest goes out within ~2.5 s and then this is just the text. Never faster than MAX_PACE (1.2x when
+ * catching up, 2x for the rest of a finished answer). */
 function SmoothMd({ id, text, done = false, images, onFile }: { id: string; text: string; done?: boolean; images?: Record<string, Pic[]>; onFile?: (path: string) => void }) {
   const [shown, setShown] = useState(() => smoothShown.get(id) ?? 0);
   const live = useRef({ text, done, rate: 120, at: performance.now(), len: text.length });
@@ -361,8 +363,9 @@ function SmoothMd({ id, text, done = false, images, onFile }: { id: string; text
       const dt = Math.min(0.1, (now - prev) / 1000), c = live.current, goal = c.text.length, left = goal - pos;
       prev = now;
       if (left > 0) {
-        const speed = c.done ? Math.max(c.rate, left / 1.0)
-          : c.rate * Math.min(3, Math.max(0.4, left / (c.rate * 0.6)));
+        const base = Math.min(c.rate, MAX_PACE);
+        const speed = c.done ? Math.max(base, Math.min(MAX_PACE * 2, left / 2.5))
+          : Math.min(MAX_PACE * 1.2, base * Math.min(3, Math.max(0.4, left / (base * 0.6))));
         pos = Math.min(goal, pos + Math.max(0.5, speed * dt));
         smoothShown.set(id, pos);
         setShown(Math.floor(pos));
