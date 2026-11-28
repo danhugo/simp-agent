@@ -215,10 +215,20 @@ def http_post(url: str, payload: dict, key: str) -> dict:
         raise WebError(f"search service failed: {e}")
 
 
+PAGE_MAX = 4000  # chars of each result's page (markdown) shown with the search: often enough to skip web_fetch
+
+
 def tavily_search(query: str, count: int, key: str, post=http_post) -> list[dict]:
-    r = post(f"{TAVILY}/search", {"query": query, "max_results": count}, key)
-    return [{"title": " ".join(str(x.get("title", "")).split()), "url": x.get("url", ""),
-             "snippet": " ".join(str(x.get("content", "")).split())} for x in r.get("results", [])][:count]
+    """basic depth (1 credit) with each page's markdown, cut to PAGE_MAX: passages + the page's start."""
+    r = post(f"{TAVILY}/search", {"query": query, "max_results": count, "search_depth": "basic",
+                                  "include_raw_content": "markdown"}, key)
+    out = []
+    for x in r.get("results", [])[:count]:
+        page = str(x.get("raw_content") or "").strip()
+        out.append({"title": " ".join(str(x.get("title", "")).split()), "url": x.get("url", ""),
+                    "snippet": " ".join(str(x.get("content", "")).split()),
+                    "page": _cut(page, PAGE_MAX) if page else ""})
+    return out
 
 
 def tavily_extract(url: str, key: str, post=http_post) -> str:
@@ -269,7 +279,8 @@ def do_search(query: str, count: int = 5, provider: str = "duckduckgo", get=http
         results = PROVIDERS[provider](query, count, get)
     if not results:
         return f"{UNTRUSTED}\nNo results for {query!r}."
-    body = "\n\n".join(f"{i}. {r['title']}\n{r['url']}\n{r['snippet']}" for i, r in enumerate(results, 1))
+    body = "\n\n".join(f"{i}. {r['title']}\n{r['url']}\n{r['snippet']}"
+                         + (f"\n--- page ---\n{r['page']}" if r.get("page") else "") for i, r in enumerate(results, 1))
     return f"{UNTRUSTED}\n{body}"
 
 
@@ -406,7 +417,7 @@ def make_tools(provider: str = "duckduckgo", key: str | None = None, extract=Non
                                 "seen than read about. Image is filled from the page if omitted. "
                                 f"Max {MAX_CARDS} items.",
                   _obj({"items": {"type": "array", "items": card, "description": "Cards to show"}}, ["items"]), cards),
-        AgentTool("web_search", "Search the web. Returns title, url and the relevant passages of each result. Scale the "
+        AgentTool("web_search", "Search the web. Returns title, url, the relevant passages and the start of each page (often enough without web_fetch). Scale the "
                                 "work to the question: one fact takes 1-3 searches; a comparison or a topic to research takes "
                                 "more, done in rounds. Each round, send several short, different queries at once (other "
                                 "words, the source's language, the official name), read what came back, then search again "
